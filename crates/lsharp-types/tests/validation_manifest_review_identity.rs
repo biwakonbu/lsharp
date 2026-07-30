@@ -107,3 +107,24 @@ fn manifest_identity_requires_explicit_nullable_fields() {
         .expect_err("identity now must be required even when digest fields are null");
     assert!(error.to_string().contains("now"));
 }
+
+#[test]
+fn manifest_identity_rejects_malformed_now() {
+    let source = serde_json::json!({
+        "schema_version": 1,
+        "nodes": [],
+        "evidence": [],
+        "edges": [],
+        "review_evidence_identity": {
+            "subject_digest": "sha256:graph",
+            "source_commit": "commit-1",
+            "artifact_digest": "sha256:artifact",
+            "trust_store_digest": null,
+            "lifecycle_digest": null,
+            "now": "not-a-canonical-timestamp"
+        }
+    });
+    let error = parse_intent_graph_json(&source.to_string())
+        .expect_err("manifest identity now must use strict UTC timestamp");
+    assert!(error.to_string().contains("timestamp"));
+}

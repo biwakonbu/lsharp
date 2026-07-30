@@ -27,6 +27,8 @@ host の状態を report の identity へ混ぜてしまう。
   `subject_digest`、`source_commit`、`artifact_digest`、`trust_store_digest`、
   `lifecycle_digest`、`now` の順で JSON/text/MCP に投影する。identity は verification state の
   `verified` shortcut ではなく、明示入力の provenance fact とする。
+- `review_now` は identity の有無にかかわらず shared strict UTC validator を通す。malformed な
+  clock は identity/report へ投影せず、CLI/MCP の input error として止める。
 - system clock、environment variable、project 外 path、provider network、manifest からの
   artifact digest 推測は行わない。
 
@@ -38,6 +40,8 @@ host の状態を report の identity へ混ぜてしまう。
   canonical digest/context unit test、CLI identity JSON/text test、MCP identity/schema test が passした。
 - trust-store の JSON field/order を変えても component digest が一致し、lifecycle digest と
   `sha256:` prefix、artifact-bearing context の required field boundary を固定した。
+- verification input のない malformed `review_now`、identity model、manifest input の rejection を
+  CLI/MCP/types の focused test で追加確認した。
 
 ## Boundary and follow-up
 

@@ -6,6 +6,7 @@
 
 use lsharp_types::intent::review_attestation::{
     AttestationVerificationError, ReviewAttestation, ReviewVerificationState,
+    validate_canonical_timestamp,
 };
 use lsharp_types::intent::review_lifecycle::ReviewLifecycleRegistry;
 use lsharp_types::intent::review_trust_store::ReviewTrustStore;
@@ -103,6 +104,11 @@ impl ReviewVerificationContext {
                 });
             }
         }
+        validate_canonical_timestamp("review_now", now).map_err(|error| {
+            ReviewInputError::Context {
+                message: error.to_string(),
+            }
+        })?;
         if let Some(value) = artifact_digest
             && value.trim().is_empty()
         {

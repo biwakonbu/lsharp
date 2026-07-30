@@ -438,3 +438,29 @@ fn test_validate_tool_rejects_malformed_review_clock_without_report_or_manifest(
 
     std::fs::remove_dir_all(project).ok();
 }
+
+#[test]
+fn test_validate_tool_rejects_malformed_review_clock_without_verification_inputs() {
+    let (signature, public_key) = signed_review_fields();
+    let (project, manifest) =
+        mcp_review_project("malformed-clock-without-inputs", &signature, &public_key);
+    let error = call_tool(
+        "lsharp_validate",
+        &json!({
+            "manifest_file": manifest.display().to_string(),
+            "review_subject_digest": "sha256:graph",
+            "review_source_commit": "commit-1",
+            "review_artifact_digest": "sha256:artifact",
+            "review_now": "not-a-canonical-timestamp",
+            "include_manifest": true
+        }),
+    )
+    .expect_err("malformed MCP review clock must fail before report projection");
+
+    assert!(
+        error.contains("明示 clock") || error.contains("timestamp"),
+        "unexpected error: {error}"
+    );
+
+    std::fs::remove_dir_all(project).ok();
+}

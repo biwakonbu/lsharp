@@ -48,3 +48,23 @@ fn review_evidence_identity_rejects_blank_required_fields() {
         "review evidence identity の必須 field が空です: subject_digest"
     );
 }
+
+#[test]
+fn review_evidence_identity_rejects_malformed_now() {
+    let error = ReviewEvidenceIdentity::new(
+        "sha256:graph",
+        "commit-1",
+        "sha256:artifact",
+        "not-a-canonical-timestamp",
+        None,
+        None,
+    )
+    .expect_err("identity now must use strict UTC timestamp");
+    assert!(matches!(
+        error,
+        lsharp_types::validation::ReviewEvidenceIdentityError::InvalidTimestamp {
+            field: "now",
+            ..
+        }
+    ));
+}

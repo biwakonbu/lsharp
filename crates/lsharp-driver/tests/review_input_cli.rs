@@ -769,6 +769,47 @@ fn validate_rejects_malformed_review_clock_without_report_or_manifest() {
 }
 
 #[test]
+fn validate_rejects_malformed_review_clock_without_verification_inputs() {
+    let project = project_dir("malformed-review-clock-without-inputs");
+    let emitted_manifest = project.join("malformed-clock-without-inputs.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-1",
+        "--review-artifact-digest",
+        "sha256:artifact",
+        "--review-now",
+        "not-a-canonical-timestamp",
+        "--emit-manifest",
+        "malformed-clock-without-inputs.json",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "unexpected exit: {stderr}");
+    assert!(
+        output.stdout.is_empty(),
+        "clock errors must not emit report"
+    );
+    assert!(
+        stderr.contains("明示 clock") || stderr.contains("timestamp"),
+        "diagnostic missing: {stderr}"
+    );
+    assert!(
+        !emitted_manifest.exists(),
+        "clock errors must not emit manifest"
+    );
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn validate_rejects_review_input_outside_project_root_before_report() {
     let project = project_dir("outside");
     let outside = project

@@ -42,6 +42,9 @@ review を `verified` と誤認できる。
   `mcp_server::tests` の validate focused 20件で確認した。
 - Regression: `review_signature` 12件、`validation_review_verification` 3件、changed Rust files の
   rustfmt check を通過した。
+- 追加の境界: verification input がない場合も `review_now` は shared strict timestamp validator を
+  通り、malformed clock は report/manifest 生成前に no-report/no-manifest で拒否する。詳細は
+  [`decisions-v0.3-review-explicit-clock-boundary.md`](decisions-v0.3-review-explicit-clock-boundary.md) を参照。
 
 ## Boundary
 

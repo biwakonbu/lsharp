@@ -32,6 +32,12 @@ impl ReviewEvidenceIdentity {
         validate_identity_field("source_commit", &source_commit)?;
         validate_identity_field("artifact_digest", &artifact_digest)?;
         validate_identity_field("now", &now)?;
+        if crate::intent::review_attestation::validate_canonical_timestamp("now", &now).is_err() {
+            return Err(ReviewEvidenceIdentityError::InvalidTimestamp {
+                field: "now",
+                value: now.clone(),
+            });
+        }
         if let Some(value) = &trust_store_digest {
             validate_identity_field("trust_store_digest", value)?;
         }
@@ -77,6 +83,8 @@ impl ReviewEvidenceIdentity {
 pub enum ReviewEvidenceIdentityError {
     #[error("review evidence identity の必須 field が空です: {field}")]
     EmptyField { field: &'static str },
+    #[error("review evidence identity の timestamp が不正です: field={field}, value={value:?}")]
+    InvalidTimestamp { field: &'static str, value: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
