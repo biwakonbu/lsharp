@@ -570,12 +570,71 @@
 (defn typeinfer-import-open-flag [decl]
   (if (and (> (vector-length decl) 6) (= (vector-get decl 6) 1)) 1 0))
 
-(defn typeinfer-import-only-contains-loop [only-hashes idx len name-hash]
+(defn typeinfer-import-only-contains-state [done next-idx found]
+  (vector-push-triple-rooted (vector-new 3) done next-idx found))
+
+(defn typeinfer-import-only-contains-step-v3 [only-hashes idx len name-hash]
   (if (>= idx len)
-    0
+    (typeinfer-import-only-contains-state 1 idx 0)
     (if (= (vector-get only-hashes idx) name-hash)
-      1
-      (typeinfer-import-only-contains-loop only-hashes (+ idx 1) len name-hash))))
+      (typeinfer-import-only-contains-state 1 idx 1)
+      (typeinfer-import-only-contains-state 0 (+ idx 1) 0))))
+
+(defn typeinfer-import-only-contains-step-64-loop-bounded
+  [only-hashes idx len name-hash remaining]
+  (do
+    (root_push only-hashes)
+    (let [step
+            (typeinfer-import-only-contains-step-v3
+              only-hashes idx len name-hash)
+          done (vector-get step 0)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-import-only-contains-step-64-loop-bounded
+                      only-hashes
+                      (vector-get step 1)
+                      len
+                      name-hash
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-import-only-contains-step-64
+  [only-hashes idx len name-hash]
+  (typeinfer-import-only-contains-step-64-loop-bounded
+    only-hashes idx len name-hash 64))
+
+(defn typeinfer-import-only-contains-rooted-v3
+  [only-hashes idx len name-hash]
+  (let [step
+          (typeinfer-import-only-contains-step-64
+            only-hashes idx len name-hash)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push only-hashes)
+        (root_push step)
+        (let [resolved
+                (typeinfer-import-only-contains-rooted-v3
+                  only-hashes
+                  (vector-get step 1)
+                  len
+                  name-hash)]
+          (do
+            (root_pop)
+            (root_pop)
+            resolved))))))
+
+(defn typeinfer-import-only-contains-loop [only-hashes idx len name-hash]
+  (typeinfer-import-only-contains-rooted-v3
+    only-hashes idx len name-hash))
 
 (defn typeinfer-import-only-allows? [only-hashes name-hash]
   (if (= only-hashes 0)
@@ -585,45 +644,139 @@
         1
         (typeinfer-import-only-contains-loop only-hashes 0 only-count name-hash)))))
 
-(defn typeinfer-qualify-import-adt-variants-loop
+(defn typeinfer-qualify-import-adt-variants-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-qualify-import-adt-variants-step-v3
   [variants idx len alias-hash only-hashes open-flag env]
   (if (>= idx len)
-    env
-    (let [variant (vector-get variants idx)
-      name-hash (vector-get variant 0)]
-      (if (= (typeinfer-import-only-allows? only-hashes name-hash) 1)
-        (let [qualified-key (ast-qualified-name-hash alias-hash name-hash)
-          scheme (type-env-lookup env name-hash)]
-          (if (= scheme 0)
-            (typeinfer-qualify-import-adt-variants-loop
-              variants
-              (+ idx 1)
-              len
-              alias-hash
-              only-hashes
-              open-flag
-              env)
-            (let [qualified-env (type-env-insert env qualified-key scheme)
-              next-env
-                (if (= open-flag 1)
-                  (type-env-insert qualified-env name-hash scheme)
-                  qualified-env)]
-              (typeinfer-qualify-import-adt-variants-loop
-                variants
-                (+ idx 1)
-                len
-                alias-hash
-                only-hashes
-                open-flag
-                next-env))))
-        (typeinfer-qualify-import-adt-variants-loop
-          variants
-          (+ idx 1)
-          len
-          alias-hash
-          only-hashes
-          open-flag
-          env)))))
+    (typeinfer-qualify-import-adt-variants-state 1 idx env)
+    (do
+      (root_push variants)
+      (root_push only-hashes)
+      (root_push env)
+      (let [variant (vector-get variants idx)]
+        (do
+          (root_push variant)
+          (let [name-hash (vector-get variant 0)]
+            (if (= (typeinfer-import-only-allows? only-hashes name-hash) 1)
+              (let [qualified-key (ast-qualified-name-hash alias-hash name-hash)
+                    scheme (type-env-lookup env name-hash)]
+                (if (= scheme 0)
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (typeinfer-qualify-import-adt-variants-state
+                      0 (+ idx 1) env))
+                  (do
+                    (root_push scheme)
+                    (let [qualified-env
+                            (type-env-insert env qualified-key scheme)]
+                      (do
+                        (root_push qualified-env)
+                        (let [next-env
+                                (if (= open-flag 1)
+                                  (type-env-insert qualified-env name-hash scheme)
+                                  qualified-env)]
+                          (do
+                            (root_push next-env)
+                            (let [state
+                                    (typeinfer-qualify-import-adt-variants-state
+                                      0 (+ idx 1) next-env)]
+                              (do
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                state)))))))))
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (typeinfer-qualify-import-adt-variants-state
+                  0 (+ idx 1) env)))))))))
+
+(defn typeinfer-qualify-import-adt-variants-step-64-loop-bounded
+  [variants idx len alias-hash only-hashes open-flag env remaining]
+  (do
+    (root_push variants)
+    (root_push only-hashes)
+    (root_push env)
+    (let [step
+            (typeinfer-qualify-import-adt-variants-step-v3
+              variants idx len alias-hash only-hashes open-flag env)
+          done (vector-get step 0)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-qualify-import-adt-variants-step-64-loop-bounded
+                      variants
+                      (vector-get step 1)
+                      len
+                      alias-hash
+                      only-hashes
+                      open-flag
+                      next-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-qualify-import-adt-variants-step-64
+  [variants idx len alias-hash only-hashes open-flag env]
+  (typeinfer-qualify-import-adt-variants-step-64-loop-bounded
+    variants idx len alias-hash only-hashes open-flag env 64))
+
+(defn typeinfer-qualify-import-adt-variants-rooted-v3
+  [variants idx len alias-hash only-hashes open-flag env]
+  (let [step
+          (typeinfer-qualify-import-adt-variants-step-64
+            variants idx len alias-hash only-hashes open-flag env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push variants)
+        (root_push only-hashes)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-qualify-import-adt-variants-rooted-v3
+                      variants
+                      (vector-get step 1)
+                      len
+                      alias-hash
+                      only-hashes
+                      open-flag
+                      next-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-qualify-import-adt-variants-loop
+  [variants idx len alias-hash only-hashes open-flag env]
+  (typeinfer-qualify-import-adt-variants-rooted-v3
+    variants idx len alias-hash only-hashes open-flag env))
 
 (defn typeinfer-qualify-import-named-export
   [name-hash alias-hash only-hashes open-flag env]
@@ -638,44 +791,133 @@
             qualified-env))))
     env))
 
-(defn typeinfer-qualify-import-record-accessors-loop
+(defn typeinfer-qualify-import-record-accessors-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-qualify-import-record-accessors-step-v3
   [raw-fields idx len alias-hash only-hashes open-flag env]
   (if (>= idx len)
-    env
-    (let [accessor-hash (vector-get raw-fields (+ idx 1))]
-      (if (= (typeinfer-import-only-allows? only-hashes accessor-hash) 1)
-        (let [qualified-key (ast-qualified-name-hash alias-hash accessor-hash)
-          scheme (type-env-lookup env accessor-hash)]
-          (if (= scheme 0)
-            (typeinfer-qualify-import-record-accessors-loop
-              raw-fields
-              (+ idx 3)
-              len
-              alias-hash
-              only-hashes
-              open-flag
-              env)
-            (let [qualified-env (type-env-insert env qualified-key scheme)
-              next-env
-                (if (= open-flag 1)
-                  (type-env-insert qualified-env accessor-hash scheme)
-                  qualified-env)]
-              (typeinfer-qualify-import-record-accessors-loop
-                raw-fields
-                (+ idx 3)
-                len
-                alias-hash
-                only-hashes
-                open-flag
-                next-env))))
-        (typeinfer-qualify-import-record-accessors-loop
-          raw-fields
-          (+ idx 3)
-          len
-          alias-hash
-          only-hashes
-          open-flag
-          env)))))
+    (typeinfer-qualify-import-record-accessors-state 1 idx env)
+    (do
+      (root_push raw-fields)
+      (root_push only-hashes)
+      (root_push env)
+      (let [accessor-hash (vector-get raw-fields (+ idx 1))]
+        (if (= (typeinfer-import-only-allows? only-hashes accessor-hash) 1)
+          (let [qualified-key (ast-qualified-name-hash alias-hash accessor-hash)
+                scheme (type-env-lookup env accessor-hash)]
+            (if (= scheme 0)
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (typeinfer-qualify-import-record-accessors-state
+                  0 (+ idx 3) env))
+              (do
+                (root_push scheme)
+                (let [qualified-env
+                        (type-env-insert env qualified-key scheme)]
+                  (do
+                    (root_push qualified-env)
+                    (let [next-env
+                            (if (= open-flag 1)
+                              (type-env-insert qualified-env accessor-hash scheme)
+                              qualified-env)]
+                      (do
+                        (root_push next-env)
+                        (let [state
+                                (typeinfer-qualify-import-record-accessors-state
+                                  0 (+ idx 3) next-env)]
+                          (do
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            state)))))))))
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (typeinfer-qualify-import-record-accessors-state
+              0 (+ idx 3) env)))))))
+
+(defn typeinfer-qualify-import-record-accessors-step-64-loop-bounded
+  [raw-fields idx len alias-hash only-hashes open-flag env remaining]
+  (do
+    (root_push raw-fields)
+    (root_push only-hashes)
+    (root_push env)
+    (let [step
+            (typeinfer-qualify-import-record-accessors-step-v3
+              raw-fields idx len alias-hash only-hashes open-flag env)
+          done (vector-get step 0)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-qualify-import-record-accessors-step-64-loop-bounded
+                      raw-fields
+                      (vector-get step 1)
+                      len
+                      alias-hash
+                      only-hashes
+                      open-flag
+                      next-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-qualify-import-record-accessors-step-64
+  [raw-fields idx len alias-hash only-hashes open-flag env]
+  (typeinfer-qualify-import-record-accessors-step-64-loop-bounded
+    raw-fields idx len alias-hash only-hashes open-flag env 64))
+
+(defn typeinfer-qualify-import-record-accessors-rooted-v3
+  [raw-fields idx len alias-hash only-hashes open-flag env]
+  (let [step
+          (typeinfer-qualify-import-record-accessors-step-64
+            raw-fields idx len alias-hash only-hashes open-flag env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push raw-fields)
+        (root_push only-hashes)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-qualify-import-record-accessors-rooted-v3
+                      raw-fields
+                      (vector-get step 1)
+                      len
+                      alias-hash
+                      only-hashes
+                      open-flag
+                      next-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-qualify-import-record-accessors-loop
+  [raw-fields idx len alias-hash only-hashes open-flag env]
+  (typeinfer-qualify-import-record-accessors-rooted-v3
+    raw-fields idx len alias-hash only-hashes open-flag env))
 
 (defn typeinfer-qualify-import-record-accessors
   [raw-fields alias-hash only-hashes open-flag env]

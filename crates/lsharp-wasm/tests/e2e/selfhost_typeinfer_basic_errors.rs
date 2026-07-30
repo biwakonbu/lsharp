@@ -3390,3 +3390,123 @@ fn test_e2e_selfhost_typeinfer_large_record_decl_loops_preserve_bindings() {
         "65 要素の record schema/constructor/field loop は chunk 境界を越えて binding を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_import_export_loops_use_bounded_chunks() {
+    let type_infer = selfhost_module("TypeInfer.ls");
+
+    assert!(
+        type_infer.contains("typeinfer-import-only-contains-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-qualify-import-adt-variants-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-qualify-import-record-accessors-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-import-only-contains-rooted-v3")
+            && type_infer.contains("typeinfer-qualify-import-adt-variants-rooted-v3")
+            && type_infer.contains("typeinfer-qualify-import-record-accessors-rooted-v3"),
+        "import :only 検索と ADT/record export loop は bounded helper と rooted continuation へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_import_export_loops_preserve_filters() {
+    let mut only_adt_expr = "(vector-new 0)".to_string();
+    let mut only_record_expr = "(vector-new 0)".to_string();
+    let mut variants_expr = "(vector-new 0)".to_string();
+    let mut raw_fields_expr = "(vector-new 0)".to_string();
+    let mut adt_env_expr = "(type-env-new)".to_string();
+    let mut record_env_expr = "(type-env-new)".to_string();
+
+    for idx in 0..65 {
+        let adt_only_hash = if idx == 0 {
+            22000
+        } else if idx == 64 {
+            22064
+        } else {
+            40000 + idx
+        };
+        let record_only_hash = if idx == 0 {
+            30000
+        } else if idx == 64 {
+            30064
+        } else {
+            50000 + idx
+        };
+        only_adt_expr = format!("(vector-push {} {})", only_adt_expr, adt_only_hash);
+        only_record_expr = format!("(vector-push {} {})", only_record_expr, record_only_hash);
+        variants_expr = format!(
+            "(vector-push {} (vector-push (vector-push (vector-new 2) {}) (vector-new 0)))",
+            variants_expr,
+            22000 + idx
+        );
+        raw_fields_expr = format!(
+            "(vector-push (vector-push (vector-push {} {}) {}) (vector-new 0))",
+            raw_fields_expr,
+            31000 + idx,
+            30000 + idx
+        );
+        adt_env_expr = format!(
+            "(type-env-insert {} {} (mono (mk-int)))",
+            adt_env_expr,
+            22000 + idx
+        );
+        record_env_expr = format!(
+            "(type-env-insert {} {} (mono (mk-int)))",
+            record_env_expr,
+            30000 + idx
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [only-adt {only_adt_expr}
+        only-record {only_record_expr}
+        variants {variants_expr}
+        raw-fields {raw_fields_expr}
+        adt-env {adt_env_expr}
+        record-env {record_env_expr}
+        qualified-adt
+          (typeinfer-qualify-import-adt-variants-loop
+            variants 0 65 900 only-adt 1 adt-env)
+        qualified-record
+          (typeinfer-qualify-import-record-accessors-loop
+            raw-fields 0 195 901 only-record 1 record-env)
+        adt-first (type-env-lookup qualified-adt (ast-qualified-name-hash 900 22000))
+        adt-last (type-env-lookup qualified-adt (ast-qualified-name-hash 900 22064))
+        adt-open-first (type-env-lookup qualified-adt 22000)
+        adt-rejected (type-env-lookup qualified-adt 22063)
+        record-first (type-env-lookup qualified-record (ast-qualified-name-hash 901 30000))
+        record-last (type-env-lookup qualified-record (ast-qualified-name-hash 901 30064))
+        record-open-first (type-env-lookup qualified-record 30000)
+        record-rejected (type-env-lookup qualified-record (ast-qualified-name-hash 901 30063))]
+    (do
+      (print (vector-length only-adt))
+      (print (if (= adt-first 0) 0 1))
+      (print (if (= adt-last 0) 0 1))
+      (print (if (= adt-open-first 0) 0 1))
+      (print (if (= adt-rejected 0) 0 1))
+      (print (vector-length only-record))
+      (print (if (= record-first 0) 0 1))
+      (print (if (= record-last 0) 0 1))
+      (print (if (= record-open-first 0) 0 1))
+      (print (if (= record-rejected 0) 0 1))
+      0)))
+"#,
+        only_adt_expr = only_adt_expr,
+        only_record_expr = only_record_expr,
+        variants_expr = variants_expr,
+        raw_fields_expr = raw_fields_expr,
+        adt_env_expr = adt_env_expr,
+        record_env_expr = record_env_expr,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "1", "1", "1", "1", "65", "1", "1", "1", "0"],
+        "65要素の import :only/:open export loop は先頭・末尾・未選択の意味を保持するべき"
+    );
+}
