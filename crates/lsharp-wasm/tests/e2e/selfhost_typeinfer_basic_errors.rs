@@ -2910,3 +2910,60 @@ fn test_e2e_selfhost_typeinfer_large_alias_and_signature_type_expressions_preser
         "plain/alias/signature の TypeExpr は 64 handoff を越えて shape を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_parametric_alias_subst_uses_bounded_chunks() {
+    let core = selfhost_module("TypeInferCore.ls");
+
+    assert!(
+        core.contains("typeinfer-build-parametric-alias-subst-step-64-loop-bounded")
+            && core.contains("typeinfer-build-parametric-alias-subst-rooted-v3"),
+        "parametric alias substitution は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_parametric_alias_substitution_preserves_all_bindings() {
+    let mut param_types_expr = "(vector-new 0)".to_string();
+    let mut args_expr = "(vector-new 0)".to_string();
+    let mut checks = String::new();
+    for idx in 0..65 {
+        param_types_expr = format!(
+            "(vector-push {} (make-type-var {}))",
+            param_types_expr,
+            5000 + idx
+        );
+        args_expr = format!(
+            "(vector-push {} (make-type-named {}))",
+            args_expr,
+            7000 + idx
+        );
+        checks.push_str(&format!(
+            "      (print (ty-name (map-get-safe subst {})))\n",
+            5000 + idx
+        ));
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [param-types {}
+        args {}
+        subst
+          (typeinfer-build-parametric-alias-subst-loop
+            param-types args 0 65 (map-new))]
+    (do
+{}      0)))
+"#,
+        param_types_expr, args_expr, checks
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected: Vec<String> = (0..65).map(|idx| (7000 + idx).to_string()).collect();
+    let expected: Vec<&str> = expected.iter().map(String::as_str).collect();
+
+    assert_eq!(lines, expected, "65 個の alias parameter substitution をすべて保持するべき");
+}

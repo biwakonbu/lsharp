@@ -644,18 +644,99 @@
   (typeinfer-resolve-type-expr-args-with-aliases-rooted-v3
     type-expr idx count args alias-env type-param-env))
 
-(defn typeinfer-build-parametric-alias-subst-loop [param-types args idx count subst]
+(defn typeinfer-build-parametric-alias-subst-state [done next-idx subst]
+  (vector-push-triple-rooted (vector-new 3) done next-idx subst))
+
+(defn typeinfer-build-parametric-alias-subst-step-v3
+  [param-types args idx count subst]
   (if (>= idx count)
-    subst
-    (let [param-type (vector-get param-types idx)
-      arg-type (vector-get args idx)
-      next-subst (map-insert-object-safe subst (type-name param-type) arg-type)]
-      (typeinfer-build-parametric-alias-subst-loop
-        param-types
-        args
-        (+ idx 1)
-        count
-        next-subst))))
+    (typeinfer-build-parametric-alias-subst-state 1 idx subst)
+    (do
+      (root_push param-types)
+      (root_push args)
+      (root_push subst)
+      (let [param-type (vector-get param-types idx)
+        arg-type (vector-get args idx)
+        next-subst (map-insert-object-safe subst (type-name param-type) arg-type)]
+        (do
+          (root_push next-subst)
+          (let [step
+            (typeinfer-build-parametric-alias-subst-state
+              0
+              (+ idx 1)
+              next-subst)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              step)))))))
+
+(defn typeinfer-build-parametric-alias-subst-step-64-loop-bounded
+  [param-types args idx count subst remaining]
+  (do
+    (root_push param-types)
+    (root_push args)
+    (root_push subst)
+    (let [step
+            (typeinfer-build-parametric-alias-subst-step-v3
+              param-types args idx count subst)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-subst (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-subst)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-build-parametric-alias-subst-step-64-loop-bounded
+                param-types
+                args
+                next-idx
+                count
+                next-subst
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-build-parametric-alias-subst-step-64
+  [param-types args idx count subst]
+  (typeinfer-build-parametric-alias-subst-step-64-loop-bounded
+    param-types args idx count subst 64))
+
+(defn typeinfer-build-parametric-alias-subst-rooted-v3
+  [param-types args idx count subst]
+  (let [step
+          (typeinfer-build-parametric-alias-subst-step-64
+            param-types args idx count subst)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-subst (vector-get step 2)]
+          (do
+            (root_push next-subst)
+            (let [resolved
+              (typeinfer-build-parametric-alias-subst-rooted-v3
+                param-types args next-idx count next-subst)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-build-parametric-alias-subst-loop
+  [param-types args idx count subst]
+  (typeinfer-build-parametric-alias-subst-rooted-v3
+    param-types args idx count subst))
 
 ;; parametric alias entry = [parameter-type-vars, resolved-target-type]
 (defn typeinfer-resolve-parametric-alias-application [entry args]
