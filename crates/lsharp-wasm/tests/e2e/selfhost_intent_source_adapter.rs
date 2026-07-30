@@ -1191,6 +1191,64 @@ fn test_e2e_selfhost_source_adapter_canonical_bytes_match_rust_without_expiry() 
     }
 }
 
+/// EC-M3-04: UTF-8 の attestation field も Rust の UTF-8 byte length と selfhost producer の
+/// canonical bytes が一致する。ASCII 前提の code-point/byte length drift を許容しない。
+#[test]
+fn test_e2e_selfhost_source_adapter_canonical_bytes_match_rust_utf8_fields() {
+    let harness = r#"
+(defn emit-bytes [bytes idx]
+  (if (>= idx (vector-length bytes))
+    0
+    (do
+      (print (vector-get bytes idx))
+      (emit-bytes bytes (+ idx 1)))))
+
+(defn main []
+  (let [result (source-review-attestations-from-program
+                 (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:対象\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"レビュー\" :key-id \"org/reviews-2026-日本\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        records (source-result-value result)
+        attestation (vector-get records 0)
+        bytes (source-review-attestation-canonical-bytes attestation)]
+    (do
+      (print (source-result-status result))
+      (print (vector-length records))
+      (print-string (source-review-attestation-state attestation))
+      (print-string "\n")
+      (print (if (< (source-review-attestation-start attestation)
+                    (source-review-attestation-end attestation)) 1 0))
+      (print (vector-length bytes))
+      (emit-bytes bytes 0)
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected = ReviewAttestation::new(
+        "review:checkout/reviewer-001".to_string(),
+        "sha256:対象".to_string(),
+        "0123456789abcdef".to_string(),
+        "sha256:review-001".to_string(),
+        "レビュー".to_string(),
+        "org/reviews-2026-日本".to_string(),
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z".to_string(),
+        Some("2026-09-01T00:00:00Z".to_string()),
+        3,
+        vec![0, 1, 2],
+    )
+    .expect("Rust UTF-8 field fixture は valid であるべき")
+    .canonical_bytes();
+    assert_eq!(lines.len(), expected.len() + 5);
+    assert_eq!(lines[0], "1");
+    assert_eq!(lines[1], "1");
+    assert_eq!(lines[2], "unverified");
+    assert_eq!(lines[3], "1");
+    assert_eq!(lines[4], expected.len().to_string());
+    for (line, byte) in lines[5..].iter().zip(expected.iter()) {
+        assert_eq!(line.parse::<u8>().expect("selfhost canonical byte"), *byte);
+    }
+}
+
 /// EC-M3-04: selfhost producer も algorithm/signature wire boundary を成功扱いにしない。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_invalid_attestation_fields() {

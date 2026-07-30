@@ -86,6 +86,39 @@ fn source_adapter_preserves_absent_expiry_in_canonical_bytes_and_span() {
 }
 
 #[test]
+fn source_adapter_preserves_utf8_fields_in_canonical_bytes() {
+    let source = SOURCE
+        .replace(
+            ":subject-digest \"sha256:subject-001\"",
+            ":subject-digest \"sha256:対象\"",
+        )
+        .replace(":provider \"github\"", ":provider \"レビュー\"")
+        .replace(
+            ":key-id \"org/reviews-2026\"",
+            ":key-id \"org/reviews-2026-日本\"",
+        );
+    let program = parse(&source).expect("UTF-8 field fixture は parse できるべき");
+    let record = &source_program_to_review_attestations(&program)
+        .expect("UTF-8 field attestation は投影できるべき")[0];
+    let expected = ReviewAttestation::new(
+        "review:checkout/reviewer-001".to_string(),
+        "sha256:対象".to_string(),
+        "0123456789abcdef".to_string(),
+        "sha256:review-001".to_string(),
+        "レビュー".to_string(),
+        "org/reviews-2026-日本".to_string(),
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z".to_string(),
+        Some("2026-09-01T00:00:00Z".to_string()),
+        3,
+        vec![0, 1, 2],
+    )
+    .expect("Rust UTF-8 field fixture は valid であるべき")
+    .canonical_bytes();
+    assert_eq!(record.attestation().canonical_bytes(), expected);
+}
+
+#[test]
 fn source_adapter_rejects_unknown_algorithm_with_attestation_span() {
     let source = SOURCE.replace(":algorithm \"ed25519\"", ":algorithm \"rsa-sha256\"");
     let program = parse(&source).expect("algorithm boundary fixture は parse できるべき");

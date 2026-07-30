@@ -15,6 +15,8 @@ canonical bytes へ含め、selfhost が別の既定値を補うと、同じ att
 
 - `expires-at` の省略は有効な入力として受理する。
 - Rust `ReviewAttestation` は `None` を canonical bytes の zero-length field として encode する。
+- canonical bytes の各 field は UTF-8 byte length を使い、ASCII 以外の provider/key/digest でも
+  code-point 数へ置き換えない。
 - selfhost `IntentSource` は省略 field を空文字の producer value として保持し、同じ zero-length
   field、`unverified` state、directive span を返す。
 - native source-file smoke は、通常の期限付き fixtureに加えて `expires-at` 省略 fixtureを
@@ -31,6 +33,7 @@ canonical bytes へ含め、selfhost が別の既定値を補うと、同じ att
 - `crates/lsharp-wasm/tests/e2e/selfhost_intent_source_adapter.rs`
   - 同じ fixture の selfhost canonical bytes byte-for-byte 比較
   - `unverified` state と span の確認
+  - UTF-8 field の byte length と canonical bytes parity の確認
 - `scripts/ci/native-selfhost-dev-source-file-smoke.sh`
   - JSON/text report、manifest、exit boundary の native source-file contract
 - `scripts/ci/test-native-linux-x86-native-stage0-source-file-smoke.sh`
