@@ -220,3 +220,70 @@ fn validate_source_external_verification_overrides_source_unverified_fact() {
 
     fs::remove_dir_all(project).ok();
 }
+
+#[test]
+fn validate_source_rejects_invalid_attestation_fields_with_stable_error_code() {
+    for (name, source) in [
+        (
+            "algorithm",
+            SOURCE.replace(":algorithm \"ed25519\"", ":algorithm \"rsa-sha256\""),
+        ),
+        (
+            "signature",
+            SOURCE.replace(":signature \"AAECAw\"", ":signature \"A===\""),
+        ),
+        (
+            "timestamp",
+            SOURCE.replace(
+                ":issued-at \"2026-08-01T00:00:00Z\"",
+                ":issued-at \"2026-02-30T00:00:00Z\"",
+            ),
+        ),
+        (
+            "time-window",
+            SOURCE.replace(
+                ":expires-at \"2026-09-01T00:00:00Z\"",
+                ":expires-at \"2026-07-01T00:00:00Z\"",
+            ),
+        ),
+    ] {
+        let project = project_dir(&format!("invalid-attestation-code-{name}"));
+        fs::write(project.join("review.ls"), source).expect("source should be writable");
+        let output = project.join("manifest.json");
+
+        let result = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+            .current_dir(&project)
+            .args([
+                "validate",
+                "--source",
+                "review.ls",
+                "--format",
+                "json",
+                "--emit-manifest",
+                "manifest.json",
+            ])
+            .output()
+            .expect("validate source should run");
+
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert_eq!(
+            result.status.code(),
+            Some(1),
+            "unexpected exit for {name}: {stderr}"
+        );
+        assert!(
+            result.stdout.is_empty(),
+            "invalid source must not emit a report for {name}"
+        );
+        assert!(
+            stderr.contains("source validation error:8"),
+            "stable source attestation error code is missing for {name}: {stderr}"
+        );
+        assert!(
+            !output.exists(),
+            "invalid source must not emit a manifest for {name}"
+        );
+
+        fs::remove_dir_all(project).ok();
+    }
+}

@@ -1517,7 +1517,13 @@ fn source_graph_error(
     source: &str,
     error: lsharp_types::validation_source::SourceGraphError,
 ) -> miette::Report {
-    let message = format!("{}: {}", file.display(), error);
+    let message = match error.stable_code() {
+        Some(code) => format!(
+            "source validation error:{code}: {}: {error}",
+            file.display()
+        ),
+        None => format!("{}: {}", file.display(), error),
+    };
     let Some(span) = error.source_span() else {
         return miette::miette!("{message}");
     };

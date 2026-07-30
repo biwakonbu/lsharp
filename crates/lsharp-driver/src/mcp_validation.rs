@@ -214,7 +214,13 @@ fn source_graph_input(
         .map_err(|error| format!("validation source の parse に失敗しました: {error}"))?;
     let graph =
         lsharp_types::validation_source::source_program_to_intent_graph_with_attestations(&program)
-            .map_err(|error| format!("validation source graph の構築に失敗しました: {error}"))?;
+            .map_err(|error| {
+                let message = match error.stable_code() {
+                    Some(code) => format!("source validation error:{code}: {error}"),
+                    None => error.to_string(),
+                };
+                format!("validation source graph の構築に失敗しました: {message}")
+            })?;
     Ok(graph)
 }
 

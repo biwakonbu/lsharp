@@ -33,6 +33,9 @@ positional な既存 `:review` と混ざると、named-field の順序・欠落�
   [`decisions-v0.3-source-attestation-report-projection.md`](decisions-v0.3-source-attestation-report-projection.md)）。
   malformed/unsupported algorithm/invalid signature は source validation error として fail-closed
   にする。
+- typed attestation validation failure は Rust CLI/MCP でも selfhost/native と共有する
+  `source validation error:8` を prefix として投影する。型固有の診断本文と directive span は
+  併せて保持し、report/manifest は生成しない。
 - trust store、lifecycle、current-source identity、clock、manifest-side verification は source
   に埋め込まず、後続の EC-M3-04/05 boundary とする。
 
@@ -48,13 +51,17 @@ positional な既存 `:review` と混ざると、named-field の順序・欠落�
 - selfhost actual Wasm E2E は named-field payload/state/span、Rust との canonical bytes
   byte-for-byte parity、algorithm/signature invalid の同一 error code `8` を固定した。
   selfhost parser metadata form の focused test も passした。
+- RED: Rust CLI/MCP source route の invalid algorithm が型固有の本文だけを返し、native と共有する
+  error code `8` を欠いていたことを `validate_source_review_attestation` と MCP focused test で確認した。
+- GREEN: invalid algorithm/signature/timestamp/time-window の Rust CLI matrix と MCP invalid source
+  test が `source validation error:8`、exit `1`、no-report/no-manifest を固定した。
 - 既存 selfhost IntentSource adapter suite 36 tests、`git diff --check` を通過した。Rust workspace
   の全体 rustfmt check は base branch に既存の未整形差分があるため、今回の完了証拠へ拡大解釈しない。
 
 ## Boundary and follow-up
 
-これは source parser と producer の verified partial sliceである。Rust CLI の source
-report/manifest projection は別 ADR の verified partial sliceとして接続済みだが、`Evidence`
+これは source parser と producer の verified partial sliceである。Rust CLI/MCP の source
+report/manifest projection と typed error code は別の verified partial sliceとして接続済みだが、`Evidence`
 consumer、selfhost/native producer parity、native source-file smoke、current-source と packaged
 stage0 の provenance、Mac Apple Silicon / Linux x86_64 runtime へは未接続である。signature の
 暗号学的 verification、trust/lifecycle、EC-M3-05 evidence identity は未完了であり、`TODO.md` の

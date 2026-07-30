@@ -251,6 +251,34 @@ fn test_validate_tool_external_verification_overrides_source_unverified() {
 }
 
 #[test]
+fn test_validate_tool_rejects_invalid_source_attestation_with_stable_error_code() {
+    let (signature, public_key) = signed_review_fields();
+    let (project, _manifest) =
+        mcp_review_project("source-invalid-attestation", &signature, &public_key);
+    let source = project.join("review.ls");
+    std::fs::write(
+        &source,
+        SOURCE_REVIEW_ATTESTATION.replace(":algorithm \"ed25519\"", ":algorithm \"rsa-sha256\""),
+    )
+    .expect("source should be writable");
+
+    let error = call_tool(
+        "lsharp_validate",
+        &json!({
+            "file": source.display().to_string(),
+            "include_manifest": true
+        }),
+    )
+    .expect_err("invalid source attestation must fail closed");
+    assert!(
+        error.contains("source validation error:8"),
+        "stable source attestation error code is missing: {error}"
+    );
+
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn test_validate_tool_projects_valid_attestation_context_to_report_and_manifest() {
     let (signature, public_key) = signed_review_fields();
     let (project, manifest) = mcp_review_project("valid-context", &signature, &public_key);

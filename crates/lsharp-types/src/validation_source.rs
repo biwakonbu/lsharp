@@ -180,6 +180,17 @@ pub enum SourceGraphError {
 }
 
 impl SourceGraphError {
+    /// selfhost/native source producer と共有する stable diagnostic code を返す。
+    ///
+    /// attestation の typed validation は source adapter の入力エラー code `8` として
+    /// 投影し、Rust CLI/MCP が型固有の表示文言だけで別の observable contract にならないようにする。
+    pub const fn stable_code(&self) -> Option<u8> {
+        match self {
+            Self::ReviewAttestationAt { .. } => Some(8),
+            _ => None,
+        }
+    }
+
     /// source adapter が保持している primary span を返す。
     ///
     /// graph-only の内部エラーは source directive に対応する span をまだ持たないため、
