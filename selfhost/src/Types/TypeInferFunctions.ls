@@ -555,21 +555,97 @@
         (root_pop)
         result))))
 
-(defn typeinfer-build-curried-fun-loop [param-types subst idx count body-ty]
-  (if (>= idx count)
-    body-ty
-    (let [rest-fun (typeinfer-build-curried-fun-loop param-types subst (+ idx 1) count body-ty)]
+(defn typeinfer-build-curried-fun-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn typeinfer-build-curried-fun-step-v3
+  [param-types subst idx lower result]
+  (if (<= idx lower)
+    (typeinfer-build-curried-fun-state 1 idx result)
+    (do
+      (root_push param-types)
+      (root_push subst)
+      (root_push result)
+      (let [param-ty (vector-get param-types (- idx 1))
+        applied-param-ty (apply-subst subst param-ty)]
+        (do
+          (root_push applied-param-ty)
+          (let [next-result
+            (typeinfer-make-fun-rooted applied-param-ty result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (typeinfer-build-curried-fun-state
+                0
+                (- idx 1)
+                next-result))))))))
+
+(defn typeinfer-build-curried-fun-step-64-loop-bounded
+  [param-types subst idx lower result remaining]
+  (do
+    (root_push param-types)
+    (root_push subst)
+    (root_push result)
+    (let [step
+            (typeinfer-build-curried-fun-step-v3
+              param-types subst idx lower result)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-result (vector-get step 2)]
       (do
-        (root_push rest-fun)
-        (let [param-ty (vector-get param-types idx)
-          applied-param-ty (apply-subst subst param-ty)]
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-build-curried-fun-step-64-loop-bounded
+                param-types
+                subst
+                next-idx
+                lower
+                next-result
+                (- remaining 1))))]
           (do
-            (root_push applied-param-ty)
-            (let [result (typeinfer-make-fun-rooted applied-param-ty rest-fun)]
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-build-curried-fun-step-64
+  [param-types subst idx lower result]
+  (typeinfer-build-curried-fun-step-64-loop-bounded
+    param-types subst idx lower result 64))
+
+(defn typeinfer-build-curried-fun-rooted-v3
+  [param-types subst idx lower result]
+  (let [step
+          (typeinfer-build-curried-fun-step-64
+            param-types subst idx lower result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+              (typeinfer-build-curried-fun-rooted-v3
+                param-types subst next-idx lower next-result)]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                resolved))))))))
+
+(defn typeinfer-build-curried-fun-loop [param-types subst idx count body-ty]
+  (typeinfer-build-curried-fun-rooted-v3
+    param-types subst count idx body-ty))
 
 (defn typeinfer-build-curried-fun [param-types subst body-ty]
   (do

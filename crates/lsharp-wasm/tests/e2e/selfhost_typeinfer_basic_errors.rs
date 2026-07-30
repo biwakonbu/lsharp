@@ -2967,3 +2967,67 @@ fn test_e2e_selfhost_typeinfer_large_parametric_alias_substitution_preserves_all
 
     assert_eq!(lines, expected, "65 個の alias parameter substitution をすべて保持するべき");
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_curried_fun_uses_bounded_chunks() {
+    let functions = selfhost_module("TypeInferFunctions.ls");
+
+    assert!(
+        functions.contains("typeinfer-build-curried-fun-step-64-loop-bounded")
+            && functions.contains("typeinfer-build-curried-fun-rooted-v3"),
+        "curried function construction は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_curried_fun_preserves_shape() {
+    let mut param_types_expr = "(vector-new 0)".to_string();
+    for idx in 0..65 {
+        param_types_expr = format!(
+            "(vector-push {} (make-type-var {}))",
+            param_types_expr,
+            9000 + idx
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn fun-depth [ty]
+  (if (= (ty-tag ty) 3)
+    (+ 1 (fun-depth (ty-fr ty)))
+    0))
+
+(defn fun-last-param [ty]
+  (if (= (ty-tag (ty-fr ty)) 3)
+    (fun-last-param (ty-fr ty))
+    (ty-fp ty)))
+
+(defn fun-return [ty]
+  (if (= (ty-tag ty) 3)
+    (fun-return (ty-fr ty))
+    ty))
+
+(defn main []
+  (let [param-types {}
+        result (typeinfer-build-curried-fun param-types (map-new) (make-type-named 999))]
+    (do
+      (print (fun-depth result))
+      (print (ty-name (ty-fp result)))
+      (print (ty-name (fun-last-param result)))
+      (print (ty-name (fun-return result)))
+      0)))
+"#,
+        param_types_expr
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "9000", "9064", "999"],
+        "65 parameter の curried function shape を保持するべき"
+    );
+}
