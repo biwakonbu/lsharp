@@ -91,6 +91,25 @@ fn lifecycle_rejects_invalid_first_event_and_empty_effective_time() {
 }
 
 #[test]
+fn lifecycle_rejects_malformed_effective_timestamp() {
+    let result = ReviewLifecycleEvent::new(
+        "review:orders/reviewer-001",
+        1,
+        ReviewLifecycleState::Proposed,
+        "not-a-canonical-timestamp",
+        None::<String>,
+    );
+
+    assert!(matches!(
+        result,
+        Err(LifecycleError::InvalidTimestamp {
+            field: "effective_at",
+            value
+        }) if value == "not-a-canonical-timestamp"
+    ));
+}
+
+#[test]
 fn lifecycle_rejects_duplicate_or_rollback_sequences_and_invalid_transitions() {
     let mut registry = ReviewLifecycleRegistry::default();
     registry

@@ -17,6 +17,9 @@ review の signature が検証できても、後から supersede/revoke され�
 
 - lifecycle event は typed `ReviewId`、1-based `sequence`、`state`、`effective_at`、
   optional `reason_digest` を持つ。
+- `effective_at` は attestation と共有する `YYYY-MM-DDTHH:MM:SSZ` の strict UTC timestamp
+  parser を通り、形式不正・存在しない日付・秒範囲外を registry へ入れない（詳細は
+  [`decisions-v0.3-review-lifecycle-effective-timestamp.md`](decisions-v0.3-review-lifecycle-effective-timestamp.md)）。
 - 初期 state は `proposed` または `active` に限定する。
 - 許可する遷移は `proposed → active`、`active → superseded`、`active → revoked` のみとする。
 - `superseded` / `revoked` は terminal state とし、後続 event で `active` へ戻さない。
@@ -36,8 +39,8 @@ review の signature が検証できても、後から supersede/revoke され�
 
 ## Boundary
 
-これは in-memory canonical reducer の verified partial slice である。event の JSON/manifest
-schema、snapshot file path policy、signature/key verification、attestation expiry clock の
-report 接続、M2 report の
+これは in-memory canonical reducer の verified partial slice である。strict `effective_at`
+timestamp は別 ADR で追加したが、event の JSON/manifest schema、snapshot file path policy、
+signature/key verification、attestation expiry clock の report 接続、M2 report の
 `stale_reviews` / `unknown` 投影、CLI/MCP/source/selfhost/native parity、Mac Apple Silicon /
 Linux x86_64 artifact/runtime evidence は未完了であり、v0.3 設計文書の後続タスクへ残す。

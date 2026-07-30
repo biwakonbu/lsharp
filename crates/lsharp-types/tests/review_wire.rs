@@ -109,3 +109,21 @@ fn wire_rejects_invalid_version_algorithm_signature_and_required_arrays() {
         Err(ReviewWireError::Schema { .. })
     ));
 }
+
+#[test]
+fn wire_rejects_noncanonical_lifecycle_effective_timestamp() {
+    let malformed = VALID_WIRE.replace(
+        "\"effective_at\": \"2026-08-01T00:00:00Z\"",
+        "\"effective_at\": \"2026-02-30T00:00:00Z\"",
+    );
+
+    assert!(matches!(
+        parse_review_wire(&malformed),
+        Err(ReviewWireError::Lifecycle(
+            lsharp_types::intent::review_lifecycle::LifecycleError::InvalidTimestamp {
+                field: "effective_at",
+                value
+            }
+        )) if value == "2026-02-30T00:00:00Z"
+    ));
+}

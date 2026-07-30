@@ -530,6 +530,11 @@ fn parse_timestamp(
     })
 }
 
+/// lifecycle など別の review contract も同じ strict UTC timestamp parser を使う。
+pub(crate) fn canonical_timestamp_is_valid(value: &str) -> bool {
+    parse_timestamp_value("timestamp", value).is_ok()
+}
+
 fn parse_timestamp_value(
     field: &'static str,
     value: &str,

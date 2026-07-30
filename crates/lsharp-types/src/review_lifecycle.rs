@@ -45,6 +45,11 @@ impl ReviewLifecycleState {
 pub enum LifecycleError {
     #[error("review lifecycle の必須 field が空です: {field}")]
     EmptyField { field: &'static str },
+    #[error("review lifecycle の timestamp が不正です: field={field}, value={value:?}")]
+    InvalidTimestamp {
+        field: &'static str,
+        value: String,
+    },
     #[error("review lifecycle の sequence は 1 以上でなければなりません: {sequence}")]
     InvalidSequence { sequence: u64 },
     #[error("review lifecycle の review ID が不正です: {0}")]
@@ -96,6 +101,12 @@ impl ReviewLifecycleEvent {
         }
         validate_required("review_id", &review_id)?;
         validate_required("effective_at", &effective_at)?;
+        if !super::review_attestation::canonical_timestamp_is_valid(&effective_at) {
+            return Err(LifecycleError::InvalidTimestamp {
+                field: "effective_at",
+                value: effective_at,
+            });
+        }
         if let Some(reason_digest) = &reason_digest {
             validate_required("reason_digest", reason_digest)?;
         }
