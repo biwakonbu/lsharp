@@ -156,10 +156,12 @@ pub fn parse_review_wire(input: &str) -> Result<ReviewWireDocument, ReviewWireEr
         .into_iter()
         .map(TryInto::try_into)
         .collect::<Result<Vec<ReviewAttestation>, ReviewWireError>>()?;
-    let mut lifecycle = ReviewLifecycleRegistry::default();
-    for event in wire.lifecycle {
-        lifecycle.add_event(event.try_into()?)?;
-    }
+    let lifecycle_events = wire
+        .lifecycle
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<Vec<ReviewLifecycleEvent>, ReviewWireError>>()?;
+    let lifecycle = ReviewLifecycleRegistry::from_events(lifecycle_events)?;
     let trust_store = match wire.trust_store {
         Some(keys) => {
             let mut store = ReviewTrustStore::default();

@@ -148,6 +148,29 @@ pub struct ReviewLifecycleRegistry {
 }
 
 impl ReviewLifecycleRegistry {
+    /// 宣言順に依存しない lifecycle snapshot を deterministic に構築する。
+    ///
+    /// wire や provider snapshot は event の配列順を保証しないため、review ID と sequence
+    /// の tuple で先に並べ替える。個別の `add_event` は append-only boundary として残し、
+    /// 並べ替え後も duplicate、rollback、invalid transition は同じ fail-closed error を返す。
+    pub fn from_events(
+        events: impl IntoIterator<Item = ReviewLifecycleEvent>,
+    ) -> Result<Self, LifecycleError> {
+        let mut events = events.into_iter().collect::<Vec<_>>();
+        events.sort_by(|left, right| {
+            left.review_id()
+                .as_str()
+                .cmp(right.review_id().as_str())
+                .then_with(|| left.sequence().cmp(&right.sequence()))
+        });
+
+        let mut registry = Self::default();
+        for event in events {
+            registry.add_event(event)?;
+        }
+        Ok(registry)
+    }
+
     /// 新しい event を review ID ごとの末尾へ追加する。
     pub fn add_event(&mut self, event: ReviewLifecycleEvent) -> Result<(), LifecycleError> {
         let review_id = event.review_id().as_str().to_string();

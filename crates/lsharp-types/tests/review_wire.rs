@@ -30,6 +30,29 @@ const VALID_WIRE: &str = r#"
 }
 "#;
 
+const OUT_OF_ORDER_LIFECYCLE_WIRE: &str = r#"
+{
+  "schema_version": 1,
+  "attestations": [],
+  "lifecycle": [
+    {
+      "review_id": "review:orders/reviewer-001",
+      "sequence": 2,
+      "state": "revoked",
+      "effective_at": "2026-08-02T00:00:00Z",
+      "reason_digest": "sha256:reason-001"
+    },
+    {
+      "review_id": "review:orders/reviewer-001",
+      "sequence": 1,
+      "state": "active",
+      "effective_at": "2026-08-01T00:00:00Z",
+      "reason_digest": null
+    }
+  ]
+}
+"#;
+
 #[test]
 fn wire_round_trip_preserves_attestation_and_lifecycle_facts() {
     let document = parse_review_wire(VALID_WIRE).expect("valid review wire should parse");
@@ -51,6 +74,45 @@ fn wire_round_trip_preserves_attestation_and_lifecycle_facts() {
     let reparsed = parse_review_wire(&output).expect("serialized wire should round-trip");
     assert_eq!(reparsed, document);
     assert!(output.contains("\"signature\":\"AQID\""));
+}
+
+#[test]
+fn wire_lifecycle_declaration_order_does_not_change_reduced_state() {
+    let document = parse_review_wire(OUT_OF_ORDER_LIFECYCLE_WIRE)
+        .expect("lifecycle events should be normalized by review ID and sequence");
+
+    assert_eq!(
+        document.lifecycle().state_for("review:orders/reviewer-001"),
+        Some(lsharp_types::intent::review_lifecycle::ReviewLifecycleState::Revoked)
+    );
+    assert_eq!(
+        document
+            .lifecycle()
+            .events()
+            .iter()
+            .map(|event| event.sequence())
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let projected: serde_json::Value = serde_json::from_str(
+        &document
+            .to_json_string()
+            .expect("normalized lifecycle wire should serialize"),
+    )
+    .expect("normalized lifecycle projection should be valid JSON");
+    assert_eq!(
+        projected["lifecycle"]
+            .as_array()
+            .expect("lifecycle projection should be an array")
+            .iter()
+            .map(|event| {
+                event["sequence"]
+                    .as_u64()
+                    .expect("sequence should be unsigned")
+            })
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
 }
 
 #[test]
