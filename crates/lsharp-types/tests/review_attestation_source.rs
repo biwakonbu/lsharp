@@ -1,7 +1,9 @@
 use lsharp_syntax::parse;
-use lsharp_types::intent::review_attestation::{AttestationError, ReviewVerificationState};
+use lsharp_types::intent::review_attestation::{
+    AttestationAlgorithm, AttestationError, ReviewAttestation, ReviewVerificationState,
+};
 use lsharp_types::validation_source::{
-    source_program_to_intent_graph, source_program_to_review_attestations, SourceGraphError,
+    SourceGraphError, source_program_to_intent_graph, source_program_to_review_attestations,
 };
 
 const SOURCE: &str = r#"
@@ -46,10 +48,41 @@ fn source_adapter_projects_attestation_with_canonical_bytes_and_unverified_state
 
     let canonical = attestation.canonical_bytes();
     assert!(canonical.starts_with(b"lsharp.review-attestation.v1\0"));
-    assert!(canonical
-        .windows(b"review:checkout/reviewer-001".len())
-        .any(|window| { window == b"review:checkout/reviewer-001" }));
+    assert!(
+        canonical
+            .windows(b"review:checkout/reviewer-001".len())
+            .any(|window| { window == b"review:checkout/reviewer-001" })
+    );
     assert!(source_program_to_intent_graph(&program).is_ok());
+}
+
+#[test]
+fn source_adapter_preserves_absent_expiry_in_canonical_bytes_and_span() {
+    let source = SOURCE.replace("    :expires-at \"2026-09-01T00:00:00Z\"\n", "");
+    let program = parse(&source).expect("expires-at 省略 fixture は parse できるべき");
+    let attestations = source_program_to_review_attestations(&program)
+        .expect("expires-at 省略の attestation は投影できるべき");
+    let record = &attestations[0];
+    let attestation = record.attestation();
+    assert_eq!(attestation.expires_at(), None);
+    assert!(record.span().start < record.span().end);
+
+    let expected = ReviewAttestation::new(
+        "review:checkout/reviewer-001".to_string(),
+        "sha256:subject-001".to_string(),
+        "0123456789abcdef".to_string(),
+        "sha256:review-001".to_string(),
+        "github".to_string(),
+        "org/reviews-2026".to_string(),
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z".to_string(),
+        None,
+        3,
+        vec![0, 1, 2],
+    )
+    .expect("Rust の optional expires-at fixture は valid であるべき")
+    .canonical_bytes();
+    assert_eq!(attestation.canonical_bytes(), expected);
 }
 
 #[test]

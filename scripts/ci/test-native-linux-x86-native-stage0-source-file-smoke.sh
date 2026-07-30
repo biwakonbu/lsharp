@@ -79,10 +79,14 @@ for required in \
   'stale-evidence: 1' \
   'VALIDATION_ATTESTATION_SOURCE' \
   'VALIDATION_ATTESTATION_MANIFEST' \
+  'VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE' \
+  'VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST' \
   'run_expected_failure validation-attestation-json' \
+  'validation-attestation-no-expiry-json' \
   'report.get("review_verifications")' \
   'review.get("verification_state") != "unverified"' \
   'run_expected_failure validation-attestation-text' \
+  'validation-attestation-no-expiry-text' \
   'review-verification: review:checkout/reviewer-001=unverified' \
   'VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE' \
   'VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE' \

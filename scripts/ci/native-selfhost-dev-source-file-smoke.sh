@@ -163,6 +163,7 @@ VALIDATION_REVIEW_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-review-edge-evidence-m
 VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalidation-edge-evidence-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_ATTESTATION_MANIFEST="$WORK_DIR/ec-m3-review-attestation-manifest.json"
+VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST="$WORK_DIR/ec-m3-review-attestation-no-expiry-manifest.json"
 VALIDATION_INVALID_ATTESTATION_ALGORITHM_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-algorithm-manifest.json"
 VALIDATION_INVALID_ATTESTATION_SIGNATURE_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-signature-manifest.json"
 VALIDATION_INVALID_ATTESTATION_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-timestamp-manifest.json"
@@ -172,6 +173,7 @@ VALIDATION_FAILED_REVIEW_SOURCE="$WORK_DIR/ec-m3-failed-review-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
 VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
 VALIDATION_ATTESTATION_SOURCE="$WORK_DIR/ec-m3-review-attestation-source.ls"
+VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE="$WORK_DIR/ec-m3-review-attestation-no-expiry-source.ls"
 VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-algorithm-source.ls"
 VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-signature-source.ls"
 VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-timestamp-source.ls"
@@ -382,7 +384,8 @@ python3 \
   "$VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE" \
   "$VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE" \
   "$VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE" \
-  "$VALIDATION_INVALID_ATTESTATION_WINDOW_SOURCE" <<'PY'
+  "$VALIDATION_INVALID_ATTESTATION_WINDOW_SOURCE" \
+  "$VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE" <<'PY'
 import pathlib
 import sys
 
@@ -399,6 +402,11 @@ variants = [
         sys.argv[5],
         ':expires-at "2026-09-01T00:00:00Z"',
         ':expires-at "2026-07-01T00:00:00Z"',
+    ),
+    (
+        sys.argv[6],
+        ':expires-at "2026-09-01T00:00:00Z"\n',
+        '',
     ),
 ]
 for output, old, new in variants:
@@ -1658,10 +1666,36 @@ for review in reviews:
         raise SystemExit(f"native source attestation manifest state is invalid: {review!r}")
 PY
 
+run_expected_failure validation-attestation-no-expiry-json 0 validate \
+  --source "$VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST"
+python3 - "$WORK_DIR/validation-attestation-no-expiry-json.stdout" "$VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST" <<'PY'
+import json
+import pathlib
+import sys
+
+report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+if report.get("review_verifications") != [
+    {"review_id": "review:checkout/reviewer-001", "state": "unverified"}
+]:
+    raise SystemExit(f"native source attestation without expiry report is invalid: {report!r}")
+reviews = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")).get("reviews")
+if not isinstance(reviews, list) or len(reviews) != 1:
+    raise SystemExit(f"native source attestation without expiry reviews are invalid: {reviews!r}")
+if reviews[0].get("verification_state") != "unverified":
+    raise SystemExit(f"native source attestation without expiry state is invalid: {reviews[0]!r}")
+PY
+
 run_expected_failure validation-attestation-text 0 validate \
   --source "$VALIDATION_ATTESTATION_SOURCE" \
   --format text
 require_exact_output validation-attestation-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\nreview-verification: review:checkout/reviewer-001=unverified\n'
+
+run_expected_failure validation-attestation-no-expiry-text 0 validate \
+  --source "$VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE" \
+  --format text
+require_exact_output validation-attestation-no-expiry-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\nreview-verification: review:checkout/reviewer-001=unverified\n'
 
 run_invalid_attestation() {
   local label="$1"
