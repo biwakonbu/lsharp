@@ -11,7 +11,75 @@ use lsharp_types::intent::review_lifecycle::ReviewLifecycleRegistry;
 use lsharp_types::intent::review_trust_store::ReviewTrustStore;
 use lsharp_types::intent::review_wire::parse_review_wire;
 use lsharp_types::validation::{ReviewVerificationFact, ReviewVerificationProjectionError};
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+
+/// attestation を current graph/source snapshot と明示 clock に結び付ける context。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewVerificationContext {
+    subject_digest: String,
+    source_commit: String,
+    now: String,
+}
+
+impl ReviewVerificationContext {
+    /// CLI/MCP の optional fields を all-or-none の context へ変換する。
+    pub fn from_options(
+        subject_digest: Option<&str>,
+        source_commit: Option<&str>,
+        now: Option<&str>,
+    ) -> Result<Option<Self>, ReviewInputError> {
+        if subject_digest.is_none() && source_commit.is_none() && now.is_none() {
+            return Ok(None);
+        }
+        let missing = [
+            ("review_subject_digest", subject_digest),
+            ("review_source_commit", source_commit),
+            ("review_now", now),
+        ]
+        .into_iter()
+        .filter_map(|(name, value)| value.is_none().then_some(name))
+        .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            return Err(ReviewInputError::Context {
+                message: format!("不足している field: {}", missing.join(", ")),
+            });
+        }
+
+        let subject_digest = subject_digest.expect("all context fields were present");
+        let source_commit = source_commit.expect("all context fields were present");
+        let now = now.expect("all context fields were present");
+        for (field, value) in [
+            ("review_subject_digest", subject_digest),
+            ("review_source_commit", source_commit),
+            ("review_now", now),
+        ] {
+            if value.trim().is_empty() {
+                return Err(ReviewInputError::Context {
+                    message: format!("{field} は空にできません"),
+                });
+            }
+        }
+
+        Ok(Some(Self {
+            subject_digest: subject_digest.to_string(),
+            source_commit: source_commit.to_string(),
+            now: now.to_string(),
+        }))
+    }
+
+    pub fn subject_digest(&self) -> &str {
+        &self.subject_digest
+    }
+
+    pub fn source_commit(&self) -> &str {
+        &self.source_commit
+    }
+
+    pub fn now(&self) -> &str {
+        &self.now
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct ReviewInputs {
@@ -61,6 +129,76 @@ impl ReviewInputs {
             })
             .collect()
     }
+
+    /// current identity と明示 clock を含む context で verification fact を生成する。
+    ///
+    /// registry に存在しない review は provenance digest を比較できないため
+    /// `unverified` に留める。既知 key の署名破損は registry の有無にかかわらず診断する。
+    pub fn verification_facts_with_context(
+        &self,
+        context: &ReviewVerificationContext,
+        provenance_digests: &BTreeMap<String, String>,
+    ) -> Result<Vec<ReviewVerificationFact>, ReviewInputError> {
+        self.attestations
+            .iter()
+            .map(|attestation| {
+                let state = match (&self.trust_store, &self.lifecycle) {
+                    (Some(trust_store), Some(lifecycle)) => {
+                        let Some(provenance_digest) =
+                            provenance_digests.get(attestation.review_id().as_str())
+                        else {
+                            let signature_state =
+                                attestation.verify(trust_store).map_err(|source| {
+                                    ReviewInputError::Verification {
+                                        review_id: attestation.review_id().as_str().to_string(),
+                                        source,
+                                    }
+                                })?;
+                            return ReviewVerificationFact::new(
+                                attestation.review_id().clone(),
+                                if signature_state == ReviewVerificationState::Verified {
+                                    ReviewVerificationState::Unverified
+                                } else {
+                                    signature_state
+                                },
+                            )
+                            .map_err(ReviewInputError::Projection);
+                        };
+                        attestation
+                            .verify_against_at(
+                                trust_store,
+                                lifecycle,
+                                context.subject_digest(),
+                                context.source_commit(),
+                                provenance_digest,
+                                context.now(),
+                            )
+                            .map_err(|source| ReviewInputError::Verification {
+                                review_id: attestation.review_id().as_str().to_string(),
+                                source,
+                            })?
+                    }
+                    (Some(trust_store), None) => {
+                        let signature_state =
+                            attestation.verify(trust_store).map_err(|source| {
+                                ReviewInputError::Verification {
+                                    review_id: attestation.review_id().as_str().to_string(),
+                                    source,
+                                }
+                            })?;
+                        if signature_state == ReviewVerificationState::Verified {
+                            ReviewVerificationState::Unverified
+                        } else {
+                            signature_state
+                        }
+                    }
+                    _ => ReviewVerificationState::Unverified,
+                };
+                ReviewVerificationFact::new(attestation.review_id().clone(), state)
+                    .map_err(ReviewInputError::Projection)
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -87,6 +225,8 @@ pub enum ReviewInputError {
     },
     #[error("review verification fact の projection に失敗しました: {0}")]
     Projection(#[from] ReviewVerificationProjectionError),
+    #[error("review verification context が不完全です: {message}")]
+    Context { message: String },
 }
 
 /// 明示 review input を project root 内の通常ファイルへ解決して parse する。

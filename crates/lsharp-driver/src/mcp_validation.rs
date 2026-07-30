@@ -1,9 +1,25 @@
 fn validate_tool(arguments: &Value) -> Result<Value, String> {
     let review_inputs = review_input_arguments(arguments)?;
+    let review_context = review_verification_context(arguments)?;
     let mut graph = validation_graph(arguments)?;
-    let review_verifications = review_inputs
-        .verification_facts()
-        .map_err(|error| error.to_string())?;
+    let provenance_digests = graph
+        .reviews()
+        .iter()
+        .map(|review| {
+            (
+                review.id().as_str().to_string(),
+                review.provenance_digest().to_string(),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let review_verifications = match review_context.as_ref() {
+        Some(context) => review_inputs
+            .verification_facts_with_context(context, &provenance_digests)
+            .map_err(|error| error.to_string())?,
+        None => review_inputs
+            .verification_facts()
+            .map_err(|error| error.to_string())?,
+    };
     graph
         .attach_review_verifications(&review_verifications)
         .map_err(|error| error.to_string())?;
@@ -32,6 +48,29 @@ fn review_input_arguments(arguments: &Value) -> Result<crate::review_input::Revi
         lifecycle.as_deref(),
     )
     .map_err(|error| error.to_string())
+}
+
+fn review_verification_context(
+    arguments: &Value,
+) -> Result<Option<crate::review_input::ReviewVerificationContext>, String> {
+    let subject_digest = optional_string_argument(arguments, "review_subject_digest")?;
+    let source_commit = optional_string_argument(arguments, "review_source_commit")?;
+    let now = optional_string_argument(arguments, "review_now")?;
+    crate::review_input::ReviewVerificationContext::from_options(
+        subject_digest.as_deref(),
+        source_commit.as_deref(),
+        now.as_deref(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn optional_string_argument(arguments: &Value, name: &str) -> Result<Option<String>, String> {
+    match arguments.get(name) {
+        None => Ok(None),
+        Some(Value::String(value)) if !value.trim().is_empty() => Ok(Some(value.clone())),
+        Some(Value::String(_)) => Err(format!("{name} は空にできません")),
+        Some(_) => Err(format!("{name} は文字列が必要です")),
+    }
 }
 
 fn path_argument(arguments: &Value, name: &str) -> Result<Option<std::path::PathBuf>, String> {

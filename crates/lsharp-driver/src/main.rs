@@ -25,7 +25,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use error_codes::driver_io_error;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -215,6 +215,18 @@ enum Command {
         /// 明示した project-relative review lifecycle wire
         #[arg(long, value_name = "FILE")]
         review_lifecycle: Option<PathBuf>,
+
+        /// review attestation が評価した current manifest/graph digest
+        #[arg(long, value_name = "DIGEST")]
+        review_subject_digest: Option<String>,
+
+        /// review attestation が評価した source commit
+        #[arg(long, value_name = "COMMIT")]
+        review_source_commit: Option<String>,
+
+        /// expiry/binding 判定に使う canonical UTC timestamp
+        #[arg(long, value_name = "TIMESTAMP")]
+        review_now: Option<String>,
     },
 
     /// ドキュメントレビュー (YAML チェックポイント出力)
@@ -404,6 +416,9 @@ fn main() -> miette::Result<()> {
             emit_manifest,
             trust_store,
             review_lifecycle,
+            review_subject_digest,
+            review_source_commit,
+            review_now,
         } => {
             let current_dir = std::env::current_dir()
                 .map_err(|error| miette::miette!("current dir の取得に失敗しました: {error}"))?;
@@ -414,11 +429,29 @@ fn main() -> miette::Result<()> {
                 review_lifecycle.as_deref(),
             )
             .map_err(|error| miette::miette!("{error}"))?;
+            let review_context = review_input::ReviewVerificationContext::from_options(
+                review_subject_digest.as_deref(),
+                review_source_commit.as_deref(),
+                review_now.as_deref(),
+            )
+            .map_err(|error| miette::miette!("{error}"))?;
             let exit_code = if let Some(source) = source {
-                cmd_validate_source(&source, format, emit_manifest.as_deref(), &review_inputs)?
+                cmd_validate_source(
+                    &source,
+                    format,
+                    emit_manifest.as_deref(),
+                    &review_inputs,
+                    review_context.as_ref(),
+                )?
             } else {
                 let file = resolve_validate_manifest(file)?;
-                cmd_validate(&file, format, emit_manifest.as_deref(), &review_inputs)?
+                cmd_validate(
+                    &file,
+                    format,
+                    emit_manifest.as_deref(),
+                    &review_inputs,
+                    review_context.as_ref(),
+                )?
             };
             if exit_code != 0 {
                 std::process::exit(exit_code);
@@ -1351,12 +1384,14 @@ fn cmd_validate(
     format: CliValidationFormat,
     emit_manifest: Option<&Path>,
     review_inputs: &review_input::ReviewInputs,
+    review_context: Option<&review_input::ReviewVerificationContext>,
 ) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let (graph, review_verifications) = project_review_verifications(graph, review_inputs)?;
+    let (graph, review_verifications) =
+        project_review_verifications(graph, review_inputs, review_context)?;
     emit_validation_manifest(&graph, emit_manifest)?;
     emit_validation_report(&graph, format, &review_verifications)
 }
@@ -1370,6 +1405,7 @@ fn cmd_validate_source(
     format: CliValidationFormat,
     emit_manifest: Option<&Path>,
     review_inputs: &review_input::ReviewInputs,
+    review_context: Option<&review_input::ReviewVerificationContext>,
 ) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
@@ -1377,7 +1413,8 @@ fn cmd_validate_source(
         .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
         .map_err(|e| source_graph_error(file, &source, e))?;
-    let (graph, review_verifications) = project_review_verifications(graph, review_inputs)?;
+    let (graph, review_verifications) =
+        project_review_verifications(graph, review_inputs, review_context)?;
     emit_validation_manifest(&graph, emit_manifest)?;
     emit_validation_report(&graph, format, &review_verifications)
 }
@@ -1385,13 +1422,29 @@ fn cmd_validate_source(
 fn project_review_verifications(
     mut graph: lsharp_types::validation::IntentGraph,
     review_inputs: &review_input::ReviewInputs,
+    review_context: Option<&review_input::ReviewVerificationContext>,
 ) -> miette::Result<(
     lsharp_types::validation::IntentGraph,
     Vec<lsharp_types::validation::ReviewVerificationFact>,
 )> {
-    let review_verifications = review_inputs
-        .verification_facts()
-        .map_err(|error| miette::miette!("{error}"))?;
+    let provenance_digests = graph
+        .reviews()
+        .iter()
+        .map(|review| {
+            (
+                review.id().as_str().to_string(),
+                review.provenance_digest().to_string(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let review_verifications = match review_context {
+        Some(context) => review_inputs
+            .verification_facts_with_context(context, &provenance_digests)
+            .map_err(|error| miette::miette!("{error}"))?,
+        None => review_inputs
+            .verification_facts()
+            .map_err(|error| miette::miette!("{error}"))?,
+    };
     graph
         .attach_review_verifications(&review_verifications)
         .map_err(|error| miette::miette!("{error}"))?;

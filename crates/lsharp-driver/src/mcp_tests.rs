@@ -322,6 +322,18 @@ mod tests {
             tool["inputSchema"]["properties"]["review_lifecycle"]["type"],
             "string"
         );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["review_subject_digest"]["type"],
+            "string"
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["review_source_commit"]["type"],
+            "string"
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["review_now"]["type"],
+            "string"
+        );
     }
 
     #[test]
@@ -342,6 +354,32 @@ mod tests {
 
         assert!(error.contains("project root"), "unexpected error: {error}");
         assert!(error.contains("trust store"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn test_validate_tool_rejects_partial_review_verification_context() {
+        let error = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [],
+                    "evidence": [],
+                    "edges": []
+                },
+                "review_now": "2026-08-15T00:00:00Z"
+            }),
+        )
+        .expect_err("partial review context は拒否するべき");
+
+        assert!(
+            error.contains("review verification context"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            error.contains("review_subject_digest"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

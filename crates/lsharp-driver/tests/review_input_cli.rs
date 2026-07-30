@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use ed25519_dalek::{Signer, SigningKey};
+use lsharp_types::intent::review_attestation::{AttestationAlgorithm, ReviewAttestation};
+
 fn project_dir(name: &str) -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -39,6 +42,88 @@ fn review_wire(trust_store: Option<&str>, unknown_field: bool) -> String {
 
 fn trust_key() -> &'static str {
     "{\"provider\":\"github\",\"key_id\":\"org/reviews-2026\",\"algorithm\":\"ed25519\",\"public_key\":\"BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc\"}"
+}
+
+fn base64url_no_padding(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut output = String::new();
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        output.push(ALPHABET[(first >> 2) as usize] as char);
+        output.push(
+            ALPHABET[((first & 0b11) << 4 | chunk.get(1).copied().unwrap_or(0) >> 4) as usize]
+                as char,
+        );
+        if let Some(second) = chunk.get(1) {
+            output.push(
+                ALPHABET
+                    [((second & 0b1111) << 2 | chunk.get(2).copied().unwrap_or(0) >> 6) as usize]
+                    as char,
+            );
+        }
+        if let Some(third) = chunk.get(2) {
+            output.push(ALPHABET[(third & 0b0011_1111) as usize] as char);
+        }
+    }
+    output
+}
+
+fn signed_review_wire() -> (String, String) {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let attestation = ReviewAttestation::new(
+        "review:checkout/reviewer-001",
+        "sha256:graph",
+        "commit-1",
+        "sha256:review",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-07-29T00:00:00Z",
+        Some("2026-08-01T00:00:00Z".to_string()),
+        1,
+        vec![0; 64],
+    )
+    .expect("attestation should be valid");
+    let signature = signing_key.sign(&attestation.canonical_bytes());
+    let signature = base64url_no_padding(&signature.to_bytes());
+    let public_key = base64url_no_padding(&signing_key.verifying_key().to_bytes());
+    let trust_wire = r#"{
+          "schema_version": 1,
+          "attestations": [{
+            "review_id": "review:checkout/reviewer-001",
+            "subject_digest": "sha256:graph",
+            "source_commit": "commit-1",
+            "provenance_digest": "sha256:review",
+            "provider": "github",
+            "key_id": "org/reviews-2026",
+            "algorithm": "ed25519",
+            "signature": "__SIGNATURE__",
+            "issued_at": "2026-07-29T00:00:00Z",
+            "expires_at": "2026-08-01T00:00:00Z",
+            "sequence": 1
+          }],
+          "lifecycle": [],
+          "trust_store": [{
+            "provider": "github",
+            "key_id": "org/reviews-2026",
+            "algorithm": "ed25519",
+            "public_key": "__PUBLIC_KEY__"
+          }]
+        }"#
+    .replace("__SIGNATURE__", &signature)
+    .replace("__PUBLIC_KEY__", &public_key);
+    let lifecycle_wire = r#"{
+      "schema_version": 1,
+      "attestations": [],
+      "lifecycle": [{
+        "review_id": "review:checkout/reviewer-001",
+        "sequence": 1,
+        "state": "active",
+        "effective_at": "2026-07-29T00:00:00Z"
+      }]
+    }"#
+    .to_string();
+    (trust_wire, lifecycle_wire)
 }
 
 fn run_validate(project: &Path, trust_store: Option<&Path>, lifecycle: Option<&Path>) -> Output {
@@ -212,6 +297,176 @@ fn validate_rejects_explicit_signature_error_without_report_or_manifest() {
     assert!(
         !emitted_manifest.exists(),
         "invalid signature must not emit manifest"
+    );
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn validate_rejects_partial_review_verification_context_before_report() {
+    let project = project_dir("partial-review-context");
+    let emitted_manifest = project.join("partial-context-manifest.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--review-now",
+        "2026-08-15T00:00:00Z",
+        "--emit-manifest",
+        "partial-context-manifest.json",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "unexpected exit: {stderr}");
+    assert!(
+        output.stdout.is_empty(),
+        "context errors must not emit report"
+    );
+    assert!(
+        stderr.contains("review verification context"),
+        "diagnostic missing: {stderr}"
+    );
+    assert!(
+        !emitted_manifest.exists(),
+        "context errors must not emit manifest"
+    );
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn validate_projects_expiry_and_identity_context_to_state() {
+    let project = project_dir("expiry-context");
+    fs::write(
+        project.join("manifest.json"),
+        r#"{
+          "schema_version": 1,
+          "nodes": [],
+          "reviews": [{
+            "namespace": "checkout",
+            "key": "reviewer-001",
+            "provenance_digest": "sha256:review",
+            "visibility": "public"
+          }],
+          "evidence": [],
+          "edges": []
+        }"#,
+    )
+    .expect("manifest should be writable");
+    let (trust_wire, lifecycle_wire) = signed_review_wire();
+    fs::write(project.join("trust.json"), trust_wire).expect("trust wire should be writable");
+    fs::write(project.join("lifecycle.json"), lifecycle_wire)
+        .expect("lifecycle wire should be writable");
+
+    for (label, subject_digest, now, expected_state) in [
+        (
+            "verified",
+            "sha256:graph",
+            "2026-07-30T00:00:00Z",
+            "verified",
+        ),
+        ("expired", "sha256:graph", "2026-08-01T00:00:00Z", "stale"),
+        ("mismatch", "sha256:other", "2026-07-30T00:00:00Z", "stale"),
+    ] {
+        let emitted_manifest = project.join(format!("{label}-manifest.json"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+        command.current_dir(&project).args([
+            "validate",
+            "manifest.json",
+            "--format",
+            "json",
+            "--trust-store",
+            "trust.json",
+            "--review-lifecycle",
+            "lifecycle.json",
+            "--review-subject-digest",
+            subject_digest,
+            "--review-source-commit",
+            "commit-1",
+            "--review-now",
+            now,
+            "--emit-manifest",
+        ]);
+        command.arg(emitted_manifest.file_name().expect("manifest file name"));
+        let output = command.output().expect("lsharp validate should run");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+        assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+        let report: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("report should be JSON");
+        assert_eq!(report["review_verifications"][0]["state"], expected_state);
+        let manifest: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(emitted_manifest).expect("projected manifest should be written"),
+        )
+        .expect("projected manifest should be JSON");
+        assert_eq!(manifest["reviews"][0]["verification_state"], expected_state);
+    }
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn validate_rejects_malformed_review_clock_without_report_or_manifest() {
+    let project = project_dir("malformed-review-clock");
+    fs::write(
+        project.join("manifest.json"),
+        r#"{
+          "schema_version": 1,
+          "nodes": [],
+          "reviews": [{
+            "namespace": "checkout",
+            "key": "reviewer-001",
+            "provenance_digest": "sha256:review",
+            "visibility": "public"
+          }],
+          "evidence": [],
+          "edges": []
+        }"#,
+    )
+    .expect("manifest should be writable");
+    let (trust_wire, lifecycle_wire) = signed_review_wire();
+    fs::write(project.join("trust.json"), trust_wire).expect("trust wire should be writable");
+    fs::write(project.join("lifecycle.json"), lifecycle_wire)
+        .expect("lifecycle wire should be writable");
+    let emitted_manifest = project.join("malformed-clock-manifest.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--trust-store",
+        "trust.json",
+        "--review-lifecycle",
+        "lifecycle.json",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-1",
+        "--review-now",
+        "not-a-canonical-timestamp",
+        "--emit-manifest",
+        "malformed-clock-manifest.json",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "unexpected exit: {stderr}");
+    assert!(
+        output.stdout.is_empty(),
+        "clock errors must not emit report"
+    );
+    assert!(
+        stderr.contains("明示 clock") || stderr.contains("timestamp"),
+        "diagnostic missing: {stderr}"
+    );
+    assert!(
+        !emitted_manifest.exists(),
+        "clock errors must not emit manifest"
     );
 
     fs::remove_dir_all(project).ok();

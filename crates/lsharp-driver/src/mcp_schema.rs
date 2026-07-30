@@ -226,7 +226,10 @@ fn validate_input_schema() -> Value {
             "manifest_file": { "type": "string" },
             "include_manifest": { "type": "boolean" },
             "trust_store": { "type": "string" },
-            "review_lifecycle": { "type": "string" }
+            "review_lifecycle": { "type": "string" },
+            "review_subject_digest": { "type": "string", "minLength": 1 },
+            "review_source_commit": { "type": "string", "minLength": 1 },
+            "review_now": { "type": "string", "minLength": 1 }
         },
         "oneOf": [
             { "required": ["source"] },

@@ -48,6 +48,8 @@ report と manifest に同じ verification state を投影できなかった。�
 ## Boundary
 
 これは EC-M3-03 の explicit attestation/state wiring verified partial slice である。current
-subject/source/provenance digest binding、expiry の明示 clock、valid signature の end-to-end
-`verified` fixture、source/selfhost/native parity、Mac Apple Silicon/Linux x86_64 artifact/runtime
-evidence は未完了であり、EC-M3-03〜05 に残す。
+subject/source/provenance digest binding と expiry の明示 clock は
+[`decisions-v0.3-review-explicit-context.md`](decisions-v0.3-review-explicit-context.md) で CLI の
+verified partial slice として追加した。MCP の valid signature end-to-end fixture、source/selfhost/
+native parity、Mac Apple Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、EC-M3-03〜05
+に残す。
