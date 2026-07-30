@@ -112,9 +112,12 @@
         (hash-ref)
         name-hash))))
 
-(defn typeinfer-resolve-type-expr-args-loop [type-expr idx count args]
+(defn typeinfer-resolve-type-expr-args-state [done next-idx args]
+  (vector-push-triple-rooted (vector-new 3) done next-idx args))
+
+(defn typeinfer-resolve-type-expr-args-step-v3 [type-expr idx count args]
   (if (>= idx count)
-    args
+    (typeinfer-resolve-type-expr-args-state 1 idx args)
     (do
       (root_push args)
       (let [arg-type (typeinfer-resolve-type-expr (vector-get type-expr (+ idx 3)))]
@@ -122,13 +125,61 @@
           (root_push arg-type)
           (let [next-args (push-object-vector-local args arg-type)]
             (do
-              (root_push next-args)
-              (let [resolved (typeinfer-resolve-type-expr-args-loop type-expr (+ idx 1) count next-args)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  resolved)))))))))
+              (root_pop)
+              (root_pop)
+              (typeinfer-resolve-type-expr-args-state 0 (+ idx 1) next-args))))))))
+
+(defn typeinfer-resolve-type-expr-args-step-64-loop-bounded
+  [type-expr idx count args remaining]
+  (do
+    (root_push args)
+    (let [step (typeinfer-resolve-type-expr-args-step-v3 type-expr idx count args)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-args (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-args)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-resolve-type-expr-args-step-64-loop-bounded
+                type-expr next-idx count next-args (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-resolve-type-expr-args-step-64
+  [type-expr idx count args]
+  (typeinfer-resolve-type-expr-args-step-64-loop-bounded
+    type-expr idx count args 64))
+
+(defn typeinfer-resolve-type-expr-args-rooted-v3
+  [type-expr idx count args]
+  (let [step (typeinfer-resolve-type-expr-args-step-64
+    type-expr idx count args)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-args (vector-get step 2)]
+          (do
+            (root_push next-args)
+            (let [resolved
+              (typeinfer-resolve-type-expr-args-rooted-v3
+                type-expr next-idx count next-args)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-resolve-type-expr-args-loop [type-expr idx count args]
+  (typeinfer-resolve-type-expr-args-rooted-v3 type-expr idx count args))
 
 (defn typeinfer-resolve-app-type [type-expr]
   (do

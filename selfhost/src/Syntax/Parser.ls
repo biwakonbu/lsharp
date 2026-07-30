@@ -1134,8 +1134,29 @@
 (defn parse-defn-metadata-step-64 [spans pos-ref src meta]
   (parse-defn-metadata-step-64-loop-bounded spans pos-ref src meta 64))
 
-(defn parse-defn-metadata-loop-rooted-v3 [spans pos-ref src meta]
+(defn parse-defn-metadata-outer-64-loop-bounded
+  [spans pos-ref src meta remaining]
   (let [step (parse-defn-metadata-step-64 spans pos-ref src meta)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (let [next-meta (vector-get step 1)]
+          (do
+            (root_push next-meta)
+            (let [parsed
+              (parse-defn-metadata-outer-64-loop-bounded
+                spans pos-ref src next-meta (- remaining 1))]
+              (do
+                (root_pop)
+                parsed))))))))
+
+(defn parse-defn-metadata-outer-64 [spans pos-ref src meta]
+  (parse-defn-metadata-outer-64-loop-bounded
+    spans pos-ref src meta 64))
+
+(defn parse-defn-metadata-loop-rooted-v3 [spans pos-ref src meta]
+  (let [step (parse-defn-metadata-outer-64 spans pos-ref src meta)]
     (if (= (vector-get step 0) 1)
       step
       (do
@@ -5586,6 +5607,26 @@
 (defn parse-program-step-64 [spans pos-ref src result]
   (parse-program-step-64-loop-bounded spans pos-ref src result 64))
 
+(defn parse-program-outer-64-loop-bounded
+  [spans pos-ref src result remaining]
+  (let [step (parse-program-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed
+              (parse-program-outer-64-loop-bounded
+                spans pos-ref src next-result (- remaining 1))]
+              (do
+                (root_pop)
+                parsed))))))))
+
+(defn parse-program-outer-64 [spans pos-ref src result]
+  (parse-program-outer-64-loop-bounded spans pos-ref src result 64))
+
 (defn parse-program-v3 [spans pos-ref src]
   (let [result (vector-new 16)]
     (do
@@ -5602,7 +5643,7 @@
           parsed)))))
 
 (defn parse-program-loop-rooted-v3 [spans pos-ref src result]
-  (let [step (parse-program-step-64 spans pos-ref src result)]
+  (let [step (parse-program-outer-64 spans pos-ref src result)]
     (if (= (vector-get step 0) 1)
       (vector-get step 1)
       (do

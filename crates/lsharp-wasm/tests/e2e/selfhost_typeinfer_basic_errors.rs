@@ -2759,3 +2759,55 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_imported_private_record() {
         "private record は import 先の qualified lookup へ漏らさず拒否するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_type_expression_loops_use_bounded_chunks() {
+    let core = selfhost_module("TypeInferCore.ls");
+
+    assert!(
+        core.contains("typeinfer-resolve-type-expr-args-step-64-loop-bounded")
+            && core.contains("typeinfer-resolve-type-expr-args-rooted-v3"),
+        "TypeInferCore の TypeApp 引数走査は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_type_app_preserves_all_arguments() {
+    let mut args_expr = "(vector-new 65)".to_string();
+    for _ in 0..65 {
+        args_expr = format!(
+            "(vector-push {} (make-type-named 73679))",
+            args_expr
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [raw-args {}
+        raw-app (make-type-app-expr 999 raw-args)
+        resolved (typeinfer-resolve-type-expr raw-app)]
+    (do
+      (print (vector-length raw-args))
+      (print (vector-get raw-app 2))
+      (print (ty-tag resolved))
+      (print (type-app-arg-count resolved))
+      (print (ty-name (type-app-arg resolved 0)))
+      (print (ty-name (type-app-arg resolved 64)))
+      (print (type-app-args-eq resolved resolved 0 65))
+      0)))
+"#,
+        args_expr
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "65", "5", "65", "100", "100", "1"],
+        "65 要素の TypeApp は raw AST と internal type の引数列を保持するべき"
+    );
+}

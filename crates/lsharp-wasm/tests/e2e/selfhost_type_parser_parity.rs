@@ -2516,7 +2516,7 @@ fn test_e2e_selfhost_parser_defn_metadata_uses_bounded_chunks() {
     assert!(
         source.contains("(defn parse-defn-metadata-step-64-loop-bounded")
             && source.contains("(defn parse-defn-metadata-step-64")
-            && rooted_body.contains("parse-defn-metadata-step-64")
+            && rooted_body.contains("parse-defn-metadata-outer-64")
             && !step_body.contains("parse-defn-metadata-loop-rooted-v3"),
         "defn metadata parser は Linux x86 native stack の深い再帰を bounded chunk へ委譲するべき"
     );
@@ -3358,5 +3358,72 @@ fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
                 "(parse-type-expr-list-rooted-v3 spans pos-ref src next-result)"
             ),
         "type expression list parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_outer_loops_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let metadata_rooted = source
+        .split("(defn parse-defn-metadata-loop-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-metadata-loop-v3").next())
+        .expect("defn metadata outer loop が存在すること");
+    let program_rooted = source
+        .split("(defn parse-program-loop-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-program-loop-v3").next())
+        .expect("program outer loop が存在すること");
+    assert!(
+        source.contains("parse-defn-metadata-outer-64-loop-bounded")
+            && source.contains("parse-program-outer-64-loop-bounded")
+            && metadata_rooted.contains("parse-defn-metadata-outer-64")
+            && program_rooted.contains("parse-program-outer-64"),
+        "Parser の外側 continuation は 64 handoff 単位の bounded helper を使うべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_outer_loops_preserve_large_inputs() {
+    let docs = (0..4097)
+        .map(|index| format!(":doc \"doc-{index}\""))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let metadata_source = format!(
+        "(defn identity [] {docs} true) (defn tail [] false)"
+    );
+    let top_level_source = (0..129)
+        .map(|index| format!("(defn f{index} [] {index})"))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let metadata_literal = metadata_source.replace('"', "\\\"");
+    let top_level_literal = top_level_source.replace('"', "\\\"");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let harness = format!(
+        r#"
+(defn main []
+  (let [metadata-program (parse-program "{}")
+        metadata-node (vector-get metadata-program 0)
+        metadata (vector-get metadata-node 4)
+        top-level (parse-program "{}")]
+    (do
+      (print (vector-length metadata-program))
+      (print (if (string-eq (vector-get metadata 0) "doc-4096") 1 0))
+      (print (vector-length top-level))
+      0)))
+"#,
+        metadata_literal, top_level_literal
+    );
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["2", "1", "129"],
+        "Parser の外側 loop は 64 handoff を越えて declaration と metadata の境界を保持するべき"
     );
 }
