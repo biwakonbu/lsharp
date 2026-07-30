@@ -29,24 +29,131 @@
 
 ;; type parameter 名を fresh type variable と、scheme の bound variable ID へ対応付ける。
 (defn typeinfer-adt-build-param-state-loop [params idx len counter param-env param-types bound-vars]
+  (typeinfer-adt-build-param-state-rooted-v3
+    params idx len counter param-env param-types bound-vars))
+
+(defn typeinfer-adt-build-param-state-step-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn typeinfer-adt-build-param-state-step-v3
+  [params idx len counter param-env param-types bound-vars]
   (if (>= idx len)
-    (typeinfer-adt-make-param-state param-env param-types bound-vars)
-    (let [param-hash (vector-get params idx)
-      param-type (fresh-type-var counter)
-      next-param-env (map-insert-object-safe param-env param-hash param-type)
-      next-param-types (push-object-vector-local param-types param-type)
-      next-bound-vars (push-int-vector-local bound-vars (ty-name param-type))]
-      (typeinfer-adt-build-param-state-loop
-        params
-        (+ idx 1)
-        len
-        counter
-        next-param-env
-        next-param-types
-        next-bound-vars))))
+    (typeinfer-adt-build-param-state-step-state
+      1 idx (typeinfer-adt-make-param-state param-env param-types bound-vars))
+    (do
+      (root_push params)
+      (root_push counter)
+      (root_push param-env)
+      (root_push param-types)
+      (root_push bound-vars)
+      (let [param-hash (vector-get params idx)
+        param-type (fresh-type-var counter)
+        next-param-env (map-insert-object-safe param-env param-hash param-type)
+        next-param-types (push-object-vector-local param-types param-type)
+        next-bound-vars (push-int-vector-local bound-vars (ty-name param-type))]
+        (do
+          (root_push param-type)
+          (root_push next-param-env)
+          (root_push next-param-types)
+          (root_push next-bound-vars)
+          (let [next-state
+            (typeinfer-adt-make-param-state
+              next-param-env next-param-types next-bound-vars)
+            state
+              (typeinfer-adt-build-param-state-step-state
+                0 (+ idx 1) next-state)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn typeinfer-adt-build-param-state-step-64-loop-bounded
+  [params idx len counter param-env param-types bound-vars remaining]
+  (do
+    (root_push params)
+    (root_push counter)
+    (root_push param-env)
+    (root_push param-types)
+    (root_push bound-vars)
+    (let [step
+      (typeinfer-adt-build-param-state-step-v3
+        params idx len counter param-env param-types bound-vars)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-state (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-state)
+        (let [next-param-env (vector-get next-state 0)
+          next-param-types (vector-get next-state 1)
+          next-bound-vars (vector-get next-state 2)
+          parsed
+            (if (= done 1)
+              step
+              (if (<= remaining 1)
+                step
+                (typeinfer-adt-build-param-state-step-64-loop-bounded
+                  params
+                  next-idx
+                  len
+                  counter
+                  next-param-env
+                  next-param-types
+                  next-bound-vars
+                  (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-adt-build-param-state-step-64
+  [params idx len counter param-env param-types bound-vars]
+  (typeinfer-adt-build-param-state-step-64-loop-bounded
+    params idx len counter param-env param-types bound-vars 64))
+
+(defn typeinfer-adt-build-param-state-rooted-v3
+  [params idx len counter param-env param-types bound-vars]
+  (let [step
+    (typeinfer-adt-build-param-state-step-64
+      params idx len counter param-env param-types bound-vars)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-state (vector-get step 2)
+          next-param-env (vector-get next-state 0)
+          next-param-types (vector-get next-state 1)
+          next-bound-vars (vector-get next-state 2)]
+          (do
+            (root_push next-state)
+            (let [resolved
+              (typeinfer-adt-build-param-state-rooted-v3
+                params
+                (vector-get step 1)
+                len
+                counter
+                next-param-env
+                next-param-types
+                next-bound-vars)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn typeinfer-adt-build-param-state [params counter]
-  (typeinfer-adt-build-param-state-loop
+  (typeinfer-adt-build-param-state-rooted-v3
     params
     0
     (vector-length params)
@@ -62,43 +169,105 @@
 
 ;; raw field TypeExpr を左から curried constructor type へ変換する。
 (defn typeinfer-adt-constructor-type-loop [raw-fields idx len alias-env param-env result-type]
-  (if (>= idx len)
-    result-type
+  (typeinfer-adt-constructor-type-rooted-v3
+    raw-fields len idx alias-env param-env result-type))
+
+(defn typeinfer-adt-constructor-type-step-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn typeinfer-adt-constructor-type-step-v3
+  [raw-fields idx lower alias-env param-env result-type]
+  (if (<= idx lower)
+    (typeinfer-adt-constructor-type-step-state 1 idx result-type)
     (do
       (root_push raw-fields)
       (root_push alias-env)
       (root_push param-env)
       (root_push result-type)
-      (let [raw-field (vector-get raw-fields idx)]
+      (let [raw-field (vector-get raw-fields (- idx 1))]
         (do
           (root_push raw-field)
           (let [field-type
-                  (typeinfer-resolve-type-expr-with-aliases-and-params
-                    raw-field
-                    alias-env
-                    param-env)]
+            (typeinfer-resolve-type-expr-with-aliases-and-params
+              raw-field alias-env param-env)]
             (do
               (root_push field-type)
-              (let [rest-type
-                      (typeinfer-adt-constructor-type-loop
-                        raw-fields
-                        (+ idx 1)
-                        len
-                        alias-env
-                        param-env
-                        result-type)]
+              (let [next-result (mk-fun field-type result-type)
+                state
+                  (typeinfer-adt-constructor-type-step-state
+                    0 (- idx 1) next-result)]
                 (do
-                  (root_push rest-type)
-                  (let [constructed (mk-fun field-type rest-type)]
-                    (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      constructed)))))))))))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-adt-constructor-type-step-64-loop-bounded
+  [raw-fields idx lower alias-env param-env result-type remaining]
+  (do
+    (root_push raw-fields)
+    (root_push alias-env)
+    (root_push param-env)
+    (root_push result-type)
+    (let [step
+      (typeinfer-adt-constructor-type-step-v3
+        raw-fields idx lower alias-env param-env result-type)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-adt-constructor-type-step-64-loop-bounded
+                raw-fields
+                next-idx
+                lower
+                alias-env
+                param-env
+                next-result
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-adt-constructor-type-step-64
+  [raw-fields idx lower alias-env param-env result-type]
+  (typeinfer-adt-constructor-type-step-64-loop-bounded
+    raw-fields idx lower alias-env param-env result-type 64))
+
+(defn typeinfer-adt-constructor-type-rooted-v3
+  [raw-fields idx lower alias-env param-env result-type]
+  (let [step
+    (typeinfer-adt-constructor-type-step-64
+      raw-fields idx lower alias-env param-env result-type)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+              (typeinfer-adt-constructor-type-rooted-v3
+                raw-fields next-idx lower alias-env param-env next-result)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn typeinfer-adt-constructor-type [raw-fields alias-env param-env result-type]
   (do
@@ -138,8 +307,16 @@
 
 ;; 同一 ADT の variant は同じ parameter variables / bound-vars を共有する。
 (defn typeinfer-register-adt-variants-loop [variants idx len env alias-env param-env result-type bound-vars]
+  (typeinfer-register-adt-variants-rooted-v3
+    variants idx len env alias-env param-env result-type bound-vars))
+
+(defn typeinfer-register-adt-variants-step-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-register-adt-variants-step-v3
+  [variants idx len env alias-env param-env result-type bound-vars]
   (if (>= idx len)
-    env
+    (typeinfer-register-adt-variants-step-state 1 idx env)
     (do
       (root_push variants)
       (root_push env)
@@ -154,56 +331,118 @@
             raw-fields (vector-get variant 1)
             variant-result-type
               (typeinfer-adt-variant-result-type
-                variant
-                result-type
-                alias-env
-                param-env)]
+                variant result-type alias-env param-env)]
             (do
               (root_push variant-result-type)
               (root_push raw-fields)
               (let [constructor-type
-                      (typeinfer-adt-constructor-type
-                        raw-fields
-                        alias-env
-                        param-env
-                        variant-result-type)]
+                (typeinfer-adt-constructor-type
+                  raw-fields alias-env param-env variant-result-type)]
                 (do
                   (root_push constructor-type)
                   (let [scheme
-                          (typeinfer-adt-variant-scheme
-                            variant
-                            constructor-type
-                            bound-vars)]
+                    (typeinfer-adt-variant-scheme
+                      variant constructor-type bound-vars)]
                     (do
                       (root_push scheme)
                       (let [next-env
-                              (type-env-insert env constructor-name-hash scheme)]
+                        (type-env-insert env constructor-name-hash scheme)
+                        state
+                          (do
+                            (root_push next-env)
+                            (typeinfer-register-adt-variants-step-state
+                              0 (+ idx 1) next-env))]
                         (do
-                          (root_push next-env)
-                          (let [parsed
-                                  (typeinfer-register-adt-variants-loop
-                                    variants
-                                    (+ idx 1)
-                                    len
-                                    next-env
-                                    alias-env
-                                    param-env
-                                    result-type
-                                    bound-vars)]
-                            (do
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              parsed)))))))))))))))
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          state)))))))))))))
+
+(defn typeinfer-register-adt-variants-step-64-loop-bounded
+  [variants idx len env alias-env param-env result-type bound-vars remaining]
+  (do
+    (root_push variants)
+    (root_push env)
+    (root_push alias-env)
+    (root_push param-env)
+    (root_push result-type)
+    (root_push bound-vars)
+    (let [step
+      (typeinfer-register-adt-variants-step-v3
+        variants idx len env alias-env param-env result-type bound-vars)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-register-adt-variants-step-64-loop-bounded
+                variants
+                next-idx
+                len
+                next-env
+                alias-env
+                param-env
+                result-type
+                bound-vars
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-register-adt-variants-step-64
+  [variants idx len env alias-env param-env result-type bound-vars]
+  (typeinfer-register-adt-variants-step-64-loop-bounded
+    variants idx len env alias-env param-env result-type bound-vars 64))
+
+(defn typeinfer-register-adt-variants-rooted-v3
+  [variants idx len env alias-env param-env result-type bound-vars]
+  (let [step
+    (typeinfer-register-adt-variants-step-64
+      variants idx len env alias-env param-env result-type bound-vars)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+              (typeinfer-register-adt-variants-rooted-v3
+                variants
+                next-idx
+                len
+                next-env
+                alias-env
+                param-env
+                result-type
+                bound-vars)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn typeinfer-register-adt-decl [decl env counter alias-env]
   (let [variants (typeinfer-adt-decl-variants decl)]

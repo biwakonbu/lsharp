@@ -3194,3 +3194,109 @@ fn test_e2e_selfhost_typeinfer_large_param_fresh_and_env_extension_preserve_bind
         "65 parameter の fresh type と env binding を最後まで保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_adt_loops_use_bounded_chunks() {
+    let adt = selfhost_module("TypeInferAdt.ls");
+
+    assert!(
+        adt.contains("typeinfer-adt-build-param-state-step-64-loop-bounded")
+            && adt.contains("typeinfer-adt-constructor-type-step-64-loop-bounded")
+            && adt.contains("typeinfer-register-adt-variants-step-64-loop-bounded")
+            && adt.contains("typeinfer-adt-build-param-state-rooted-v3")
+            && adt.contains("typeinfer-adt-constructor-type-rooted-v3")
+            && adt.contains("typeinfer-register-adt-variants-rooted-v3"),
+        "ADT の parameter/constructor/variant loop は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_adt_parameter_constructor_variant_loops_preserve_bindings() {
+    let mut params_expr = "(vector-new 0)".to_string();
+    let mut raw_fields_expr = "(vector-new 0)".to_string();
+    let mut variants_expr = "(vector-new 0)".to_string();
+    for idx in 0..65 {
+        params_expr = format!(
+            "(vector-push {} {})",
+            params_expr,
+            15000 + idx
+        );
+        raw_fields_expr = format!(
+            "(vector-push {} (raw-type-named {}))",
+            raw_fields_expr,
+            30000 + idx
+        );
+        let variant = format!(
+            "(vector-push (vector-push (vector-new 2) {}) (vector-new 0))",
+            22000 + idx
+        );
+        variants_expr = format!("(vector-push {} {})", variants_expr, variant);
+    }
+
+    let harness = format!(
+        r#"
+(defn raw-type-named [name-hash]
+  (vector-push (vector-push (vector-new 2) 60) name-hash))
+
+(defn fun-depth [ty]
+  (if (= (ty-tag ty) 3)
+    (+ 1 (fun-depth (ty-fr ty)))
+    0))
+
+(defn fun-last-param [ty]
+  (if (= (ty-tag (ty-fr ty)) 3)
+    (fun-last-param (ty-fr ty))
+    (ty-fp ty)))
+
+(defn main []
+  (let [counter (make-var-counter)
+        param-state
+          (typeinfer-adt-build-param-state {} counter)
+        param-types (vector-get param-state 1)
+        constructor-type
+          (typeinfer-adt-constructor-type
+            {}
+            (var-counter-alias-env counter)
+            (map-new)
+            (make-type-named 999))
+        registered
+          (typeinfer-register-adt-variants-loop
+            {}
+            0
+            65
+            (type-env-new)
+            (var-counter-alias-env counter)
+            (map-new)
+            (make-type-named 999)
+            (vector-new 0))
+        first-param (vector-get param-types 0)
+        last-param (vector-get param-types 64)
+        first-variant (type-env-lookup registered 22000)
+        last-variant (type-env-lookup registered 22064)]
+    (do
+      (print (vector-length param-types))
+      (print (ty-name first-param))
+      (print (ty-name last-param))
+      (print (fun-depth constructor-type))
+      (print (ty-name (ty-fp constructor-type)))
+      (print (ty-name (fun-last-param constructor-type)))
+      (print (if (= first-variant 0) 0 1))
+      (print (if (= last-variant 0) 0 1))
+      0)))
+"#,
+        params_expr,
+        raw_fields_expr,
+        variants_expr
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "1000", "1064", "65", "30000", "30064", "1", "1"],
+        "65 要素の ADT parameter/constructor/variant loop は chunk 境界を越えて shape を保持するべき"
+    );
+}
