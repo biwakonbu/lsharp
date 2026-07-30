@@ -2811,3 +2811,102 @@ fn test_e2e_selfhost_typeinfer_large_type_app_preserves_all_arguments() {
         "65 要素の TypeApp は raw AST と internal type の引数列を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_all_type_expression_loops_use_bounded_chunks() {
+    let core = selfhost_module("TypeInferCore.ls");
+    let functions = selfhost_module("TypeInferFunctions.ls");
+
+    assert!(
+        core.contains("typeinfer-resolve-fun-params-step-64-loop-bounded")
+            && core.contains("typeinfer-resolve-fun-params-rooted-v3")
+            && core.contains("typeinfer-resolve-type-expr-args-with-aliases-step-64-loop-bounded")
+            && core.contains("typeinfer-resolve-type-expr-args-with-aliases-rooted-v3")
+            && core.contains("typeinfer-resolve-fun-params-with-aliases-step-64-loop-bounded")
+            && core.contains("typeinfer-resolve-fun-params-with-aliases-rooted-v3"),
+        "TypeInferCore の plain/alias TypeExpr 走査は bounded helper へ分離するべき"
+    );
+    assert!(
+        functions.contains("typeinfer-resolve-signature-app-args-step-64-loop-bounded")
+            && functions.contains("typeinfer-resolve-signature-app-args-rooted-v3")
+            && functions.contains("typeinfer-resolve-signature-fun-params-step-64-loop-bounded")
+            && functions.contains("typeinfer-resolve-signature-fun-params-rooted-v3"),
+        "TypeInferFunctions の signature TypeExpr 走査は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_alias_and_signature_type_expressions_preserve_shape() {
+    let mut app_expr = "(vector-new 0)".to_string();
+    app_expr = format!("(vector-push {} 61)", app_expr);
+    app_expr = format!("(vector-push {} 999)", app_expr);
+    app_expr = format!("(vector-push {} 65)", app_expr);
+    for _ in 0..65 {
+        app_expr = format!(
+            "(vector-push {} (make-type-named 73679))",
+            app_expr
+        );
+    }
+
+    let mut fun_expr = "(vector-new 0)".to_string();
+    fun_expr = format!("(vector-push {} 62)", fun_expr);
+    fun_expr = format!("(vector-push {} 65)", fun_expr);
+    for _ in 0..65 {
+        fun_expr = format!(
+            "(vector-push {} (make-type-named 73679))",
+            fun_expr
+        );
+    }
+    fun_expr = format!("(vector-push {} (make-type-named 73679))", fun_expr);
+
+    let harness = format!(
+        r#"
+(defn fun-depth [ty]
+  (if (= (ty-tag ty) 3)
+    (+ 1 (fun-depth (ty-fr ty)))
+    0))
+
+(defn main []
+  (let [app-expr {}
+        fun-expr {}
+        alias-env (make-type-alias-env (map-new) (map-new))
+        type-param-env (map-new)
+        env (map-new)
+        counter (ref-new 1000)
+        alias-app
+          (typeinfer-resolve-type-expr-with-aliases-and-params
+            app-expr alias-env type-param-env)
+        signature-app
+          (typeinfer-resolve-signature-app-type
+            app-expr alias-env type-param-env env counter)
+        alias-fun
+          (typeinfer-resolve-fun-type-with-aliases-and-params
+            fun-expr alias-env type-param-env)
+        signature-fun
+          (typeinfer-resolve-signature-fun-type
+            fun-expr alias-env type-param-env env counter)
+        plain-fun (typeinfer-resolve-type-expr fun-expr)]
+    (do
+      (print (type-app-arg-count alias-app))
+      (print (ty-name (type-app-arg alias-app 0)))
+      (print (type-app-arg-count signature-app))
+      (print (ty-name (type-app-arg signature-app 64)))
+      (print (fun-depth alias-fun))
+      (print (fun-depth signature-fun))
+      (print (fun-depth plain-fun))
+      0)))
+"#,
+        app_expr, fun_expr
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "100", "65", "100", "65", "65", "65"],
+        "plain/alias/signature の TypeExpr は 64 handoff を越えて shape を保持するべき"
+    );
+}

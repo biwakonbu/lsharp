@@ -195,20 +195,73 @@
             (root_pop)
             result))))))
 
-(defn typeinfer-resolve-fun-params-loop [type-expr idx count return-type]
-  (if (>= idx count)
-    return-type
-    (let [param-type (typeinfer-resolve-type-expr (vector-get type-expr (+ idx 2)))]
+(defn typeinfer-resolve-fun-params-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn typeinfer-resolve-fun-params-step-v3 [type-expr idx return-type]
+  (if (<= idx 0)
+    (typeinfer-resolve-fun-params-state 1 idx return-type)
+    (do
+      (root_push return-type)
+      (let [param-type (typeinfer-resolve-type-expr (vector-get type-expr (+ idx 1)))]
+        (do
+          (root_push param-type)
+          (let [next-result (mk-fun param-type return-type)]
+            (do
+              (root_pop)
+              (root_pop)
+              (typeinfer-resolve-fun-params-state 0 (- idx 1) next-result))))))))
+
+(defn typeinfer-resolve-fun-params-step-64-loop-bounded
+  [type-expr idx return-type remaining]
+  (do
+    (root_push return-type)
+    (let [step (typeinfer-resolve-fun-params-step-v3 type-expr idx return-type)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-result (vector-get step 2)]
       (do
-        (root_push param-type)
-        (let [rest-type (typeinfer-resolve-fun-params-loop type-expr (+ idx 1) count return-type)]
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-resolve-fun-params-step-64-loop-bounded
+                type-expr next-idx next-result (- remaining 1)) ))]
           (do
-            (root_push rest-type)
-            (let [result (mk-fun param-type rest-type)]
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-resolve-fun-params-step-64
+  [type-expr idx return-type]
+  (typeinfer-resolve-fun-params-step-64-loop-bounded
+    type-expr idx return-type 64))
+
+(defn typeinfer-resolve-fun-params-rooted-v3 [type-expr idx return-type]
+  (let [step (typeinfer-resolve-fun-params-step-64
+    type-expr idx return-type)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+              (typeinfer-resolve-fun-params-rooted-v3
+                type-expr next-idx next-result)]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                resolved))))))))
+
+(defn typeinfer-resolve-fun-params-loop [type-expr idx count return-type]
+  (typeinfer-resolve-fun-params-rooted-v3 type-expr count return-type))
 
 (defn typeinfer-resolve-fun-type [type-expr]
   (do
@@ -497,11 +550,17 @@
       (typeinfer-resolve-named-type-with-aliases name-hash alias-env)
       bound)))
 
-(defn typeinfer-resolve-type-expr-args-with-aliases-loop [type-expr idx count args alias-env type-param-env]
+(defn typeinfer-resolve-type-expr-args-with-aliases-state [done next-idx args]
+  (vector-push-triple-rooted (vector-new 3) done next-idx args))
+
+(defn typeinfer-resolve-type-expr-args-with-aliases-step-v3
+  [type-expr idx count args alias-env type-param-env]
   (if (>= idx count)
-    args
+    (typeinfer-resolve-type-expr-args-with-aliases-state 1 idx args)
     (do
       (root_push args)
+      (root_push alias-env)
+      (root_push type-param-env)
       (let [arg-type
               (typeinfer-resolve-type-expr-with-aliases-and-params
                 (vector-get type-expr (+ idx 3))
@@ -511,20 +570,79 @@
           (root_push arg-type)
           (let [next-args (push-object-vector-local args arg-type)]
             (do
-              (root_push next-args)
-              (let [resolved
-                      (typeinfer-resolve-type-expr-args-with-aliases-loop
-                        type-expr
-                        (+ idx 1)
-                        count
-                        next-args
-                        alias-env
-                        type-param-env)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  resolved)))))))))
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (typeinfer-resolve-type-expr-args-with-aliases-state
+                0 (+ idx 1) next-args))))))))
+
+(defn typeinfer-resolve-type-expr-args-with-aliases-step-64-loop-bounded
+  [type-expr idx count args alias-env type-param-env remaining]
+  (do
+    (root_push args)
+    (root_push alias-env)
+    (root_push type-param-env)
+    (let [step
+            (typeinfer-resolve-type-expr-args-with-aliases-step-v3
+              type-expr idx count args alias-env type-param-env)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-args (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-args)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-resolve-type-expr-args-with-aliases-step-64-loop-bounded
+                type-expr
+                next-idx
+                count
+                next-args
+                alias-env
+                type-param-env
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-resolve-type-expr-args-with-aliases-step-64
+  [type-expr idx count args alias-env type-param-env]
+  (typeinfer-resolve-type-expr-args-with-aliases-step-64-loop-bounded
+    type-expr idx count args alias-env type-param-env 64))
+
+(defn typeinfer-resolve-type-expr-args-with-aliases-rooted-v3
+  [type-expr idx count args alias-env type-param-env]
+  (let [step
+          (typeinfer-resolve-type-expr-args-with-aliases-step-64
+            type-expr idx count args alias-env type-param-env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-args (vector-get step 2)]
+          (do
+            (root_push next-args)
+            (let [resolved
+              (typeinfer-resolve-type-expr-args-with-aliases-rooted-v3
+                type-expr next-idx count next-args alias-env type-param-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-resolve-type-expr-args-with-aliases-loop
+  [type-expr idx count args alias-env type-param-env]
+  (typeinfer-resolve-type-expr-args-with-aliases-rooted-v3
+    type-expr idx count args alias-env type-param-env))
 
 (defn typeinfer-build-parametric-alias-subst-loop [param-types args idx count subst]
   (if (>= idx count)
@@ -613,31 +731,98 @@
                 (root_pop)
                 result))))))))
 
-(defn typeinfer-resolve-fun-params-with-aliases-loop [type-expr idx count return-type alias-env type-param-env]
-  (if (>= idx count)
-    return-type
-    (let [param-type
-            (typeinfer-resolve-type-expr-with-aliases-and-params
-              (vector-get type-expr (+ idx 2))
-              alias-env
-              type-param-env)]
+(defn typeinfer-resolve-fun-params-with-aliases-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn typeinfer-resolve-fun-params-with-aliases-step-v3
+  [type-expr idx return-type alias-env type-param-env]
+  (if (<= idx 0)
+    (typeinfer-resolve-fun-params-with-aliases-state 1 idx return-type)
+    (do
+      (root_push return-type)
+      (root_push alias-env)
+      (root_push type-param-env)
+      (let [param-type
+              (typeinfer-resolve-type-expr-with-aliases-and-params
+                (vector-get type-expr (+ idx 1))
+                alias-env
+                type-param-env)]
+        (do
+          (root_push param-type)
+          (let [next-result (mk-fun param-type return-type)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (typeinfer-resolve-fun-params-with-aliases-state
+                0 (- idx 1) next-result))))))))
+
+(defn typeinfer-resolve-fun-params-with-aliases-step-64-loop-bounded
+  [type-expr idx return-type alias-env type-param-env remaining]
+  (do
+    (root_push return-type)
+    (root_push alias-env)
+    (root_push type-param-env)
+    (let [step
+            (typeinfer-resolve-fun-params-with-aliases-step-v3
+              type-expr idx return-type alias-env type-param-env)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-result (vector-get step 2)]
       (do
-        (root_push param-type)
-        (let [rest-type
-                (typeinfer-resolve-fun-params-with-aliases-loop
-                  type-expr
-                  (+ idx 1)
-                  count
-                  return-type
-                  alias-env
-                  type-param-env)]
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-resolve-fun-params-with-aliases-step-64-loop-bounded
+                type-expr
+                next-idx
+                next-result
+                alias-env
+                type-param-env
+                (- remaining 1))))]
           (do
-            (root_push rest-type)
-            (let [result (mk-fun param-type rest-type)]
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-resolve-fun-params-with-aliases-step-64
+  [type-expr idx return-type alias-env type-param-env]
+  (typeinfer-resolve-fun-params-with-aliases-step-64-loop-bounded
+    type-expr idx return-type alias-env type-param-env 64))
+
+(defn typeinfer-resolve-fun-params-with-aliases-rooted-v3
+  [type-expr idx return-type alias-env type-param-env]
+  (let [step
+          (typeinfer-resolve-fun-params-with-aliases-step-64
+            type-expr idx return-type alias-env type-param-env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+              (typeinfer-resolve-fun-params-with-aliases-rooted-v3
+                type-expr next-idx next-result alias-env type-param-env)]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                resolved))))))))
+
+(defn typeinfer-resolve-fun-params-with-aliases-loop
+  [type-expr idx count return-type alias-env type-param-env]
+  (typeinfer-resolve-fun-params-with-aliases-rooted-v3
+    type-expr count return-type alias-env type-param-env))
 
 (defn typeinfer-resolve-fun-type-with-aliases-and-params [type-expr alias-env type-param-env]
   (do

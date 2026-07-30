@@ -67,12 +67,19 @@
     (typeinfer-signature-record-result-type (ty-fr ty))
     (if (= (ty-tag ty) (ty-record)) ty 0)))
 
-(defn typeinfer-resolve-signature-app-args-loop
+(defn typeinfer-resolve-signature-app-args-state [done next-idx args]
+  (vector-push-triple-rooted (vector-new 3) done next-idx args))
+
+(defn typeinfer-resolve-signature-app-args-step-v3
   [type-expr idx count args alias-env type-param-env env counter]
   (if (>= idx count)
-    args
+    (typeinfer-resolve-signature-app-args-state 1 idx args)
     (do
       (root_push args)
+      (root_push alias-env)
+      (root_push type-param-env)
+      (root_push env)
+      (root_push counter)
       (let [arg-type
               (typeinfer-resolve-signature-type-expr
                 (vector-get type-expr (+ idx 3))
@@ -84,22 +91,87 @@
           (root_push arg-type)
           (let [next-args (push-object-vector-local args arg-type)]
             (do
-              (root_push next-args)
-              (let [resolved
-                      (typeinfer-resolve-signature-app-args-loop
-                        type-expr
-                        (+ idx 1)
-                        count
-                        next-args
-                        alias-env
-                        type-param-env
-                        env
-                        counter)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  resolved)))))))))
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (typeinfer-resolve-signature-app-args-state
+                0 (+ idx 1) next-args))))))))
+
+(defn typeinfer-resolve-signature-app-args-step-64-loop-bounded
+  [type-expr idx count args alias-env type-param-env env counter remaining]
+  (do
+    (root_push args)
+    (root_push alias-env)
+    (root_push type-param-env)
+    (root_push env)
+    (root_push counter)
+    (let [step
+            (typeinfer-resolve-signature-app-args-step-v3
+              type-expr idx count args alias-env type-param-env env counter)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-args (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-args)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-resolve-signature-app-args-step-64-loop-bounded
+                type-expr
+                next-idx
+                count
+                next-args
+                alias-env
+                type-param-env
+                env
+                counter
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-resolve-signature-app-args-step-64
+  [type-expr idx count args alias-env type-param-env env counter]
+  (typeinfer-resolve-signature-app-args-step-64-loop-bounded
+    type-expr idx count args alias-env type-param-env env counter 64))
+
+(defn typeinfer-resolve-signature-app-args-rooted-v3
+  [type-expr idx count args alias-env type-param-env env counter]
+  (let [step
+          (typeinfer-resolve-signature-app-args-step-64
+            type-expr idx count args alias-env type-param-env env counter)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-args (vector-get step 2)]
+          (do
+            (root_push next-args)
+            (let [resolved
+              (typeinfer-resolve-signature-app-args-rooted-v3
+                type-expr next-idx count next-args alias-env type-param-env env counter)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-resolve-signature-app-args-loop
+  [type-expr idx count args alias-env type-param-env env counter]
+  (typeinfer-resolve-signature-app-args-rooted-v3
+    type-expr idx count args alias-env type-param-env env counter))
 
 (defn typeinfer-resolve-signature-app-type
   [type-expr alias-env type-param-env env counter]
@@ -147,36 +219,110 @@
                 (root_pop)
                 result))))))))
 
-(defn typeinfer-resolve-signature-fun-params-loop
-  [type-expr idx count return-type alias-env type-param-env env counter]
-  (if (>= idx count)
-    return-type
-    (let [param-type
-            (typeinfer-resolve-signature-type-expr
-              (vector-get type-expr (+ idx 2))
-              alias-env
-              type-param-env
-              env
-              counter)]
+(defn typeinfer-resolve-signature-fun-params-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn typeinfer-resolve-signature-fun-params-step-v3
+  [type-expr idx return-type alias-env type-param-env env counter]
+  (if (<= idx 0)
+    (typeinfer-resolve-signature-fun-params-state 1 idx return-type)
+    (do
+      (root_push return-type)
+      (root_push alias-env)
+      (root_push type-param-env)
+      (root_push env)
+      (root_push counter)
+      (let [param-type
+              (typeinfer-resolve-signature-type-expr
+                (vector-get type-expr (+ idx 1))
+                alias-env
+                type-param-env
+                env
+                counter)]
+        (do
+          (root_push param-type)
+          (let [next-result (mk-fun param-type return-type)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (typeinfer-resolve-signature-fun-params-state
+                0 (- idx 1) next-result))))))))
+
+(defn typeinfer-resolve-signature-fun-params-step-64-loop-bounded
+  [type-expr idx return-type alias-env type-param-env env counter remaining]
+  (do
+    (root_push return-type)
+    (root_push alias-env)
+    (root_push type-param-env)
+    (root_push env)
+    (root_push counter)
+    (let [step
+            (typeinfer-resolve-signature-fun-params-step-v3
+              type-expr idx return-type alias-env type-param-env env counter)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-result (vector-get step 2)]
       (do
-        (root_push param-type)
-        (let [rest-type
-                (typeinfer-resolve-signature-fun-params-loop
-                  type-expr
-                  (+ idx 1)
-                  count
-                  return-type
-                  alias-env
-                  type-param-env
-                  env
-                  counter)]
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-resolve-signature-fun-params-step-64-loop-bounded
+                type-expr
+                next-idx
+                next-result
+                alias-env
+                type-param-env
+                env
+                counter
+                (- remaining 1))))]
           (do
-            (root_push rest-type)
-            (let [result (mk-fun param-type rest-type)]
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-resolve-signature-fun-params-step-64
+  [type-expr idx return-type alias-env type-param-env env counter]
+  (typeinfer-resolve-signature-fun-params-step-64-loop-bounded
+    type-expr idx return-type alias-env type-param-env env counter 64))
+
+(defn typeinfer-resolve-signature-fun-params-rooted-v3
+  [type-expr idx return-type alias-env type-param-env env counter]
+  (let [step
+          (typeinfer-resolve-signature-fun-params-step-64
+            type-expr idx return-type alias-env type-param-env env counter)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+              (typeinfer-resolve-signature-fun-params-rooted-v3
+                type-expr next-idx next-result alias-env type-param-env env counter)]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                resolved))))))))
+
+(defn typeinfer-resolve-signature-fun-params-loop
+  [type-expr idx count return-type alias-env type-param-env env counter]
+  (typeinfer-resolve-signature-fun-params-rooted-v3
+    type-expr count return-type alias-env type-param-env env counter))
 
 (defn typeinfer-resolve-signature-fun-type
   [type-expr alias-env type-param-env env counter]
