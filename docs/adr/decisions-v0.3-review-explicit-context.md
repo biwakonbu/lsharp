@@ -37,14 +37,14 @@ review を `verified` と誤認できる。
   `--review-now` が parser error になり context の all-or-none boundary がなかったことを確認した。
 - GREEN: `review_input_cli` 10件で partial context、valid signature、expiry boundary、subject mismatch、
   malformed clock の no-report/no-manifest、report/manifest state projection を固定した。
-- MCP schema/behavior: input schema の三つの context field と partial-context error を
-  `mcp_server::tests` の validate focused 17件で確認した。
+- MCP schema/behavior: input schema の三つの context field、valid signature の verified projection、
+  expiry/subject/source mismatch の stale projection、malformed clock の no-report boundary を
+  `mcp_server::tests` の validate focused 20件で確認した。
 - Regression: `review_signature` 12件、`validation_review_verification` 3件、changed Rust files の
   rustfmt check を通過した。
 
 ## Boundary
 
-これは EC-M3-03 の Rust CLI context/expiry/binding verified partial slice である。MCP の valid
-signature end-to-end state fixture と malformed `review_now` の no-report/no-manifest contract、
-source/selfhost/native producer parity、canonical manifest/artifact digest の自動算出、Mac Apple
-Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、EC-M3-03〜05 に残す。
+これは EC-M3-03 の Rust CLI/MCP context/expiry/binding verified partial slice である。source/
+selfhost/native producer parity、canonical manifest/artifact digest の自動算出、Mac Apple Silicon/
+Linux x86_64 artifact/runtime evidence は未完了であり、EC-M3-04〜05 に残す。

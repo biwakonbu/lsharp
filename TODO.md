@@ -419,8 +419,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 - [~] `EC-M3-03` CLI/MCP の trust store/lifecycle explicit input と project-root boundary を維持し、
   attestation verification state と no-report/no-manifest の失敗境界を CLI/MCP の共通 projectionへ接続した。
   `--review-subject-digest` / `--review-source-commit` / `--review-now` の all-or-none context、
-  expiry/binding の Rust CLI fixture も verified partial とした。MCP valid-signature fixture、malformed
-  clock の no-report contract、selfhost/native parity は残る。ADR:
+  expiry/binding の Rust CLI/MCP fixture、malformed clock の no-report contract も verified partial
+  とした。selfhost/native parity は残る。ADR:
   `docs/adr/decisions-v0.3-review-explicit-context.md`。
 - [ ] `EC-M3-04` source と selfhost/native producer の attestation named-field、canonical bytes、
   state、span、exit code を同一 fixture で byte-for-byte parity にする。
@@ -428,9 +428,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   verified/unverified/stale/revoked/invalid を JSON/text/MCP と release gate で同じ順序にする。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
-`[~]` を維持する。次の RED は `EC-M3-03` の malformed `review_now` を MCP の
-no-report/no-manifest error として固定し、valid signature の MCP report/manifest state parity を
-揃えることとする。現在の `lsharp-types` clock contract を暗黙に拡張しない。
+`[~]` を維持する。次の RED は `EC-M3-04` の source と selfhost/native producer に同じ named
+fields、canonical bytes、state、span、exit code fixture を渡し、Rust oracle と差分を固定することと
+する。現在の `lsharp-types` clock contract を暗黙に拡張しない。
 
 ## v0.2 Milestone 1 closure
 
