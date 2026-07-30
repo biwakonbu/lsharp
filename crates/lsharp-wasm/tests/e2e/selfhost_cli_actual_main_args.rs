@@ -935,6 +935,119 @@ fn test_e2e_selfhost_embedded_cli_validate_source_reports_pass() {
     assert_eq!(report["contradicting_observations"], 0);
 }
 
+/// EC-M3-04: EmbeddedCli は source attestation を unverified fact と manifest state へ投影する。
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_source_projects_review_attestation() {
+    let source = r#"
+(defn verify []
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :review "review:checkout/reviewer-002" "sha256:review-002" "redacted"
+  :review "review:checkout/reviewer-001" "sha256:review-001" "redacted"
+  :review-attestation
+    :review-id "review:checkout/reviewer-002"
+    :subject-digest "sha256:subject-001"
+    :source-commit "0123456789abcdef"
+    :provenance-digest "sha256:review-002"
+    :provider "github"
+    :key-id "org/reviews-2026"
+    :algorithm "ed25519"
+    :signature "AAECAw"
+    :issued-at "2026-08-01T00:00:00Z"
+    :expires-at "2026-09-01T00:00:00Z"
+    :sequence 3
+  :review-attestation
+    :review-id "review:checkout/reviewer-001"
+    :subject-digest "sha256:subject-001"
+    :source-commit "0123456789abcdef"
+    :provenance-digest "sha256:review-001"
+    :provider "github"
+    :key-id "org/reviews-2026"
+    :algorithm "ed25519"
+    :signature "AAECAw"
+    :issued-at "2026-08-01T00:00:00Z"
+    :expires-at "2026-09-01T00:00:00Z"
+    :sequence 3
+    true)
+"#;
+    let (output, text_output, manifest) =
+        run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+            let wasm = compile_only(selfhost_embedded_cli_runtime_bundle());
+            let dir = cli_main_args_fixture_dir("embedded_validate_review_attestation");
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir)
+                .expect("review attestation fixture directory の作成に失敗");
+            std::fs::write(dir.join("input.ls"), source)
+                .expect("review attestation fixture input.ls の書き込みに失敗");
+            let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+                &wasm,
+                Some(&dir),
+                &[
+                    "validate",
+                    "--source",
+                    "input.ls",
+                    "--format",
+                    "json",
+                    "--emit-manifest",
+                    "intent-graph.json",
+                ],
+                "",
+            )
+            .expect("EmbeddedCli review attestation JSON 実行に失敗");
+            let manifest = std::fs::read_to_string(dir.join("intent-graph.json"))
+                .expect("review attestation の manifest を出力するべき");
+            let _ = std::fs::remove_dir_all(&dir);
+            let (text_output, _) = run_compiled_embedded_cli_with_input_file_capture(
+                &wasm,
+                "embedded_validate_review_attestation_text",
+                source,
+                &["validate", "--source", "input.ls", "--format", "text"],
+            );
+            (output, text_output, manifest)
+        });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "source attestation 単体は unverified で unknown になるべき"
+    );
+    let report: Value = serde_json::from_str(output.stdout.trim())
+        .expect("EmbeddedCli review attestation report は valid JSON であるべき");
+    assert_eq!(
+        report["review_verifications"],
+        serde_json::json!([
+            {
+                "review_id": "review:checkout/reviewer-001",
+                "state": "unverified"
+            },
+            {
+                "review_id": "review:checkout/reviewer-002",
+                "state": "unverified"
+            }
+        ])
+    );
+
+    let manifest: Value =
+        serde_json::from_str(&manifest).expect("manifest は valid JSON であるべき");
+    assert_eq!(manifest["reviews"].as_array().unwrap().len(), 2);
+    assert!(manifest["reviews"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|review| review["verification_state"] == "unverified"));
+    assert_eq!(text_output.exit_code, 2);
+    let first = text_output
+        .stdout
+        .find("review-verification: review:checkout/reviewer-001=unverified")
+        .expect("text report は最初の review verification を返すべき");
+    let second = text_output
+        .stdout
+        .find("review-verification: review:checkout/reviewer-002=unverified")
+        .expect("text report は二つ目の review verification を返すべき");
+    assert!(
+        first < second,
+        "text report は review_id の決定順を保つべき"
+    );
+}
+
 /// EC-M2-03: EmbeddedCli の invalidated review/evidence は stale facts と unknown を返す。
 #[test]
 fn test_e2e_selfhost_embedded_cli_validate_source_reports_stale_review_and_evidence() {

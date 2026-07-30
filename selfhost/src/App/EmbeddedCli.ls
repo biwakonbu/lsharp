@@ -452,6 +452,90 @@
     metrics2 (push-int-vector-local metrics1 (vector-length ids2))
     metrics3 (push-int-vector-local metrics2 (vector-get stale-metrics 0))]
     (push-int-vector-local metrics3 (vector-get stale-metrics 1))))
+(defn validation-source-review-id-order-loop [left right idx limit]
+  (if (>= idx limit)
+    (if (> (string-length left) (string-length right)) 1
+      (if (< (string-length left) (string-length right)) (- 0 1) 0))
+    (let [left-char (string-char-at left idx)
+      right-char (string-char-at right idx)]
+      (if (= left-char right-char)
+        (validation-source-review-id-order-loop left right (+ idx 1) limit)
+        (if (> left-char right-char) 1 (- 0 1))))))
+(defn validation-source-review-id-order [left right]
+  (let [left-len (string-length left)
+    right-len (string-length right)
+    limit (if (< left-len right-len) left-len right-len)]
+    (validation-source-review-id-order-loop left right 0 limit)))
+(defn validation-source-review-attestation-after? [left right]
+  (= (validation-source-review-id-order
+       (source-review-attestation-id left)
+       (source-review-attestation-id right)) 1))
+(defn validation-source-review-attestation-copy [src from to out]
+  (if (>= from to)
+    out
+    (validation-source-review-attestation-copy
+      src
+      (+ from 1)
+      to
+      (push-object-vector-local out (vector-get src from)))))
+(defn validation-source-review-attestation-insert [sorted elem idx]
+  (if (= idx 0)
+    (let [out (vector-new (+ (vector-length sorted) 1))
+      out (push-object-vector-local out elem)]
+      (validation-source-review-attestation-copy sorted 0 (vector-length sorted) out))
+    (let [prev (vector-get sorted (- idx 1))]
+      (if (validation-source-review-attestation-after? prev elem)
+        (validation-source-review-attestation-insert sorted elem (- idx 1))
+        (let [out (vector-new (+ (vector-length sorted) 1))
+          out (validation-source-review-attestation-copy sorted 0 idx out)
+          out (push-object-vector-local out elem)]
+          (validation-source-review-attestation-copy sorted idx (vector-length sorted) out))))))
+(defn validation-source-review-attestation-sort-loop [attestations sorted idx len]
+  (if (>= idx len)
+    sorted
+    (let [elem (vector-get attestations idx)
+      next-sorted
+        (validation-source-review-attestation-insert
+          sorted
+          elem
+          (vector-length sorted))]
+      (validation-source-review-attestation-sort-loop
+        attestations
+        next-sorted
+        (+ idx 1)
+        len))))
+(defn validation-source-review-attestation-sort [attestations]
+  (let [len (vector-length attestations)]
+    (if (< len 2)
+      attestations
+      (let [first (vector-get attestations 0)
+        initial (push-object-vector-local (vector-new 1) first)]
+        (validation-source-review-attestation-sort-loop attestations initial 1 len)))))
+(defn validation-source-review-verification-json [attestation]
+  (let [fields0
+      (docjson-string-field "review_id" (source-review-attestation-id attestation))
+    fields1
+      (docjson-append
+        fields0
+        (docjson-string-field "state" (source-review-attestation-state attestation)))]
+    (docjson-object-wrap fields1)))
+(defn validation-source-review-verifications-json-loop [attestations idx len out]
+  (if (>= idx len)
+    out
+    (validation-source-review-verifications-json-loop
+      attestations
+      (+ idx 1)
+      len
+      (docjson-append
+        out
+        (validation-source-review-verification-json (vector-get attestations idx))))))
+(defn validation-source-review-verifications-json [attestations]
+  (docjson-array-wrap
+    (validation-source-review-verifications-json-loop
+      attestations
+      0
+      (vector-length attestations)
+      "")))
 (defn validation-source-status-code [state independent-reviews contradicting-observations stale-reviews stale-evidence]
   (if (> contradicting-observations 0)
     1
@@ -462,7 +546,8 @@
       (if (> (ref-get (vector-get state 4)) 0)
         2
         (if (= independent-reviews 0) 2 0))))))
-(defn validation-source-report-json [state independent-reviews contradicting-observations stale-reviews stale-evidence]
+(defn validation-source-report-json
+  [state independent-reviews contradicting-observations stale-reviews stale-evidence review-verifications]
   (let [fields0 ""
     status-code (validation-source-status-code
       state
@@ -477,8 +562,16 @@
     fields4 (docjson-append fields3 (docjson-int-field "independent_reviews" independent-reviews))
     fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))
     fields6 (docjson-append fields5 (docjson-int-field "stale_reviews" stale-reviews))
-    fields7 (docjson-append fields6 (docjson-int-field "stale_evidence" stale-evidence))]
-    (docjson-object-wrap fields7)))
+    fields7 (docjson-append fields6 (docjson-int-field "stale_evidence" stale-evidence))
+    fields8
+      (if (> (vector-length review-verifications) 0)
+        (docjson-append
+          fields7
+          (docjson-array-field
+            "review_verifications"
+            (validation-source-review-verifications-json review-verifications)))
+        fields7)]
+    (docjson-object-wrap fields8)))
 (defn validation-report-text-line [key value]
   (string-concat key (string-concat ": " value)))
 (defn validation-report-text-append [out line]
@@ -516,8 +609,22 @@
     tested-by (ref-get (vector-get state 3))
     intent-gaps (validation-intent-gaps-text-loop intents motives 0 "")]
     (validation-claim-gaps-text-loop claims tested-by 0 intent-gaps)))
+(defn validation-source-review-verifications-text-loop [attestations idx len out]
+  (if (>= idx len)
+    out
+    (let [attestation (vector-get attestations idx)
+      line (validation-report-text-line
+        "review-verification"
+        (string-concat
+          (source-review-attestation-id attestation)
+          (string-concat "=" (source-review-attestation-state attestation))))]
+      (validation-source-review-verifications-text-loop
+        attestations
+        (+ idx 1)
+        len
+        (validation-report-text-append out line)))))
 (defn validation-source-report-text
-  [state independent-reviews contradicting-observations stale-reviews stale-evidence]
+  [state independent-reviews contradicting-observations stale-reviews stale-evidence review-verifications]
   (let [status-code (validation-source-status-code
       state
       independent-reviews
@@ -550,7 +657,11 @@
     line5 (validation-report-text-append
       line4
       (validation-report-text-line "stale-evidence" (int-to-string stale-evidence)))]
-    line5))
+    (validation-source-review-verifications-text-loop
+      review-verifications
+      0
+      (vector-length review-verifications)
+      line5)))
 (defn validation-option-manifest-path [opts] (vector-get opts 1))
 (defn validation-source-write-manifest [graph manifest-path]
   (if (> (string-length manifest-path) 0)
@@ -575,6 +686,9 @@
         contradicting-observations (vector-get metrics 1)
         stale-reviews (vector-get metrics 2)
         stale-evidence (vector-get metrics 3)
+        review-verifications
+          (validation-source-review-attestation-sort
+            (source-evidence-graph-attestations graph))
         status-code (validation-source-status-code
           state
           independent-reviews
@@ -588,13 +702,15 @@
               independent-reviews
               contradicting-observations
               stale-reviews
-              stale-evidence)
+              stale-evidence
+              review-verifications)
             (validation-source-report-json
               state
               independent-reviews
               contradicting-observations
               stale-reviews
-              stale-evidence))]
+              stale-evidence
+              review-verifications))]
         (if (and (> (string-length manifest-path) 0)
             (< (validation-source-write-manifest graph manifest-path) 0))
           (do
