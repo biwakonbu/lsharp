@@ -445,6 +445,83 @@ fn test_validate_tool_projects_expiry_and_binding_mismatches_as_stale() {
 }
 
 #[test]
+fn test_validate_tool_reduces_out_of_order_lifecycle_and_stabilizes_identity() {
+    let (signature, public_key) = signed_review_fields();
+    let (project, manifest) = mcp_review_project("lifecycle-ordering", &signature, &public_key);
+    let active = r#"{
+            "review_id": "review:checkout/reviewer-001",
+            "sequence": 1,
+            "state": "active",
+            "effective_at": "2026-07-29T00:00:00Z"
+          }"#;
+    let revoked = r#"{
+            "review_id": "review:checkout/reviewer-001",
+            "sequence": 2,
+            "state": "revoked",
+            "effective_at": "2026-07-30T00:00:00Z",
+            "reason_digest": "sha256:revocation"
+          }"#;
+    let lifecycle = project.join("lifecycle.json");
+
+    std::fs::write(
+        &lifecycle,
+        format!(r#"{{"schema_version":1,"attestations":[],"lifecycle":[{revoked},{active}]}}"#),
+    )
+    .expect("reversed lifecycle wire should be writable");
+    let reversed = call_tool(
+        "lsharp_validate",
+        &mcp_review_arguments_with_artifact(
+            &manifest,
+            "sha256:graph",
+            "commit-1",
+            Some("sha256:artifact"),
+            "2026-07-30T00:00:00Z",
+        ),
+    )
+    .expect("reversed lifecycle should be accepted by MCP");
+
+    assert_eq!(
+        reversed["review_verifications"],
+        json!([{
+            "review_id": "review:checkout/reviewer-001",
+            "state": "revoked"
+        }])
+    );
+    let reversed_digest = reversed["review_evidence_identity"]["lifecycle_digest"]
+        .as_str()
+        .expect("reversed lifecycle digest should be projected")
+        .to_string();
+
+    std::fs::write(
+        &lifecycle,
+        format!(r#"{{"schema_version":1,"attestations":[],"lifecycle":[{active},{revoked}]}}"#),
+    )
+    .expect("ordered lifecycle wire should be writable");
+    let ordered = call_tool(
+        "lsharp_validate",
+        &mcp_review_arguments_with_artifact(
+            &manifest,
+            "sha256:graph",
+            "commit-1",
+            Some("sha256:artifact"),
+            "2026-07-30T00:00:00Z",
+        ),
+    )
+    .expect("ordered lifecycle should be accepted by MCP");
+
+    assert_eq!(
+        ordered["review_verifications"],
+        reversed["review_verifications"]
+    );
+    assert_eq!(
+        ordered["review_evidence_identity"]["lifecycle_digest"],
+        reversed_digest
+    );
+
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn test_validate_tool_rejects_malformed_review_clock_without_report_or_manifest() {
     let (signature, public_key) = signed_review_fields();
     let (project, manifest) = mcp_review_project("malformed-clock", &signature, &public_key);

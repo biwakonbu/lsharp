@@ -126,6 +126,16 @@ fn signed_review_wire() -> (String, String) {
     (trust_wire, lifecycle_wire)
 }
 
+fn lifecycle_wire_with_events(events: &str) -> String {
+    format!(
+        r#"{{
+          "schema_version": 1,
+          "attestations": [],
+          "lifecycle": [{events}]
+        }}"#
+    )
+}
+
 fn run_validate(project: &Path, trust_store: Option<&Path>, lifecycle: Option<&Path>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
     command
@@ -701,6 +711,98 @@ fn validate_projects_expiry_and_identity_context_to_state() {
         .expect("projected manifest should be JSON");
         assert_eq!(manifest["reviews"][0]["verification_state"], expected_state);
     }
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn validate_projects_out_of_order_lifecycle_as_revoked_with_stable_identity() {
+    let project = project_dir("lifecycle-ordering");
+    fs::write(
+        project.join("manifest.json"),
+        r#"{
+          "schema_version": 1,
+          "nodes": [],
+          "reviews": [{
+            "namespace": "checkout",
+            "key": "reviewer-001",
+            "provenance_digest": "sha256:review",
+            "visibility": "public"
+          }],
+          "evidence": [],
+          "edges": []
+        }"#,
+    )
+    .expect("manifest should be writable");
+    let (trust_wire, _) = signed_review_wire();
+    fs::write(project.join("trust.json"), trust_wire).expect("trust wire should be writable");
+
+    let active = r#"{
+            "review_id": "review:checkout/reviewer-001",
+            "sequence": 1,
+            "state": "active",
+            "effective_at": "2026-07-29T00:00:00Z"
+          }"#;
+    let revoked = r#"{
+            "review_id": "review:checkout/reviewer-001",
+            "sequence": 2,
+            "state": "revoked",
+            "effective_at": "2026-07-30T00:00:00Z",
+            "reason_digest": "sha256:revocation"
+          }"#;
+    fs::write(
+        project.join("lifecycle-ordered.json"),
+        lifecycle_wire_with_events(&format!("{active},{revoked}")),
+    )
+    .expect("ordered lifecycle wire should be writable");
+    fs::write(
+        project.join("lifecycle-reversed.json"),
+        lifecycle_wire_with_events(&format!("{revoked},{active}")),
+    )
+    .expect("reversed lifecycle wire should be writable");
+
+    let mut identities = Vec::new();
+    for lifecycle in ["lifecycle-ordered.json", "lifecycle-reversed.json"] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+        command.current_dir(&project).args([
+            "validate",
+            "manifest.json",
+            "--format",
+            "json",
+            "--trust-store",
+            "trust.json",
+            "--review-lifecycle",
+            lifecycle,
+            "--review-subject-digest",
+            "sha256:graph",
+            "--review-source-commit",
+            "commit-1",
+            "--review-artifact-digest",
+            "sha256:artifact",
+            "--review-now",
+            "2026-07-30T00:00:00Z",
+        ]);
+        let output = command.output().expect("lsharp validate should run");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+        assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+        let report: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("report should be JSON");
+        assert_eq!(
+            report["review_verifications"],
+            serde_json::json!([{
+                "review_id": "review:checkout/reviewer-001",
+                "state": "revoked"
+            }])
+        );
+        identities.push(
+            report["review_evidence_identity"]["lifecycle_digest"]
+                .as_str()
+                .expect("lifecycle digest should be projected")
+                .to_string(),
+        );
+    }
+    assert_eq!(identities[0], identities[1]);
 
     fs::remove_dir_all(project).ok();
 }
