@@ -46,9 +46,11 @@ fn tool_input_schema(name: &str) -> Value {
         "lsharp_stdlib_api" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
+            "additionalProperties": false,
             "properties": {
-                "module": { "type": "string" }
-            }
+                "module": { "type": "string", "minLength": 1 }
+            },
+            "oneOf": [{ "required": [] }]
         }),
         "lsharp_project_context" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -314,7 +316,7 @@ fn tool_output_schema(name: &str) -> Value {
                 }
             }
         }),
-        "lsharp_package_api" => package_api_output_schema(),
+        "lsharp_package_api" | "lsharp_stdlib_api" => package_api_output_schema(),
         _ => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object"

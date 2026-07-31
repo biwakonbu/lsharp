@@ -166,7 +166,7 @@ review verification schemaも Rust contractへ揃え、manifest top-level（vers
 `docs/adr/decisions-v0.3-native-mcp-validate-output-schema.md`,
 `docs/adr/decisions-v0.3-native-mcp-manifest-output-schema.md`。
 
-2026-08-01 に native MCP の lsharp_errors、lsharp_search、lsharp_project_context、lsharp_package_api を追加した。canonical
+2026-08-01 に native MCP の lsharp_errors、lsharp_search、lsharp_project_context、lsharp_package_api、lsharp_stdlib_api を追加した。canonical
 crates/lsharp-driver/src/error_codes.rs の read-only table projection として LS####、
 E0001-E0005（E0003 は LS1002 へ統合）、未知コード、docs link を返し、Rust/native schema の
 必須・空文字拒否・additionalProperties: false を揃えた。fake native program を実行しないことを
@@ -177,8 +177,10 @@ lsharp_project_context は `lsharp.toml` の project/exports/dependencies と `.
 projection し、依存名の決定的順序、closed-world schema、引数 fail-closed、fake native program 非実行を
 native MCP 21 tests と Rust MCP focused 59 tests で確認した。lsharp_package_api は deterministic な
 installed package の既存 `docs/api.json` projection として、closed-world schema、引数 fail-closed、fake
-native program 非実行を native MCP 23 tests と Rust MCP focused 62 tests で確認した verified partial である。
-API generation/validation、残る LSP/compile-run/provider semantics、target runtime、manifest runtime validation
+native program 非実行を native MCP 23 tests と Rust MCP focused 62 tests で確認した。lsharp_stdlib_api は
+Rust canonical `doc --json` から生成した `stdlib/api.json` を読む offline projection として、module 絞り込み、
+閉世界 schema、引数 fail-closed、artifact と Rust canonical output の一致、native program 非実行を native MCP 25 tests
+と Rust MCP focused 64 tests で確認した verified partial である。API generation/validation、残る LSP/compile-run/provider semantics、target runtime、manifest runtime validation
 の全 surface は [~] のまま残す。ADR:
 docs/adr/decisions-v0.3-native-mcp-subset-shim.md。
 

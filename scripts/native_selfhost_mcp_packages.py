@@ -1,6 +1,7 @@
 """Offline installed-package projection for the native MCP shim."""
 
 import json
+import os
 import pathlib
 
 try:
@@ -348,3 +349,45 @@ def call_package_api(arguments):
     if not isinstance(value, dict):
         raise PackageLookupError(f"{api_path}: api.json の root は object が必要です")
     return value
+
+
+def _stdlib_api_path():
+    explicit = os.environ.get("LSHARP_STDLIB_API_PATH", "")
+    if explicit.strip():
+        return pathlib.Path(explicit)
+    root_value = os.environ.get("LSHARP_STDLIB_PATH", "")
+    if root_value.strip():
+        root = pathlib.Path(root_value)
+        if root.exists():
+            return root if root.is_file() else root / "api.json"
+    return pathlib.Path(__file__).resolve().parent.parent / "stdlib" / "api.json"
+
+
+def call_stdlib_api(arguments):
+    unknown = sorted(set(arguments).difference({"module"}))
+    if unknown:
+        raise PackageLookupError(f"lsharp_stdlib_api の未知の引数: {', '.join(unknown)}")
+    module = arguments.get("module")
+    if module is not None and not isinstance(module, str):
+        raise PackageLookupError("lsharp_stdlib_api の module は文字列が必要です")
+    if isinstance(module, str) and not module.strip():
+        raise PackageLookupError("lsharp_stdlib_api の module は空でない文字列が必要です")
+    api_path = _stdlib_api_path()
+    try:
+        value = json.loads(api_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
+    if not isinstance(value, dict):
+        raise PackageLookupError(f"{api_path}: api.json の root は object が必要です")
+    package = value.get("package")
+    version = value.get("version")
+    modules = value.get("modules")
+    if not isinstance(package, str) or not package.strip():
+        raise PackageLookupError(f"{api_path}: api.json の package は空でない文字列が必要です")
+    if not isinstance(version, str) or not version.strip():
+        raise PackageLookupError(f"{api_path}: api.json の version は空でない文字列が必要です")
+    if not isinstance(modules, list) or not all(isinstance(item, dict) for item in modules):
+        raise PackageLookupError(f"{api_path}: api.json の modules は object 配列が必要です")
+    if module is not None:
+        modules = [item for item in modules if item.get("name") == module]
+    return {"package": package, "version": version, "modules": modules}

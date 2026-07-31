@@ -11,15 +11,14 @@ import unittest
 from native_selfhost_mcp_error_tests import assert_errors_lookup, assert_errors_reject_invalid_arguments
 from native_selfhost_mcp_package_tests import assert_package_api_projects_local_api_json, assert_package_api_rejects_invalid_arguments, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
 from native_selfhost_mcp_context_tests import assert_project_context_projects_local_metadata, assert_project_context_rejects_invalid_arguments
+from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
-
 def request(request_id, method, params=None):
     payload = {"jsonrpc": "2.0", "id": request_id, "method": method}
     if params is not None:
         payload["params"] = params
     return (json.dumps(payload, separators=(",", ":")) + "\n").encode()
-
 class NativeSelfhostMcpTest(unittest.TestCase):
     def write_fake_program(self, root):
         program = root / "program.native"
@@ -124,7 +123,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def responses(self, output):
         return [json.loads(line) for line in output.decode().splitlines() if line]
-
+    def test_stdlib_api_projects_generated_metadata(self):
+        assert_stdlib_api_projects_generated_metadata(self)
+    def test_stdlib_api_rejects_invalid_arguments(self):
+        assert_stdlib_api_rejects_invalid_arguments(self)
     def test_initialize_tools_and_supported_calls_stay_native_only(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
@@ -140,9 +142,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     request(5, "tools/call", {"name": "lsharp_format", "arguments": {"source": source.read_text()}}),
                 ]
             )
-
             result = self.run_shim(program, payload, root)
-
             self.assertEqual(result.returncode, 0, result.stderr.decode())
             responses = self.responses(result.stdout)
             self.assertEqual(len(responses), 5)
@@ -158,6 +158,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     "lsharp_search",
                     "lsharp_project_context",
                     "lsharp_package_api",
+                    "lsharp_stdlib_api",
                 },
             )
             check_tool = next(

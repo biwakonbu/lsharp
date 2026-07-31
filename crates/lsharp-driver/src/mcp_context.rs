@@ -67,12 +67,24 @@ fn package_api_tool(arguments: &Value) -> Result<Value, String> {
 }
 
 fn stdlib_api_tool(arguments: &Value) -> Result<Value, String> {
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| "lsharp_stdlib_api の arguments は object が必要です".to_string())?;
+    if let Some(unknown) = object.keys().find(|key| key.as_str() != "module") {
+        return Err(format!("lsharp_stdlib_api の未知の引数: {unknown}"));
+    }
+    let target_module = match arguments.get("module") {
+        None => None,
+        Some(Value::String(module)) if !module.trim().is_empty() => Some(module.as_str()),
+        Some(Value::String(_)) => {
+            return Err("lsharp_stdlib_api の module は空でない文字列が必要です".to_string());
+        }
+        Some(_) => return Err("lsharp_stdlib_api の module は文字列が必要です".to_string()),
+    };
     let stdlib_root = stdlib_root().ok_or_else(|| "stdlib が見つかりません".to_string())?;
     let package = "stdlib";
     let version = env!("CARGO_PKG_VERSION");
     let mut modules = Vec::new();
-    let target_module = arguments.get("module").and_then(Value::as_str);
-
     let entries =
         std::fs::read_dir(&stdlib_root).map_err(|e| mcp_io_error(stdlib_root.display(), e))?;
     for entry in entries {

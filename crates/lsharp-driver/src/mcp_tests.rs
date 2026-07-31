@@ -899,6 +899,16 @@ branch = "main"
     #[test]
     fn test_stdlib_api_tool_returns_stdlib_modules_with_metadata() {
         let result = call_tool("lsharp_stdlib_api", &json!({})).expect("stdlib_api が成功するべき");
+        let artifact_path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/api.json");
+        let artifact: Value = serde_json::from_str(
+            &std::fs::read_to_string(artifact_path).expect("stdlib api artifact が必要"),
+        )
+        .expect("stdlib api artifact は JSON であるべき");
+        assert_eq!(
+            result, artifact,
+            "Rust canonical API と artifact が一致するべき"
+        );
         let modules = result["modules"]
             .as_array()
             .expect("modules は配列であるべき");
@@ -921,6 +931,45 @@ branch = "main"
         assert_eq!(abs["doc"], "整数の絶対値を返す。");
         assert_eq!(abs["params"][0]["doc"], "対象の整数");
         assert_eq!(abs["returns"]["doc"], "x の絶対値");
+    }
+
+    #[test]
+    fn test_stdlib_api_tool_schema_is_closed_world_and_has_output_schema() {
+        let input = tool_input_schema("lsharp_stdlib_api");
+        assert_eq!(input["additionalProperties"], json!(false));
+        assert_eq!(input["properties"]["module"]["minLength"], json!(1));
+
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .and_then(|tools| {
+                tools
+                    .iter()
+                    .find(|tool| tool["name"] == "lsharp_stdlib_api")
+            })
+            .expect("lsharp_stdlib_api が tools/list に必要");
+        assert_eq!(
+            tool["outputSchema"]["required"],
+            json!(["package", "version", "modules"])
+        );
+        assert_eq!(tool["outputSchema"]["additionalProperties"], json!(false));
+    }
+
+    #[test]
+    fn test_stdlib_api_tool_rejects_unknown_or_empty_arguments() {
+        let unknown = call_tool("lsharp_stdlib_api", &json!({"unknown": true}))
+            .expect_err("未知の引数を拒否するべき");
+        assert!(unknown.contains("未知"));
+        let empty = call_tool("lsharp_stdlib_api", &json!({"module": ""}))
+            .expect_err("空の module を拒否するべき");
+        assert!(empty.contains("module"));
+        let non_string = call_tool("lsharp_stdlib_api", &json!({"module": 42}))
+            .expect_err("module の非文字列を拒否するべき");
+        assert!(non_string.contains("module"));
     }
 
     #[test]

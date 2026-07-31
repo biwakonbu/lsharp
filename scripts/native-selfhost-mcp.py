@@ -11,6 +11,8 @@ compiler.  ``lsharp_search`` is an offline projection of local
 is an offline projection of local ``lsharp.toml`` and installed package metadata.
 ``lsharp_package_api`` reads an installed package's existing ``docs/api.json`` and
 never generates or mutates package files.
+``lsharp_stdlib_api`` reads the generated repository ``stdlib/api.json`` and
+never invokes a compiler or mutates the standard library.
 Explicit provider snapshot paths are an offline bytes-to-digest adapter; signature and lifecycle
 semantic verification remain an external provider boundary until a native
 verifier is available.
@@ -42,8 +44,8 @@ from native_selfhost_mcp_packages import (
     call_package_api,
     call_project_context,
     call_search,
+    call_stdlib_api,
 )
-
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 CANONICAL_UTC_TIMESTAMP_PATTERN = (
@@ -51,14 +53,11 @@ CANONICAL_UTC_TIMESTAMP_PATTERN = (
 )
 CANONICAL_UTC_TIMESTAMP_RE = re.compile(CANONICAL_UTC_TIMESTAMP_PATTERN)
 
-
 class ShimError(Exception):
     pass
 
-
 class ToolError(Exception):
     pass
-
 
 def tool_descriptor(
     name, description, properties, required, output_schema=None, input_schema_extra=None
@@ -84,7 +83,6 @@ def tool_descriptor(
     if output_schema is not None:
         descriptor["outputSchema"] = output_schema
     return descriptor
-
 
 CHECK_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -145,8 +143,6 @@ CHECK_OUTPUT_SCHEMA = {
     },
 }
 
-
-
 MANIFEST_OUTPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -160,7 +156,6 @@ MANIFEST_OUTPUT_SCHEMA = {
         "edges": {"type": "array", "items": edge_schema()},
     },
 }
-
 
 VALIDATE_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -249,13 +244,10 @@ VALIDATE_OUTPUT_SCHEMA = {
         "manifest": MANIFEST_OUTPUT_SCHEMA,
     },
 }
-
-
 SOURCE_PROPERTIES = {
     "source": {"type": "string"},
     "file": {"type": "string", "minLength": 1},
 }
-
 VALIDATE_ARGUMENT_NAMES = frozenset(
     {
         "source",
@@ -273,8 +265,6 @@ VALIDATE_ARGUMENT_NAMES = frozenset(
         "review_now",
     }
 )
-
-
 TOOLS = [
     tool_descriptor(
         "lsharp_check",
@@ -389,10 +379,16 @@ TOOLS = [
         PACKAGE_API_OUTPUT_SCHEMA,
         {"additionalProperties": False},
     ),
+    tool_descriptor(
+        "lsharp_stdlib_api",
+        "生成済み stdlib API metadata を返す (native offline subset)",
+        {"module": {"type": "string", "minLength": 1}},
+        [[]],
+        PACKAGE_API_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
 ]
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
-
-
 def validate_program(program_value):
     program = pathlib.Path(program_value)
     if not program.is_file() or not os.access(program, os.X_OK):
@@ -699,6 +695,11 @@ def call_tool(program, name, arguments):
             elif name == "lsharp_package_api":
                 try:
                     value = call_package_api(arguments)
+                except PackageLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_stdlib_api":
+                try:
+                    value = call_stdlib_api(arguments)
                 except PackageLookupError as error:
                     raise ToolError(str(error)) from error
             else:

@@ -77,6 +77,7 @@ pub fn handle_jsonrpc_message(request: &Value) -> Value {
                                 | "lsharp_search"
                                 | "lsharp_project_context"
                                 | "lsharp_package_api"
+                                | "lsharp_stdlib_api"
                         ) {
                             descriptor["outputSchema"] = tool_output_schema(&tool.name);
                         }
