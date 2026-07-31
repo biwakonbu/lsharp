@@ -164,6 +164,73 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("timestamp", result.stderr)
 
+    def test_recomputes_explicit_provider_snapshot_digests(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"active"}\n')
+            artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+            identity = identity_for(
+                artifact_digest,
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
+            identity_path = root / "identity.json"
+            self.write_identity(identity_path, identity)
+
+            accepted = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+                "--require-provider-input",
+            )
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+
+            trust_store.write_bytes(b'{"keys":["key-2"]}\n')
+            mismatch = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+            )
+            self.assertNotEqual(mismatch.returncode, 0)
+            self.assertIn("trust_store_digest", mismatch.stderr)
+
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"revoked"}\n')
+            lifecycle_mismatch = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+            )
+            self.assertNotEqual(lifecycle_mismatch.returncode, 0)
+            self.assertIn("lifecycle_digest", lifecycle_mismatch.stderr)
+
+            partial = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--trust-store",
+                str(trust_store),
+            )
+            self.assertNotEqual(partial.returncode, 0)
+            self.assertIn("together", partial.stderr)
+
     def test_release_surfaces_use_the_same_offline_identity_gate(self):
         project_root = SCRIPTS_DIR.parent.parent
         for relative_path in (

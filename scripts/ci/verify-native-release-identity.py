@@ -3,7 +3,7 @@
 """Validate the explicit evidence identity carried by a native release.
 
 The verifier is deliberately offline.  A provider adapter is responsible for
-producing the keyset/lifecycle digests before this command is invoked; this
+supplying explicit keyset/lifecycle snapshot bytes or their digests; this
 command never fills them from the environment, network, or current checkout.
 """
 
@@ -37,6 +37,14 @@ class UnverifiedIdentity(IdentityError):
     """An identity that cannot be treated as verified without provider input."""
 
 
+def digest_file(path, field):
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise IdentityError(f"{field} cannot be read: {path}: {error}") from error
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
 def load_json(path):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -64,7 +72,14 @@ def validate_digest(value, field, nullable):
         raise IdentityError(f"{field} must use sha256:<64 lowercase hex>")
 
 
-def validate_identity(identity, expected_source_commit=None, artifact=None, require_provider=False):
+def validate_identity(
+    identity,
+    expected_source_commit=None,
+    artifact=None,
+    require_provider=False,
+    trust_store=None,
+    review_lifecycle=None,
+):
     actual_keys = tuple(identity)
     if actual_keys != IDENTITY_KEYS:
         if set(actual_keys) != set(IDENTITY_KEYS):
@@ -95,6 +110,26 @@ def validate_identity(identity, expected_source_commit=None, artifact=None, requ
     validate_digest(identity["lifecycle_digest"], "lifecycle_digest", nullable=True)
     if not is_valid_utc_timestamp(identity["now"]):
         raise IdentityError("now must be a strict UTC timestamp ending in Z")
+
+    has_trust_store = trust_store is not None
+    has_lifecycle = review_lifecycle is not None
+    if has_trust_store != has_lifecycle:
+        raise IdentityError(
+            "--trust-store and --review-lifecycle must be supplied together"
+        )
+    if has_trust_store:
+        expected_trust_store_digest = digest_file(trust_store, "trust store")
+        if identity["trust_store_digest"] != expected_trust_store_digest:
+            raise IdentityError(
+                "trust_store_digest mismatch: "
+                f"expected={expected_trust_store_digest} actual={identity['trust_store_digest']}"
+            )
+        expected_lifecycle_digest = digest_file(review_lifecycle, "review lifecycle")
+        if identity["lifecycle_digest"] != expected_lifecycle_digest:
+            raise IdentityError(
+                "lifecycle_digest mismatch: "
+                f"expected={expected_lifecycle_digest} actual={identity['lifecycle_digest']}"
+            )
 
     if require_provider and (
         identity["trust_store_digest"] is None or identity["lifecycle_digest"] is None
@@ -130,6 +165,16 @@ def parse_arguments():
     parser.add_argument("--expected-identity", type=pathlib.Path)
     parser.add_argument("--artifact", type=pathlib.Path)
     parser.add_argument("--source-commit")
+    parser.add_argument(
+        "--trust-store",
+        type=pathlib.Path,
+        help="optional raw trust-store snapshot to digest and compare",
+    )
+    parser.add_argument(
+        "--review-lifecycle",
+        type=pathlib.Path,
+        help="optional raw review-lifecycle snapshot to digest and compare",
+    )
     parser.add_argument("--require-provider-input", action="store_true")
     return parser.parse_args()
 
@@ -144,6 +189,8 @@ def main():
             expected_source_commit=arguments.source_commit,
             artifact=arguments.artifact,
             require_provider=arguments.require_provider_input,
+            trust_store=arguments.trust_store,
+            review_lifecycle=arguments.review_lifecycle,
         )
         if arguments.expected_identity is not None:
             expected = load_identity(arguments.expected_identity, False)
