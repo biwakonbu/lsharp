@@ -38,6 +38,17 @@ Evidence:
 
 これは Linux x86_64 TypeInferBlock の verified sliceであり、TypeInfer 全体や V2-16 の Rust-free 完了を意味しない。feature-specific Mac gate、current-source stage0 package、全 source-file/public command parity、残りの TypeInfer loops と aggregateは別の残件として維持する。
 
+### Linux x86_64 TypeInferAssertions primitive scanner evidence (2026-07-31)
+
+`TypeInferAssertions.ls` の `property-skip-space`、`property-find-substring-loop`、`property-balanced-expression-end`、`property-atom-expression-end` に残っていた入力長比例 recursion を、一要素 step、64文字 bounded chunk、rooted continuationへまとめて移行した。空白、部分文字列の first match、括弧 depth、atom delimiter の index semantics は維持している。
+
+Evidence:
+
+- RED/GREEN: `test_e2e_selfhost_typeinfer_assertion_scanners_use_bounded_rooted_chunks` と `test_e2e_selfhost_typeinfer_assertion_scanners_preserve_cross_chunk_indexes` は、65文字境界の scannerを native selfhost runtimeで走査し、`65/65/131/65` を確認した。focused scanner 2件と既存 `selfhost_runner_` 31件は `RUST_MIN_STACK=33554432` で passし、`TypeInferAssertions.ls` parser checkは `decls:120` / `diagnostics:0` だった。
+- Linux native fixed point for `e2012300`: `ci-artifacts/native-linux-x86-hostgen-vm/e2012300-typeinfer-assertions/actual-selfregen-summary.json` は `status:pass`、stage2/stage3 code length は各 `11421747`、stdout は各 `12190991` bytesで SHA-256 `2f6eeb64020c472c7ebfce4a6a208b1ed34eeb83e0b954e005cb545593dffa29`、byte-for-byteで一致し、stderrは各0 bytesだった。actual-stage1 manifest の `source_commit` は `e2012300dbb09a542944b6d52819f49cde461a7a`、`code_len` は `4380935`、`data_len` は `2325`、`entrypoint_offset` は `4378475`、`function_start_len` は `3438`、`main_func_idx` は `3447`。`ACTUAL_CHUNK_SIZE=128` / retry=1 / heap=4GiB / fail-fast OOMで stage1 -> stage2 -> stage3を完走し、検証後は debug bundle、VM workdir/lock、idle VMを回収・停止して summary、actual-stage1 metadata/seed/code/data、stage2/stage3 stdout/stderrだけを約 `29M` artifactへ保持した。
+
+これは Linux x86_64 TypeInferAssertions の verified sliceであり、TypeInferAssertions 全体や V2-16 の Rust-free 完了を意味しない。feature-specific Mac gate、current-source stage0 package、全 source-file/public command parity、残りの TypeInfer loops と aggregateは別の残件として維持する。
+
 ### Linux x86_64 TypeInfer record registration evidence (2026-07-31)
 
 TypeInfer の record schema predeclaration、record constructor/accessor scheme の登録、top-level record definition scan、公開 accessor cleanup に残っていた入力長比例 recursion を、一要素 step、64 declaration/field bounded chunk、rooted continuationへまとめて移行した。runtime で検出した既存 accessor cleanup の root lifetime 不整合も、push/pop を一致させて修正した。
