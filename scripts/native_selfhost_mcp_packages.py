@@ -576,7 +576,43 @@ def _stdlib_api_path():
     return pathlib.Path(__file__).resolve().parent.parent / "stdlib" / "api.json"
 
 
-def call_stdlib_api(arguments):
+def _stdlib_source_root(api_path):
+    root_value = os.environ.get("LSHARP_STDLIB_PATH", "")
+    if root_value.strip():
+        root = pathlib.Path(root_value)
+        return root.parent if root.is_file() else root
+    return api_path.parent
+
+
+def _stdlib_source_files(api_path):
+    source_root = _stdlib_source_root(api_path)
+    try:
+        return sorted(
+            path
+            for path in source_root.iterdir()
+            if path.suffix == ".ls" and path.is_file() and not path.is_symlink()
+        )
+    except OSError:
+        return []
+
+
+def _generate_stdlib_api(program, api_path):
+    source_files = _stdlib_source_files(api_path)
+    if not source_files:
+        raise PackageLookupError(
+            f"{api_path}: api.json が無く、生成対象の stdlib/*.ls が見つかりません"
+        )
+    modules = [
+        _generated_module(_run_native_doc(program, source), source)
+        for source in source_files
+    ]
+    modules.sort(key=lambda module: module["name"])
+    value = {"package": "stdlib", "version": "0.1.0", "modules": modules}
+    _validate_package_api(value, api_path)
+    return value
+
+
+def call_stdlib_api(program, arguments):
     unknown = sorted(set(arguments).difference({"module"}))
     if unknown:
         raise PackageLookupError(f"lsharp_stdlib_api の未知の引数: {', '.join(unknown)}")
@@ -586,21 +622,15 @@ def call_stdlib_api(arguments):
     if isinstance(module, str) and not module.strip():
         raise PackageLookupError("lsharp_stdlib_api の module は空でない文字列が必要です")
     api_path = _stdlib_api_path()
-    try:
-        value = json.loads(api_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
-    if not isinstance(value, dict):
-        raise PackageLookupError(f"{api_path}: api.json の root は object が必要です")
-    package = value.get("package")
-    version = value.get("version")
-    modules = value.get("modules")
-    if not isinstance(package, str) or not package.strip():
-        raise PackageLookupError(f"{api_path}: api.json の package は空でない文字列が必要です")
-    if not isinstance(version, str) or not version.strip():
-        raise PackageLookupError(f"{api_path}: api.json の version は空でない文字列が必要です")
-    if not isinstance(modules, list) or not all(isinstance(item, dict) for item in modules):
-        raise PackageLookupError(f"{api_path}: api.json の modules は object 配列が必要です")
+    if api_path.exists():
+        try:
+            value = json.loads(api_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
+        _validate_package_api(value, api_path)
+    else:
+        value = _generate_stdlib_api(program, api_path)
+    modules = value["modules"]
     if module is not None:
         modules = [item for item in modules if item.get("name") == module]
-    return {"package": package, "version": version, "modules": modules}
+    return {"package": value["package"], "version": value["version"], "modules": modules}

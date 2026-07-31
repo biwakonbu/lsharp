@@ -63,3 +63,95 @@ def assert_stdlib_api_rejects_invalid_arguments(test):
         test.assertIn("module", responses[1]["result"]["content"][0]["text"])
         test.assertIn("module", responses[2]["result"]["content"][0]["text"])
         test.assertFalse((root / "native.log").exists())
+
+
+def _native_stdlib_document():
+    return {
+        "module": "module-List",
+        "functions": [{
+            "name": "list-length",
+            "arity": 1,
+            "params": [{"name": "items", "type": "List", "doc": "items"}],
+            "returns": {"type": "Int", "doc": "length"},
+            "doc": "length",
+            "example": "(list-length xs)",
+        }],
+        "types": [{"name": "List", "kind": "type"}],
+        "html": {
+            "title": "module-List",
+            "sections": [{"id": "functions", "count": 1}, {"id": "types", "count": 1}],
+        },
+    }
+
+
+def assert_stdlib_api_generates_from_native_doc(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        source_root = root / "stdlib"
+        source_root.mkdir()
+        source = source_root / "List.ls"
+        source.write_text("(module List)\n(defn list-length [items] items)\n", encoding="utf-8")
+        api_path = root / "generated" / "api.json"
+        payload = request(1, "tools/call", {"name": "lsharp_stdlib_api", "arguments": {}})
+        result = test.run_shim(
+            program,
+            payload,
+            root,
+            doc_output=_native_stdlib_document(),
+            stdlib_api_path=api_path,
+            stdlib_path=source_root,
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        test.assertEqual(
+            response["result"]["structuredContent"],
+            {
+                "package": "stdlib",
+                "version": "0.1.0",
+                "modules": [{
+                    "name": "List",
+                    "doc": None,
+                    "functions": [{
+                        "name": "list-length",
+                        "signature": "List -> Int",
+                        "params": [{"name": "items", "type": "List", "doc": "items"}],
+                        "returns": {"type": "Int", "doc": "length"},
+                        "doc": "length",
+                        "example": "(list-length xs)",
+                    }],
+                    "types": [{"name": "List", "kind": "adt"}],
+                }],
+            },
+        )
+        test.assertFalse(api_path.exists())
+        test.assertEqual(
+            json.loads((root / "native.log").read_text(encoding="utf-8")),
+            ["doc", str(source), "--json"],
+        )
+
+
+def assert_stdlib_api_rejects_malformed_native_doc(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        source_root = root / "stdlib"
+        source_root.mkdir()
+        (source_root / "List.ls").write_text("(module List)\n", encoding="utf-8")
+        api_path = root / "generated" / "api.json"
+        payload = request(1, "tools/call", {"name": "lsharp_stdlib_api", "arguments": {}})
+        result = test.run_shim(
+            program,
+            payload,
+            root,
+            doc_output={"module": "module-List"},
+            stdlib_api_path=api_path,
+            stdlib_path=source_root,
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        test.assertIn("native doc", response["result"]["content"][0]["text"])
+        test.assertIn("missing required keys", response["result"]["content"][0]["text"])
+        test.assertFalse(api_path.exists())

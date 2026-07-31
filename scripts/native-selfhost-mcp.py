@@ -12,8 +12,10 @@ is an offline projection of local ``lsharp.toml`` and installed package metadata
 ``lsharp_package_api`` reads an installed package's existing ``docs/api.json``;
 when it is absent, the native program's read-only ``doc --json`` contract
 generates the same in-memory API projection without mutating package files.
-``lsharp_stdlib_api`` reads the generated repository ``stdlib/api.json`` and
-never invokes a compiler or mutates the standard library.
+``lsharp_stdlib_api`` reads the generated repository ``stdlib/api.json``;
+when it is absent, the native program's read-only ``doc --json`` contract
+generates the same in-memory projection from direct ``stdlib/*.ls`` files
+without mutating the standard library.
 Explicit provider snapshot paths are an offline bytes-to-digest adapter; signature and lifecycle
 semantic verification remain an external provider boundary until a native
 verifier is available.
@@ -382,7 +384,7 @@ TOOLS = [
     ),
     tool_descriptor(
         "lsharp_stdlib_api",
-        "生成済み stdlib API metadata を返す (native offline subset)",
+        "生成済み stdlib API または native doc 生成結果を返す (native offline subset)",
         {"module": {"type": "string", "minLength": 1}},
         [[]],
         PACKAGE_API_OUTPUT_SCHEMA,
@@ -700,7 +702,7 @@ def call_tool(program, name, arguments):
                     raise ToolError(str(error)) from error
             elif name == "lsharp_stdlib_api":
                 try:
-                    value = call_stdlib_api(arguments)
+                    value = call_stdlib_api(program, arguments)
                 except PackageLookupError as error:
                     raise ToolError(str(error)) from error
             else:

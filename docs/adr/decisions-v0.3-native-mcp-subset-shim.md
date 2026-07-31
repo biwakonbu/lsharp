@@ -26,7 +26,7 @@ VM or regenerating stage0.
   `App.Cli` boundary: `lsharp_check`, `lsharp_validate`, `lsharp_format`,
   `lsharp_errors`, the offline local-package `lsharp_search` projection, the
   offline `lsharp_project_context` projection, and the offline
-  `lsharp_package_api` and generated `lsharp_stdlib_api` projections. The docs
+  `lsharp_package_api` and `lsharp_stdlib_api` projections. The docs
   lookup, package context/search, package API lookup, and stdlib metadata lookup
   never execute a Rust or host compiler and never access a registry or network.
 - `lsharp_package_api` resolves a deterministic installed-package directory.
@@ -38,9 +38,12 @@ VM or regenerating stage0.
   Package installation and the native stage0/runtime boundary remain outside
   this offline projection.
 - `lsharp_stdlib_api` reads the checked-in `stdlib/api.json`, generated from the
-  Rust canonical `doc --json` output for every standard-library module. Native
-  filtering is limited to an optional non-empty module name; artifact shape and
-  Rust/native semantic equality are covered by tests.
+  Rust canonical `doc --json` output for every standard-library module. When
+  that artifact is absent, it enumerates sorted direct `stdlib/*.ls` sources and
+  invokes the native program's read-only `doc --json` contract, mapping the
+  validated documents in memory without writing `api.json`. Native filtering is
+  limited to an optional non-empty module name; artifact shape and Rust/native
+  semantic equality are covered by tests.
 - Preserve MCP JSON-RPC `initialize`, `ping`, `tools/list`, and `tools/call`
   envelopes. Child exit codes `1`/`2` with valid JSON reports remain structured
   tool results, while empty/malformed output is an `isError` result.
@@ -53,14 +56,15 @@ VM or regenerating stage0.
 
 ## Evidence
 
-- `scripts/ci/test-native-selfhost-mcp.py`: 27 focused tests cover protocol
+- `scripts/ci/test-native-selfhost-mcp.py`: 29 focused tests cover protocol
   discovery, native-only check/validate/format calls, canonical error lookup
   (LS codes, E0001-E0005 aliases, unknown codes, and no native execution),
   offline installed-package search, project context (TOML project/dependency
   projection), package API (existing `docs/api.json` projection and missing-file
   native `doc --json` generation with full closed-world validation), and stdlib API
-  (generated `stdlib/api.json` projection), including
-  deterministic ordering, schema, argument rejection, and no native execution,
+  (generated `stdlib/api.json` projection and missing-artifact native `doc --json`
+  generation), including deterministic ordering, schema, argument rejection,
+  malformed native-doc fail-closed behavior, and no artifact mutation,
   identity forwarding, malformed input, missing executable, and provider-path
   fail-closed behavior. Error, package, and context assertions live in separate
   helper modules to keep the main test module within the repository file-size
@@ -89,7 +93,8 @@ installed-package projection, and `lsharp_project_context` is only a verified
 offline TOML/package projection; `lsharp_package_api` is a verified existing
 `docs/api.json` projection plus a no-mutation native `doc --json` source
 projection with closed-world shape validation, and `lsharp_stdlib_api` is only a verified
-generated-artifact projection; full native compiler/package-install semantics
+generated-artifact or missing-artifact native `doc --json` source projection; full
+native compiler/package-install semantics
 remain outside this slice. N9 / `EC-M3-05`
 therefore remains `[~]`; the next RED should select one additional tool or the
 explicit provider adapter contract and compare Rust/native output with the same
