@@ -576,6 +576,15 @@ ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`Ty
   Linux x86_64 verified sliceであり、artifact/runtime の全 target aggregate、未移行 assertion/property
   semantics、Rust oracle との全 diagnostic/span parityを完了扱いにはしない。VM workdir、replay lock、
   約 1.8 GiB の task-owned Cargo target は gate 後に削除し、CI は起動していない。
+- 2026-07-31 に TypeInferAdt batch（検証時 source commit `81103bfd3cd6b2dcb771b297d0cc10a547dc6ee1`）を
+  Mac host から生成し、Lima `lsharp-linux-x86` の actual stage1 -> stage2 -> stage3 self-regenerationを
+  完走した。`actual-selfregen-summary.json` は `status: pass`、stage2/stage3 code length 各
+  `11168596`、stdout SHA-256 は両方
+  `dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。TypeInferAdt の
+  64 要素 bounded rooted scanner と 65 要素 cross-chunk focused E2E の Linux x86_64 verified
+  sliceであり、nominal/exhaustiveness、full ftable/import、linear-memory/WasmGC runtime、
+  Mac/Linux aggregate parity の完了を意味しない。VM workdir と replay lock は gate 後に削除し、
+  task-owned build target も再利用不要分を回収した。
 
 ### EC-M2-01 selfhost source metadata storage (2026-07-25)
 

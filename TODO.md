@@ -698,8 +698,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   nominal marker、field binding は verified。一般 Map API、全 pattern、import target、
   Rust ABI parity を actual E2E で閉じる。
 - [~] `LEGACY-LANG-02` ADT/GADT execution parity — ordinary ADT の direct/nested constructor と
-  GADT parser/type refinement は verified。nominal/exhaustiveness、full ftable/import、
-  linear-memory/WasmGC runtime parity を閉じる。
+  GADT parser/type refinement は verified。2026-07-31 に selfhost
+  `Types.TypeInferAdt` の type parameter、constructor field、variant、type declaration scan を
+  64 要素単位の bounded rooted continuationへ揃え、65 要素で chunk 境界を跨ぐ focused E2E
+  (`selfhost_typeinfer_adt_scanners`) を通した。Linux x86_64 fixed point は status `pass`、
+  stage2/stage3 code length 各 `11168596`、stdout SHA-256 は両方
+  `dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。
+  これは ordinary ADT の bounded type-inference traversal と current-source Linux native
+  self-regeneration の verified sliceであり、nominal/exhaustiveness、full ftable/import、
+  linear-memory/WasmGC runtime parity、Mac/Linux aggregate は残る。
 - [~] `LEGACY-COMP-01` full-program compiler closure — 主要 CLI builder は full-program 化済み。
   diagnostic-only legacy `lower`、no-arg pipeline runtime/native E2E、component sidecar の
   artifact boundary を閉じる。
