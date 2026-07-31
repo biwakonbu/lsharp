@@ -691,6 +691,24 @@ def expected_review_identity(arguments, provider_digests):
     return identity
 
 
+def validate_manifest_output(value):
+    if not isinstance(value, dict):
+        raise ToolError("native emitted manifest root must be a JSON object")
+    allowed = {"schema_version", "nodes", "reviews", "review_evidence_identity", "evidence", "edges"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"native emitted manifest has unknown field: {unknown[0]}")
+    required = ("schema_version", "nodes", "evidence", "edges")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"native emitted manifest is missing field: {missing[0]}")
+    if isinstance(value["schema_version"], bool) or value["schema_version"] != 1:
+        raise ToolError("native emitted manifest schema_version must be 1")
+    for name in ("nodes", "evidence", "edges"):
+        if not isinstance(value[name], list):
+            raise ToolError(f"native emitted manifest {name} must be an array")
+
+
 def verify_identity_projection(
     report, expected_identity, include_manifest, allow_existing_manifest_identity
 ):
@@ -749,9 +767,11 @@ def call_validate(program, arguments, temporary_directory):
         if manifest_path is None or not manifest_path.is_file():
             raise ToolError("native validate が manifest を生成しませんでした")
         try:
-            report["manifest"] = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise ToolError(f"native emitted manifest が不正です: {error}") from error
+        validate_manifest_output(manifest)
+        report["manifest"] = manifest
     verify_identity_projection(
         report,
         expected_review_identity(arguments, provider_digests),

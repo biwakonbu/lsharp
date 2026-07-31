@@ -63,3 +63,40 @@ def assert_validate_rejects_non_object_manifest_file_before_native(test):
         test.assertTrue(response["result"]["isError"])
         test.assertIn("JSON object", response["result"]["content"][0]["text"])
         test.assertFalse((root / "native.log").exists())
+
+
+def assert_validate_rejects_invalid_emitted_manifest(test):
+    cases = (
+        ("array", "JSON object"),
+        ("null", "JSON object"),
+        ("malformed", "manifest"),
+        ("missing", "missing field"),
+        ("unknown", "unknown field"),
+        ("nodes-object", "must be an array"),
+    )
+    for manifest_mode, expected_message in cases:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = test.write_fake_program(root)
+            result = test.run_shim(
+                program,
+                request(
+                    1,
+                    "tools/call",
+                    {
+                        "name": "lsharp_validate",
+                        "arguments": {
+                            "source": "(defn main [] true)",
+                            "include_manifest": True,
+                        },
+                    },
+                ),
+                root,
+                manifest_mode=manifest_mode,
+            )
+
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn(expected_message, response["result"]["content"][0]["text"])
+            test.assertNotIn("Traceback", response["result"]["content"][0]["text"])

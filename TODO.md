@@ -70,6 +70,10 @@
   配列・null・数値 root を native 実行前に `JSON object` 入力エラーへ変換する preflight を追加した。
   54件の native MCP suite と fake native no-execution contract で確認した verified partial sliceである。
   ADR: `docs/adr/decisions-v0.3-native-mcp-manifest-input-root.md`。
+  さらに native MCP が出力する manifest について、malformed JSON、非 object root、schema version不一致、
+  required field欠落、未知 top-level field、nodes/evidence/edges の非配列を wrapper 側で fail-closed にした。
+  native MCP 55件で traceback なしの出力境界を確認した verified partial sliceである。
+  ADR: `docs/adr/decisions-v0.3-native-mcp-manifest-output-root.md`。
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
   current-source/packaged runtime は残る。
