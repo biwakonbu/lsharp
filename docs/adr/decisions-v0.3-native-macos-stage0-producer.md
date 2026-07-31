@@ -38,12 +38,17 @@ builder が個別に存在していたが、それらを一つの再現可能な
   actual App.Cli E2E（542.31秒）を通過し、生成 stage0を
   `native-selfhost-dev-source-file-smoke.sh` へ渡して `aarch64-apple-darwin native selfhost source-file smoke passed`
   を確認した。
+- RED: 既定 macOS `TMPDIR`（`/var/folders/...`）で同じ producerを起動すると、内側の
+  `native-macos-aarch64-selfhost-release.sh` が task-owned temporary artifact pathを安全でないと拒否した。
+- GREEN: safe cleanup boundaryを正規化した `TMPDIR_ROOT` の直下 `lsharp-*` に限定して許可し、root/
+  traversal/任意 path は拒否する focused contract test と shell syntax を通過した。
 - `bash -n scripts/ci/native-macos-aarch64-stage0-release.sh scripts/ci/test-native-macos-aarch64-stage0-release.sh`
   と `git diff --check` を通過した。
 
-Mac Apple Silicon の current-source producer/package/source-file smoke は実行済みだが、これは direct
-input の証拠であり、fetch後の公式 archive経路、Linux x86_64 runtime、provider snapshot digest、packaged
-App.Cli/rollback/Wasm byte parity は N9 の残件である。`TODO.md` の `[~]` は維持する。
+Mac Apple Silicon の current-source producer/package/source-file smoke は実行済みで、既定 TMPDIR の
+task-owned path boundaryも fail-closed に固定した。ただし fetch後の公式 archive経路、Linux x86_64
+runtime、provider snapshot digest、packaged App.Cli/rollback/Wasm byte parity は N9 の残件である。
+`TODO.md` の `[~]` は維持する。
 
 ## Consequences
 

@@ -18,16 +18,24 @@ EXPECTED_CLI_VERSION="lsharp ${PACKAGE_VERSION}"
 require_safe_cleanup_path() {
   local path="$1"
   local label="$2"
+  local TMPDIR_ROOT="${TMPDIR:-/tmp}"
+  TMPDIR_ROOT="${TMPDIR_ROOT%/}"
   case "${path}" in
     ""|/|"${ROOT_DIR}"|"${ROOT_DIR}/"|*/../*|*/..)
       echo "ERROR: refusing unsafe cleanup path for ${label}: ${path}" >&2
       exit 1
       ;;
   esac
+  case "${TMPDIR_ROOT}" in
+    ""|/|*/../*|*/..)
+      echo "ERROR: refusing unsafe cleanup path for task-owned TMPDIR ${label}: ${path}" >&2
+      exit 1
+      ;;
+  esac
   case "${path}" in
-    "${ROOT_DIR}/ci-artifacts/native-release/"*|/tmp/lsharp-*) ;;
+    "${ROOT_DIR}/ci-artifacts/native-release/"*|/tmp/lsharp-*|"${TMPDIR_ROOT}/lsharp-"*) ;;
     *)
-      echo "ERROR: refusing unsafe cleanup path for ${label}: ${path}" >&2
+      echo "ERROR: refusing unsafe cleanup path for task-owned TMPDIR ${label}: ${path}" >&2
       exit 1
       ;;
   esac

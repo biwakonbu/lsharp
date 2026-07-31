@@ -62593,6 +62593,25 @@ fn test_native_macos_aarch64_release_producer_is_clean_and_size_bounded() {
 }
 
 #[test]
+fn test_native_macos_aarch64_release_producer_accepts_task_owned_tmpdir() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-macos-aarch64-selfhost-release.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "TMPDIR_ROOT=\"${TMPDIR:-/tmp}\"",
+        "\"${TMPDIR_ROOT}/lsharp-\"*",
+        "task-owned TMPDIR",
+    ] {
+        assert!(
+            script.contains(required),
+            "Mac producer は task-owned TMPDIR boundary `{required}` を許可するべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_official_release_local_gate_packages_both_supported_targets() {
     let script_path = selfhost_project_root().join("scripts/ci/native-official-release-local.sh");
     let script = std::fs::read_to_string(&script_path)
