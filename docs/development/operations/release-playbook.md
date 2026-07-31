@@ -152,6 +152,17 @@ shasum -a 256 lsharp-v<version>-<target>-host-launcher.tar.gz
 
 Mac producer は `scripts/ci/native-macos-aarch64-selfhost-release.sh`、Linux producer は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` の target-only `src/App/Cli.ls` export を使う。Linux の full self-regeneration は green な stage2/stage3 fixed-point evidence を先に得る operator gateであり、stable workflow はその heavy replay を再実行しない。
 
+Mac の current-source stage0 directory は、clean worktree で次の producerを使って `App.Cli` artifact
+から transport/materializer を含む packageへ変換する。既存の stage0 output は上書きせず、生成後は
+`native-official-release-local.sh` の fetch/runtime smokeへ渡す。
+
+```bash
+LSHARP_NATIVE_MACOS_AARCH64_STAGE0_DIR=<mac-native-stage0-dir> \
+  bash scripts/ci/native-macos-aarch64-stage0-release.sh
+```
+
+この producer の fake wiring/manifest validation は ADR [`decisions-v0.3-native-macos-stage0-producer.md`](../../adr/decisions-v0.3-native-macos-stage0-producer.md) に記録する。実 target runtime の成功を意味しない。
+
 両 target の program / manifest / stage0 directory / rollback archive が揃ったら、手動 GitHub Release に添付する前に同じ入力を local gateへ渡す。
 
 ```bash

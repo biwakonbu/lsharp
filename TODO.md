@@ -47,14 +47,17 @@
   stage0 fetch 後の directory を Mac host / Linux Lima の既存 source-file runtime smoke へ渡す wiringを
   fake two-target harness で固定した。provider helperの実取得、selfhost/native MCP parity、
   current-source と packaged stage0 の provenance、Mac Apple Silicon / Linux x86_64 の実 release
-  artifact/runtime gate は残る。ADR:
+  artifact/runtime gate は残る。さらに Mac `App.Cli` producer、transport、materializer、stage0 package
+  builderを接続する current-source producer wrapper と既存 output の fail-closed を fake harnessで
+  固定した。実 Mac/Linux runtime、provider取得、bytes parity は残る。ADR:
   `docs/adr/decisions-v0.3-release-identity-gate.md`,
   `docs/adr/decisions-v0.3-provider-input-identity-preparer.md`,
   `docs/adr/decisions-v0.3-provider-snapshot-digest-verification.md`,
   `docs/adr/decisions-v0.3-native-release-snapshot-wiring.md`,
   `docs/adr/decisions-v0.3-stage0-release-smoke-snapshot-wiring.md`,
   `docs/adr/decisions-v0.3-native-official-multitarget-snapshot-wiring.md`,
-  `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`。
+  `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`,
+  `docs/adr/decisions-v0.3-native-macos-stage0-producer.md`。
 
 ## Current priority — v0.2 Milestone 2
 
