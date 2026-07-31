@@ -2721,32 +2721,107 @@
           (root_pop)
           state)))
     (assertion-check-state diagnostic-count first-error-code)))
-(defn check-property-forms-loop
+(defn check-property-forms-step-v3
   [forms idx count diagnostic-count first-error-code]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
-    (do
-      (root_push forms)
-      (let [form (vector-get forms idx)]
-        (do
-          (root_push form)
-          (let [state (check-property-form
-              form
-              diagnostic-count
-              first-error-code)]
-            (do
-              (root_push state)
-              (let [result (check-property-forms-loop
-                  forms
-                  (+ idx 1)
-                  count
-                  (vector-get state 0)
-                  (vector-get state 1))]
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state diagnostic-count first-error-code))
+    (let [form (vector-get forms idx)
+      state (check-property-form form diagnostic-count first-error-code)]
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (assertion-check-state
+              (vector-get state 0)
+              (vector-get state 1)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-property-forms-step-64-loop-bounded
+  [forms idx count diagnostic-count first-error-code remaining]
+  (do
+    (root_push forms)
+    (let [step
+      (check-property-forms-step-v3
+        forms
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+                  (root_push state)
+                  (let [next
+                    (check-property-forms-step-64-loop-bounded
+                      forms
+                      (vector-get step 1)
+                      count
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-property-forms-rooted-v3
+  [forms idx count diagnostic-count first-error-code]
+  (let [step
+    (check-property-forms-step-64-loop-bounded
+      forms
+      idx
+      count
+      diagnostic-count
+      first-error-code
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-property-forms-rooted-v3
+                forms
+                (vector-get step 1)
+                count
+                (vector-get state 0)
+                (vector-get state 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-property-forms-loop
+  [forms idx count diagnostic-count first-error-code]
+  (do
+    (root_push forms)
+    (let [parsed
+      (check-property-forms-rooted-v3
+        forms
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_pop)
+        parsed))))
 (defn check-defn-properties [decl]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -2780,31 +2855,109 @@
           (check-property-module decl)
           (assertion-check-state 0 0))))))
 
-(defn check-property-program-loop
+(defn check-property-program-step-v3
   [program idx count diagnostic-count first-error-code]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
-    (do
-      (root_push program)
-      (let [decl (vector-get program idx)]
-        (do
-          (root_push decl)
-          (let [state (check-property-decl decl)]
-            (do
-              (root_push state)
-              (let [result (check-property-program-loop
-                  program
-                  (+ idx 1)
-                  count
-                  (+ diagnostic-count (vector-get state 0))
-                  (if (= first-error-code 0)
-                    (vector-get state 1)
-                    first-error-code))]
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state diagnostic-count first-error-code))
+    (let [decl (vector-get program idx)
+      state (check-property-decl decl)]
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (assertion-check-state
+              (+ diagnostic-count (vector-get state 0))
+              (if (= first-error-code 0)
+                (vector-get state 1)
+                first-error-code)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-property-program-step-64-loop-bounded
+  [program idx count diagnostic-count first-error-code remaining]
+  (do
+    (root_push program)
+    (let [step
+      (check-property-program-step-v3
+        program
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+                  (root_push state)
+                  (let [next
+                    (check-property-program-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-property-program-rooted-v3
+  [program idx count diagnostic-count first-error-code]
+  (let [step
+    (check-property-program-step-64-loop-bounded
+      program
+      idx
+      count
+      diagnostic-count
+      first-error-code
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-property-program-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                (vector-get state 0)
+                (vector-get state 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-property-program-loop
+  [program idx count diagnostic-count first-error-code]
+  (do
+    (root_push program)
+    (let [parsed
+      (check-property-program-rooted-v3
+        program
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_pop)
+        parsed))))
 (defn check-canonical-properties-with-analysis [program analysis]
   (check-property-program-loop
     program

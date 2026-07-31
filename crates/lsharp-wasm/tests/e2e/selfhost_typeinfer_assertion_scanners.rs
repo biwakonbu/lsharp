@@ -328,6 +328,66 @@ fn test_e2e_selfhost_typeinfer_module_aggregation_preserve_cross_chunk_results()
 }
 
 #[test]
+fn test_e2e_selfhost_typeinfer_property_aggregation_use_bounded_rooted_chunks() {
+    let source = selfhost_module("TypeInferAssertions.ls");
+    for name in [
+        "check-property-forms-step-64-loop-bounded",
+        "check-property-forms-rooted-v3",
+        "check-property-program-step-64-loop-bounded",
+        "check-property-program-rooted-v3",
+    ] {
+        assert!(
+            source.contains(name),
+            "TypeInferAssertions の property aggregation は {} を持つべき",
+            name
+        );
+    }
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_property_aggregation_preserve_cross_chunk_results() {
+    let property = " :property [(for-all [value Int] :cases 1 :postcondition true)]";
+    let form_source = format!(
+        "(defn properties []{} true)",
+        property.repeat(65)
+    );
+    let program_source = (0..65)
+        .map(|index| {
+            format!(
+                "(defn property{index} []{property} true)",
+                property = property
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let form_literal = form_source.replace('"', "\\\"");
+    let program_literal = program_source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [form-result (check-canonical-properties (parse-program "{form_literal}"))
+        program-result (check-canonical-properties (parse-program "{program_literal}"))]
+    (do
+      (print (vector-get form-result 0))
+      (print (vector-get form-result 1))
+      (print (vector-get program-result 0))
+      (print (vector-get program-result 1))
+      0)))
+"#,
+        form_literal = form_literal,
+        program_literal = program_literal,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["65", "2005", "65", "2005"],
+        "property form/program aggregation は64要素境界を跨いでも件数と先頭コードを保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_typeinfer_property_checks_preserve_cross_chunk_results() {
     let binders = (0..65)
         .map(|index| format!("p{index} Int"))
