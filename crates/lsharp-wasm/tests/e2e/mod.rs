@@ -57,6 +57,7 @@ mod selfhost_typeinfer_computation_do;
 mod selfhost_typeinfer_curried_apply;
 mod selfhost_typeinfer_curried_defn_field_access;
 mod selfhost_typeinfer_curried_lambda;
+mod selfhost_typeinfer_pattern_loops;
 mod selfhost_typeinfer_match_errors;
 mod selfhost_typeinfer_pipeline_bootstrap;
 mod selfhost_typeinfer_private_visibility;
