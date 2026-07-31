@@ -137,8 +137,10 @@ smoke_archive() {
     exit 1
   fi
   vm_status="$(limactl list "${VM_NAME}" --format '{{.Status}}' 2>/dev/null || true)"
+  local vm_started_by_gate=0
   if [[ "${vm_status}" != "Running" ]]; then
     limactl start --tty=false "${VM_NAME}"
+    vm_started_by_gate=1
   fi
   local vm_work_dir="/tmp/lsharp-native-official-release-smoke-$$"
   local archive_name="$(basename "${archive_path}")"
@@ -149,7 +151,15 @@ smoke_archive() {
     cleanup_vm_work_dir() {
       limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}" >/dev/null 2>&1 || true
     }
-    trap cleanup_vm_work_dir EXIT
+    cleanup_vm_resources() {
+      local exit_status=$?
+      cleanup_vm_work_dir
+      if [[ "${vm_started_by_gate}" == "1" ]]; then
+        limactl stop "${VM_NAME}" >/dev/null 2>&1 || true
+      fi
+      return "${exit_status}"
+    }
+    trap cleanup_vm_resources EXIT
 
     limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}"
     limactl shell "${VM_NAME}" -- mkdir -p "${vm_work_dir}"

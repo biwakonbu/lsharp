@@ -14,11 +14,13 @@ SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
 PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
+RUNNING_VM_SMOKE_ROOT=""
 cleanup() {
   rm -rf "$TMP_ROOT" "$SMOKE_ROOT"
   [[ -z "$PARTIAL_SMOKE_ROOT" ]] || rm -rf "$PARTIAL_SMOKE_ROOT"
   [[ -z "$MISSING_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$MISSING_IDENTITY_SMOKE_ROOT"
   [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
+  [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
 }
 trap cleanup EXIT
 
@@ -101,8 +103,14 @@ if [[ "${FAIL_LIMACTL_COPY:-0}" == "1" && "${1:-}" == "copy" ]]; then
   exit 17
 fi
 case "${1:-}" in
-  list) printf '%s\n' 'Stopped' ;;
-  start|copy|shell) ;;
+  list)
+    if [[ "${FAKE_LIMA_RUNNING:-0}" == "1" ]]; then
+      printf '%s\n' 'Running'
+    else
+      printf '%s\n' 'Stopped'
+    fi
+    ;;
+  start|stop|copy|shell) ;;
   *) exit 1 ;;
 esac
 SH
@@ -155,6 +163,32 @@ grep -F "fetch target=aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "fetch target=x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
 grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
+grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
+
+RUNNING_VM_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-running-vm.XXXXXX)"
+RUNNING_VM_LOG="$TMP_ROOT/running-vm.log"
+FAKE_LIMA_RUNNING=1 \
+FAKE_LOG="$RUNNING_VM_LOG" \
+PATH="$PATH_PREFIX:$PATH" \
+VERSION="$VERSION" \
+SOURCE_COMMIT="$SOURCE_COMMIT" \
+DIST_DIR="$FAKE_ROOT/running-vm-dist" \
+SMOKE_ROOT="$RUNNING_VM_SMOKE_ROOT" \
+LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$RUNNING_VM_SMOKE_ROOT" \
+KEEP_WORK_DIR=1 \
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+  bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh"
+if grep -F "limactl stop lsharp-linux-x86" "$RUNNING_VM_LOG" >/dev/null; then
+  echo 'gate stopped a Lima VM it did not start' >&2
+  exit 1
+fi
 
 before_stale_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 set +e
