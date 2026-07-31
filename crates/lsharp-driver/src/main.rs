@@ -1546,8 +1546,8 @@ fn cmd_validate(
     review_inputs: &review_input::ReviewInputs,
     review_context: Option<&review_input::ReviewVerificationContext>,
 ) -> miette::Result<i32> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
     let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let (graph, review_verifications, review_identity) =
@@ -1573,8 +1573,8 @@ fn cmd_validate_source(
     review_inputs: &review_input::ReviewInputs,
     review_context: Option<&review_input::ReviewVerificationContext>,
 ) -> miette::Result<i32> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
     let (graph, source_attestations) =

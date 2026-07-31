@@ -616,6 +616,24 @@ wire ID、review subject、change invalidation、orphan/mismatch/registry-requir
 これは Rust-host source→graph の verified sliceであり、selfhost parser/IntentSource、manifest/CLI、
 native stage0、Mac Apple Silicon / Linux x86_64 parity、review provenance/privacy policy は未完了である。
 
+### EC-M2-03 Rust CLI input I/O diagnostic boundary (2026-07-31)
+
+公開 `lsharp validate <manifest>` と `lsharp validate --source <source>` の入力ファイル読み込み失敗を
+driver 共通の `[LS5001]` I/O 診断へ接続した。`--format json` でも読み込み failure は report として
+投影せず、stdout を空にして exit `1` を返す。`--emit-manifest` を同時指定しても、入力を読めない
+段階で manifest を作らない。parser/source-adapter の stable code と report の `pass` / `fail` /
+`unknown` semantics は変更していない。
+
+Evidence: `validate_manifest_read_failure_preserves_driver_io_error_boundary` と
+`validate_source_read_failure_preserves_driver_io_error_boundary` の RED は generic miette error に
+`[LS5001]` がないことを確認し、GREEN で両実 binary が exit `1`、空 stdout、`[LS5001]` を含む stderr
+を返した。既存 `validate_cli` 全34件も pass し、manifest/source report、emit-manifest、parser
+diagnostic、project-config path の回帰を確認した。
+
+これは Rust-host 公開 CLI の入力 I/O boundary に限定した verified partial sliceであり、selfhost/native
+stage0、MCP、current-source Mac Apple Silicon / Linux x86_64 artifact/runtime、EC-M2-03 aggregate は
+残件である。ADR: `docs/adr/decisions-v0.2-validation-cli-io-diagnostics.md`。
+
 ### EC-M2-03 Rust CLI source review/invalidation projection (2026-07-27)
 
 Rust の公開 `lsharp validate --source --format json --emit-manifest` を同一 source fixture で実行し、

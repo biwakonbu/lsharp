@@ -338,6 +338,77 @@ fn validate_rejects_manifest_missing_required_field_without_report_stdout() {
 }
 
 #[test]
+fn validate_manifest_read_failure_preserves_driver_io_error_boundary() {
+    let path = manifest_path("missing-input", "{}");
+    fs::remove_file(&path).expect("missing manifest fixture should be removed");
+    let output_dir = project_dir("missing-input-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let output_manifest = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            output_manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate should run");
+    let manifest_exists = output_manifest.exists();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "read failure must not emit a report"
+    );
+    assert!(!manifest_exists, "read failure must not emit a manifest");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[LS5001]"),
+        "manifest read failure should preserve driver I/O code: {stderr}"
+    );
+}
+
+#[test]
+fn validate_source_read_failure_preserves_driver_io_error_boundary() {
+    let path = source_path("missing-source-input", "(defn main [] true)");
+    fs::remove_file(&path).expect("missing source fixture should be removed");
+    let output_dir = project_dir("missing-source-input-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let output_manifest = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            output_manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate --source should run");
+    let manifest_exists = output_manifest.exists();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "read failure must not emit a report"
+    );
+    assert!(!manifest_exists, "read failure must not emit a manifest");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[LS5001]"),
+        "source read failure should preserve driver I/O code: {stderr}"
+    );
+}
+
+#[test]
 fn validate_passes_with_zero_exit_code_for_complete_manifest() {
     let path = manifest_path("pass", include_str!("fixtures/intent-graph-pass.json"));
 

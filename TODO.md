@@ -165,6 +165,8 @@
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/
   no-output contract、
+  positional manifest と `--source` の読み込み失敗を driver I/O code `LS5001`、空 stdout、
+  no-report として返す Rust CLI boundary、
   Rust MCP `lsharp_validate` の `reviews` input/output schema と `include_manifest` projection、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
   `EmbeddedCli` の source/report/pass-fail-unknown/exit、EmbeddedCli の
