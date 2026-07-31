@@ -66,6 +66,10 @@
   manifest runtime validation の verified partial sliceであり、native MCP の
   LSP/package API/provider semantics、current-source target runtime、
   packaged bytes parity、manifest runtime validation の残りは未完了である。
+  同日、native MCP `lsharp_validate` の inline `manifest` / `manifest_file` についても、malformed JSON と
+  配列・null・数値 root を native 実行前に `JSON object` 入力エラーへ変換する preflight を追加した。
+  54件の native MCP suite と fake native no-execution contract で確認した verified partial sliceである。
+  ADR: `docs/adr/decisions-v0.3-native-mcp-manifest-input-root.md`。
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
   current-source/packaged runtime は残る。

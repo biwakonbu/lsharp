@@ -534,6 +534,16 @@ def input_file(arguments, temporary_directory, names=("source", "file")):
     return path.resolve()
 
 
+def require_manifest_object(path, label):
+    try:
+        content = path.read_text(encoding="utf-8")
+        value = json.loads(content)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ToolError(f"{label} は有効な JSON object が必要です: {error}") from error
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} は JSON object が必要です")
+
+
 def validate_input_file(arguments, temporary_directory):
     present = [name for name in ("source", "file", "manifest", "manifest_file") if name in arguments]
     if len(present) != 1:
@@ -545,11 +555,19 @@ def validate_input_file(arguments, temporary_directory):
         path = pathlib.Path(require_string(arguments, name))
         if not path.is_file():
             raise ToolError(f"native MCP manifest file が見つかりません: {path}")
-        return path.resolve()
+        path = path.resolve()
+        require_manifest_object(path, "manifest_file")
+        return path
     value = arguments[name]
     if isinstance(value, dict):
         content = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     elif isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise ToolError(f"manifest は有効な JSON object が必要です: {error}") from error
+        if not isinstance(parsed, dict):
+            raise ToolError("manifest は JSON object が必要です")
         content = value
     else:
         raise ToolError("manifest は JSON object または空でない JSON string が必要です")
