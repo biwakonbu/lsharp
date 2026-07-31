@@ -27,6 +27,17 @@ Evidence:
 
 これは Linux x86_64 Parser primitive scanner の verified sliceであり、Parser全体や V2-16 の Rust-free 完了を意味しない。feature-specific Mac gate、current-source stage0 package、全 source-file/public command parity、残りの Parser loops と aggregateは別の残件として維持する。
 
+### Linux x86_64 Parser collection helper evidence (2026-07-31)
+
+`Parser.ls` の `vector-set-at-loop` と `defn-signature-param-present-v3` に残っていた入力長比例 recursionを、state vector、一要素 step、64要素 bounded chunk、rooted continuationへまとめて移行した。vector の length/index/value と typed defn signature の presence 判定は維持している。
+
+Evidence:
+
+- RED/GREEN: `test_e2e_selfhost_parser_collection_helpers_use_bounded_chunks` と `test_e2e_selfhost_parser_collection_helpers_preserve_cross_chunk_results` は、129要素 vector と 65 parameter slots の境界を native selfhost runtimeで確認した。focused 2件、Parser source parse (`decls:395` / `diagnostics:0`)、record literal/pattern regression 10件、typed defn signature regression 6件は passした。
+- Linux native fixed point for `c52812c2`: `ci-artifacts/native-linux-x86-hostgen-vm/c52812c2-parser-collection/actual-selfregen-summary.json` は `status:pass`、stage2/stage3 code length は各 `11482035`、stdout は各 `12244549` bytesで SHA-256 `48fad9604422324e7b38911082265462027f8fa8d5ef280b09caa63e9a23947e`、byte-for-byteで一致し、stderrは各0 bytesだった。actual-stage1 manifest の `source_commit` は `c52812c2328d0a0c8978ea3f071693b67eef3e4d`、`code_len` は `4398215`、`data_len` は `2325`、`entrypoint_offset` は `4395755`、`function_start_len` は `3459`、`main_func_idx` は `3468`。`ACTUAL_CHUNK_SIZE=128` / retry=1 / heap=4GiB / fail-fast OOMで stage1 -> stage2 -> stage3を完走し、検証後は debug bundle、VM workdir/lock、idle VMを回収・停止して summary、actual-stage1 metadata/seed/code/data、stage2/stage3 stdout/stderrだけを約 `28M` artifactへ保持した。
+
+これは Linux x86_64 Parser collection helper の verified sliceであり、Parser全体や V2-16 の Rust-free 完了を意味しない。feature-specific Mac gate、current-source stage0 package、全 source-file/public command parity、残りの Parser loops と aggregateは別の残件として維持する。
+
 ### Linux x86_64 TypeScheme bounded traversal evidence (2026-07-31)
 
 `TypeScheme.ls` の `instantiate` bound variable / record field / TypeApp argument traversal、`free-vars` の contains / append / record / app traversal、`generalize` の bound-variable collectionに残っていた入力長比例 recursionを、一要素 step、64要素 bounded chunk、rooted continuationへまとめて移行した。既存の substitution、record field type、TypeApp argument、generalized variableの意味論と root ownershipは維持している。
