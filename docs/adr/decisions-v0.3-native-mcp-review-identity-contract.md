@@ -27,12 +27,16 @@ the child process boundary itself must remain fail-closed.
   digests. Reject missing, reordered, or unequal fields before returning the MCP
   result. If a manifest was requested, apply the same comparison to its
   `review_evidence_identity`.
+- For `source` / `file` validation routes without an explicit identity context,
+  reject a native report or emitted manifest that invents
+  `review_evidence_identity`. Existing manifest / manifest-file identity remains
+  an explicit caller-provided boundary.
 
 ## Evidence
 
 - `scripts/ci/test-native-selfhost-mcp.py` verifies the published dependency
   schema, complete identity forwarding, report/manifest projection, and
-  missing/mismatched identity fail-closed behavior.
+  missing/mismatched and implicit identity fail-closed behavior.
 - Native MCP and runner focused tests, Python compilation, shell syntax checks,
   docs audit, and `git diff --check` pass.
 

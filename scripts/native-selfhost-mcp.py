@@ -539,8 +539,17 @@ def expected_review_identity(arguments, provider_digests):
     return identity
 
 
-def verify_identity_projection(report, expected_identity, include_manifest):
+def verify_identity_projection(
+    report, expected_identity, include_manifest, allow_existing_manifest_identity
+):
     if expected_identity is None:
+        report_has_identity = "review_evidence_identity" in report
+        manifest = report.get("manifest") if include_manifest else None
+        manifest_has_identity = isinstance(manifest, dict) and "review_evidence_identity" in manifest
+        if not allow_existing_manifest_identity and (report_has_identity or manifest_has_identity):
+            raise ToolError(
+                "native validate returned implicit review_evidence_identity without explicit review context"
+            )
         return
     actual_identity = report.get("review_evidence_identity")
     if not isinstance(actual_identity, dict):
@@ -595,6 +604,7 @@ def call_validate(program, arguments, temporary_directory):
         report,
         expected_review_identity(arguments, provider_digests),
         include_manifest,
+        "manifest" in arguments or "manifest_file" in arguments,
     )
     return report
 

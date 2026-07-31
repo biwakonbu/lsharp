@@ -64,6 +64,17 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     if mode == "missing":
                         report_identity = None
                         manifest_identity = None
+                    elif mode == "unexpected":
+                        implicit_identity = {{
+                            "subject_digest": "sha256:implicit",
+                            "source_commit": "b" * 40,
+                            "artifact_digest": "sha256:implicit-artifact",
+                            "trust_store_digest": None,
+                            "lifecycle_digest": None,
+                            "now": "2026-08-01T00:00:00Z",
+                        }}
+                        report_identity = dict(implicit_identity)
+                        manifest_identity = dict(implicit_identity)
                     elif mode == "report-mismatch":
                         report_identity["subject_digest"] = "sha256:wrong"
                     elif mode == "manifest-mismatch":
@@ -443,6 +454,26 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             response = self.responses(result.stdout)[0]["result"]
             self.assertTrue(response["isError"])
             self.assertIn("is missing", response["content"][0]["text"])
+
+    def test_implicit_report_identity_is_rejected_without_explicit_context(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {"source": "(defn main [] true)"},
+                },
+            )
+
+            result = self.run_shim(program, payload, root, identity_mode="unexpected")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("implicit", response["content"][0]["text"])
 
     def test_native_manifest_identity_mismatch_is_rejected_after_execution(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
