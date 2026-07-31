@@ -172,6 +172,14 @@ esac
 [[ "$OUTPUT_DIR" != "/" && "$OUTPUT_DIR" != "." ]] \
   || die "unsafe output directory: $OUTPUT_DIR"
 
+OUTPUT_DIR="$(python3 - "$OUTPUT_DIR" <<'PY'
+import pathlib
+import sys
+
+print(pathlib.Path(sys.argv[1]).resolve())
+PY
+)"
+
 validate_native_stage0_package "$STAGE0_DIR" "$TARGET"
 
 if [[ -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then

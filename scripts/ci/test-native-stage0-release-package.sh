@@ -170,6 +170,24 @@ PY
 cmp -s "$EXTRACTED_STAGE0/checksums.txt" "$TMP_ROOT/actual-checksums.txt" \
   || fail "archive package checksums do not match payload"
 
+RELATIVE_ROOT="$TMP_ROOT/relative-output"
+mkdir -p "$RELATIVE_ROOT"
+cp -pR "$STAGE0_DIR" "$RELATIVE_ROOT/stage0"
+RELATIVE_ARCHIVE="$RELATIVE_ROOT/relative-dist/lsharp-stage0-${VERSION}-relative-${TARGET}.tar.gz"
+(
+  cd "$RELATIVE_ROOT"
+  NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
+    PATH="$HOST_BIN:$PATH" \
+    "$RELEASE_PACKAGE" \
+      --target "$TARGET" \
+      --version "$VERSION-relative" \
+      --stage0-dir "$RELATIVE_ROOT/stage0" \
+      --source-commit "$SOURCE_COMMIT" \
+      --output-dir relative-dist
+)
+[[ -s "$RELATIVE_ARCHIVE" ]] \
+  || fail "native stage0 release package did not support a relative output directory: $RELATIVE_ARCHIVE"
+
 printf '%s\n' '{"keys":["tampered-key"]}' >"$TRUST_STORE_PATH"
 TAMPER_DIST_DIR="$TMP_ROOT/tampered-dist"
 set +e

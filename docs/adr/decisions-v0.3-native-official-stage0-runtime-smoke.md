@@ -66,6 +66,16 @@ provider snapshot の取得・認証や release archive の identity 検証は�
 - Direct Mac evidence: current `f6a6da30` の producer/package outputを Mac source-file smokeへ渡す経路は
   actual App.Cli E2E と `aarch64-apple-darwin native selfhost source-file smoke passed` まで通過した。
   これは `fetch-stage0.sh` を含む公式 orchestrator の証拠ではなく、Linux x86_64 runtimeも未検証である。
+- Direct current-source Mac evidence (2026-08-01): `origin/main` の `be17567f35f2f688a51652efc0bb6ba31ed12582`
+  を clean worktree で `native-macos-aarch64-stage0-release.sh` に渡し、actual App.Cli E2E（1 passed、
+  489.04s）から current-source stage0 packageを生成した。stage0 manifestは target/source commitと
+  payloadを検証済みで、manifest digestは
+  `574f4fedbf3a0bd7d034c9443b99fa2137eed3199ad06320f581c583606a4f48`（259 bytes）だった。relative
+  `--output-dir` を使う stage0 release packageで tar archive生成が失敗する RED も再現し、出力先を
+  canonical absolute pathへ解決する修正と regression testを追加した。修正後、package archiveを
+  `fetch-stage0.sh` の local file release inputで checksum/provenance検証し、fetched stage0を source-file
+  smokeへ渡した。producer/fetched smokeとも exit `0`、`compile.wasm` / `build.wasm` は同一 digest
+  `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`（2,559 bytes）だった。
 - `bash -n scripts/ci/native-official-release-local.sh scripts/ci/test-native-official-release-snapshots.sh`
   と `git diff --check` を通過した。
 

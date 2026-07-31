@@ -104,7 +104,16 @@
   source commit/target、stage0 payload、`compile.wasm` / `build.wasm` digest/size、App.Cli
   `--version` / `--help` の exit/stderrを確認した。これは証跡伝播と Mac current-source/fetch runtime の
   verified partial sliceであり、実 Linux runtime、provider取得、両 target packaged bytes/rollback parityは残る。ADR:
-  `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`。さらに native manifest の
+  `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`。2026-08-01 に current
+  `origin/main` `be17567f35f2f688a51652efc0bb6ba31ed12582` の Mac Apple Silicon stage0 producerを
+  actual App.Cli E2E（489.04秒）で完走させ、manifest digest
+  `574f4fedbf3a0bd7d034c9443b99fa2137eed3199ad06320f581c583606a4f48`（259 bytes）、source commit/target/payloadを確認した。
+  relative `--output-dir` の stage0 release archive生成失敗を RED→GREEN の regression testで閉じ、
+  package→local file `fetch-stage0.sh` checksum/provenance→fetched source-file smokeを通過させた。
+  producer/fetched smokeとも exit `0`、`compile.wasm` / `build.wasm` は digest
+  `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`（2,559 bytes）で一致した。
+  これは Mac current-source/fetch runtimeの verified partial sliceであり、Linux runtime、provider取得、両 target packaged bytes/rollback parityは残る。
+  さらに native manifest の
   node/evidence/subject ID fields を一つの serializer helper へ統合し、EC-M3-01 canonical
   manifest bytes の working-tree preflight parity を確認した。これは serializer の verified
   sliceであり、fresh producer と両 target runtime の証拠は残る。ADR:
