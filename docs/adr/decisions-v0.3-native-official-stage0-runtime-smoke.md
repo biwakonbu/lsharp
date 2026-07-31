@@ -1,0 +1,47 @@
+# ADR: official multi-target gate の stage0 fetch 後 runtime smoke
+
+- Date: 2026-07-31
+- Status: Accepted (verified partial slice)
+- Scope: `M3-05-N9` / `EC-M3-05`
+
+## Context
+
+`native-official-release-local.sh` は、native-only archive と stage0 archive を package し、
+`fetch-stage0.sh` で manifest と payload checksum を確認していた。しかし fetch した stage0 の
+compiler を実行していなかったため、package → fetch の成功だけでは current-source stage0 の
+runtime evidence にならなかった。
+
+## Decision
+
+stage0 fetch の直後に、fetch 済み directory を target 固有の既存 source-file smoke へ渡す。
+
+- `aarch64-apple-darwin`: `native-selfhost-dev-source-file-smoke.sh` を Mac host で実行する。
+- `x86_64-unknown-linux-gnu`: `native-linux-x86-native-stage0-source-file-smoke.sh` を通して Lima
+  VM 内で実行する。
+- いずれも元の stage0 input ではなく `${SMOKE_ROOT}/stage0-${target}` を渡し、fetch 後の payload
+  を実際に使用する。
+- target dispatch にない値は明示的に失敗する。既存の source-commit、target、blocked host tool、
+  Wasm magic、VM/temp cleanup の契約は各 smoke scriptへ委譲する。
+
+provider snapshot の取得・認証や release archive の identity 検証はこの sliceで変更しない。
+それらは N8 の offline propagation と release-smoke が担い、実 provider/runtime の証拠は別に閉じる。
+
+## Evidence
+
+- RED: `bash scripts/ci/test-native-official-release-snapshots.sh` は runtime invocation log がなく
+  失敗した。
+- GREEN: 同じ fake two-target harness が Mac/Lima wrapper の両方へ fetch 済み stage0 path が渡ること、
+  既存の snapshot propagation と片側入力拒否を確認して通過した。
+- `bash -n scripts/ci/native-official-release-local.sh scripts/ci/test-native-official-release-snapshots.sh`
+  と `git diff --check` を通過した。
+
+この証拠は orchestrator の wiring と fake target boundary に限られる。current checkout と一致する
+Mac Apple Silicon / Linux x86_64 stage0 の実 runtime、provider snapshot digest の bytes 比較、
+packaged App.Cli の `--version` / `--help` と rollback/Wasm parity は未取得であり、N9 と EC-M3-05 は
+`[~]` のまま残す。
+
+## Consequences
+
+公式 local gate は manifest の存在確認で止まらず、fetch した stage0 を target runtime smoke へ
+接続できる。実 target gate は重い処理なので、既存の Lima lock/artifact を再利用して target ごとに
+一つだけ実行し、完了後に smoke script の cleanup 契約を適用する。

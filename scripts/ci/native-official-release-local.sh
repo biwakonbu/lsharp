@@ -245,6 +245,27 @@ smoke_stage0_fetch() {
   require_file "${stage0_dir}/manifest.json" "${target} fetched native stage0 manifest"
 }
 
+smoke_stage0_runtime() {
+  local target="$1"
+  local stage0_dir="${SMOKE_ROOT}/stage0-${target}"
+
+  case "${target}" in
+    aarch64-apple-darwin)
+      NATIVE_STAGE0_DIR="${stage0_dir}" \
+        NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
+        bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
+      ;;
+    x86_64-unknown-linux-gnu)
+      LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="${stage0_dir}" \
+        bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
+      ;;
+    *)
+      echo "ERROR: unsupported native stage0 runtime target: ${target}" >&2
+      exit 1
+      ;;
+  esac
+}
+
 mkdir -p "${DIST_DIR}"
 rm -rf "${SMOKE_ROOT}"
 
@@ -262,7 +283,9 @@ package_stage0_target "x86_64-unknown-linux-gnu" "${LINUX_STAGE0_DIR}"
 bash scripts/checksum.sh "${DIST_DIR}" > "${DIST_DIR}/checksums.txt"
 RELEASE_BASE_URL="$(release_base_url)"
 smoke_stage0_fetch "aarch64-apple-darwin" "${RELEASE_BASE_URL}"
+smoke_stage0_runtime "aarch64-apple-darwin"
 smoke_stage0_fetch "x86_64-unknown-linux-gnu" "${RELEASE_BASE_URL}"
+smoke_stage0_runtime "x86_64-unknown-linux-gnu"
 
 dist_kib="$(du -sk "${DIST_DIR}" | awk '{print $1}')"
 if (( dist_kib > MAX_DIST_KIB )); then

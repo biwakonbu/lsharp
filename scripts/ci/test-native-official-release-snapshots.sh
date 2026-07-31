@@ -11,13 +11,32 @@ SOURCE_COMMIT="0123456789abcdef0123456789abcdef01234567"
 VERSION="v0.0.0-test"
 PATH_PREFIX="$TMP_ROOT/bin"
 SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
-trap 'rm -rf "$TMP_ROOT" "$SMOKE_ROOT"' EXIT
+PARTIAL_SMOKE_ROOT=""
+cleanup() {
+  rm -rf "$TMP_ROOT" "$SMOKE_ROOT"
+  [[ -z "$PARTIAL_SMOKE_ROOT" ]] || rm -rf "$PARTIAL_SMOKE_ROOT"
+}
+trap cleanup EXIT
 
 mkdir -p "$FAKE_ROOT/scripts/ci" "$PATH_PREFIX" "$FAKE_ROOT/dist"
 printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
 printf '%s\n' '{"review_id":"review:orchestrator/r1","state":"active"}' >"$LIFECYCLE"
 
 cp "$ROOT/scripts/ci/native-official-release-local.sh" "$FAKE_ROOT/scripts/ci/"
+
+cat >"$FAKE_ROOT/scripts/ci/native-selfhost-dev-source-file-smoke.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "runtime mac stage0=${NATIVE_STAGE0_DIR:-} source=${NATIVE_SELFHOST_SOURCE_ROOT:-}" >>"$FAKE_LOG"
+SH
+chmod +x "$FAKE_ROOT/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
+
+cat >"$FAKE_ROOT/scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "runtime linux stage0=${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-}" >>"$FAKE_LOG"
+SH
+chmod +x "$FAKE_ROOT/scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh"
 
 cat >"$FAKE_ROOT/scripts/release.sh" <<'SH'
 #!/usr/bin/env bash
@@ -100,6 +119,7 @@ VERSION="$VERSION" \
 SOURCE_COMMIT="$SOURCE_COMMIT" \
 DIST_DIR="$FAKE_ROOT/dist" \
 SMOKE_ROOT="$SMOKE_ROOT" \
+LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$SMOKE_ROOT" \
 NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
 NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
 MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
@@ -119,14 +139,18 @@ grep -F "review-lifecycle.snapshot" "$LOG_PATH" >/dev/null
 grep -F "review_identity_timestamp.py" "$LOG_PATH" >/dev/null
 grep -F "fetch target=aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "fetch target=x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
+grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin" "$LOG_PATH" >/dev/null
+grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
 
 set +e
+PARTIAL_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-partial.XXXXXX)"
 partial_output="$(
   PATH="$PATH_PREFIX:$PATH" \
   VERSION="$VERSION" \
   SOURCE_COMMIT="$SOURCE_COMMIT" \
   DIST_DIR="$FAKE_ROOT/partial-dist" \
-  SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-partial.XXXXXX)" \
+  SMOKE_ROOT="$PARTIAL_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$PARTIAL_SMOKE_ROOT" \
   NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
   NATIVE_OFFICIAL_REVIEW_LIFECYCLE="" \
     bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1

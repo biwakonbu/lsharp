@@ -43,15 +43,18 @@
   `RELEASE_REVIEW_TRUST_STORE` / `RELEASE_REVIEW_LIFECYCLE` から native-only archive の identity を再検証する
   offline propagation まで verified partial として追加した。さらに
   `native-official-release-local.sh` が同じ snapshot を両 target の release、stage0 package、Mac smoke、
-  Linux VM smoke へ伝播する offline orchestrator wiring も verified partial として追加した。provider
-  helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
-  Mac Apple Silicon / Linux x86_64 の実 release artifact/runtime gate は残る。ADR:
+  Linux VM smoke へ伝播する offline orchestrator wiring も verified partial として追加した。さらに
+  stage0 fetch 後の directory を Mac host / Linux Lima の既存 source-file runtime smoke へ渡す wiringを
+  fake two-target harness で固定した。provider helperの実取得、selfhost/native MCP parity、
+  current-source と packaged stage0 の provenance、Mac Apple Silicon / Linux x86_64 の実 release
+  artifact/runtime gate は残る。ADR:
   `docs/adr/decisions-v0.3-release-identity-gate.md`,
   `docs/adr/decisions-v0.3-provider-input-identity-preparer.md`,
   `docs/adr/decisions-v0.3-provider-snapshot-digest-verification.md`,
   `docs/adr/decisions-v0.3-native-release-snapshot-wiring.md`,
   `docs/adr/decisions-v0.3-stage0-release-smoke-snapshot-wiring.md`,
-  `docs/adr/decisions-v0.3-native-official-multitarget-snapshot-wiring.md`。
+  `docs/adr/decisions-v0.3-native-official-multitarget-snapshot-wiring.md`,
+  `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`。
 
 ## Current priority — v0.2 Milestone 2
 
