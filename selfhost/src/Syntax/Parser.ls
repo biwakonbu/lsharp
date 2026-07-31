@@ -81,33 +81,178 @@
 
 ;; === 名前ハッシュ ===
 ;; 同じ名前は異なる位置に出現しても同一キーになる
+(defn make-parse-loop-state [done value]
+  (vector-push (vector-push (vector-new 2) done) value))
+
+(defn make-parser-scan-state [done next-pos value]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) done)
+      next-pos)
+    value))
+
+(defn name-hash-step-v3 [src pos end acc]
+  (if (>= pos end)
+    (make-parser-scan-state 1 pos acc)
+    (let [next-pos (+ pos 1)
+      next-acc (+ (string-char-at src pos) (* acc 31))]
+      (make-parser-scan-state (if (>= next-pos end) 1 0) next-pos next-acc))))
+
+(defn name-hash-step-64-loop-bounded [src pos end acc remaining]
+  (let [step (name-hash-step-v3 src pos end acc)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    next-acc (vector-get step 2)]
+    (if (= done 1)
+      step
+      (if (<= remaining 1)
+        step
+        (do
+          (root_push step)
+          (let [parsed (name-hash-step-64-loop-bounded
+                         src next-pos end next-acc (- remaining 1))]
+            (do
+              (root_pop)
+              parsed)))))))
+
+(defn name-hash-rooted-v3 [src pos end acc]
+  (let [step (name-hash-step-64-loop-bounded src pos end acc 64)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    next-acc (vector-get step 2)]
+    (if (= done 1)
+      next-acc
+      (do
+        (root_push step)
+        (let [parsed (name-hash-rooted-v3 src next-pos end next-acc)]
+          (do
+            (root_pop)
+            parsed))))))
+
 (defn name-hash-loop [src pos end acc]
-  (if (>= pos end) acc
-    (name-hash-loop src (+ pos 1) end
-      (+ (string-char-at src pos) (* acc 31)))))
+  (do
+    (root_push src)
+    (let [result (name-hash-rooted-v3 src pos end acc)]
+      (do
+        (root_pop)
+        result))))
 
 (defn name-hash [src start end]
-  (name-hash-loop src start end 0))
+  (do
+    (root_push src)
+    (let [result (name-hash-rooted-v3 src start end 0)]
+      (do
+        (root_pop)
+        result))))
+
+(defn symbol-dot-position-step-v3 [src pos end]
+  (if (>= pos end)
+    (make-parser-scan-state 1 pos -1)
+    (if (= (string-char-at src pos) 46)
+      (make-parser-scan-state 1 pos pos)
+      (let [next-pos (+ pos 1)]
+        (make-parser-scan-state (if (>= next-pos end) 1 0) next-pos -1)))))
+
+(defn symbol-dot-position-step-64-loop-bounded [src pos end remaining]
+  (let [step (symbol-dot-position-step-v3 src pos end)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    result (vector-get step 2)]
+    (if (= done 1)
+      step
+      (if (<= remaining 1)
+        step
+        (do
+          (root_push step)
+          (let [parsed (symbol-dot-position-step-64-loop-bounded
+                         src next-pos end (- remaining 1))]
+            (do
+              (root_pop)
+              parsed)))))))
+
+(defn symbol-dot-position-rooted-v3 [src pos end]
+  (let [step (symbol-dot-position-step-64-loop-bounded src pos end 64)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    result (vector-get step 2)]
+    (if (= done 1)
+      result
+      (do
+        (root_push step)
+        (let [parsed (symbol-dot-position-rooted-v3 src next-pos end)]
+          (do
+            (root_pop)
+            parsed))))))
 
 (defn symbol-dot-position-loop [src pos end]
-  (if (>= pos end)
-    -1
-    (if (= (string-char-at src pos) 46)
-      pos
-      (symbol-dot-position-loop src (+ pos 1) end))))
+  (do
+    (root_push src)
+    (let [result (symbol-dot-position-rooted-v3 src pos end)]
+      (do
+        (root_pop)
+        result))))
 
 (defn symbol-dot-position [src start end]
-  (symbol-dot-position-loop src start end))
+  (do
+    (root_push src)
+    (let [result (symbol-dot-position-rooted-v3 src start end)]
+      (do
+        (root_pop)
+        result))))
 
 ;; === 数値パース ===
 
+(defn parse-int-digits-from-str-step-v3 [src pos end acc]
+  (if (>= pos end)
+    (make-parser-scan-state 1 pos acc)
+    (let [digit (- (string-char-at src pos) 48)
+      next-pos (+ pos 1)
+      next-acc (+ (* acc 10) digit)]
+      (make-parser-scan-state (if (>= next-pos end) 1 0) next-pos next-acc))))
+
+(defn parse-int-digits-from-str-step-64-loop-bounded [src pos end acc remaining]
+  (let [step (parse-int-digits-from-str-step-v3 src pos end acc)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    next-acc (vector-get step 2)]
+    (if (= done 1)
+      step
+      (if (<= remaining 1)
+        step
+        (do
+          (root_push step)
+          (let [parsed (parse-int-digits-from-str-step-64-loop-bounded
+                         src next-pos end next-acc (- remaining 1))]
+            (do
+              (root_pop)
+              parsed)))))))
+
+(defn parse-int-digits-from-str-rooted-v3 [src pos end acc]
+  (let [step (parse-int-digits-from-str-step-64-loop-bounded src pos end acc 64)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    next-acc (vector-get step 2)]
+    (if (= done 1)
+      next-acc
+      (do
+        (root_push step)
+        (let [parsed (parse-int-digits-from-str-rooted-v3
+                       src next-pos end next-acc)]
+          (do
+            (root_pop)
+            parsed))))))
+
 (defn parse-int-digits-from-str [src pos end acc]
-  (if (>= pos end) acc
-    (let [digit (- (string-char-at src pos) 48)]
-      (parse-int-digits-from-str src (+ pos 1) end (+ (* acc 10) digit)))))
+  (do
+    (root_push src)
+    (let [result (parse-int-digits-from-str-rooted-v3 src pos end acc)]
+      (do
+        (root_pop)
+        result))))
 
 (defn parse-int-from-str [src pos end acc]
-  (if (>= pos end) acc
+  (if (>= pos end)
+    acc
     (if (== (string-char-at src pos) 45)
       (- 0 (parse-int-digits-from-str src (+ pos 1) end 0))
       (parse-int-digits-from-str src pos end acc))))
@@ -163,24 +308,72 @@
             92
             escaped))))))
 
-(defn string-literal-map-hash-loop [src pos end acc]
+(defn string-literal-map-hash-step-v3 [src pos end acc]
   (if (>= pos end)
-    acc
+    (make-parser-scan-state 1 pos acc)
     (let [char (string-char-at src pos)]
       (if (= char 92)
         (if (< (+ pos 1) end)
-          (let [escaped (string-char-at src (+ pos 1))]
-            (string-literal-map-hash-loop
-              src
-              (+ pos 2)
-              end
-              (+ (string-literal-map-hash-escaped-char escaped) (* acc 31))))
-          (string-literal-map-hash-loop src (+ pos 1) end (+ char (* acc 31))))
-        (string-literal-map-hash-loop src (+ pos 1) end (+ char (* acc 31)))))))
+          (let [escaped (string-char-at src (+ pos 1))
+            next-pos (+ pos 2)
+            next-acc (+ (string-literal-map-hash-escaped-char escaped) (* acc 31))]
+            (make-parser-scan-state
+              (if (>= next-pos end) 1 0)
+              next-pos
+              next-acc))
+          (let [next-pos (+ pos 1)
+            next-acc (+ char (* acc 31))]
+            (make-parser-scan-state (if (>= next-pos end) 1 0) next-pos next-acc)))
+        (let [next-pos (+ pos 1)
+          next-acc (+ char (* acc 31))]
+          (make-parser-scan-state (if (>= next-pos end) 1 0) next-pos next-acc))))))
+
+(defn string-literal-map-hash-step-64-loop-bounded [src pos end acc remaining]
+  (let [step (string-literal-map-hash-step-v3 src pos end acc)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    next-acc (vector-get step 2)]
+    (if (= done 1)
+      step
+      (if (<= remaining 1)
+        step
+        (do
+          (root_push step)
+          (let [parsed (string-literal-map-hash-step-64-loop-bounded
+                         src next-pos end next-acc (- remaining 1))]
+            (do
+              (root_pop)
+              parsed)))))))
+
+(defn string-literal-map-hash-rooted-v3 [src pos end acc]
+  (let [step (string-literal-map-hash-step-64-loop-bounded src pos end acc 64)
+    done (vector-get step 0)
+    next-pos (vector-get step 1)
+    next-acc (vector-get step 2)]
+    (if (= done 1)
+      next-acc
+      (do
+        (root_push step)
+        (let [parsed (string-literal-map-hash-rooted-v3 src next-pos end next-acc)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn string-literal-map-hash-loop [src pos end acc]
+  (do
+    (root_push src)
+    (let [result (string-literal-map-hash-rooted-v3 src pos end acc)]
+      (do
+        (root_pop)
+        result))))
 
 (defn string-literal-map-hash [src start end]
-  (let [hash (string-literal-map-hash-loop src start end 0)]
-    (if (= hash 0) 2 (if (= hash -1) 1 hash))))
+  (do
+    (root_push src)
+    (let [hash (string-literal-map-hash-rooted-v3 src start end 0)]
+      (do
+        (root_pop)
+        (if (= hash 0) 2 (if (= hash -1) 1 hash))))))
 
 ;; === AST ノード構築ヘルパー ===
 
