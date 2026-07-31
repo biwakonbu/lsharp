@@ -120,14 +120,106 @@
 
 ;; レコード型からフィールド型を取得
 (defn type-record-field-type [ty field-name-hash]
-  (type-record-field-type-loop ty field-name-hash 2 (vector-length ty)))
+  (do
+    (root_push ty)
+    (let [result
+            (type-record-field-type-rooted-v3
+              ty field-name-hash 2 (vector-length ty))]
+      (do
+        (root_pop)
+        result))))
 
-(defn type-record-field-type-loop [ty field-name-hash idx len]
+(defn type-record-operation-state [done next-idx result]
+  (do
+    (root_push result)
+    (let [base (vector-new 3)
+          base-slot (root_push base)
+          with-done (vector-push base done)]
+      (do
+        (root_set base-slot with-done)
+        (let [with-idx (vector-push with-done next-idx)]
+          (do
+            (root_set base-slot with-idx)
+            (let [state (vector-push with-idx result)]
+              (do
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn type-record-field-type-state [done next-idx result]
+  (type-record-operation-state done next-idx result))
+
+(defn type-record-field-type-step-v3 [ty field-name-hash idx len]
   (if (>= idx len)
-    0
-    (if (= (vector-get ty idx) field-name-hash)
-      (vector-get ty (+ idx 1))
-      (type-record-field-type-loop ty field-name-hash (+ idx 2) len))))
+    (type-record-field-type-state 1 idx 0)
+    (do
+      (root_push ty)
+      (let [state
+              (if (= (vector-get ty idx) field-name-hash)
+                (let [field-ty (vector-get ty (+ idx 1))]
+                  (do
+                    (root_push field-ty)
+                    (let [result
+                            (type-record-field-type-state 1 idx field-ty)]
+                      (do
+                        (root_pop)
+                        result))))
+                (type-record-field-type-state 0 (+ idx 2) 0))]
+        (do
+          (root_pop)
+          state)))))
+
+(defn type-record-field-type-step-64-loop-bounded
+  [ty field-name-hash idx len remaining]
+  (do
+    (root_push ty)
+    (let [step
+            (type-record-field-type-step-v3 ty field-name-hash idx len)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (type-record-field-type-step-64-loop-bounded
+                      ty
+                      field-name-hash
+                      next-idx
+                      len
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn type-record-field-type-step-64 [ty field-name-hash idx len]
+  (type-record-field-type-step-64-loop-bounded
+    ty field-name-hash idx len 64))
+
+(defn type-record-field-type-rooted-v3 [ty field-name-hash idx len]
+  (let [step
+          (type-record-field-type-step-64 ty field-name-hash idx len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (type-record-field-type-rooted-v3
+                      ty field-name-hash next-idx len)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 ;; 関数型のパラメータ型を取得
 (defn type-fun-param [ty]
@@ -167,13 +259,88 @@
 
 ;; record の field 名と field 型を declaration order で構造比較する。
 (defn type-record-fields-eq [ty1 ty2 idx len]
+  (do
+    (root_push ty1)
+    (root_push ty2)
+    (let [result
+            (type-record-fields-eq-rooted-v3 ty1 ty2 idx len)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn type-record-fields-eq-state [done next-idx result]
+  (type-record-operation-state done next-idx result))
+
+(defn type-record-fields-eq-step-v3 [ty1 ty2 idx len]
   (if (>= idx len)
-    1
-    (if (= (vector-get ty1 idx) (vector-get ty2 idx))
-      (if (= (types-eq (vector-get ty1 (+ idx 1)) (vector-get ty2 (+ idx 1))) 1)
-        (type-record-fields-eq ty1 ty2 (+ idx 2) len)
-        0)
-      0)))
+    (type-record-fields-eq-state 1 idx 1)
+    (do
+      (root_push ty1)
+      (root_push ty2)
+      (let [state
+              (if (= (vector-get ty1 idx) (vector-get ty2 idx))
+                (if (= (types-eq
+                          (vector-get ty1 (+ idx 1))
+                          (vector-get ty2 (+ idx 1)))
+                       1)
+                  (type-record-fields-eq-state 0 (+ idx 2) 1)
+                  (type-record-fields-eq-state 1 idx 0))
+                (type-record-fields-eq-state 1 idx 0))]
+        (do
+          (root_pop)
+          (root_pop)
+          state)))))
+
+(defn type-record-fields-eq-step-64-loop-bounded
+  [ty1 ty2 idx len remaining]
+  (do
+    (root_push ty1)
+    (root_push ty2)
+    (let [step
+            (type-record-fields-eq-step-v3 ty1 ty2 idx len)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (type-record-fields-eq-step-64-loop-bounded
+                      ty1 ty2 next-idx len (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn type-record-fields-eq-step-64 [ty1 ty2 idx len]
+  (type-record-fields-eq-step-64-loop-bounded
+    ty1 ty2 idx len 64))
+
+(defn type-record-fields-eq-rooted-v3 [ty1 ty2 idx len]
+  (let [step
+          (type-record-fields-eq-step-64 ty1 ty2 idx len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (type-record-fields-eq-rooted-v3
+                      ty1 ty2 next-idx len)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 ;; === Substitution ===
 
