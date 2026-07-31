@@ -4,27 +4,11 @@
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
 (import Types.TypeInfer)
-;; TypeInferPattern.ls - パターンマッチの型推論
-;; パターン種別:
-;;   1 = リテラル整数パターン
-;;   2 = リテラル真偽値パターン
-;;   3 = リテラル文字列パターン
-;;   4 = 変数パターン (ワイルドカード含む)
-;;   11 = コンストラクタパターン (tag-pattern)
-;;   12 = レコードパターン
-;; 引数:
-;;   pat     - パターンノード [tag, ...]
-;;   env     - 型環境
-;;   subst   - 現在の置換
-;;   counter - 型変数カウンタ
-;; 戻り値:
-;;   [subst, type, updated-env] - 更新された置換、パターンの型、束縛追加後の環境
-(defn pattern-children-subst [r]
-  (vector-get r 0))
-(defn pattern-children-env [r]
-  (vector-get r 1))
-;; subpattern 群を左から処理して binder env を積み上げる。
-;; base-index + idx * stride が subpattern の位置。
+;; TypeInferPattern.ls - パターン型推論。tag は literal=1/2/3、var=4/40/41、
+;; constructor=11/43、record=12/44。戻り値は [subst, type, updated-env]。
+(defn pattern-children-subst [r] (vector-get r 0))
+(defn pattern-children-env [r] (vector-get r 1))
+;; subpattern を左から処理して binder env を積み上げる。
 (defn infer-pattern-children-state [done next-idx subst env]
   (vector-push-quad-rooted (vector-new 4) done next-idx subst env))
 (defn infer-pattern-children-step-v3
@@ -103,8 +87,7 @@
             (root_pop) (root_pop)
             (root_pop)
             parsed))))))
-(defn infer-pattern-children-step-64
-  [node idx count base-index stride env subst counter]
+(defn infer-pattern-children-step-64 [node idx count base-index stride env subst counter]
   (infer-pattern-children-step-64-loop-bounded
     node idx count base-index stride env subst counter 64))
 (defn infer-pattern-children-rooted-v3
@@ -145,45 +128,20 @@
                 (root_pop)
                 resolved))))))))
 (defn infer-pattern-children [node idx count base-index stride env subst counter]
-  (do
-    (root_push node) (root_push env)
-    (root_push subst) (root_push counter)
+  (do (root_push node) (root_push env) (root_push subst) (root_push counter)
     (let [result
             (infer-pattern-children-rooted-v3
               node idx count base-index stride env subst counter)]
-      (do
-        (root_push result)
-        (root_pop) (root_pop)
-        (root_pop) (root_pop)
-        (root_pop)
-        result))))
+      (do (root_push result) (root_pop) (root_pop) (root_pop) (root_pop)
+        (root_pop) result))))
 (defn infer-pattern-continuation-state
   [done next-idx env subst carry terminal]
-  (do
-    (root_push env) (root_push subst)
-    (root_push carry) (root_push terminal)
-    (let [payload
-            (vector-push-quad-rooted
-              (vector-new 4)
-              env
-              subst
-              carry
-              terminal)]
-      (do
-        (root_push payload)
-        (let [state
-                (vector-push-triple-rooted
-                  (vector-new 3)
-                  done
-                  next-idx
-                  payload)]
-          (do
-            (root_pop) (root_pop)
-            (root_pop) (root_pop)
-            (root_pop)
-            state))))))
-;; constructor pattern の subpattern を左から処理し、
-;; コンストラクタ引数型との unify を行って最終戻り型を返す。
+  (do (root_push env) (root_push subst) (root_push carry) (root_push terminal)
+    (let [payload (vector-push-quad-rooted (vector-new 4) env subst carry terminal)]
+      (do (root_push payload)
+        (let [state (vector-push-triple-rooted (vector-new 3) done next-idx payload)]
+          (do (root_pop) (root_pop) (root_pop) (root_pop) (root_pop) state))))))
+;; constructor subpattern を左から処理し、引数型と unify する。
 (defn infer-constructor-pattern-children-step-v3
   [node idx count env subst counter ctor-ty]
   (do
@@ -386,16 +344,13 @@
         (root_pop) (root_pop)
         (root_pop) (root_pop)
         result))))
-;; canonical record pattern は既存の field 配置を保ったまま末尾に type 名 hash を持つ。
-;; 旧手組み AST（type 名なし）は 0 を返し、従来の shallow fallback を維持する。
+;; canonical record pattern は field 配置を保ったまま末尾に type 名 hash を持つ。
 (defn record-pattern-type-hash [pat]
-  (let [field-count (vector-get pat 1)
-    type-slot (+ 2 (* field-count 2))]
+  (let [field-count (vector-get pat 1) type-slot (+ 2 (* field-count 2))]
     (if (> (vector-length pat) type-slot)
       (vector-get pat type-slot)
       0)))
-;; import された qualified record pattern は raw record-env に key がなくても、
-;; visible な constructor scheme の戻り型から schema を取得する。
+;; qualified record pattern は visible constructor scheme の戻り型から schema を取得する。
 (defn infer-record-pattern-constructor-result-type [ty]
   (if (= (ty-tag ty) (ty-fun))
     (infer-record-pattern-constructor-result-type (ty-fr ty))
@@ -404,17 +359,12 @@
   (let [scheme (type-env-lookup env (record-pattern-type-hash pat))]
     (if (= scheme 0)
       0
-      (do
-        (root_push scheme)
+      (do (root_push scheme)
         (let [instantiated (instantiate scheme counter)]
-          (do
-            (root_push instantiated)
-            (let [result
-                    (infer-record-pattern-constructor-result-type instantiated)]
-              (do
-                (root_pop) (root_pop)
-                result))))))))
-;; schema がある record pattern の field を左から推論し、schema field 型と unify する。
+          (do (root_push instantiated)
+            (let [result (infer-record-pattern-constructor-result-type instantiated)]
+              (do (root_pop) (root_pop) result))))))))
+;; record schema field を左から推論して schema 型と unify する。
 (defn infer-record-pattern-schema-children-step-v3
   [node idx count env subst counter record-ty]
   (do
@@ -600,17 +550,40 @@
         (root_pop) (root_pop)
         (root_pop) (root_pop)
         result))))
-;; GADT の constructor pattern が scrutinee 型変数へ注入した制約は arm-local。
-;; body の戻り値や外側環境の制約は残し、scrutinee 型に現れる変数の binding だけを
-;; 次の arm へ持ち越さない。
-(defn strip-match-scrutinee-vars [subst vars idx len]
+;; GADT constructor が scrutinee 型変数へ注入した制約は arm-local にする。
+(defn strip-match-scrutinee-vars-step-v3 [subst vars idx len]
   (if (>= idx len)
-    subst
-    (strip-match-scrutinee-vars
-      (map-remove-object-safe subst (vector-get vars idx))
-      vars
-      (+ idx 1)
-      len)))
+    (vector-push-triple-rooted (vector-new 3) 1 idx subst)
+    (vector-push-triple-rooted
+      (vector-new 3) 0 (+ idx 1)
+      (map-remove-object-safe subst (vector-get vars idx)))))
+(defn strip-match-scrutinee-vars-step-64-loop-bounded
+  [subst vars idx len remaining]
+  (let [step (strip-match-scrutinee-vars-step-v3 subst vars idx len)]
+    (if (or (= (vector-get step 0) 1) (<= remaining 1))
+      step
+      (strip-match-scrutinee-vars-step-64-loop-bounded
+        (vector-get step 2) vars (vector-get step 1) len (- remaining 1)))))
+(defn strip-match-scrutinee-vars-step-64 [subst vars idx len]
+  (strip-match-scrutinee-vars-step-64-loop-bounded subst vars idx len 64))
+(defn strip-match-scrutinee-vars-rooted-v3 [subst vars idx len]
+  (let [step (strip-match-scrutinee-vars-step-64 subst vars idx len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-subst (vector-get step 2)]
+          (do
+            (let [resolved
+                    (strip-match-scrutinee-vars-rooted-v3
+                      next-subst vars next-idx len)]
+              (do (root_pop) resolved))))))))
+(defn strip-match-scrutinee-vars [subst vars idx len]
+  (do
+    (root_push subst) (root_push vars)
+    (let [result (strip-match-scrutinee-vars-rooted-v3 subst vars idx len)]
+      (do (root_push result) (root_pop) (root_pop) (root_pop) result))))
 (defn strip-match-scrutinee-subst [scrut-ty subst]
   (let [vars (free-vars scrut-ty)]
     (strip-match-scrutinee-vars subst vars 0 (vector-length vars))))
@@ -623,34 +596,27 @@
 (defn infer-pattern [pat env subst counter]
   (let [tag (vector-get pat 0)]
     (if (= tag 1)
-      ;; 整数リテラルパターン: 型は Int、環境変化なし
       (vector-push (make-result subst (mk-int)) env)
       (if (= tag 2)
-        ;; 真偽値リテラルパターン: 型は Bool、環境変化なし
         (vector-push (make-result subst (mk-bool)) env)
         (if (= tag 3)
-          ;; 文字列リテラルパターン: 型は String、環境変化なし
           (vector-push (make-result subst (mk-string)) env)
           (if (= tag 4)
-            ;; legacy な変数パターン: 新しい型変数を割り当て
             (let [name-hash (vector-get pat 1)
               ty (fresh-type-var counter)
               scheme (mono ty)
               new-env (type-env-insert env name-hash scheme)]
               (vector-push (make-result subst ty) new-env))
             (if (= tag 40)
-              ;; canonical なワイルドカードパターン: fresh var だけ返し、束縛は追加しない
               (let [ty (fresh-type-var counter)]
                 (vector-push (make-result subst ty) env))
               (if (= tag 41)
-                ;; canonical な変数パターン: 新しい型変数を割り当て
                 (let [name-hash (vector-get pat 1)
                   ty (fresh-type-var counter)
                   scheme (mono ty)
                   new-env (type-env-insert env name-hash scheme)]
                   (vector-push (make-result subst ty) new-env))
                 (if (= tag 42)
-                  ;; canonical なリテラルパターン: [42, lit-node]
                   (let [lit-node (vector-get pat 1)
                     lit-tag (vector-get lit-node 0)]
                     (if (= lit-tag 1)
@@ -664,12 +630,9 @@
                             (let [ty (fresh-type-var counter)]
                               (vector-push (make-result subst ty) env)))))))
                   (if (or (= tag 11) (= tag 43))
-                    ;; コンストラクタパターン (tag-pattern / constructor-pattern)
-                    ;; [11, ctor-name-hash, sub-pat-count, sub-pat1, ...]
                     (let [ctor-hash (vector-get pat 1)
                       ctor-scheme (type-env-lookup env ctor-hash)]
                       (if (= ctor-scheme 0)
-                        ;; 未定義コンストラクタ: エラー
                         (vector-push
                           (make-error-result-code (error-code-undefined))
                           env)
@@ -684,8 +647,6 @@
                             counter
                             ctor-ty))))
                     (if (or (= tag 12) (= tag 44))
-                      ;; レコードパターン
-                      ;; [12/44, field-count, field-hash1, sub-pat1, ..., type-name-hash?]
                       (let [fc (vector-get pat 1)
                         type-hash (if (= tag 44) (record-pattern-type-hash pat) 0)
                         record-env (var-counter-record-env counter)
@@ -704,12 +665,10 @@
                               (vector-push
                                 (make-error-result-code (map-get child-subst -2))
                                 child-env)
-                              ;; 旧 AST は record schema を持たないため fresh var のまま扱う。
                               (let [ty (fresh-type-var counter)]
                                 (vector-push (make-result child-subst ty) child-env))))
                           (if (= record-schema 0)
                             (if (= visible-record-ty 0)
-                              ;; parser が保持した record 名が未登録なら未定義 record として拒否する。
                               (vector-push
                                 (make-error-result-code (error-code-undefined))
                                 env)
@@ -722,8 +681,6 @@
                                 counter
                                 visible-record-ty))
                             (if (= visible-record-ty 0)
-                              ;; record-env は全 program の schema を保持するため、
-                              ;; 現在 module の env にない raw/private name は拒否する。
                               (vector-push
                                 (make-error-result-code (error-code-undefined))
                                 env)
@@ -736,23 +693,20 @@
                                   subst
                                   counter
                                   record-ty))))))
-                      ;; 未知のパターン: 新しい型変数 (ワイルドカード扱い)
                       (let [ty (fresh-type-var counter)]
                         (vector-push (make-result subst ty) env)))))))))))))
 ;; infer-pattern の戻り値アクセサ
-;; [subst, type, updated-env]
-(defn pat-result-subst [r]
-  (vector-get r 0))
-(defn pat-result-type [r]
-  (vector-get r 1))
-(defn pat-result-env [r]
-  (vector-get r 3))
-;; match 式の型推論
-;; [10, scrutinee, arm-count, pat1, body1, pat2, body2, ...]
-;; binder は各 arm body にだけ見え、次の arm には漏らさない
-(defn infer-match-arms [node idx arm-count env scrut-ty result-ty subst counter]
+(defn pat-result-subst [r] (vector-get r 0))
+(defn pat-result-type [r] (vector-get r 1))
+(defn pat-result-env [r] (vector-get r 3))
+;; match 式: [10, scrutinee, arm-count, pat1, body1, ...]。binder は arm-local。
+(defn infer-match-arms-state [done next-idx payload]
+  (vector-push-triple-rooted (vector-new 3) done next-idx payload))
+(defn infer-match-arms-step-v3
+  [node idx arm-count env scrut-ty result-ty subst counter]
   (if (>= idx arm-count)
-    (make-result subst (apply-subst subst result-ty))
+    (infer-match-arms-state
+      1 idx (make-result subst (apply-subst subst result-ty)))
     (let [pat (vector-get node (+ 3 (* idx 2)))
       body (vector-get node (+ 4 (* idx 2)))
       pat-info (infer-pattern pat env subst counter)
@@ -761,33 +715,65 @@
       pat-env (pat-result-env pat-info)
       gadt-pattern? (match-pattern-gadt? pat env)]
       (if (= (map-get pat-subst -1) 1)
-        ;; pat-info の slot 3 は更新済み環境 Map であり、通常の infer result
-        ;; の source span slotとは異なるため、pattern failureは既存の codeだけを返す。
-        (make-error-result-code (result-error-code pat-info))
+        (infer-match-arms-state
+          1 idx (make-error-result-code (result-error-code pat-info)))
         (let [s2 (unify (apply-subst pat-subst scrut-ty) pat-ty pat-subst)]
           (if (= (unify-failed s2) 1)
-            (make-error-result-code (error-code-general))
+            (infer-match-arms-state
+              1 idx (make-error-result-code (error-code-general)))
             (let [body-result (infer-expr body pat-env s2 counter)]
               (if (= (result-failed body-result) 1)
-                (propagate-error-result body-result)
+                (infer-match-arms-state
+                  1 idx (propagate-error-result body-result))
                 (let [s3 (result-subst body-result)
                   body-ty (result-type body-result)
                   s4 (unify (apply-subst s3 result-ty) body-ty s3)]
                   (if (= (unify-failed s4) 1)
-                    (make-error-result-code (error-code-general))
+                    (infer-match-arms-state
+                      1 idx (make-error-result-code (error-code-general)))
                     (let [next-subst
                             (if (= gadt-pattern? 1)
                               (strip-match-scrutinee-subst scrut-ty s4)
                               s4)]
-                      (infer-match-arms
-                        node
-                        (+ idx 1)
-                        arm-count
-                        env
-                        scrut-ty
-                        result-ty
-                        next-subst
-                        counter))))))))))))
+                      (infer-match-arms-state 0 (+ idx 1) next-subst))))))))))))
+(defn infer-match-arms-step-64-loop-bounded
+  [node idx arm-count env scrut-ty result-ty subst counter remaining]
+  (let [step
+          (infer-match-arms-step-v3
+            node idx arm-count env scrut-ty result-ty subst counter)]
+    (if (or (= (vector-get step 0) 1) (<= remaining 1))
+      step
+      (infer-match-arms-step-64-loop-bounded
+        node (vector-get step 1) arm-count env scrut-ty result-ty
+        (vector-get step 2) counter (- remaining 1)))))
+(defn infer-match-arms-step-64 [node idx arm-count env scrut-ty result-ty subst counter]
+  (infer-match-arms-step-64-loop-bounded
+    node idx arm-count env scrut-ty result-ty subst counter 64))
+(defn infer-match-arms-rooted-v3
+  [node idx arm-count env scrut-ty result-ty subst counter]
+  (let [step
+          (infer-match-arms-step-64
+            node idx arm-count env scrut-ty result-ty subst counter)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-subst (vector-get step 2)]
+          (do
+            (let [resolved
+                    (infer-match-arms-rooted-v3
+                      node next-idx arm-count env scrut-ty result-ty
+                      next-subst counter)]
+              (do (root_pop) resolved))))))))
+(defn infer-match-arms [node idx arm-count env scrut-ty result-ty subst counter]
+  (do (root_push node) (root_push env) (root_push scrut-ty)
+    (root_push result-ty) (root_push subst) (root_push counter)
+    (let [result
+            (infer-match-arms-rooted-v3
+              node idx arm-count env scrut-ty result-ty subst counter)]
+      (do (root_push result) (root_pop) (root_pop) (root_pop) (root_pop)
+        (root_pop) (root_pop) (root_pop) result))))
 (defn infer-match [node env subst counter]
   (let [scrutinee (vector-get node 1)
     arm-count (vector-get node 2)
