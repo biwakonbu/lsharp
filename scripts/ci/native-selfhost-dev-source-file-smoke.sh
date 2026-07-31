@@ -194,6 +194,9 @@ VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST="$WORK_DIR/ec-m3-review-attestation-no
 VALIDATION_IDENTITY_MANIFEST="$WORK_DIR/ec-m3-review-identity-manifest.json"
 VALIDATION_IDENTITY_OPTIONAL_MANIFEST="$WORK_DIR/ec-m3-review-identity-optional-manifest.json"
 VALIDATION_IDENTITY_PARTIAL_MANIFEST="$WORK_DIR/ec-m3-review-identity-partial-manifest.json"
+VALIDATION_IDENTITY_REATTACH_MANIFEST="$WORK_DIR/ec-m3-review-identity-reattach-manifest.json"
+VALIDATION_IDENTITY_CONFLICT_MANIFEST="$WORK_DIR/ec-m3-review-identity-conflict-manifest.json"
+VALIDATION_IDENTITY_CONFLICT_OUTPUT_MANIFEST="$WORK_DIR/ec-m3-review-identity-conflict-output-manifest.json"
 VALIDATION_INVALID_ATTESTATION_ALGORITHM_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-algorithm-manifest.json"
 VALIDATION_INVALID_ATTESTATION_SIGNATURE_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-signature-manifest.json"
 VALIDATION_INVALID_ATTESTATION_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-timestamp-manifest.json"
@@ -1896,6 +1899,56 @@ if manifest_identity != expected or list(manifest_identity) != list(expected):
 if manifest_identity != identity:
     raise SystemExit("native report and manifest review evidence identity differ")
 PY
+
+cp "$VALIDATION_IDENTITY_MANIFEST" "$VALIDATION_IDENTITY_REATTACH_MANIFEST"
+cp "$VALIDATION_IDENTITY_MANIFEST" "$VALIDATION_IDENTITY_CONFLICT_MANIFEST"
+
+run_expected_failure validation-identity-manifest-reattach-json 0 validate \
+  "$VALIDATION_IDENTITY_REATTACH_MANIFEST" \
+  --format json \
+  --review-subject-digest "sha256:graph" \
+  --review-source-commit "commit-1" \
+  --review-artifact-digest "sha256:artifact" \
+  --review-trust-store-digest "sha256:trust" \
+  --review-lifecycle-digest "sha256:lifecycle" \
+  --review-now "2026-08-15T00:00:00Z"
+python3 - "$WORK_DIR/validation-identity-manifest-reattach-json.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+expected = {
+    "subject_digest": "sha256:graph",
+    "source_commit": "commit-1",
+    "artifact_digest": "sha256:artifact",
+    "trust_store_digest": "sha256:trust",
+    "lifecycle_digest": "sha256:lifecycle",
+    "now": "2026-08-15T00:00:00Z",
+}
+report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+identity = report.get("review_evidence_identity")
+if identity != expected or list(identity) != list(expected):
+    raise SystemExit(f"manifest identity reattach report is invalid: {identity!r}")
+PY
+
+run_expected_validation_error validation-identity-manifest-conflict \
+  validate \
+  "$VALIDATION_IDENTITY_CONFLICT_MANIFEST" \
+  --format json \
+  --emit-manifest "$VALIDATION_IDENTITY_CONFLICT_OUTPUT_MANIFEST" \
+  --review-subject-digest "sha256:graph" \
+  --review-source-commit "commit-2" \
+  --review-artifact-digest "sha256:artifact" \
+  --review-trust-store-digest "sha256:trust" \
+  --review-lifecycle-digest "sha256:lifecycle" \
+  --review-now "2026-08-15T00:00:00Z"
+grep -F "source validation error:14" \
+  "$WORK_DIR/validation-identity-manifest-conflict.stderr" >/dev/null \
+  || die "validation-identity-manifest-conflict must expose the stable identity conflict diagnostic"
+[[ ! -s "$WORK_DIR/validation-identity-manifest-conflict.stdout" ]] \
+  || die "validation-identity-manifest-conflict must produce no report or manifest"
+[[ ! -e "$VALIDATION_IDENTITY_CONFLICT_OUTPUT_MANIFEST" ]] \
+  || die "validation-identity-manifest-conflict must produce no report or manifest"
 
 run_expected_failure validation-identity-optional-json 0 validate \
   --source "$VALIDATION_ATTESTATION_SOURCE" \

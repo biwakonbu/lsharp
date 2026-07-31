@@ -1,6 +1,6 @@
 //! selfhost review evidence identity の manifest projection tests。
 
-use super::harness::run_evidence_registry_runtime;
+use super::harness::{run_evidence_registry_runtime, run_manifest_input_runtime};
 use serde_json::Value;
 
 /// EC-M3-05 RED: caller が渡した review evidence identity は、Rust manifest wire と同じ
@@ -139,6 +139,34 @@ fn test_e2e_selfhost_evidence_registry_projects_non_null_identity_in_rust_manife
     assert_eq!(
         manifest["review_evidence_identity"]["lifecycle_digest"],
         "sha256:lifecycle"
+    );
+    assert!(lines.next().is_none(), "unexpected extra selfhost output");
+}
+
+#[test]
+fn test_e2e_selfhost_manifest_input_retrieves_existing_review_identity() {
+    let harness = r#"
+(defn main []
+  (let [parsed (validation-manifest-review-identity-result
+      "{\"schema_version\":1,\"nodes\":[],\"evidence\":[],\"review_evidence_identity\":{\"subject_digest\":\"sha256:graph\",\"source_commit\":\"commit-1\",\"artifact_digest\":\"sha256:artifact\",\"trust_store_digest\":null,\"lifecycle_digest\":null,\"now\":\"2026-08-15T00:00:00Z\"},\"edges\":[]}")
+    identity (source-result-value parsed)]
+    (do
+      (print (source-result-status parsed))
+      (print (vector-length identity))
+      (print-string (source-review-evidence-identity-json identity))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_manifest_input_runtime(harness);
+    let mut lines = output.trim().lines();
+    assert_eq!(lines.next(), Some("1"));
+    assert_eq!(lines.next(), Some("6"));
+    assert_eq!(
+        lines.next(),
+        Some(
+            r#"{"subject_digest":"sha256:graph","source_commit":"commit-1","artifact_digest":"sha256:artifact","trust_store_digest":null,"lifecycle_digest":null,"now":"2026-08-15T00:00:00Z"}"#
+        )
     );
     assert!(lines.next().is_none(), "unexpected extra selfhost output");
 }

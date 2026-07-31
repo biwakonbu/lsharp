@@ -34,6 +34,38 @@ pub(super) fn run_evidence_registry_runtime(harness: &str) -> String {
     ))
 }
 
+pub(super) fn run_manifest_input_runtime(harness: &str) -> String {
+    let intent_source = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls"),
+    )
+    .expect("canonical IntentSource.ls が読み込めない");
+    let whitespace = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/Whitespace.ls"),
+    )
+    .expect("canonical Whitespace.ls が読み込めない");
+    let review_identity = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/ReviewIdentity.ls"),
+    )
+    .expect("canonical ReviewIdentity.ls が読み込めない");
+    let manifest_input = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/ManifestInput.ls"),
+    )
+    .expect("canonical ManifestInput.ls が読み込めない");
+    let json_rpc =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/Tools/Lsp/JsonRpc.ls"))
+            .expect("canonical JsonRpc.ls が読み込めない");
+    compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_parser_runtime_bundle(),
+        json_rpc,
+        whitespace,
+        intent_source,
+        review_identity,
+        manifest_input,
+        harness
+    ))
+}
+
 pub(super) fn run_stale_validation_runtime(harness: &str) -> String {
     let intent_source = std::fs::read_to_string(
         selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls"),

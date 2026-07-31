@@ -114,6 +114,12 @@ for required in \
   'review-evidence-identity: subject=sha256:graph source=commit-1 artifact=sha256:artifact trust-store=- lifecycle=- now=2026-08-15T00:00:00Z' \
   'validation-identity-partial' \
   'review identity requires --review-subject-digest --review-source-commit --review-artifact-digest --review-now' \
+  'VALIDATION_IDENTITY_REATTACH_MANIFEST' \
+  'VALIDATION_IDENTITY_CONFLICT_MANIFEST' \
+  'validation-identity-manifest-reattach-json' \
+  'validation-identity-manifest-conflict' \
+  'source validation error:14' \
+  'no report or manifest' \
   'VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE' \
   'VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE' \
   'VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE' \

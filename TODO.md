@@ -45,6 +45,11 @@
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
   current-source/packaged runtime は残る。
+  positional version 1 manifest input の既存 `review_evidence_identity` についても、同値 caller
+  identity の再 attach と conflicting identity の `source validation error:14` / exit `1` / no-report・
+  no-manifest fail-closed を `ManifestInput` / `App.Cli`、Rust-host actual Wasm、Linux fake provenance
+  harness で verified partial とした。current-source native stage0、native MCP、provider、両 target
+  runtime は残る。
   native-only `scripts/release.sh` から snapshot path を verifier へ伝播し、packaging 前の digest mismatch を拒否する wiring も verified partial として追加した。
   stage0 package は `--review-trust-store` / `--review-lifecycle` を同じ verifier へ渡し、release smoke は
   `RELEASE_REVIEW_TRUST_STORE` / `RELEASE_REVIEW_LIFECYCLE` から native-only archive の identity を再検証する

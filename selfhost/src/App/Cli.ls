@@ -529,6 +529,16 @@
         (validate-options-review-trust-store-digest opts)
         (validate-options-review-lifecycle-digest opts)
         (validate-options-review-now opts)))))
+(defn validation-manifest-review-identity-attach-result [manifest-identity caller-identity]
+  (if (= (vector-length caller-identity) 0)
+    (source-result 1 manifest-identity)
+    (if (= (vector-length manifest-identity) 0)
+      (source-result 1 caller-identity)
+      (if (source-review-evidence-identity-equal? manifest-identity caller-identity)
+        (source-result 1 manifest-identity)
+        (source-result
+          0
+          (source-review-evidence-identity-error "review_evidence_identity" ""))))))
 (defn validation-source-write-manifest [graph manifest-path]
   (if (> (string-length manifest-path) 0)
     (do
@@ -542,7 +552,15 @@
         (vector-get state 4)
         (validation-manifest-open-question-count src))
       state)))
-(defn run-validate-manifest [src opts]
+(defn run-validate-review-identity-error [result]
+  (let [error (source-result-error result)]
+    (do
+      (cli-stderr
+        (string-concat
+          "source validation error:"
+          (int-to-string (source-graph-error-code error))))
+      (exit-code-compile-error))))
+(defn run-validate-manifest-with-identity [src opts review-evidence-identity]
   (if (= (validation-manifest-required-trace? src) 0)
     (do
       (cli-stderr "manifest validation requires motivates and tested-by edges")
@@ -554,12 +572,14 @@
       stale-evidence (validation-manifest-stale-evidence-count src)
       report
         (if (= (validate-options-status opts) (validate-option-text))
-          (validation-source-report-text
+            (validation-source-report-text
             state
             independent-reviews
             contradicting-observations
             stale-reviews
-            stale-evidence)
+            stale-evidence
+            (vector-new 0)
+            review-evidence-identity)
           (validation-source-report-json
             state
             independent-reviews
@@ -567,7 +587,7 @@
             stale-reviews
             stale-evidence
             (vector-new 0)
-            (vector-new 0)))]
+            review-evidence-identity))]
       (do
         (print-string report)
         (print-string "\n")
@@ -581,6 +601,23 @@
           (if (> contradicting-observations 0)
             (exit-code-compile-error)
             (exit-code-runtime-error)))))))
+(defn run-validate-manifest [src opts]
+  (let [manifest-identity-result (validation-manifest-review-identity-result src)]
+    (if (= (source-result-status manifest-identity-result) 0)
+      (run-validate-review-identity-error manifest-identity-result)
+      (let [caller-identity-result (validation-source-review-identity-result opts)]
+        (if (= (source-result-status caller-identity-result) 0)
+          (run-validate-review-identity-error caller-identity-result)
+          (let [attached-result
+              (validation-manifest-review-identity-attach-result
+                (source-result-value manifest-identity-result)
+                (source-result-value caller-identity-result))]
+            (if (= (source-result-status attached-result) 0)
+              (run-validate-review-identity-error attached-result)
+              (run-validate-manifest-with-identity
+                src
+                opts
+                (source-result-value attached-result)))))))))
 (defn run-validate-source [src opts]
   (let [program (parse-program src)
     graph-result (source-evidence-graph-from-program program)]
