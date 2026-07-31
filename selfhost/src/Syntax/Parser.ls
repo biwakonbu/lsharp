@@ -969,29 +969,135 @@
           0)))
     0))
 
-(defn parse-skip-bracket-v3 [spans pos-ref depth]
-  (if (<= depth 0) 0
+(defn parse-skip-bracket-step-v3 [spans pos-ref depth]
+  (if (<= depth 0)
+    (vector-push-pair-rooted-v3 (vector-new 2) 1 depth)
     (let [kind (p-current spans pos-ref)]
       (if (== kind 99)
-        0
+        (vector-push-pair-rooted-v3 (vector-new 2) 1 depth)
         (do
           (p-advance pos-ref)
-          (if (== kind 2)
-            (parse-skip-bracket-v3 spans pos-ref (+ depth 1))
-            (if (== kind 3)
-              (parse-skip-bracket-v3 spans pos-ref (- depth 1))
-              (parse-skip-bracket-v3 spans pos-ref depth))))))))
+          (let [next-depth
+                  (if (== kind 2)
+                    (+ depth 1)
+                    (if (== kind 3) (- depth 1) depth))]
+            (vector-push-pair-rooted-v3
+              (vector-new 2)
+              (if (<= next-depth 0) 1 0)
+              next-depth)))))))
+
+(defn parse-skip-bracket-step-64-loop-bounded
+  [spans pos-ref depth remaining]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [step (parse-skip-bracket-step-v3 spans pos-ref depth)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= (vector-get step 0) 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (parse-skip-bracket-step-64-loop-bounded
+                      spans
+                      pos-ref
+                      (vector-get step 1)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-skip-bracket-rooted-v3 [spans pos-ref depth]
+  (let [step
+          (parse-skip-bracket-step-64-loop-bounded spans pos-ref depth 64)]
+    (if (= (vector-get step 0) 1)
+      0
+      (do
+        (root_push step)
+        (let [result
+                (parse-skip-bracket-rooted-v3
+                  spans pos-ref (vector-get step 1))]
+          (do
+            (root_pop)
+            result))))))
+
+(defn parse-skip-bracket-v3 [spans pos-ref depth]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [result (parse-skip-bracket-rooted-v3 spans pos-ref depth)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn parse-skip-brace-step-v3 [spans pos-ref depth]
+  (if (<= depth 0)
+    (vector-push-pair-rooted-v3 (vector-new 2) 1 depth)
+    (let [kind (p-current spans pos-ref)]
+      (if (== kind 99)
+        (vector-push-pair-rooted-v3 (vector-new 2) 1 depth)
+        (do
+          (p-advance pos-ref)
+          (let [next-depth
+                  (if (== kind 4)
+                    (+ depth 1)
+                    (if (== kind 5) (- depth 1) depth))]
+            (vector-push-pair-rooted-v3
+              (vector-new 2)
+              (if (<= next-depth 0) 1 0)
+              next-depth)))))))
+
+(defn parse-skip-brace-step-64-loop-bounded
+  [spans pos-ref depth remaining]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [step (parse-skip-brace-step-v3 spans pos-ref depth)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= (vector-get step 0) 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (parse-skip-brace-step-64-loop-bounded
+                      spans
+                      pos-ref
+                      (vector-get step 1)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-skip-brace-rooted-v3 [spans pos-ref depth]
+  (let [step
+          (parse-skip-brace-step-64-loop-bounded spans pos-ref depth 64)]
+    (if (= (vector-get step 0) 1)
+      0
+      (do
+        (root_push step)
+        (let [result
+                (parse-skip-brace-rooted-v3
+                  spans pos-ref (vector-get step 1))]
+          (do
+            (root_pop)
+            result))))))
 
 (defn parse-skip-brace-v3 [spans pos-ref depth]
-  (if (<= depth 0) 0
-    (let [kind (p-current spans pos-ref)]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [result (parse-skip-brace-rooted-v3 spans pos-ref depth)]
       (do
-        (p-advance pos-ref)
-        (if (== kind 4)
-          (parse-skip-brace-v3 spans pos-ref (+ depth 1))
-          (if (== kind 5)
-            (parse-skip-brace-v3 spans pos-ref (- depth 1))
-            (parse-skip-brace-v3 spans pos-ref depth)))))))
+        (root_pop)
+        (root_pop)
+        result))))
 
 (defn skip-directive-payload-v3 [spans pos-ref]
   (let [kind (p-current spans pos-ref)]
@@ -3297,17 +3403,83 @@
         (root_pop)
         parsed))))
 
-(defn scan-defn-param-form-end-v3 [spans idx end depth]
+(defn scan-defn-param-form-end-step-v3 [spans idx end depth]
   (if (>= idx end)
-    idx
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx depth)
     (let [kind (span-kind spans idx)]
       (if (== kind 0)
-        (scan-defn-param-form-end-v3 spans (+ idx 1) end (+ depth 1))
+        (vector-push-triple-rooted-v3
+          (vector-new 3)
+          0
+          (+ idx 1)
+          (+ depth 1))
         (if (== kind 1)
           (if (= depth 1)
+            (vector-push-triple-rooted-v3
+              (vector-new 3)
+              1
+              (+ idx 1)
+              0)
+            (vector-push-triple-rooted-v3
+              (vector-new 3)
+              0
+              (+ idx 1)
+              (- depth 1)))
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
             (+ idx 1)
-            (scan-defn-param-form-end-v3 spans (+ idx 1) end (- depth 1)))
-          (scan-defn-param-form-end-v3 spans (+ idx 1) end depth))))))
+            depth))))))
+
+(defn scan-defn-param-form-end-step-64-loop-bounded
+  [spans idx end depth remaining]
+  (do
+    (root_push spans)
+    (let [step (scan-defn-param-form-end-step-v3 spans idx end depth)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= (vector-get step 0) 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (scan-defn-param-form-end-step-64-loop-bounded
+                      spans
+                      (vector-get step 1)
+                      end
+                      (vector-get step 2)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn scan-defn-param-form-end-rooted-v3 [spans idx end depth]
+  (let [step
+          (scan-defn-param-form-end-step-64-loop-bounded
+            spans idx end depth 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [result
+                (scan-defn-param-form-end-rooted-v3
+                  spans
+                  (vector-get step 1)
+                  end
+                  (vector-get step 2))]
+          (do
+            (root_pop)
+            result))))))
+
+(defn scan-defn-param-form-end-v3 [spans idx end depth]
+  (do
+    (root_push spans)
+    (let [result
+            (scan-defn-param-form-end-rooted-v3 spans idx end depth)]
+      (do
+        (root_pop)
+        result))))
 
 (defn collect-example-expression-spans-v3-loop [spans idx end result]
   (if (>= idx end)
@@ -4299,33 +4471,107 @@
   (vector-push diagnostics diag))
 
 ;; parse recovery より先に delimiter の未閉鎖を検出し、深い parser 再帰を EOF で止める。
-(defn parse-delimiter-balance-loop [spans idx count paren-depth bracket-depth first-code]
+(defn make-parse-delimiter-balance-state-v3
+  [done idx paren-depth bracket-depth first-code]
+  (vector-push-single-rooted-v3
+    (vector-push-quad-rooted-v3
+      (vector-new 5)
+      done
+      idx
+      paren-depth
+      bracket-depth)
+    first-code))
+
+(defn parse-delimiter-balance-step-v3
+  [spans idx count paren-depth bracket-depth first-code]
   (if (>= idx count)
-    (if (> first-code 0)
-      first-code
-      (if (> bracket-depth 0) 1002 (if (> paren-depth 0) 1001 0)))
+    (make-parse-delimiter-balance-state-v3
+      1 idx paren-depth bracket-depth first-code)
     (let [kind (span-kind spans idx)]
       (if (== kind 0)
-        (parse-delimiter-balance-loop spans (+ idx 1) count (+ paren-depth 1) bracket-depth first-code)
+        (make-parse-delimiter-balance-state-v3
+          0 (+ idx 1) (+ paren-depth 1) bracket-depth first-code)
         (if (== kind 1)
-          (parse-delimiter-balance-loop
-            spans
+          (make-parse-delimiter-balance-state-v3
+            0
             (+ idx 1)
-            count
             (if (> paren-depth 0) (- paren-depth 1) paren-depth)
             bracket-depth
             (if (and (= paren-depth 0) (= first-code 0)) 1001 first-code))
           (if (== kind 2)
-            (parse-delimiter-balance-loop spans (+ idx 1) count paren-depth (+ bracket-depth 1) first-code)
+            (make-parse-delimiter-balance-state-v3
+              0 (+ idx 1) paren-depth (+ bracket-depth 1) first-code)
             (if (== kind 3)
-              (parse-delimiter-balance-loop
-                spans
+              (make-parse-delimiter-balance-state-v3
+                0
                 (+ idx 1)
-                count
                 paren-depth
                 (if (> bracket-depth 0) (- bracket-depth 1) bracket-depth)
                 (if (and (= bracket-depth 0) (= first-code 0)) 1002 first-code))
-              (parse-delimiter-balance-loop spans (+ idx 1) count paren-depth bracket-depth first-code))))))))
+              (make-parse-delimiter-balance-state-v3
+                0 (+ idx 1) paren-depth bracket-depth first-code))))))))
+
+(defn parse-delimiter-balance-step-64-loop-bounded
+  [spans idx count paren-depth bracket-depth first-code remaining]
+  (do
+    (root_push spans)
+    (let [step
+            (parse-delimiter-balance-step-v3
+              spans idx count paren-depth bracket-depth first-code)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= (vector-get step 0) 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (parse-delimiter-balance-step-64-loop-bounded
+                      spans
+                      (vector-get step 1)
+                      count
+                      (vector-get step 2)
+                      (vector-get step 3)
+                      (vector-get step 4)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-delimiter-balance-rooted-v3
+  [spans idx count paren-depth bracket-depth first-code]
+  (let [step
+          (parse-delimiter-balance-step-64-loop-bounded
+            spans idx count paren-depth bracket-depth first-code 64)]
+    (if (= (vector-get step 0) 1)
+      (if (> (vector-get step 4) 0)
+        (vector-get step 4)
+        (if (> (vector-get step 3) 0)
+          1002
+          (if (> (vector-get step 2) 0) 1001 0)))
+      (do
+        (root_push step)
+        (let [result
+                (parse-delimiter-balance-rooted-v3
+                  spans
+                  (vector-get step 1)
+                  count
+                  (vector-get step 2)
+                  (vector-get step 3)
+                  (vector-get step 4))]
+          (do
+            (root_pop)
+            result))))))
+
+(defn parse-delimiter-balance-loop [spans idx count paren-depth bracket-depth first-code]
+  (do
+    (root_push spans)
+    (let [result
+            (parse-delimiter-balance-rooted-v3
+              spans idx count paren-depth bracket-depth first-code)]
+      (do
+        (root_pop)
+        result))))
 (defn parse-delimiter-diagnostic-code [spans]
   (parse-delimiter-balance-loop spans 0 (/ (vector-length spans) 3) 0 0 0))
 (defn parse-delimiter-diagnostics [spans src]
@@ -4338,12 +4584,57 @@
 
 ;; 次の同期ポイント (閉じ括弧 or トップレベル) まで回復
 ;; kind=1 (RParen), kind=99 (EOF) で停止
-(defn recover-to-next [spans pos-ref]
+(defn recover-to-next-step-v3 [spans pos-ref]
   (let [kind (p-current spans pos-ref)]
-    (if (== kind 99) 0 ;; EOF で停止
-      (if (== kind 1) 0 ;; ) で停止
-        (do (p-advance pos-ref)
-          (recover-to-next spans pos-ref))))))
+    (if (== kind 99)
+      (vector-push-single-rooted-v3 (vector-new 1) 1)
+      (if (== kind 1)
+        (vector-push-single-rooted-v3 (vector-new 1) 1)
+        (do
+          (p-advance pos-ref)
+          (vector-push-single-rooted-v3 (vector-new 1) 0))))))
+
+(defn recover-to-next-step-64-loop-bounded
+  [spans pos-ref remaining]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [step (recover-to-next-step-v3 spans pos-ref)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= (vector-get step 0) 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (recover-to-next-step-64-loop-bounded
+                      spans pos-ref (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn recover-to-next-rooted-v3 [spans pos-ref]
+  (let [step (recover-to-next-step-64-loop-bounded spans pos-ref 64)]
+    (if (= (vector-get step 0) 1)
+      0
+      (do
+        (root_push step)
+        (let [result (recover-to-next-rooted-v3 spans pos-ref)]
+          (do
+            (root_pop)
+            result))))))
+
+(defn recover-to-next [spans pos-ref]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [result (recover-to-next-rooted-v3 spans pos-ref)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
 
 ;; recovery 付きパース: パースに失敗したら回復して診断を記録
 ;; 戻り値: [ast-node, diagnostics-vector]
