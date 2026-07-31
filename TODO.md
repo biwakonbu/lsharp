@@ -94,6 +94,7 @@
   `NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT` を接続し、Mac hostと Linux/Limaの target別 source-file
   smoke evidenceを別 leafへ保持する wiringを追加した。Linux側は evidence writerをVMへコピーし、source
   smoke終了後に stdout/stderr、Wasm digest/size、exit code、stage0 manifestをhostへ再帰コピーする。
+  fake `limactl` の成功/失敗 copy-out contractで、失敗時の元 exit code保持も確認した。
   これは証跡伝播の verified partial sliceであり、実 Mac/Linux current-source runtime、provider取得、
   packaged bytes/rollback parityは残る。ADR:
   `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`。さらに native manifest の

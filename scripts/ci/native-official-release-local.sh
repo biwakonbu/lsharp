@@ -340,23 +340,26 @@ smoke_stage0_runtime() {
 
   case "${target}" in
     aarch64-apple-darwin)
-      local mac_smoke_env=()
       if [[ -n "${evidence_dir}" ]]; then
-        mac_smoke_env+=("NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR=${evidence_dir}")
-      fi
-      env "${mac_smoke_env[@]}" \
+        NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR="${evidence_dir}" \
+          NATIVE_STAGE0_DIR="${stage0_dir}" \
+          NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
+          bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
+      else
         NATIVE_STAGE0_DIR="${stage0_dir}" \
-        NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
-        bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
+          NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
+          bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
+      fi
       ;;
     x86_64-unknown-linux-gnu)
-      local linux_smoke_env=()
       if [[ -n "${evidence_dir}" ]]; then
-        linux_smoke_env+=("LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR=${evidence_dir}")
-      fi
-      env "${linux_smoke_env[@]}" \
+        LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR="${evidence_dir}" \
+          LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="${stage0_dir}" \
+          bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
+      else
         LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="${stage0_dir}" \
-        bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
+          bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
+      fi
       ;;
     *)
       echo "ERROR: unsupported native stage0 runtime target: ${target}" >&2

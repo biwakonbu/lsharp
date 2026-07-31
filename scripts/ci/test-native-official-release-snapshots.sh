@@ -28,6 +28,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$FAKE_ROOT/scripts/ci" "$PATH_PREFIX" "$FAKE_ROOT/dist"
+FAKE_ROOT_CANONICAL="$(cd "$FAKE_ROOT" && pwd)"
 printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
 printf '%s\n' '{"review_id":"review:orchestrator/r1","state":"active"}' >"$LIFECYCLE"
 
@@ -178,7 +179,7 @@ grep -F "review-lifecycle.snapshot" "$LOG_PATH" >/dev/null
 grep -F "review_identity_timestamp.py" "$LOG_PATH" >/dev/null
 grep -F "fetch target=aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "fetch target=x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
-grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin source=$FAKE_ROOT/selfhost evidence=$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin" "$LOG_PATH" >/dev/null
+grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin source=$FAKE_ROOT_CANONICAL/selfhost evidence=$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu evidence=$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
 [[ -s "$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin/manifest.json" ]] \
   || { echo 'Mac source smoke evidence was not retained' >&2; exit 1; }

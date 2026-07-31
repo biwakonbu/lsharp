@@ -42,6 +42,9 @@ provider snapshot の取得・認証や release archive の identity 検証は�
 - GREEN: `bash scripts/ci/test-native-official-release-snapshots.sh` の fake two-target harnessで両 targetの
   target別 path伝播と evidence保持を確認し、`bash scripts/ci/test-native-linux-x86-native-stage0-source-file-smoke.sh`
   の Linux writer/copy contract、stage0 package/provider snapshot tests、shell syntax、diff checkを通過した。
+- GREEN: `bash scripts/ci/test-native-linux-x86-source-smoke-evidence-copy.sh` の fake `limactl` で、Linux
+  VM内の成功/失敗 source smokeが host evidenceへ再帰コピーされ、失敗時の元の exit code `23` が保持される
+ ことを直接確認した。実 Lima VMは別の重い replayが所有しているため起動していない。
 - Direct Mac evidence: current `f6a6da30` の producer/package outputを Mac source-file smokeへ渡す経路は
   actual App.Cli E2E と `aarch64-apple-darwin native selfhost source-file smoke passed` まで通過した。
   これは `fetch-stage0.sh` を含む公式 orchestrator の証拠ではなく、Linux x86_64 runtimeも未検証である。
