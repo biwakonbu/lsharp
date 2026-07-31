@@ -13,10 +13,12 @@ PATH_PREFIX="$TMP_ROOT/bin"
 SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
 PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
+VM_COPY_FAILURE_SMOKE_ROOT=""
 cleanup() {
   rm -rf "$TMP_ROOT" "$SMOKE_ROOT"
   [[ -z "$PARTIAL_SMOKE_ROOT" ]] || rm -rf "$PARTIAL_SMOKE_ROOT"
   [[ -z "$MISSING_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$MISSING_IDENTITY_SMOKE_ROOT"
+  [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
 }
 trap cleanup EXIT
 
@@ -95,6 +97,9 @@ cat >"$PATH_PREFIX/limactl" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "limactl $*" >>"$FAKE_LOG"
+if [[ "${FAIL_LIMACTL_COPY:-0}" == "1" && "${1:-}" == "copy" ]]; then
+  exit 17
+fi
 case "${1:-}" in
   list) printf '%s\n' 'Stopped' ;;
   start|copy|shell) ;;
@@ -213,6 +218,45 @@ grep -F 'review evidence identity is required when provider snapshots are suppli
 after_missing_identity_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 [[ "$after_missing_identity_log_lines" == "$before_missing_identity_log_lines" ]] \
   || { echo 'missing provider identity reached a release or smoke boundary' >&2; exit 1; }
+
+VM_COPY_FAILURE_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-vm-copy-failure.XXXXXX)"
+VM_COPY_FAILURE_LOG="$TMP_ROOT/vm-copy-failure.log"
+set +e
+vm_copy_failure_output="$(
+  FAIL_LIMACTL_COPY=1 \
+  FAKE_LOG="$VM_COPY_FAILURE_LOG" \
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/vm-copy-failure-dist" \
+  SMOKE_ROOT="$VM_COPY_FAILURE_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$VM_COPY_FAILURE_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+vm_copy_failure_status=$?
+set -e
+[[ "$vm_copy_failure_status" -ne 0 ]] \
+  || { echo 'Linux VM archive copy failure was accepted' >&2; exit 1; }
+vm_copy_failure_vm_dir="$(sed -n 's#^limactl copy .*lsharp-linux-x86:\(/tmp/lsharp-native-official-release-smoke-[^/]*/\).*#\1#p' "$VM_COPY_FAILURE_LOG" | head -n 1 | sed 's#/$##')"
+[[ -n "$vm_copy_failure_vm_dir" ]] \
+  || { echo 'Linux VM copy failure did not record a VM work directory' >&2; exit 1; }
+awk -v work_dir="$vm_copy_failure_vm_dir" '
+  /^limactl copy .*lsharp-linux-x86:/ { seen_copy=1 }
+  seen_copy && $0 == "limactl shell lsharp-linux-x86 -- rm -rf " work_dir { found=1 }
+  END { exit(found ? 0 : 1) }
+' "$VM_COPY_FAILURE_LOG" \
+  || { echo 'Linux VM copy failure left its work directory without cleanup' >&2; exit 1; }
+[[ -s "$VM_COPY_FAILURE_LOG" ]] \
+  || { echo 'Linux VM copy failure produced no invocation evidence' >&2; exit 1; }
 
 set +e
 PARTIAL_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-partial.XXXXXX)"

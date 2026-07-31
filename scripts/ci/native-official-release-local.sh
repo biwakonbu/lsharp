@@ -140,40 +140,51 @@ smoke_archive() {
   if [[ "${vm_status}" != "Running" ]]; then
     limactl start --tty=false "${VM_NAME}"
   fi
-  vm_work_dir="/tmp/lsharp-native-official-release-smoke-$$"
-  archive_name="$(basename "${archive_path}")"
-  rollback_name="$(basename "${rollback_archive}")"
-  limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}"
-  limactl shell "${VM_NAME}" -- mkdir -p "${vm_work_dir}"
-  limactl copy "${archive_path}" "${VM_NAME}:${vm_work_dir}/${archive_name}"
-  limactl copy "${rollback_archive}" "${VM_NAME}:${vm_work_dir}/${rollback_name}"
-  limactl copy scripts/ci/release-smoke.sh "${VM_NAME}:${vm_work_dir}/release-smoke.sh"
-  limactl copy scripts/ci/verify-native-release-identity.py \
-    "${VM_NAME}:${vm_work_dir}/verify-native-release-identity.py"
-  limactl copy scripts/ci/review_identity_timestamp.py \
-    "${VM_NAME}:${vm_work_dir}/review_identity_timestamp.py"
-  local linux_smoke_env=(
-    "WORK_DIR=${vm_work_dir}/work"
-    "RELEASE_IDENTITY_VERIFIER=${vm_work_dir}/verify-native-release-identity.py"
-  )
-  if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
-    limactl copy "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" \
-      "${VM_NAME}:${vm_work_dir}/review-trust-store.snapshot"
-    limactl copy "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" \
-      "${VM_NAME}:${vm_work_dir}/review-lifecycle.snapshot"
-    linux_smoke_env+=(
-      "RELEASE_REVIEW_TRUST_STORE=${vm_work_dir}/review-trust-store.snapshot"
-      "RELEASE_REVIEW_LIFECYCLE=${vm_work_dir}/review-lifecycle.snapshot"
-    )
-  fi
+  local vm_work_dir="/tmp/lsharp-native-official-release-smoke-$$"
+  local archive_name="$(basename "${archive_path}")"
+  local rollback_name="$(basename "${rollback_archive}")"
   set +e
-  limactl shell "${VM_NAME}" -- env "${linux_smoke_env[@]}" \
-    bash "${vm_work_dir}/release-smoke.sh" \
-      "${vm_work_dir}/${archive_name}" \
-      "${vm_work_dir}/${rollback_name}"
+  (
+    set -euo pipefail
+    cleanup_vm_work_dir() {
+      limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}" >/dev/null 2>&1 || true
+    }
+    trap cleanup_vm_work_dir EXIT
+
+    limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}"
+    limactl shell "${VM_NAME}" -- mkdir -p "${vm_work_dir}"
+    limactl copy "${archive_path}" "${VM_NAME}:${vm_work_dir}/${archive_name}"
+    limactl copy "${rollback_archive}" "${VM_NAME}:${vm_work_dir}/${rollback_name}"
+    limactl copy scripts/ci/release-smoke.sh "${VM_NAME}:${vm_work_dir}/release-smoke.sh"
+    limactl copy scripts/ci/verify-native-release-identity.py \
+      "${VM_NAME}:${vm_work_dir}/verify-native-release-identity.py"
+    limactl copy scripts/ci/review_identity_timestamp.py \
+      "${VM_NAME}:${vm_work_dir}/review_identity_timestamp.py"
+    linux_smoke_env=(
+      "WORK_DIR=${vm_work_dir}/work"
+      "RELEASE_IDENTITY_VERIFIER=${vm_work_dir}/verify-native-release-identity.py"
+    )
+    if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
+      limactl copy "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" \
+        "${VM_NAME}:${vm_work_dir}/review-trust-store.snapshot"
+      limactl copy "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" \
+        "${VM_NAME}:${vm_work_dir}/review-lifecycle.snapshot"
+      linux_smoke_env+=(
+        "RELEASE_REVIEW_TRUST_STORE=${vm_work_dir}/review-trust-store.snapshot"
+        "RELEASE_REVIEW_LIFECYCLE=${vm_work_dir}/review-lifecycle.snapshot"
+      )
+    fi
+    set +e
+    limactl shell "${VM_NAME}" -- env "${linux_smoke_env[@]}" \
+      bash "${vm_work_dir}/release-smoke.sh" \
+        "${vm_work_dir}/${archive_name}" \
+        "${vm_work_dir}/${rollback_name}"
+    smoke_status=$?
+    set -e
+    exit "${smoke_status}"
+  )
   smoke_status=$?
   set -e
-  limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}"
   if [[ "${smoke_status}" -ne 0 ]]; then
     echo "ERROR: Linux x86 release smoke failed in Lima VM" >&2
     exit "${smoke_status}"
