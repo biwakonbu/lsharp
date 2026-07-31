@@ -15,12 +15,14 @@ PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
 RUNNING_VM_SMOKE_ROOT=""
+CLEANUP_FAILURE_SMOKE_ROOT=""
 cleanup() {
   rm -rf "$TMP_ROOT" "$SMOKE_ROOT"
   [[ -z "$PARTIAL_SMOKE_ROOT" ]] || rm -rf "$PARTIAL_SMOKE_ROOT"
   [[ -z "$MISSING_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$MISSING_IDENTITY_SMOKE_ROOT"
   [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
   [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
+  [[ -z "$CLEANUP_FAILURE_SMOKE_ROOT" ]] || rm -rf "$CLEANUP_FAILURE_SMOKE_ROOT"
 }
 trap cleanup EXIT
 
@@ -101,6 +103,9 @@ set -euo pipefail
 printf '%s\n' "limactl $*" >>"$FAKE_LOG"
 if [[ "${FAIL_LIMACTL_COPY:-0}" == "1" && "${1:-}" == "copy" ]]; then
   exit 17
+fi
+if [[ "${FAIL_LIMACTL_STOP:-0}" == "1" && "${1:-}" == "stop" ]]; then
+  exit 19
 fi
 case "${1:-}" in
   list)
@@ -189,6 +194,35 @@ if grep -F "limactl stop lsharp-linux-x86" "$RUNNING_VM_LOG" >/dev/null; then
   echo 'gate stopped a Lima VM it did not start' >&2
   exit 1
 fi
+
+CLEANUP_FAILURE_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-cleanup-failure.XXXXXX)"
+CLEANUP_FAILURE_LOG="$TMP_ROOT/cleanup-failure.log"
+set +e
+cleanup_failure_output="$(
+  FAIL_LIMACTL_STOP=1 \
+  FAKE_LOG="$CLEANUP_FAILURE_LOG" \
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/cleanup-failure-dist" \
+  SMOKE_ROOT="$CLEANUP_FAILURE_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$CLEANUP_FAILURE_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+cleanup_failure_status=$?
+set -e
+[[ "$cleanup_failure_status" -ne 0 ]] \
+  || { echo 'owned Lima VM cleanup failure was reported as success' >&2; exit 1; }
+grep -F 'Linux x86 release smoke cleanup failed in Lima VM' <<<"$cleanup_failure_output" >/dev/null
 
 before_stale_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 set +e

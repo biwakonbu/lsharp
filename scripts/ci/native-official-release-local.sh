@@ -149,15 +149,29 @@ smoke_archive() {
   (
     set -euo pipefail
     cleanup_vm_work_dir() {
-      limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}" >/dev/null 2>&1 || true
+      limactl shell "${VM_NAME}" -- rm -rf "${vm_work_dir}" >/dev/null 2>&1
     }
     cleanup_vm_resources() {
       local exit_status=$?
-      cleanup_vm_work_dir
-      if [[ "${vm_started_by_gate}" == "1" ]]; then
-        limactl stop "${VM_NAME}" >/dev/null 2>&1 || true
+      local cleanup_status=0
+      if ! cleanup_vm_work_dir; then
+        cleanup_status=1
       fi
-      return "${exit_status}"
+      if [[ "${vm_started_by_gate}" == "1" ]]; then
+        if ! limactl stop "${VM_NAME}" >/dev/null 2>&1; then
+          cleanup_status=1
+        fi
+      fi
+      if [[ "${cleanup_status}" -ne 0 ]]; then
+        echo "ERROR: Linux x86 release smoke cleanup failed in Lima VM" >&2
+      fi
+      if [[ "${exit_status}" -ne 0 ]]; then
+        exit "${exit_status}"
+      fi
+      if [[ "${cleanup_status}" -ne 0 ]]; then
+        exit 1
+      fi
+      exit 0
     }
     trap cleanup_vm_resources EXIT
 

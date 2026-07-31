@@ -19,7 +19,8 @@ gate は VM lifecycle の所有権を一 run 内で記録する。
 - VM work directory の cleanup と同じ `EXIT` trap で、所有して起動した VM だけを
   `limactl stop` する。
 - 既に Running の VM は停止しない。
-- cleanup の失敗は元の setup/smoke の exit status を隠さない。
+- cleanup の失敗は stderr に明示し、元の setup/smoke が失敗していればその exit status を隠さない。
+  smoke が成功していて cleanup に失敗した場合は gate 自体を non-zero にする。
 
 ## Evidence
 
@@ -27,6 +28,8 @@ gate は VM lifecycle の所有権を一 run 内で記録する。
 - GREEN: 同じ fake gate が自分で起動した VM の stop を記録し、`FAKE_LIMA_RUNNING=1` の再実行では
   stop を記録しないことを確認した。
 - 既存の copy failure fixtureでも non-zero status と VM work directory cleanup invocation を維持した。
+- fake `limactl stop` failure では、smoke 成功を success と報告せず cleanup failure を stderr/exit `1`
+  へ投影することを確認した。
 - `bash -n scripts/ci/native-official-release-local.sh scripts/ci/test-native-official-release-snapshots.sh`
   と `bash scripts/ci/test-native-official-release-snapshots.sh` が pass。
 
@@ -36,6 +39,7 @@ gate は VM lifecycle の所有権を一 run 内で記録する。
 
 ## Consequences
 
-gate が所有した VM は run 終了時に解放され、共有中の VM は保護される。実 target gate では既存の
-VM-side lock/artifact reuse を維持し、他セッション所有の VM・worktree・temporary directory を
-所有物として扱わない。
+gate が所有した VM は run 終了時に解放され、共有中の VM は保護される。cleanup 失敗を success と
+して隠さないため、operator は残置状態を再実行前に扱える。実 target gate では既存の VM-side
+lock/artifact reuse を維持し、他セッション所有の VM・worktree・temporary directory を所有物として
+扱わない。
