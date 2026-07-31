@@ -28,7 +28,16 @@ def make_executable(path, body):
 
 
 class SemanticFixtureRustReportTest(unittest.TestCase):
-    def run_producer(self, root, compiler, wasmtime, output, work_dir, extra=None):
+    def run_producer(
+        self,
+        root,
+        compiler,
+        wasmtime,
+        output,
+        work_dir,
+        extra=None,
+        fixture_id="valid/syntax-basic",
+    ):
         command = [
             sys.executable,
             str(PRODUCER),
@@ -37,7 +46,7 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             "--root",
             str(ROOT),
             "--fixture-id",
-            "valid/syntax-basic",
+            fixture_id,
             "--target",
             "aarch64-apple-darwin",
             "--source-commit",
@@ -121,7 +130,94 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             self.assertEqual(fixture["runtime"], {"status": "observed", "exit_code": 0, "stdout": "42\n", "stderr": ""})
             self.assertEqual((root / "compiler.log").read_text(encoding="utf-8"), "1")
 
-    def test_rejects_invalid_commit_and_non_valid_fixture_scope(self):
+    def test_writes_invalid_report_when_code_and_span_are_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "invalid-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stderr.write('Error: [LS1001] undefined value (15..28)\\n')\n"
+                "raise SystemExit(1)\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_id="invalid/type-undefined-value",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            fixture = report["fixtures"][0]
+            self.assertEqual(
+                fixture["diagnostics"],
+                [
+                    {
+                        "code": "LS1001",
+                        "span": {
+                            "start": {"line": 1, "column": 16},
+                            "end": {"line": 1, "column": 29},
+                        },
+                    }
+                ],
+            )
+            self.assertEqual(fixture["exit_code"], 1)
+            self.assertEqual(fixture["artifact"], {"status": "not-applicable"})
+            self.assertEqual(
+                fixture["runtime"],
+                {"status": "not-run", "exit_code": None, "stdout": None, "stderr": None},
+            )
+
+    def test_rejects_invalid_reports_without_explicit_code_or_span(self):
+        cases = [
+            (
+                "invalid/lexer-unexpected-character",
+                "Error: unexpected character '@' (0..1)\n",
+                "diagnostic code",
+            ),
+            (
+                "invalid/module-not-found",
+                "Error: [LS3102] module 'MissingModule' was not found\n",
+                "diagnostic span",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            for index, (fixture_id, diagnostic, expected_error) in enumerate(cases):
+                compiler = root / f"invalid-compiler-{index}.py"
+                output = root / f"report-{index}.json"
+                make_executable(
+                    compiler,
+                    "#!/usr/bin/env python3\n"
+                    "import sys\n"
+                    f"sys.stderr.write({diagnostic!r})\n"
+                    "raise SystemExit(1)\n",
+                )
+                result = self.run_producer(
+                    root,
+                    compiler,
+                    wasmtime,
+                    output,
+                    work_dir,
+                    fixture_id=fixture_id,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr.lower())
+                self.assertFalse(output.exists())
+
+    def test_rejects_invalid_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             compiler = root / "compiler"
@@ -134,36 +230,6 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             invalid_commit = self.run_producer(root, compiler, wasmtime, output, work_dir, ["--source-commit", "bad"])
             self.assertNotEqual(invalid_commit.returncode, 0)
             self.assertIn("source_commit", invalid_commit.stderr)
-            invalid_fixture = subprocess.run(
-                [
-                    sys.executable,
-                    str(PRODUCER),
-                    "--manifest",
-                    str(MANIFEST),
-                    "--root",
-                    str(ROOT),
-                    "--fixture-id",
-                    "invalid/lexer-unexpected-character",
-                    "--target",
-                    "aarch64-apple-darwin",
-                    "--source-commit",
-                    SOURCE_COMMIT,
-                    "--compiler",
-                    str(compiler),
-                    "--wasmtime",
-                    str(wasmtime),
-                    "--work-dir",
-                    str(work_dir),
-                    "--output",
-                    str(output),
-                ],
-                cwd=root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertNotEqual(invalid_fixture.returncode, 0)
-            self.assertIn("valid", invalid_fixture.stderr.lower())
 
 
 if __name__ == "__main__":

@@ -34,12 +34,15 @@ look stronger than its evidence.
   using `scripts/ci/semantic_fixture_diff.py`. Equal diagnostics/exit/runtime/
   artifact observations are `pass`; any mismatch is `mismatch`; an unobserved
   artifact or runtime boundary is `pending` with exit code 2.
-- Start the Rust lane with `scripts/ci/semantic_fixture_rust_report.py` for one
-  valid, no-diagnostic fixture. The caller must provide absolute compiler and
-  Wasmtime paths, source commit, target, and work directory; the producer sets
-  `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` and never discovers a fallback or
-  network provider. Invalid-diagnostic parsing and the native producer remain
-  explicit follow-up boundaries.
+- Start the Rust lane with `scripts/ci/semantic_fixture_rust_report.py` for a
+  valid, no-diagnostic fixture or an invalid fixture whose Rust diagnostic
+  explicitly contains both an `LS####` code and a byte span. The caller must
+  provide absolute compiler and Wasmtime paths, source commit, target, and work
+  directory; the producer sets `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` and never
+  discovers a fallback or network provider. The producer converts explicit byte
+  spans to one-based line/column points, but refuses to synthesize a report when
+  a diagnostic code or span is missing. Native producer, full invalid coverage,
+  and target/runtime execution remain explicit follow-up boundaries.
 - Validate the contract with the standalone Python helper and focused unittest;
   the matrix projector emits the deterministic input and the diff helper emits
   a deterministic comparison result.
@@ -60,6 +63,7 @@ look stronger than its evidence.
 - `python3 scripts/ci/test-semantic-fixture-diff.py` — pending/pass/mismatch and
   stale source/target contract tests.
 - `python3 scripts/ci/test-semantic-fixture-rust-report.py` — explicit compiler/
-  Wasmtime paths, artifact digest, runtime output, and fallback guard tests.
+  Wasmtime paths, artifact digest, runtime output, fallback guard, invalid
+  code/span conversion, and missing-diagnostic-field refusal tests.
 - `python3 scripts/ci/semantic_fixture_matrix.py --manifest scripts/ci/semantic-fixture-matrix.json --root .`
   — deterministic manifest projection.

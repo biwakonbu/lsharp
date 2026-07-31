@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
-"""Produce one explicit Rust-oracle observation for a valid fixture.
+"""Produce one explicit Rust-oracle observation for a semantic fixture.
 
 The compiler and Wasmtime executable are required inputs.  This command never
 invokes cargo, host lsharp, an embedded selfhost component, or a provider
-implicitly; the caller owns those boundaries and supplies the paths.
+implicitly; the caller owns those boundaries and supplies the paths. Invalid
+fixtures are accepted only when their compiler diagnostic exposes an LS####
+code and a source byte span.
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ from semantic_fixture_matrix import (
 
 
 SOURCE_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+DIAGNOSTIC_CODE = re.compile(r"\[(LS[0-9]{4})\]")
+BYTE_SPAN = re.compile(r"\((\d+)\.\.(\d+)\)")
 
 
 class ReportError(ValueError):
@@ -59,6 +63,39 @@ def sha256(path: pathlib.Path) -> str:
 
 def decode_output(value: bytes) -> str:
     return value.decode("utf-8", errors="replace")
+
+
+def source_point(source: str, offset: int, label: str) -> Dict[str, int]:
+    encoded = source.encode("utf-8")
+    if offset < 0 or offset > len(encoded):
+        raise ReportError(f"Rust oracle diagnostic span {label} is outside the source")
+    try:
+        prefix = encoded[:offset].decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ReportError(f"Rust oracle diagnostic span {label} is not on a UTF-8 boundary") from error
+    line = prefix.count("\n") + 1
+    column = len(prefix.rsplit("\n", 1)[-1]) + 1
+    return {"line": line, "column": column}
+
+
+def parse_invalid_diagnostic(stderr: str, source: str) -> Dict[str, Any]:
+    code_match = DIAGNOSTIC_CODE.search(stderr)
+    if code_match is None:
+        raise ReportError("Rust oracle diagnostic code is missing; refusing synthetic invalid report")
+    span_match = BYTE_SPAN.search(stderr)
+    if span_match is None:
+        raise ReportError("Rust oracle diagnostic span is missing; refusing synthetic invalid report")
+    start = int(span_match.group(1))
+    end = int(span_match.group(2))
+    if end < start:
+        raise ReportError("Rust oracle diagnostic span has a reversed range")
+    return {
+        "code": code_match.group(1),
+        "span": {
+            "start": source_point(source, start, "start"),
+            "end": source_point(source, end, "end"),
+        },
+    }
 
 
 def write_report(path: pathlib.Path, report: Dict[str, Any]) -> None:
@@ -126,13 +163,14 @@ def main() -> int:
         )
         if fixture is None:
             raise ReportError(f"unknown fixture id: {arguments.fixture_id}")
-        if fixture["kind"] != "valid":
-            raise ReportError("Rust report producer currently accepts valid fixtures only")
+        if fixture["kind"] not in {"valid", "invalid"}:
+            raise ReportError(f"unsupported fixture kind: {fixture['kind']}")
         if arguments.target not in fixture["targets"]:
             raise ReportError(f"fixture target is not declared: {arguments.target}")
-        if fixture["expected"]["diagnostics"]:
+        if fixture["kind"] == "valid" and fixture["expected"]["diagnostics"]:
             raise ReportError("Rust report producer requires a valid fixture with no expected diagnostics")
         source = root / pathlib.PurePosixPath(fixture["source"])
+        source_text = source.read_text(encoding="utf-8")
         artifact = work_dir / "semantic-fixture.wasm"
         if artifact.exists() or artifact.is_symlink():
             raise ReportError(f"artifact path already exists: {artifact}")
@@ -147,6 +185,40 @@ def main() -> int:
             capture_output=True,
             check=False,
         )
+        if fixture["kind"] == "invalid":
+            if compile_result.returncode == 0:
+                raise ReportError("Rust oracle invalid fixture unexpectedly compiled successfully")
+            if artifact.exists() or artifact.is_symlink():
+                raise ReportError("Rust oracle invalid fixture produced an unexpected Wasm artifact")
+            diagnostics = [
+                parse_invalid_diagnostic(
+                    decode_output(compile_result.stderr) + "\n" + decode_output(compile_result.stdout),
+                    source_text,
+                )
+            ]
+            report = {
+                "schema_version": 1,
+                "suite": "v4-m1-01",
+                "producer": "rust-oracle",
+                "target": arguments.target,
+                "source_commit": arguments.source_commit,
+                "fixtures": [
+                    {
+                        "id": fixture["id"],
+                        "diagnostics": diagnostics,
+                        "exit_code": compile_result.returncode,
+                        "artifact": {"status": "not-applicable"},
+                        "runtime": {
+                            "status": "not-run",
+                            "exit_code": None,
+                            "stdout": None,
+                            "stderr": None,
+                        },
+                    }
+                ],
+            }
+            write_report(arguments.output, report)
+            return 0
         if compile_result.returncode != 0:
             detail = decode_output(compile_result.stderr).strip() or decode_output(compile_result.stdout).strip()
             raise ReportError(f"Rust oracle compile failed with exit {compile_result.returncode}: {detail}")

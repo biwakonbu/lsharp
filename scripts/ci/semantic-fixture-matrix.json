@@ -113,8 +113,8 @@
           {
             "code": "LS1001",
             "span": {
-              "start": {"line": 1, "column": 17},
-              "end": {"line": 1, "column": 30}
+              "start": {"line": 1, "column": 16},
+              "end": {"line": 1, "column": 29}
             }
           }
         ],
