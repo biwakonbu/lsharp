@@ -2610,3 +2610,31 @@ verified sliceである。一般Map API、record schema pattern semantic parity�
 target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後current-source gate、全公開
 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle /
 bootstrap / host integration 境界を維持する。
+
+### LEGACY-LANG-01 selfhost bounded record type lookup/equality slice (2026-07-31)
+
+`Type.ls` の `type-record-field-type` と `type-record-fields-eq` に残っていた record field scanを、
+64要素の bounded loopとchunk境界の rooted continuationへ移行した。field lookupは存在しない hashを
+`0`として返す既存契約を保ち、record equalityは field hash順序と各 field typeの比較結果を維持する。
+移行後の `Type.ls` は616行で、500〜800行のファイルサイズ境界内に収まる。次の record type-check
+bounded scanは別 batchとして扱い、今回の変更で巨大ファイル化しない。
+
+Evidence: `test_e2e_selfhost_type_record_ops_use_bounded_chunks` と
+`test_e2e_selfhost_large_record_type_operations_preserve_results` の2 tests、既存
+`selfhost_typeinfer_private_visibility` の1 test、`selfhost_typeinfer_records_computation` の10 tests、
+`git diff --check`、Rust fixtureの `rustfmt --edition 2021 --check` が passした。
+
+source commit `77f177ab` に対して、`NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=77f177ab-type-record-ops`
+の local Lima `lsharp-linux-x86` gateを一度だけ実行した。host-generated stage1 x86 payloadがLinux
+x86_64 VM内でstage2/stage3 native self-regenerationを完走し、summaryは `status=pass`、stage2/stage3
+code lengthは双方 `11168596`、stdout SHA256は双方
+`dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。証跡は
+`ci-artifacts/native-linux-x86-hostgen-vm/77f177ab-type-record-ops/actual-selfregen-summary.json`
+へ summaryだけを残し、11 MiB級 stdout、stage debug、stage1中間物、local Cargo targetは回収後に削除した。
+VMはgate後に停止し、root空き容量は約7.2 GiBを維持した。
+
+これは record type lookup/equalityのbounded scanとLinux x86_64 stage2/stage3 fixed-pointだけを閉じる
+verified sliceである。record type-check全体、一般Map API、record schema pattern semantic parity、full
+record pattern/import target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後
+current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。`TODO.md` の
+`[~]` と Rust oracle / bootstrap / host integration 境界を維持する。

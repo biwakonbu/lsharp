@@ -725,6 +725,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   record field/value inference、record literal field lookup、declared literal/update
   inference を 64 要素 bounded/rooted scan へ移行し、65 要素 fixture と既存 record
   computation regression、Linux x86_64 stage2/stage3 fixed-point を確認した。一般 Map API、
+  `Type.ls` の `type-record-field-type` / `type-record-fields-eq` も 64 要素 bounded/rooted
+  scan へ移行し、65 field lookup/equality fixture、private visibility、record computation
+  regression、Linux x86_64 fixed-pointを確認した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
