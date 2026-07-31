@@ -85,6 +85,191 @@ def definition_output(start=(0, 5), end=(0, 8)):
     return initialize_output() + frame(definition)
 
 
+def references_output(ranges=()):
+    references = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": [
+                {
+                    "uri": "file:///tmp/input.ls",
+                    "range": {
+                        "start": {"line": start[0], "character": start[1]},
+                        "end": {"line": end[0], "character": end[1]},
+                    },
+                }
+                for start, end in ranges
+            ],
+        },
+        separators=(",", ":"),
+    ).encode()
+    return initialize_output() + frame(references)
+
+
+def references_null_output():
+    references = json.dumps(
+        {"jsonrpc": "2.0", "id": 2, "result": None},
+        separators=(",", ":"),
+    ).encode()
+    return initialize_output() + frame(references)
+
+
+def assert_references_projects_native_lsp(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        ranges = [((0, 6), (0, 9)), ((1, 2), (1, 5))]
+        program = write_fake_lsp_program(root, references_output(ranges))
+        payload = b"".join(
+            [
+                request(1, "tools/list"),
+                request(
+                    2,
+                    "tools/call",
+                    {
+                        "name": "lsharp_references",
+                        "arguments": {
+                            "source": "(defn add [x y] (+ x y))\nadd 1 2\n",
+                            "line": 1,
+                            "character": 0,
+                        },
+                    },
+                ),
+            ]
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        tool = next(tool for tool in responses[0]["result"]["tools"] if tool["name"] == "lsharp_references")
+        test.assertEqual(tool["inputSchema"]["oneOf"], [{"required": ["line", "character"]}])
+        test.assertFalse(tool["inputSchema"]["additionalProperties"])
+        test.assertEqual(tool["outputSchema"]["required"], ["count", "ranges"])
+        test.assertEqual(
+            responses[1]["result"]["structuredContent"],
+            {
+                "count": 2,
+                "ranges": [
+                    {
+                        "start": {"line": 0, "character": 6},
+                        "end": {"line": 0, "character": 9},
+                    },
+                    {
+                        "start": {"line": 1, "character": 2},
+                        "end": {"line": 1, "character": 5},
+                    },
+                ],
+            },
+        )
+        messages = [json.loads(body) for body in _parse_frames((root / "lsp-input.bin").read_bytes())]
+        test.assertEqual(
+            [message["method"] for message in messages],
+            ["initialize", "initialized", "textDocument/didOpen", "textDocument/references"],
+        )
+        test.assertEqual(messages[-1]["params"]["context"], {"includeDeclaration": True})
+        test.assertEqual(messages[-1]["params"]["position"], {"line": 1, "character": 0})
+
+
+def assert_references_supports_file_and_col_alias(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        source = root / "input.ls"
+        source.write_text("(defn id [x] x)\nid 1\n", encoding="utf-8")
+        program = write_fake_lsp_program(root, references_output([((0, 6), (0, 8))]))
+        payload = request(
+            1,
+            "tools/call",
+            {
+                "name": "lsharp_references",
+                "arguments": {"file": str(source), "line": 1, "col": 0},
+            },
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertEqual(response["result"]["structuredContent"]["count"], 1)
+        messages = [json.loads(body) for body in _parse_frames((root / "lsp-input.bin").read_bytes())]
+        test.assertEqual(messages[2]["params"]["textDocument"]["uri"], source.resolve().as_uri())
+        test.assertEqual(messages[-1]["params"]["position"], {"line": 1, "character": 0})
+
+
+def assert_references_projects_empty_native_result(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = write_fake_lsp_program(root, references_null_output())
+        payload = request(
+            1,
+            "tools/call",
+            {
+                "name": "lsharp_references",
+                "arguments": {"source": "x", "line": 0, "character": 0},
+            },
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertEqual(response["result"]["structuredContent"], {"count": 0, "ranges": []})
+
+
+def assert_references_rejects_invalid_arguments_before_native(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = write_fake_lsp_program(root, references_output())
+        cases = [
+            {"unknown": True, "line": 0, "character": 0},
+            {"source": "x", "character": 0},
+            {"source": "x", "line": -1, "character": 0},
+            {"source": "x", "line": 0, "character": True},
+            {"source": "x", "file": "other.ls", "line": 0, "character": 0},
+        ]
+        payload = b"".join(
+            request(index, "tools/call", {"name": "lsharp_references", "arguments": arguments})
+            for index, arguments in enumerate(cases, 1)
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        test.assertEqual(len(responses), len(cases))
+        for response in responses:
+            test.assertTrue(response["result"]["isError"])
+        test.assertIn("未知", responses[0]["result"]["content"][0]["text"])
+        test.assertIn("line", responses[1]["result"]["content"][0]["text"])
+        test.assertFalse((root / "lsp-input.bin").exists())
+
+
+def assert_references_rejects_native_failures(test):
+    invalid_range = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": [{"range": {"start": {"line": 0, "character": 1}}}],
+        },
+        separators=(",", ":"),
+    ).encode()
+    cases = (
+        ("stderr", references_output(), "diagnostic"),
+        ("nonzero", references_output(), "failure"),
+        ("malformed", references_output(), "malformed"),
+        ("success", initialize_output(), "response がありません"),
+        ("success", initialize_output() + frame(invalid_range), "range"),
+    )
+    for mode, output, message in cases:
+        with test.subTest(mode=mode, message=message), tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = write_fake_lsp_program(root, output, mode=mode)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_references",
+                    "arguments": {"source": "x", "line": 0, "character": 0},
+                },
+            )
+            result = test.run_shim(program, payload, root)
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn(message, response["result"]["content"][0]["text"])
+
+
 def assert_definition_projects_native_lsp(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

@@ -13,6 +13,10 @@ class DefinitionLookupError(Exception):
     """A native LSP definition request failed or returned an invalid result."""
 
 
+class ReferencesLookupError(Exception):
+    """A native LSP references request failed or returned an invalid result."""
+
+
 HOVER_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -47,6 +51,44 @@ DEFINITION_OUTPUT_SCHEMA = {
             "properties": {
                 "line": {"type": "integer", "minimum": 0},
                 "character": {"type": "integer", "minimum": 0},
+            },
+        },
+    },
+}
+
+REFERENCES_OUTPUT_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["count", "ranges"],
+    "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "ranges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["start", "end"],
+                "properties": {
+                    "start": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["line", "character"],
+                        "properties": {
+                            "line": {"type": "integer", "minimum": 0},
+                            "character": {"type": "integer", "minimum": 0},
+                        },
+                    },
+                    "end": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["line", "character"],
+                        "properties": {
+                            "line": {"type": "integer", "minimum": 0},
+                            "character": {"type": "integer", "minimum": 0},
+                        },
+                    },
+                },
             },
         },
     },
@@ -178,9 +220,21 @@ def _project_hover(result):
     return {"name": name, "type": type_text, "doc": doc}
 
 
-def _run_lsp_request(program, arguments, temporary_directory, method, label, error_type):
+def _run_lsp_request(
+    program,
+    arguments,
+    temporary_directory,
+    method,
+    label,
+    error_type,
+    request_extra=None,
+    allow_none=False,
+):
     source, uri = _require_source(arguments, temporary_directory, error_type)
     position = _position(arguments, error_type)
+    request_params = {"textDocument": {"uri": uri}, "position": position}
+    if request_extra:
+        request_params.update(request_extra)
     aggregate = b"".join(
         [
             _request(1, "initialize", {"capabilities": {}, "rootUri": None}),
@@ -199,7 +253,7 @@ def _run_lsp_request(program, arguments, temporary_directory, method, label, err
             _request(
                 2,
                 method,
-                {"textDocument": {"uri": uri}, "position": position},
+                request_params,
             ),
         ]
     )
@@ -227,6 +281,8 @@ def _run_lsp_request(program, arguments, temporary_directory, method, label, err
             message = error.get("message") if isinstance(error, dict) else str(error)
             raise error_type(f"native LSP {label} error: {message}")
         if response.get("result") is None:
+            if allow_none:
+                return None
             raise error_type(f"{label} を解決できませんでした")
         return response["result"]
     raise error_type(f"native LSP {label} response がありません")
@@ -288,3 +344,52 @@ def call_definition(program, arguments, temporary_directory):
         DefinitionLookupError,
     )
     return _project_definition(result)
+
+
+def _project_references(result):
+    if result is None:
+        result = []
+    if not isinstance(result, list):
+        raise ReferencesLookupError("native LSP references result が配列ではありません")
+    ranges = []
+    for index, location in enumerate(result):
+        if not isinstance(location, dict) or not isinstance(location.get("range"), dict):
+            raise ReferencesLookupError(f"native LSP references[{index}] range が不正です")
+        location_range = location["range"]
+        projected = {}
+        for name in ("start", "end"):
+            position = location_range.get(name)
+            if (
+                not isinstance(position, dict)
+                or type(position.get("line")) is not int
+                or position["line"] < 0
+                or type(position.get("character")) is not int
+                or position["character"] < 0
+            ):
+                raise ReferencesLookupError(
+                    f"native LSP references[{index}] range.{name} が不正です"
+                )
+            projected[name] = {
+                "line": position["line"],
+                "character": position["character"],
+            }
+        ranges.append(projected)
+    return {"count": len(ranges), "ranges": ranges}
+
+
+def call_references(program, arguments, temporary_directory):
+    allowed = {"source", "file", "line", "character", "col"}
+    unknown = sorted(set(arguments).difference(allowed))
+    if unknown:
+        raise ReferencesLookupError(f"lsharp_references の未知の引数: {', '.join(unknown)}")
+    result = _run_lsp_request(
+        program,
+        arguments,
+        temporary_directory,
+        "textDocument/references",
+        "references",
+        ReferencesLookupError,
+        request_extra={"context": {"includeDeclaration": True}},
+        allow_none=True,
+    )
+    return _project_references(result)

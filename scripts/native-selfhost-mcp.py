@@ -42,10 +42,13 @@ from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_
 from native_selfhost_mcp_lsp import (
     DEFINITION_OUTPUT_SCHEMA,
     HOVER_OUTPUT_SCHEMA,
+    REFERENCES_OUTPUT_SCHEMA,
     DefinitionLookupError,
     HoverLookupError,
+    ReferencesLookupError,
     call_definition,
     call_hover,
+    call_references,
 )
 from native_selfhost_mcp_packages import (
     PackageLookupError,
@@ -301,6 +304,19 @@ TOOLS = [
         },
         ["line", "character"],
         DEFINITION_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
+    tool_descriptor(
+        "lsharp_references",
+        "native LSP からカーソル位置の参照範囲を返す",
+        {
+            **SOURCE_PROPERTIES,
+            "line": {"type": "integer", "minimum": 0},
+            "character": {"type": "integer", "minimum": 0},
+            "col": {"type": "integer", "minimum": 0},
+        },
+        ["line", "character"],
+        REFERENCES_OUTPUT_SCHEMA,
         {"additionalProperties": False},
     ),
     tool_descriptor(
@@ -719,6 +735,11 @@ def call_tool(program, name, arguments):
                 try:
                     value = call_definition(program, arguments, temporary_directory)
                 except DefinitionLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_references":
+                try:
+                    value = call_references(program, arguments, temporary_directory)
+                except ReferencesLookupError as error:
                     raise ToolError(str(error)) from error
             elif name == "lsharp_check":
                 value = call_check(program, arguments, temporary_directory)
