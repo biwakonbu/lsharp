@@ -45,6 +45,7 @@ mod selfhost_typeinfer_basic_errors;
 mod selfhost_typeinfer_builtin_parity;
 mod selfhost_typeinfer_computation_do;
 mod selfhost_typeinfer_block_loops;
+mod selfhost_typeinfer_assertion_scanners;
 mod selfhost_typeinfer_curried_apply;
 mod selfhost_typeinfer_curried_defn_field_access;
 mod selfhost_typeinfer_curried_lambda;

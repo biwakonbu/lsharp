@@ -41,32 +41,32 @@
   (if (or (= ch 32) (= ch 9))
     1
     (if (or (= ch 10) (= ch 13)) 1 0)))
-(defn property-skip-space [src idx len]
+(defn property-skip-space-legacy [src idx len]
   (if (>= idx len)
     idx
     (if (= (property-space? (string-char-at src idx)) 1)
-      (property-skip-space src (+ idx 1) len)
+      (property-skip-space-legacy src (+ idx 1) len)
       idx)))
-(defn property-find-substring-loop [src needle idx len needle-len]
+(defn property-find-substring-loop-legacy [src needle idx len needle-len]
   (if (> (+ idx needle-len) len)
     -1
     (if (string-eq (substring src idx (+ idx needle-len)) needle)
       idx
-      (property-find-substring-loop src needle (+ idx 1) len needle-len))))
-(defn property-find-substring [src needle]
-  (property-find-substring-loop src needle 0 (string-length src) (string-length needle)))
-(defn property-balanced-expression-end [src idx len depth]
+      (property-find-substring-loop-legacy src needle (+ idx 1) len needle-len))))
+(defn property-find-substring-legacy [src needle]
+  (property-find-substring-loop-legacy src needle 0 (string-length src) (string-length needle)))
+(defn property-balanced-expression-end-legacy [src idx len depth]
   (if (>= idx len)
     -1
     (let [ch (string-char-at src idx)]
       (if (= ch 40)
-        (property-balanced-expression-end src (+ idx 1) len (+ depth 1))
+        (property-balanced-expression-end-legacy src (+ idx 1) len (+ depth 1))
         (if (= ch 41)
           (if (= depth 1)
             (+ idx 1)
-            (property-balanced-expression-end src (+ idx 1) len (- depth 1)))
-          (property-balanced-expression-end src (+ idx 1) len depth))))))
-(defn property-atom-expression-end [src idx len]
+            (property-balanced-expression-end-legacy src (+ idx 1) len (- depth 1)))
+          (property-balanced-expression-end-legacy src (+ idx 1) len depth))))))
+ (defn property-atom-expression-end-legacy [src idx len]
   (if (>= idx len)
     idx
     (let [ch (string-char-at src idx)]
@@ -74,7 +74,247 @@
         (= (property-space? ch) 1)
         (or (= ch 41) (= ch 93)))
         idx
-        (property-atom-expression-end src (+ idx 1) len)))))
+        (property-atom-expression-end-legacy src (+ idx 1) len)))))
+
+;; property metadata の文字列 scanner は 64 文字単位で走査し、
+;; rooted continuation で次の chunk へ進む。
+(defn property-skip-space-step-v3 [src idx len]
+  (if (>= idx len)
+    (vector-push-pair-rooted-v3 (vector-new 2) 1 idx)
+    (if (= (property-space? (string-char-at src idx)) 1)
+      (vector-push-pair-rooted-v3 (vector-new 2) 0 (+ idx 1))
+      (vector-push-pair-rooted-v3 (vector-new 2) 1 idx))))
+
+(defn property-skip-space-step-64-loop-bounded [src idx len remaining]
+  (do
+    (root_push src)
+    (let [step (property-skip-space-step-v3 src idx len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-skip-space-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-skip-space-rooted-v3 [src idx len]
+  (let [step (property-skip-space-step-64-loop-bounded src idx len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-skip-space-rooted-v3 src (vector-get step 1) len)]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-skip-space [src idx len]
+  (do
+    (root_push src)
+    (let [result (property-skip-space-rooted-v3 src idx len)]
+      (do
+        (root_pop)
+        result))))
+
+(defn property-find-substring-step-v3 [src needle idx len needle-len]
+  (if (> (+ idx needle-len) len)
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx -1)
+    (if (string-eq (substring src idx (+ idx needle-len)) needle)
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 idx idx)
+      (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) -1))))
+
+(defn property-find-substring-step-64-loop-bounded
+  [src needle idx len needle-len remaining]
+  (do
+    (root_push src)
+    (root_push needle)
+    (let [step
+      (property-find-substring-step-v3 src needle idx len needle-len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-find-substring-step-64-loop-bounded
+                src
+                needle
+                (vector-get step 1)
+                len
+                needle-len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-find-substring-rooted-v3 [src needle idx len needle-len]
+  (let [step
+    (property-find-substring-step-64-loop-bounded
+      src needle idx len needle-len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-find-substring-rooted-v3
+            src needle (vector-get step 1) len needle-len)]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-find-substring [src needle]
+  (do
+    (root_push src)
+    (root_push needle)
+    (let [result
+      (property-find-substring-rooted-v3
+        src needle 0 (string-length src) (string-length needle))]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn property-find-substring-loop [src needle idx len needle-len]
+  (do
+    (root_push src)
+    (root_push needle)
+    (let [result
+      (property-find-substring-rooted-v3 src needle idx len needle-len)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn property-balanced-expression-end-step-v3 [src idx len depth]
+  (if (>= idx len)
+    (vector-push-quad-rooted-v3 (vector-new 4) 1 idx depth -1)
+    (let [ch (string-char-at src idx)]
+      (if (= ch 40)
+        (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (+ depth 1) -1)
+        (if (= ch 41)
+          (if (= depth 1)
+            (vector-push-quad-rooted-v3 (vector-new 4) 1 (+ idx 1) 0 (+ idx 1))
+            (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (- depth 1) -1))
+          (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) depth -1))))))
+
+(defn property-balanced-expression-end-step-64-loop-bounded
+  [src idx len depth remaining]
+  (do
+    (root_push src)
+    (let [step
+      (property-balanced-expression-end-step-v3 src idx len depth)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-balanced-expression-end-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (vector-get step 2)
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-balanced-expression-end-rooted-v3 [src idx len depth]
+  (let [step
+    (property-balanced-expression-end-step-64-loop-bounded
+      src idx len depth 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 3)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-balanced-expression-end-rooted-v3
+            src
+            (vector-get step 1)
+            len
+            (vector-get step 2))]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-balanced-expression-end [src idx len depth]
+  (do
+    (root_push src)
+    (let [result
+      (property-balanced-expression-end-rooted-v3 src idx len depth)]
+      (do
+        (root_pop)
+        result))))
+
+(defn property-atom-expression-end-step-v3 [src idx len]
+  (if (>= idx len)
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx idx)
+    (let [ch (string-char-at src idx)]
+      (if (or
+          (= (property-space? ch) 1)
+          (or (= ch 41) (= ch 93)))
+        (vector-push-triple-rooted-v3 (vector-new 3) 1 idx idx)
+        (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) -1)))))
+
+(defn property-atom-expression-end-step-64-loop-bounded
+  [src idx len remaining]
+  (do
+    (root_push src)
+    (let [step (property-atom-expression-end-step-v3 src idx len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-atom-expression-end-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-atom-expression-end-rooted-v3 [src idx len]
+  (let [step
+    (property-atom-expression-end-step-64-loop-bounded src idx len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-atom-expression-end-rooted-v3
+            src (vector-get step 1) len)]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-atom-expression-end [src idx len]
+  (do
+    (root_push src)
+    (let [result (property-atom-expression-end-rooted-v3 src idx len)]
+      (do
+        (root_pop)
+        result))))
+
 (defn property-postcondition-text [payload]
   (let [marker (property-find-substring payload ":postcondition")
     payload-len (string-length payload)]
