@@ -669,6 +669,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   diagnostics、module/import、qualified/private record の parser/type/runtime slice と
   両 supported target の current-source core stage0 smoke は verified。constructor/record/GADT の
   残る semantics、全 diagnostic/span、standalone source check、full cross-target aggregate を閉じる。
+  2026-07-31 に selfhost `Types.TypeInferApply` の 3-7 引数 application を 64 要素 bounded
+  rooted continuationへ集約し、high-arity contract、failure propagation、既存 curried apply の
+  focused E2E 11件を通した。Linux x86_64 fixed point は status `pass`、stage2/stage3 code length
+  各 `11168596`、stdout SHA-256 は両方
+  `dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。これは
+  TypeInferApply の bounded traversal と current-source Linux native self-regeneration の
+  verified sliceであり、64超の診断契約、全 diagnostic/span、Mac/Linux aggregate parity は残る。
 - [~] `EC-M1-02` canonical metadata IR — canonical case/assert/property inventory、
   typed binder、precondition/postcondition、directive span の slice は verified。一般 `TypeExpr`、
   全 `ContractSuite` evaluator、binder/predicate 個別 span、formatter/docs、2 target evidence を閉じる。
