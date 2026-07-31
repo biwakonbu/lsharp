@@ -63,6 +63,26 @@ optional propertyとして宣言するだけで、partial contextを static vali
 これは Rust-host MCP schema/runtime parity の verified partial sliceであり、selfhost/native MCP、
 current-source artifact/runtime、provider/authentication、対応2 target、EC-M3 aggregateの完了証拠ではない。
 
+### MCP review clock lexical schema closure (2026-07-31)
+
+runtime の `ReviewVerificationContext::from_options` は `review_now` を strict canonical UTC
+timestamp として暦日・時分秒まで検証する。一方、MCP input schema が `minLength` だけだと、offset付き、
+空白区切り、fractional seconds、任意文字列を static validator が受理し、runtime の fail-closed boundary
+へ到達する前に入力契約がずれる。
+
+- `review_now` に `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` を追加し、wire の lexical shape を
+  `docs/schemas/review-provenance-v1.schema.json` と揃える。
+- schema の pattern は暦日の実在性を判定しない。`2026-02-30T00:00:00Z` のような値は既存の Rust
+  canonical timestamp validator が拒否し、schema/runtime の責務を分離する。
+- RED: `test_validate_tool_input_schema_requires_canonical_review_now` は pattern がなく、
+  `review_now` の schema assertion が `null` となることを確認した。
+- GREEN: canonical timestampを受理し、offset、空白、fractional seconds、任意文字列を Draft 2020-12
+  validator が拒否することを固定した。`mcp_server::tests` は72件全て通過した。
+
+これは Rust-host MCP の lexical schema/runtime parity の verified partial sliceであり、暦日を含む
+runtime検証、selfhost/native MCP、current-source artifact/runtime、provider/authentication、対応2 target、
+EC-M3 aggregateの完了証拠ではない。
+
 ## Boundary
 
 これは EC-M3-03 の Rust CLI/MCP context/expiry/binding verified partial slice である。source/

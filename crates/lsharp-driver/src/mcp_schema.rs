@@ -257,7 +257,11 @@ fn validate_input_schema() -> Value {
             "review_subject_digest": { "type": "string", "minLength": 1 },
             "review_source_commit": { "type": "string", "minLength": 1 },
             "review_artifact_digest": { "type": "string", "minLength": 1 },
-            "review_now": { "type": "string", "minLength": 1 }
+            "review_now": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+            }
         },
         "dependentRequired": {
             "review_subject_digest": ["review_source_commit", "review_now"],

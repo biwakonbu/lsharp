@@ -270,6 +270,51 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_input_schema_requires_canonical_review_now() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let input_schema = &tool["inputSchema"];
+        assert_eq!(
+            input_schema["properties"]["review_now"]["pattern"],
+            "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+            "review_now は canonical UTC timestamp の lexical schema を公開するべき"
+        );
+        let validator = jsonschema::draft202012::new(input_schema)
+            .expect("MCP validation input schema は Draft 2020-12 validator を構築できるべき");
+        let mut valid = json!({
+            "source": "",
+            "review_subject_digest": "sha256:graph",
+            "review_source_commit": "commit-1",
+            "review_now": "2026-08-15T00:00:00Z"
+        });
+        assert!(
+            validator.is_valid(&valid),
+            "canonical UTC timestamp は MCP input schema で受理するべき"
+        );
+        for invalid in [
+            "2026-08-15T00:00:00+00:00",
+            "2026-08-15 00:00:00Z",
+            "2026-08-15T00:00:00.000Z",
+            "tomorrow",
+        ] {
+            valid["review_now"] = json!(invalid);
+            assert!(
+                !validator.is_valid(&valid),
+                "review_now={invalid} は MCP input schema で拒否するべき"
+            );
+        }
+    }
+
+    #[test]
     fn test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",

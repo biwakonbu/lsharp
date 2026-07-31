@@ -505,6 +505,14 @@ validator matrixを追加した。Rust-host MCP schema/runtime verified partial 
 current-source artifact/runtime、provider/authentication、対応2 target、EC-M3 aggregate は残件。ADR:
 `docs/adr/decisions-v0.3-review-explicit-context.md`。
 
+2026-07-31 に MCP `lsharp_validate` の `review_now` schemaを runtime の canonical UTC timestamp lexical
+boundaryへ接続した。`minLength` だけだった input propertyへ `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`
+patternを追加し、offset付き、空白区切り、fractional seconds、任意文字列を
+`test_validate_tool_input_schema_requires_canonical_review_now` の Draft 2020-12 validator matrixで拒否した。
+暦日の実在性は既存 Rust canonical timestamp validatorの責務として維持する。Rust-host MCP schema/runtime
+verified partial sliceであり、selfhost/native MCP、current-source artifact/runtime、provider/authentication、
+対応2 target、EC-M3 aggregateは残件。ADR: `docs/adr/decisions-v0.3-review-explicit-context.md`。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 
