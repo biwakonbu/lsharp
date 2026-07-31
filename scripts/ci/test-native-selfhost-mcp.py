@@ -42,11 +42,51 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     print(json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": []}}))
                     raise SystemExit(0)
                 if args[:1] == ["validate"]:
+                    def arg_value(flag):
+                        try:
+                            return args[args.index(flag) + 1]
+                        except (ValueError, IndexError):
+                            return None
+
+                    identity = None
+                    if "--review-subject-digest" in args:
+                        identity = {{
+                            "subject_digest": arg_value("--review-subject-digest"),
+                            "source_commit": arg_value("--review-source-commit"),
+                            "artifact_digest": arg_value("--review-artifact-digest"),
+                            "trust_store_digest": arg_value("--review-trust-store-digest"),
+                            "lifecycle_digest": arg_value("--review-lifecycle-digest"),
+                            "now": arg_value("--review-now"),
+                        }}
+                    mode = os.environ.get("FAKE_NATIVE_IDENTITY_MODE", "match")
+                    report_identity = dict(identity) if identity is not None else None
+                    manifest_identity = dict(identity) if identity is not None else None
+                    if mode == "missing":
+                        report_identity = None
+                        manifest_identity = None
+                    elif mode == "report-mismatch":
+                        report_identity["subject_digest"] = "sha256:wrong"
+                    elif mode == "manifest-mismatch":
+                        manifest_identity["subject_digest"] = "sha256:wrong"
+                    report = {{
+                        "status": "unknown",
+                        "trace_gaps": [],
+                        "open_questions": 0,
+                        "independent_reviews": 0,
+                        "contradicting_observations": 0,
+                        "stale_reviews": 0,
+                        "stale_evidence": 0,
+                    }}
+                    if report_identity is not None:
+                        report["review_evidence_identity"] = report_identity
                     if "--emit-manifest" in args:
                         output = pathlib.Path(args[args.index("--emit-manifest") + 1])
                         output.parent.mkdir(parents=True, exist_ok=True)
-                        output.write_text(json.dumps({{"schema_version": 1, "nodes": [], "evidence": [], "edges": []}}), encoding="utf-8")
-                    print(json.dumps({{"status": "unknown", "trace_gaps": [], "open_questions": 0, "independent_reviews": 0, "contradicting_observations": 0, "stale_reviews": 0, "stale_evidence": 0}}))
+                        manifest = {{"schema_version": 1, "nodes": [], "evidence": [], "edges": []}}
+                        if manifest_identity is not None:
+                            manifest["review_evidence_identity"] = manifest_identity
+                        output.write_text(json.dumps(manifest), encoding="utf-8")
+                    print(json.dumps(report))
                     raise SystemExit(2)
                 if args[:1] == ["fmt"]:
                     print("(formatted)")
@@ -60,9 +100,11 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         os.chmod(program, 0o755)
         return program
 
-    def run_shim(self, program, payload, root):
+    def run_shim(self, program, payload, root, identity_mode=None):
         environment = os.environ.copy()
         environment["FAKE_NATIVE_LOG"] = str(root / "native.log")
+        if identity_mode is not None:
+            environment["FAKE_NATIVE_IDENTITY_MODE"] = identity_mode
         return subprocess.run(
             [sys.executable, str(SHIM), "--program", str(program)],
             input=payload,
@@ -301,7 +343,133 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertIn("--review-subject-digest", calls[0])
             self.assertIn("--review-lifecycle-digest", calls[0])
             self.assertIn("--emit-manifest", calls[0])
-            self.assertEqual(self.responses(result.stdout)[0]["result"]["isError"], False)
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertEqual(response["isError"], False)
+            expected_identity = {
+                "subject_digest": "sha256:subject",
+                "source_commit": "a" * 40,
+                "artifact_digest": "sha256:artifact",
+                "trust_store_digest": "sha256:trust",
+                "lifecycle_digest": "sha256:lifecycle",
+                "now": "2026-08-01T00:00:00Z",
+            }
+            self.assertEqual(response["structuredContent"]["review_evidence_identity"], expected_identity)
+            self.assertEqual(response["structuredContent"]["manifest"]["review_evidence_identity"], expected_identity)
+
+    def test_native_report_identity_mismatch_is_rejected_after_execution(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_subject_digest": "sha256:subject",
+                        "review_source_commit": "a" * 40,
+                        "review_artifact_digest": "sha256:artifact",
+                        "review_now": "2026-08-01T00:00:00Z",
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root, identity_mode="report-mismatch")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("review_evidence_identity", response["content"][0]["text"])
+
+    def test_explicit_identity_uses_computed_provider_digests(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            trust_store = root / "trust.json"
+            lifecycle = root / "lifecycle.json"
+            trust_store.write_bytes(b"trust snapshot\n")
+            lifecycle.write_bytes(b"lifecycle snapshot\n")
+            trust_digest = f"sha256:{hashlib.sha256(trust_store.read_bytes()).hexdigest()}"
+            lifecycle_digest = f"sha256:{hashlib.sha256(lifecycle.read_bytes()).hexdigest()}"
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "trust_store": str(trust_store),
+                        "review_lifecycle": str(lifecycle),
+                        "review_subject_digest": "sha256:subject",
+                        "review_source_commit": "a" * 40,
+                        "review_artifact_digest": "sha256:artifact",
+                        "review_now": "2026-08-01T00:00:00Z",
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertFalse(response["isError"])
+            identity = response["structuredContent"]["review_evidence_identity"]
+            self.assertEqual(identity["trust_store_digest"], trust_digest)
+            self.assertEqual(identity["lifecycle_digest"], lifecycle_digest)
+
+    def test_native_report_identity_missing_is_rejected_after_execution(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_subject_digest": "sha256:subject",
+                        "review_source_commit": "a" * 40,
+                        "review_artifact_digest": "sha256:artifact",
+                        "review_now": "2026-08-01T00:00:00Z",
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root, identity_mode="missing")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("is missing", response["content"][0]["text"])
+
+    def test_native_manifest_identity_mismatch_is_rejected_after_execution(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "include_manifest": True,
+                        "review_subject_digest": "sha256:subject",
+                        "review_source_commit": "a" * 40,
+                        "review_artifact_digest": "sha256:artifact",
+                        "review_now": "2026-08-01T00:00:00Z",
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root, identity_mode="manifest-mismatch")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("review_evidence_identity", response["content"][0]["text"])
 
     def test_partial_review_identity_is_rejected_before_native_execution(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

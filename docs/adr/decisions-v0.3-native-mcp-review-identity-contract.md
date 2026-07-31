@@ -22,16 +22,22 @@ the child process boundary itself must remain fail-closed.
 - Keep `review_trust_store_digest` and `review_lifecycle_digest` optional when
   no snapshot paths are supplied; when paths are supplied, their separate
   provider pair rule remains enforced by the provider snapshot adapter.
+- When the four core identity fields are supplied, compare the native report's
+  `review_evidence_identity` with the caller identity plus the computed provider
+  digests. Reject missing, reordered, or unequal fields before returning the MCP
+  result. If a manifest was requested, apply the same comparison to its
+  `review_evidence_identity`.
 
 ## Evidence
 
 - `scripts/ci/test-native-selfhost-mcp.py` verifies the published dependency
-  schema, complete identity forwarding, and partial identity no-execution.
+  schema, complete identity forwarding, report/manifest projection, and
+  missing/mismatched identity fail-closed behavior.
 - Native MCP and runner focused tests, Python compilation, shell syntax checks,
   docs audit, and `git diff --check` pass.
 
 ## Remaining boundary
 
 Full Rust MCP tool parity, provider authentication/signature/lifecycle
-semantics, and current-source Linux runtime evidence remain `[~]` under
-`EC-M3-05` / M3-05-N9.
+semantics, native stage0 report/runtime evidence, and current-source Linux
+runtime evidence remain `[~]` under `EC-M3-05` / M3-05-N9.

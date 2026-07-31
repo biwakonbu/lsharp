@@ -437,7 +437,7 @@ def provider_snapshot_arguments(arguments):
     path_names = ("trust_store", "review_lifecycle")
     present = [name for name in path_names if name in arguments]
     if not present:
-        return [], set()
+        return [], set(), {}
     if len(present) != len(path_names):
         raise ToolError("trust_store と review_lifecycle は同時指定が必要です")
 
@@ -447,6 +447,7 @@ def provider_snapshot_arguments(arguments):
     )
     flags = []
     excluded = set()
+    digests = {}
     for path_name, digest_name, flag in provider_inputs:
         path = pathlib.Path(require_string(arguments, path_name))
         if path.is_symlink() or not path.is_file():
@@ -468,7 +469,8 @@ def provider_snapshot_arguments(arguments):
                 )
         flags.extend((flag, digest))
         excluded.add(digest_name)
-    return flags, excluded
+        digests[digest_name] = digest
+    return flags, excluded, digests
 
 
 def identity_arguments(arguments, excluded=()):
@@ -507,6 +509,59 @@ def identity_arguments(arguments, excluded=()):
     return result
 
 
+def expected_review_identity(arguments, provider_digests):
+    identity_names = (
+        "review_subject_digest",
+        "review_source_commit",
+        "review_artifact_digest",
+        "review_now",
+    )
+    if not any(name in arguments for name in identity_names):
+        return None
+    identity = {
+        "subject_digest": require_string(arguments, "review_subject_digest"),
+        "source_commit": require_string(arguments, "review_source_commit"),
+        "artifact_digest": require_string(arguments, "review_artifact_digest"),
+    }
+    identity["trust_store_digest"] = provider_digests.get(
+        "review_trust_store_digest",
+        require_string(arguments, "review_trust_store_digest")
+        if "review_trust_store_digest" in arguments
+        else None,
+    )
+    identity["lifecycle_digest"] = provider_digests.get(
+        "review_lifecycle_digest",
+        require_string(arguments, "review_lifecycle_digest")
+        if "review_lifecycle_digest" in arguments
+        else None,
+    )
+    identity["now"] = require_string(arguments, "review_now")
+    return identity
+
+
+def verify_identity_projection(report, expected_identity, include_manifest):
+    if expected_identity is None:
+        return
+    actual_identity = report.get("review_evidence_identity")
+    if not isinstance(actual_identity, dict):
+        raise ToolError(
+            "native validate report review_evidence_identity is missing for explicit review identity"
+        )
+    if list(actual_identity) != list(expected_identity):
+        raise ToolError("native validate report review_evidence_identity field order mismatch")
+    if actual_identity != expected_identity:
+        raise ToolError("native validate report review_evidence_identity mismatch")
+    if include_manifest:
+        manifest = report.get("manifest")
+        manifest_identity = manifest.get("review_evidence_identity") if isinstance(manifest, dict) else None
+        if not isinstance(manifest_identity, dict):
+            raise ToolError("native emitted manifest review_evidence_identity is missing")
+        if list(manifest_identity) != list(expected_identity):
+            raise ToolError("native emitted manifest review_evidence_identity field order mismatch")
+        if manifest_identity != expected_identity:
+            raise ToolError("native emitted manifest review_evidence_identity mismatch")
+
+
 def call_check(program, arguments, temporary_directory):
     path = input_file(arguments, temporary_directory)
     completed = run_native(program, ["check", str(path), "--format", "json"])
@@ -520,7 +575,7 @@ def call_validate(program, arguments, temporary_directory):
     if not isinstance(include_manifest, bool):
         raise ToolError("include_manifest は boolean が必要です")
     command = ["validate", "--source", str(path), "--format", "json"]
-    provider_flags, provider_digest_names = provider_snapshot_arguments(arguments)
+    provider_flags, provider_digest_names, provider_digests = provider_snapshot_arguments(arguments)
     command.extend(identity_arguments(arguments, provider_digest_names))
     command.extend(provider_flags)
     manifest_path = None
@@ -536,6 +591,11 @@ def call_validate(program, arguments, temporary_directory):
             report["manifest"] = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise ToolError(f"native emitted manifest が不正です: {error}") from error
+    verify_identity_projection(
+        report,
+        expected_review_identity(arguments, provider_digests),
+        include_manifest,
+    )
     return report
 
 
