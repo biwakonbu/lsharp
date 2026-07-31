@@ -152,3 +152,73 @@ fn selfhost_lifecycle_reducer_orders_events_and_rejects_invalid_transitions() {
         ]
     );
 }
+
+#[test]
+fn selfhost_lifecycle_event_at_selects_latest_event_not_future() {
+    let harness = r#"
+(defn event-at [review-id sequence state effective-at]
+  (source-review-lifecycle-event
+    review-id
+    sequence
+    state
+    effective-at
+    ""))
+(defn push-event [events elem]
+  (vector-push-single-rooted-v3 events elem))
+(defn main []
+  (let [events
+          (push-event
+            (push-event
+              (push-event
+                (vector-new 3)
+                (event-at
+                  "review:clock/reviewer-001"
+                  3
+                  "revoked"
+                  "2026-08-03T00:00:00Z"))
+              (event-at
+                "review:clock/reviewer-001"
+                1
+                "proposed"
+                "2026-08-01T00:00:00Z"))
+            (event-at
+              "review:clock/reviewer-001"
+              2
+              "active"
+              "2026-08-02T00:00:00Z"))
+        reduced (source-review-lifecycle-from-events events)
+        registry (source-result-value reduced)
+        before
+          (source-review-lifecycle-event-at
+            registry
+            "review:clock/reviewer-001"
+            "2026-07-31T23:59:59Z")
+        first
+          (source-review-lifecycle-event-at
+            registry
+            "review:clock/reviewer-001"
+            "2026-08-01T12:00:00Z")
+        active
+          (source-review-lifecycle-event-at
+            registry
+            "review:clock/reviewer-001"
+            "2026-08-02T00:00:00Z")
+        revoked
+          (source-review-lifecycle-event-at
+            registry
+            "review:clock/reviewer-001"
+            "2026-08-04T00:00:00Z")]
+    (do
+      (print (if (= before 0) 1 0))
+      (print (source-review-lifecycle-event-sequence first))
+      (print (source-review-lifecycle-event-sequence active))
+      (print (source-review-lifecycle-event-sequence revoked))
+      0)))
+"#;
+
+    let output = run_lifecycle_runtime(harness);
+    assert_eq!(
+        output.trim().lines().collect::<Vec<_>>(),
+        ["1", "1", "2", "3"]
+    );
+}

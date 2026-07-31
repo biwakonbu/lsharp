@@ -21,8 +21,9 @@
   trust store、署名検証、両対応 target の runtime evidence は残る。
 - [~] `EC-M3-02` lifecycle transition — append-only registry と stale/revoked 境界の Rust verified
   slice。selfhost reducerにも deterministic ordering、transition、sequence rollback、`effective_at`
-  rollback（code `8` と前後 timestamp payload）を接続し、Rust `review_lifecycle` 6件と selfhost
-  lifecycle E2E 1件で parityを確認した。source/native report parity、provider snapshot、release evidence は残る。
+  rollback（code `8` と前後 timestamp payload）、explicit clock 以下の最新 `event_at` 選択を接続し、
+  Rust `review_lifecycle` 6件・clock gate 1件と selfhost lifecycle E2E 2件で parityを確認した。
+  source/native report parity、provider snapshot、release evidence は残る。
 - [~] `EC-M3-03` CLI/MCP explicit inputs — explicit context、clock、trust/lifecycle input の Rust
   CLI/MCP boundary は verified partial slice。MCP input schema の subject/source/now/artifact all-or-none
   も `dependentRequired` で runtime boundaryへ接続した。selfhost/native MCP と target artifact parity は残る。
@@ -549,8 +550,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   を閉じる。
 - [~] `EC-M3-02` append-only lifecycle を deterministic に reduce し、active sequence、superseded、
   revoked、stale を report の事実へ接続する。Rust/selfhost reducerの sequence/transition/
-  `effective_at` rollback は verified partial slice（selfhost code `8`）だが、provider snapshot の取得、
-  report projection、native parity は残る。
+  `effective_at` rollback（selfhost code `8`）と explicit clock `event_at` 選択は verified partial
+  sliceだが、provider snapshot の取得、report projection、native parity は残る。
 - [~] `EC-M3-03` CLI/MCP の trust store/lifecycle explicit input と project-root boundary を維持し、
   attestation verification state と no-report/no-manifest の失敗境界を CLI/MCP の共通 projectionへ接続した。
   `--review-subject-digest` / `--review-source-commit` / `--review-now` の all-or-none context、

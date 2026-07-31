@@ -261,6 +261,57 @@
     (vector-length registry)
     0))
 
+(defn source-review-lifecycle-event-at-loop [registry review-id at idx len current]
+  (if (>= idx len)
+    current
+    (let [event (vector-get registry idx)
+      event-review-id (source-review-lifecycle-event-review-id event)
+      event-effective-at (source-review-lifecycle-event-effective-at event)]
+      (if (string-eq event-review-id review-id)
+        (if (= (source-review-lifecycle-string-before? at event-effective-at) 0)
+          (if
+            (or
+              (= current 0)
+              (> (source-review-lifecycle-event-sequence event)
+                (source-review-lifecycle-event-sequence current)))
+            (source-review-lifecycle-event-at-loop
+              registry
+              review-id
+              at
+              (+ idx 1)
+              len
+              event)
+            (source-review-lifecycle-event-at-loop
+              registry
+              review-id
+              at
+              (+ idx 1)
+              len
+              current))
+          (source-review-lifecycle-event-at-loop
+            registry
+            review-id
+            at
+            (+ idx 1)
+            len
+            current))
+        (source-review-lifecycle-event-at-loop
+          registry
+          review-id
+          at
+          (+ idx 1)
+          len
+          current)))))
+
+(defn source-review-lifecycle-event-at [registry review-id at]
+  (source-review-lifecycle-event-at-loop
+    (source-review-lifecycle-sort registry)
+    review-id
+    at
+    0
+    (vector-length registry)
+    0))
+
 (defn source-review-lifecycle-transition-valid? [from to]
   (or
     (and

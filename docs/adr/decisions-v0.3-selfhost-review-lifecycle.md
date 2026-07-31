@@ -35,6 +35,9 @@ error boundary を selfhost に固定する必要がある。
 - timestamp は event construction 時に strict canonical UTC へ検証済みなので、Rust canonical reducer と
   同じ UTF-8 byte-wise lexical order を chronological order として比較する。既存の sequence/transition
   error precedence は維持する。
+- `source-review-lifecycle-event-at` は明示された canonical clock 以下の event だけを対象にし、
+  review ID ごとの sequence 最大値を返す。future event は時計時点の state に混ぜず、対象 event が
+  ない場合は既存の sentinel `0` を返す。
 - この module は lifecycle state の純粋な reducer とし、provider 取得、signature/trust、
   report projection、CLI/MCP の入力解決は外部境界として残す。
 
@@ -52,7 +55,13 @@ error boundary を selfhost に固定する必要がある。
   Rust `lifecycle_rejects_effective_time_rollback` と同じ fixture意味論へ揃えた。
 - Regression: `cargo test -p lsharp-types --test review_lifecycle`（6 passed）と
   selfhost lifecycle E2E（1 passed）を通過した。
-- Regression: selfhost evidence registry 全体（51 tests）が passed。
+- RED: explicit clock の前、各 event の間、同時刻、全 event 後を同じ out-of-order fixture で
+  selfhost に追加し、未定義 `event-at` boundary を先に固定した。
+- GREEN: `source-review-lifecycle-event-at` が canonical timestamp の byte-wise order と
+  sequence 最大値を使い、`[1, 1, 2, 3]`（future sentinel、最初、active、revoked）を返すことを
+  selfhost Wasm で確認した。Rust の `lifecycle_transition_is_not_effective_before_its_clock`
+  （1 passed）と既存 `review_lifecycle`（6 passed）も再実行した。
+- Regression: selfhost evidence registry 全体（59 tests）が passed。
 - Contract: 対象 Rust files の `rustfmt --edition 2024 --check`、`git diff --check`、
   `bash scripts/audit_docs.sh`（0 errors, 0 warnings）が passed。
 
