@@ -9,6 +9,10 @@ class HoverLookupError(Exception):
     """A native LSP hover request failed or returned an invalid result."""
 
 
+class DefinitionLookupError(Exception):
+    """A native LSP definition request failed or returned an invalid result."""
+
+
 HOVER_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -21,56 +25,83 @@ HOVER_OUTPUT_SCHEMA = {
     },
 }
 
+DEFINITION_OUTPUT_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["start", "end"],
+    "properties": {
+        "start": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["line", "character"],
+            "properties": {
+                "line": {"type": "integer", "minimum": 0},
+                "character": {"type": "integer", "minimum": 0},
+            },
+        },
+        "end": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["line", "character"],
+            "properties": {
+                "line": {"type": "integer", "minimum": 0},
+                "character": {"type": "integer", "minimum": 0},
+            },
+        },
+    },
+}
+
 _NATIVE_LSP_HELPER = None
 
 
-def _native_lsp_helper():
+def _native_lsp_helper(error_type=HoverLookupError):
     global _NATIVE_LSP_HELPER
     if _NATIVE_LSP_HELPER is None:
         helper_path = pathlib.Path(__file__).resolve().with_name("native-selfhost-lsp-stdio.py")
         spec = importlib.util.spec_from_file_location("native_selfhost_lsp_stdio", helper_path)
         if spec is None or spec.loader is None:
-            raise HoverLookupError(f"native LSP helper を読み込めません: {helper_path}")
+            raise error_type(f"native LSP helper を読み込めません: {helper_path}")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         _NATIVE_LSP_HELPER = module
     return _NATIVE_LSP_HELPER
 
 
-def _require_source(arguments, temporary_directory):
+def _require_source(arguments, temporary_directory, error_type=HoverLookupError):
     present = [name for name in ("source", "file") if name in arguments]
     if len(present) != 1:
-        raise HoverLookupError("source または file のいずれか一つが必要です")
+        raise error_type("source または file のいずれか一つが必要です")
     name = present[0]
     value = arguments[name]
     if not isinstance(value, str) or not value.strip():
-        raise HoverLookupError(f"{name} は空でない文字列が必要です")
+        raise error_type(f"{name} は空でない文字列が必要です")
     if name == "source":
         source = value
         uri = (pathlib.Path(temporary_directory) / "hover.ls").resolve().as_uri()
         return source, uri
     path = pathlib.Path(value)
     if not path.is_file():
-        raise HoverLookupError(f"native MCP input file が見つかりません: {path}")
+        raise error_type(f"native MCP input file が見つかりません: {path}")
     try:
         source = path.read_text(encoding="utf-8")
     except OSError as error:
-        raise HoverLookupError(f"native MCP input file の読み込みに失敗しました: {error}") from error
+        raise error_type(f"native MCP input file の読み込みに失敗しました: {error}") from error
     return source, path.resolve().as_uri()
 
 
-def _position(arguments):
+def _position(arguments, error_type=HoverLookupError):
     line = arguments.get("line")
     if type(line) is not int or line < 0:
-        raise HoverLookupError("line は 0 以上の整数が必要です")
+        raise error_type("line は 0 以上の整数が必要です")
     if "character" in arguments:
         character = arguments["character"]
     elif "col" in arguments:
         character = arguments["col"]
     else:
-        raise HoverLookupError("character が必要です")
+        raise error_type("character が必要です")
     if type(character) is not int or character < 0:
-        raise HoverLookupError("character は 0 以上の整数が必要です")
+        raise error_type("character は 0 以上の整数が必要です")
     return {"line": line, "character": character}
 
 
@@ -92,28 +123,28 @@ def _notification(method, params=None):
     return _frame(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
-def _frame_body(raw_frame):
+def _frame_body(raw_frame, error_type=HoverLookupError):
     header_end = raw_frame.find(b"\r\n\r\n")
     if header_end < 0:
-        raise HoverLookupError("native LSP frame header が不正です")
+        raise error_type("native LSP frame header が不正です")
     length = None
     for raw_line in raw_frame[:header_end].split(b"\r\n"):
         if b":" not in raw_line:
-            raise HoverLookupError("native LSP frame header が不正です")
+            raise error_type("native LSP frame header が不正です")
         name, value = raw_line.split(b":", 1)
         if name.lower() == b"content-length":
             if length is not None:
-                raise HoverLookupError("native LSP frame の Content-Length が重複しています")
+                raise error_type("native LSP frame の Content-Length が重複しています")
             try:
                 length = int(value.strip())
             except ValueError as error:
-                raise HoverLookupError("native LSP frame の Content-Length が不正です") from error
+                raise error_type("native LSP frame の Content-Length が不正です") from error
     if length is None:
-        raise HoverLookupError("native LSP frame の Content-Length がありません")
+        raise error_type("native LSP frame の Content-Length がありません")
     body_start = header_end + 4
     body = raw_frame[body_start:]
     if len(body) != length:
-        raise HoverLookupError("native LSP frame body の長さが不一致です")
+        raise error_type("native LSP frame body の長さが不一致です")
     return body
 
 
@@ -147,13 +178,9 @@ def _project_hover(result):
     return {"name": name, "type": type_text, "doc": doc}
 
 
-def call_hover(program, arguments, temporary_directory):
-    allowed = {"source", "file", "line", "character", "col"}
-    unknown = sorted(set(arguments).difference(allowed))
-    if unknown:
-        raise HoverLookupError(f"lsharp_hover の未知の引数: {', '.join(unknown)}")
-    source, uri = _require_source(arguments, temporary_directory)
-    position = _position(arguments)
+def _run_lsp_request(program, arguments, temporary_directory, method, label, error_type):
+    source, uri = _require_source(arguments, temporary_directory, error_type)
+    position = _position(arguments, error_type)
     aggregate = b"".join(
         [
             _request(1, "initialize", {"capabilities": {}, "rootUri": None}),
@@ -171,12 +198,12 @@ def call_hover(program, arguments, temporary_directory):
             ),
             _request(
                 2,
-                "textDocument/hover",
+                method,
                 {"textDocument": {"uri": uri}, "position": position},
             ),
         ]
     )
-    helper = _native_lsp_helper()
+    helper = _native_lsp_helper(error_type)
     try:
         frames = helper.run_program(program, [], aggregate)
     except helper.ShimError as error:
@@ -185,19 +212,79 @@ def call_hover(program, arguments, temporary_directory):
             stderr = error.child_stderr.decode("utf-8", "replace").strip()
             if stderr:
                 detail = f"{detail}: {stderr}"
-        raise HoverLookupError(f"native LSP の実行に失敗しました: {detail}") from error
+        raise error_type(f"native LSP の実行に失敗しました: {detail}") from error
     for raw_frame in frames:
         try:
-            response = json.loads(_frame_body(raw_frame).decode("utf-8"))
+            response = json.loads(_frame_body(raw_frame, error_type).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise HoverLookupError(f"native LSP response が JSON ではありません: {error}") from error
+            raise error_type(f"native LSP response が JSON ではありません: {error}") from error
+        if not isinstance(response, dict):
+            raise error_type("native LSP response が object ではありません")
         if response.get("id") != 2:
             continue
         if response.get("error") is not None:
             error = response["error"]
             message = error.get("message") if isinstance(error, dict) else str(error)
-            raise HoverLookupError(f"native LSP hover error: {message}")
+            raise error_type(f"native LSP {label} error: {message}")
         if response.get("result") is None:
-            raise HoverLookupError("hover を解決できませんでした")
-        return _project_hover(response["result"])
-    raise HoverLookupError("native LSP hover response がありません")
+            raise error_type(f"{label} を解決できませんでした")
+        return response["result"]
+    raise error_type(f"native LSP {label} response がありません")
+
+
+def call_hover(program, arguments, temporary_directory):
+    allowed = {"source", "file", "line", "character", "col"}
+    unknown = sorted(set(arguments).difference(allowed))
+    if unknown:
+        raise HoverLookupError(f"lsharp_hover の未知の引数: {', '.join(unknown)}")
+    result = _run_lsp_request(
+        program,
+        arguments,
+        temporary_directory,
+        "textDocument/hover",
+        "hover",
+        HoverLookupError,
+    )
+    return _project_hover(result)
+
+
+def _project_definition(result):
+    if isinstance(result, list):
+        if len(result) != 1:
+            raise DefinitionLookupError("native LSP definition location が一つではありません")
+        result = result[0]
+    if not isinstance(result, dict) or not isinstance(result.get("range"), dict):
+        raise DefinitionLookupError("native LSP definition range が不正です")
+    location_range = result["range"]
+    projected = {}
+    for name in ("start", "end"):
+        position = location_range.get(name)
+        if (
+            not isinstance(position, dict)
+            or type(position.get("line")) is not int
+            or position["line"] < 0
+            or type(position.get("character")) is not int
+            or position["character"] < 0
+        ):
+            raise DefinitionLookupError(f"native LSP definition range.{name} が不正です")
+        projected[name] = {
+            "line": position["line"],
+            "character": position["character"],
+        }
+    return projected
+
+
+def call_definition(program, arguments, temporary_directory):
+    allowed = {"source", "file", "line", "character", "col"}
+    unknown = sorted(set(arguments).difference(allowed))
+    if unknown:
+        raise DefinitionLookupError(f"lsharp_definition の未知の引数: {', '.join(unknown)}")
+    result = _run_lsp_request(
+        program,
+        arguments,
+        temporary_directory,
+        "textDocument/definition",
+        "definition",
+        DefinitionLookupError,
+    )
+    return _project_definition(result)

@@ -39,7 +39,14 @@ from native_selfhost_mcp_schema import (
     review_registry_schema,
 )
 from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
-from native_selfhost_mcp_lsp import HOVER_OUTPUT_SCHEMA, HoverLookupError, call_hover
+from native_selfhost_mcp_lsp import (
+    DEFINITION_OUTPUT_SCHEMA,
+    HOVER_OUTPUT_SCHEMA,
+    DefinitionLookupError,
+    HoverLookupError,
+    call_definition,
+    call_hover,
+)
 from native_selfhost_mcp_packages import (
     PackageLookupError,
     PACKAGE_API_OUTPUT_SCHEMA,
@@ -281,6 +288,19 @@ TOOLS = [
         },
         ["line", "character"],
         HOVER_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
+    tool_descriptor(
+        "lsharp_definition",
+        "native LSP からカーソル位置の定義範囲を返す",
+        {
+            **SOURCE_PROPERTIES,
+            "line": {"type": "integer", "minimum": 0},
+            "character": {"type": "integer", "minimum": 0},
+            "col": {"type": "integer", "minimum": 0},
+        },
+        ["line", "character"],
+        DEFINITION_OUTPUT_SCHEMA,
         {"additionalProperties": False},
     ),
     tool_descriptor(
@@ -694,6 +714,11 @@ def call_tool(program, name, arguments):
                 try:
                     value = call_hover(program, arguments, temporary_directory)
                 except HoverLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_definition":
+                try:
+                    value = call_definition(program, arguments, temporary_directory)
+                except DefinitionLookupError as error:
                     raise ToolError(str(error)) from error
             elif name == "lsharp_check":
                 value = call_check(program, arguments, temporary_directory)
