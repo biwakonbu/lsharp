@@ -64,7 +64,7 @@
   2026-08-01 に `--manifest` の JSON root shape も検証し、配列・null・数値を traceback ではなく
   return code `1` の `review_evidence_identity` 入力エラーへ変換する contract test を追加した。これは
   manifest runtime validation の verified partial sliceであり、native MCP の
-  LSP/package API/compile-run/provider semantics、current-source target runtime、
+  LSP/package API/provider semantics、current-source target runtime、
   packaged bytes parity、manifest runtime validation の残りは未完了である。
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
@@ -193,9 +193,14 @@ projection、invalid range/ambiguous location の fail-closed を native MCP 37 
 projection、native `null` の空集合化、invalid range の fail-closed を native MCP 42 tests で確認した verified partial である。
 さらに native `lsharp_completion` の array/CompletionList relay、numeric completion kind の Rust 名称投影、
 native `null` の空候補化、invalid item の fail-closed を native MCP 47 tests で確認した verified partial である。
-package-install semantics、残る compile-run/provider semantics、target runtime、manifest runtime validation
-の全 surface は [~] のまま残す。ADR:
+さらに `lsharp_compile_run` の source/file route、native `compile` と外部 `wasmtime` の明示境界、
+compile/runtime failure・欠落 artifact・runtime 未設定の fail-closed、stdout の分離、task-owned temporary
+source/Wasm の cleanup を native MCP 52 tests で確認した。これは local external-runtime の verified partial
+であり、supported-target stage0/packaged runtime parity ではない。package-install semantics、provider
+semantics、target runtime、manifest runtime validation の全 surface は [~] のまま残す。ADR:
 docs/adr/decisions-v0.3-native-mcp-subset-shim.md。
+compile/run boundary の判断は
+`docs/adr/decisions-v0.3-native-mcp-compile-run-boundary.md` に記録した。
 
 ## Current priority — v0.2 Milestone 2
 

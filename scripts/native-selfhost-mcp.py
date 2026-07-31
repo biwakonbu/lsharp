@@ -2,8 +2,9 @@
 """Expose the deterministic native selfhost subset over MCP stdio.
 
 The native compiler remains the only implementation authority.  This shim only
-translates JSON-RPC requests into the existing ``check``, ``validate``, ``fmt``
-and ``lsp --stdio`` CLI contracts; it never calls cargo, rustc, host ``lsharp`` or a
+translates JSON-RPC requests into the existing ``check``, ``validate``, ``fmt``,
+``compile`` and ``lsp --stdio`` CLI contracts; compile/run uses only an explicitly
+configured external ``wasmtime`` runtime. It never calls cargo, rustc, host ``lsharp`` or a
 provider/network helper.  ``lsharp_errors`` is a read-only documentation
 lookup over the canonical Rust error-code table and never executes a host
 compiler.  ``lsharp_search`` is an offline projection of local
@@ -39,6 +40,11 @@ from native_selfhost_mcp_schema import (
     review_registry_schema,
 )
 from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
+from native_selfhost_mcp_compile import (
+    COMPILE_RUN_OUTPUT_SCHEMA,
+    CompileRunError,
+    call_compile_run,
+)
 from native_selfhost_mcp_lsp import (
     COMPLETION_OUTPUT_SCHEMA,
     DEFINITION_OUTPUT_SCHEMA,
@@ -409,6 +415,14 @@ TOOLS = [
             "required": ["formatted"],
             "properties": {"formatted": {"type": "string"}},
         },
+    ),
+    tool_descriptor(
+        "lsharp_compile_run",
+        "native compiler で compile し、外部 wasmtime で実行する (Rust-free boundary)",
+        SOURCE_PROPERTIES,
+        [["source"], ["file"]],
+        COMPILE_RUN_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
     ),
     tool_descriptor(
         "lsharp_errors",
@@ -790,6 +804,11 @@ def call_tool(program, name, arguments):
                 try:
                     value = call_stdlib_api(program, arguments)
                 except PackageLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_compile_run":
+                try:
+                    value = call_compile_run(program, arguments, temporary_directory)
+                except CompileRunError as error:
                     raise ToolError(str(error)) from error
             else:
                 value = call_format(program, arguments, temporary_directory)

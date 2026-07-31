@@ -11,6 +11,7 @@ import unittest
 from native_selfhost_mcp_error_tests import assert_errors_lookup, assert_errors_reject_invalid_arguments
 from native_selfhost_mcp_package_tests import assert_package_api_generates_from_native_doc, assert_package_api_projects_local_api_json, assert_package_api_rejects_invalid_arguments, assert_package_api_rejects_malformed_native_doc, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
 from native_selfhost_mcp_context_tests import assert_project_context_projects_local_metadata, assert_project_context_rejects_invalid_arguments
+from native_selfhost_mcp_compile_tests import assert_compile_run_fails_closed_and_cleans_artifacts, assert_compile_run_projects_file_without_mutating_input, assert_compile_run_projects_source_and_external_runtime, assert_compile_run_rejects_invalid_arguments_before_native, assert_compile_run_requires_explicit_runtime_without_host_fallback
 from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_native_doc, assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments, assert_stdlib_api_rejects_malformed_native_doc
 from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_native_result, assert_completion_projects_native_lsp, assert_completion_rejects_invalid_arguments_before_native, assert_completion_rejects_native_failures, assert_completion_supports_file_and_col_alias, assert_definition_projects_native_lsp, assert_definition_rejects_invalid_arguments_before_native, assert_definition_rejects_native_failures, assert_definition_supports_file_and_col_alias, assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias, assert_references_projects_empty_native_result, assert_references_projects_native_lsp, assert_references_rejects_invalid_arguments_before_native, assert_references_rejects_native_failures, assert_references_supports_file_and_col_alias
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -116,9 +117,11 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         os.chmod(program, 0o755)
         return program
 
-    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None):
+    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None, wasmtime_path=None):
         environment = os.environ.copy()
         environment["FAKE_NATIVE_LOG"] = str(root / "native.log")
+        environment["FAKE_WASMTIME_LOG"] = str(root / "wasmtime.log")
+        environment.pop("LSHARP_WASMTIME", None)
         if identity_mode is not None:
             environment["FAKE_NATIVE_IDENTITY_MODE"] = identity_mode
         if doc_output is not None:
@@ -127,6 +130,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             environment["LSHARP_STDLIB_API_PATH"] = str(stdlib_api_path)
         if stdlib_path is not None:
             environment["LSHARP_STDLIB_PATH"] = str(stdlib_path)
+        if wasmtime_path is not None:
+            environment["LSHARP_WASMTIME"] = str(wasmtime_path)
         return subprocess.run(
             [sys.executable, str(SHIM), "--program", str(program)],
             input=payload,
@@ -145,6 +150,16 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         assert_stdlib_api_generates_from_native_doc(self)
     def test_stdlib_api_rejects_malformed_native_doc(self):
         assert_stdlib_api_rejects_malformed_native_doc(self)
+    def test_compile_run_projects_source_and_external_runtime(self):
+        assert_compile_run_projects_source_and_external_runtime(self)
+    def test_compile_run_projects_file_without_mutating_input(self):
+        assert_compile_run_projects_file_without_mutating_input(self)
+    def test_compile_run_rejects_invalid_arguments_before_native(self):
+        assert_compile_run_rejects_invalid_arguments_before_native(self)
+    def test_compile_run_fails_closed_and_cleans_artifacts(self):
+        assert_compile_run_fails_closed_and_cleans_artifacts(self)
+    def test_compile_run_requires_explicit_runtime_without_host_fallback(self):
+        assert_compile_run_requires_explicit_runtime_without_host_fallback(self)
     def test_hover_projects_native_lsp(self):
         assert_hover_projects_native_lsp(self)
     def test_hover_supports_file_and_col_alias(self):
@@ -214,6 +229,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     "lsharp_definition",
                     "lsharp_references",
                     "lsharp_completion",
+                    "lsharp_compile_run",
                     "lsharp_validate",
                     "lsharp_format",
                     "lsharp_errors",

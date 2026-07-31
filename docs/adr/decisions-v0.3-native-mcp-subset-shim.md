@@ -24,11 +24,17 @@ VM or regenerating stage0.
   network access, or a provider helper.
 - Advertise only the deterministic subset currently implemented by the native
   `App.Cli` boundary: `lsharp_hover`, `lsharp_definition`, `lsharp_references`, `lsharp_completion`, `lsharp_check`, `lsharp_validate`, `lsharp_format`,
-  `lsharp_errors`, the offline local-package `lsharp_search` projection, the
+  `lsharp_errors`, `lsharp_compile_run`, the offline local-package `lsharp_search` projection, the
   offline `lsharp_project_context` projection, and the offline
   `lsharp_package_api` and `lsharp_stdlib_api` projections. The docs
   lookup, package context/search, package API lookup, and stdlib metadata lookup
   never execute a Rust or host compiler and never access a registry or network.
+- `lsharp_compile_run` copies a source/file input to a task-owned temporary
+  `Main.ls`, invokes the native `compile` command, requires a non-empty Wasm
+  artifact, and executes it only through `LSHARP_WASMTIME` or a `PATH`
+  `wasmtime`. Compile/runtime failures and missing runtime/artifacts fail
+  closed; temporary source and Wasm files are always removed. This is an
+  external-runtime local slice, not target-runtime parity evidence.
 - `lsharp_hover` sends an initialize, did-open, and hover sequence to the native
   `lsp --stdio` boundary and projects the scalar signature/doc result to the MCP
   shape. Source and file inputs use the same position contract, including the
@@ -79,7 +85,7 @@ VM or regenerating stage0.
 
 ## Evidence
 
-- `scripts/ci/test-native-selfhost-mcp.py`: 47 focused tests cover protocol
+- `scripts/ci/test-native-selfhost-mcp.py`: 52 focused tests cover protocol
   discovery, native LSP hover/definition/references/completion, native-only check/validate/format calls, canonical error lookup
   (LS codes, E0001-E0005 aliases, unknown codes, and no native execution),
   offline installed-package search, project context (TOML project/dependency
@@ -88,8 +94,9 @@ VM or regenerating stage0.
   (generated `stdlib/api.json` projection and missing-artifact native `doc --json`
   generation), including deterministic ordering, schema, argument rejection,
   malformed native-doc fail-closed behavior, and no artifact mutation,
-  identity forwarding, malformed input, missing executable, and provider-path
-  fail-closed behavior. Error, package, and context assertions live in separate
+  identity forwarding, malformed input, missing executable, provider-path
+  fail-closed behavior, and native compile/run through an explicit external
+  `wasmtime` boundary. Error, package, context, and compile/run assertions live in separate
   helper modules to keep the main test module within the repository file-size
   limit.
 - `scripts/ci/test-native-selfhost-lsp-stdio.py`: 5 frame-relay tests remain
@@ -112,8 +119,8 @@ VM or regenerating stage0.
 ## Remaining boundary
 
 The subset does not yet implement the Rust MCP tools for full LSP intelligence,
-package installation semantics, compile/run, or external provider
-snapshot acquisition and signature/lifecycle verification. `lsharp_errors` is only a verified
+package installation semantics, or external provider snapshot acquisition and
+signature/lifecycle verification. `lsharp_errors` is only a verified
 documentation-table projection, `lsharp_search` is only a verified offline
 installed-package projection, and `lsharp_project_context` is only a verified
 offline TOML/package projection; `lsharp_package_api` is a verified existing
@@ -121,7 +128,8 @@ offline TOML/package projection; `lsharp_package_api` is a verified existing
 projection with closed-world shape validation, and `lsharp_stdlib_api` is only a verified
 generated-artifact or missing-artifact native `doc --json` source projection; `lsharp_hover`,
 `lsharp_definition`, `lsharp_references`, and `lsharp_completion` are verified native LSP stdio
-projections, while full native compiler/package-install semantics remain outside this slice. N9 / `EC-M3-05`
-therefore remains `[~]`; the next RED should select one additional LSP tool,
-compile/run boundary, or the explicit provider adapter contract and compare Rust/native
-output with the same fixture.
+projections. `lsharp_compile_run` is a verified local external-wasmtime slice;
+supported-target stage0/packaged runtime parity remains outside this slice. N9 /
+`EC-M3-05` therefore remains `[~]`; the next RED should select package
+installation semantics, the explicit provider adapter contract, or target
+runtime evidence and compare Rust/native output with the same fixture.
