@@ -46,12 +46,17 @@ review verification が未検証なら validation status は `unknown` のまま
   trust/lifecycle/now）になることを確認した。
 - Bundle gate: `selfhost_embedded_cli_runtime_bundle` を current source から compile/run し、focused
   E2E が `1 passed`（262.76s）で完了した。
+- Optional-null text gate: `test_e2e_selfhost_embedded_cli_validate_text_projects_optional_identity_as_dash`
+  を追加し、trust/lifecycle digest を省略した明示 identity が exit `2` の deterministic text report へ
+  `trust-store=- lifecycle=-` として投影されることを selfhost Wasm runtime で確認した（1 passed、261.18s）。
+- Rust oracle: `cargo test -q -p lsharp-driver --test review_input_cli validate_projects_review_evidence_identity_for_explicit_artifact_context -- --exact --nocapture`
+  （1 passed）で同じ optional-null text contract を確認した。
 - Rust test binary compile、`git diff --check` は通過した。
 
 ## Boundary
 
 これは macOS 上の Rust host が生成した selfhost EmbeddedCli Wasm の verified partial slice である。
-text output の optional-null runtime case、native stage0 の current-source/package provenance、
-Mac Apple Silicon / Linux x86_64 の native parity、`App.Cli`/MCP wiring、trust/lifecycle provider に
+native stage0 の current-source/package provenance、Mac Apple Silicon / Linux x86_64 の native parity、
+`App.Cli`/MCP wiring、trust/lifecycle provider に
 よる `verified`・`stale`・`revoked` 判定、artifact/release gate は未完了である。したがって
 `TODO.md` の EC-M3-05 と関連する selfhost parity 項目は `[~]` のまま維持する。
