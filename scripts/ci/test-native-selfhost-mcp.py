@@ -16,6 +16,7 @@ from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_na
 from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_native_result, assert_completion_projects_native_lsp, assert_completion_rejects_invalid_arguments_before_native, assert_completion_rejects_native_failures, assert_completion_supports_file_and_col_alias, assert_definition_projects_native_lsp, assert_definition_rejects_invalid_arguments_before_native, assert_definition_rejects_native_failures, assert_definition_supports_file_and_col_alias, assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias, assert_references_projects_empty_native_result, assert_references_projects_native_lsp, assert_references_rejects_invalid_arguments_before_native, assert_references_rejects_native_failures, assert_references_supports_file_and_col_alias
 from native_selfhost_mcp_manifest_tests import assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
 from native_selfhost_mcp_validate_tests import assert_validate_rejects_invalid_report
+from native_selfhost_mcp_check_tests import assert_check_rejects_invalid_output
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
 def request(request_id, method, params=None):
@@ -40,7 +41,24 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     stream.write(json.dumps(sys.argv[1:]) + "\\n")
                 args = sys.argv[1:]
                 if args[:1] == ["check"]:
-                    print(json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": []}}))
+                    check_mode = os.environ.get("FAKE_NATIVE_CHECK_MODE", "object")
+                    if check_mode == "array":
+                        check_output = "[]"
+                    elif check_mode == "null":
+                        check_output = "null"
+                    elif check_mode == "malformed":
+                        check_output = "{{"
+                    elif check_mode == "missing":
+                        check_output = json.dumps({{"ok": True, "diagnostics": []}})
+                    elif check_mode == "unknown":
+                        check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": [], "extra": True}})
+                    elif check_mode == "ok-type":
+                        check_output = json.dumps({{"ok": "yes", "diagnostics": [], "migrationDiagnostics": []}})
+                    elif check_mode == "diagnostics-type":
+                        check_output = json.dumps({{"ok": True, "diagnostics": {{}}, "migrationDiagnostics": []}})
+                    else:
+                        check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": []}})
+                    print(check_output)
                     raise SystemExit(0)
                 if args[:1] == ["validate"]:
                     def arg_value(flag):
@@ -151,7 +169,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         os.chmod(program, 0o755)
         return program
 
-    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None, wasmtime_path=None, manifest_mode=None, report_mode=None):
+    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None, wasmtime_path=None, manifest_mode=None, report_mode=None, check_mode=None):
         environment = os.environ.copy()
         environment["FAKE_NATIVE_LOG"] = str(root / "native.log")
         environment["FAKE_WASMTIME_LOG"] = str(root / "wasmtime.log")
@@ -170,6 +188,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             environment["FAKE_NATIVE_MANIFEST_MODE"] = manifest_mode
         if report_mode is not None:
             environment["FAKE_NATIVE_REPORT_MODE"] = report_mode
+        if check_mode is not None:
+            environment["FAKE_NATIVE_CHECK_MODE"] = check_mode
         return subprocess.run(
             [sys.executable, str(SHIM), "--program", str(program)],
             input=payload,
@@ -485,6 +505,9 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_validate_rejects_invalid_report(self):
         assert_validate_rejects_invalid_report(self)
+
+    def test_check_rejects_invalid_output(self):
+        assert_check_rejects_invalid_output(self)
     def test_package_api_projects_local_api_json_without_native_execution(self):
         assert_package_api_projects_local_api_json(self)
     def test_package_api_rejects_invalid_arguments_before_native_execution(self):

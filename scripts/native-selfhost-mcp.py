@@ -508,6 +508,23 @@ def parse_json_output(completed):
         raise ToolError(f"malformed native JSON: {error}") from error
 
 
+def validate_check_output(value):
+    if not isinstance(value, dict):
+        raise ToolError("native check report root must be a JSON object")
+    required = ("ok", "diagnostics", "migrationDiagnostics")
+    unknown = sorted(set(value).difference(required))
+    if unknown:
+        raise ToolError(f"native check report has unknown field: {unknown[0]}")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"native check report is missing field: {missing[0]}")
+    if not isinstance(value["ok"], bool):
+        raise ToolError("native check report ok must be a boolean")
+    for name in ("diagnostics", "migrationDiagnostics"):
+        if not isinstance(value[name], list):
+            raise ToolError(f"native check report {name} must be an array")
+
+
 def require_string(arguments, name):
     value = arguments.get(name)
     if not isinstance(value, str) or not value.strip():
@@ -783,7 +800,9 @@ def verify_identity_projection(
 def call_check(program, arguments, temporary_directory):
     path = input_file(arguments, temporary_directory)
     completed = run_native(program, ["check", str(path), "--format", "json"])
-    return parse_json_output(completed)
+    value = parse_json_output(completed)
+    validate_check_output(value)
+    return value
 
 
 def call_validate(program, arguments, temporary_directory):

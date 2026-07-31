@@ -78,6 +78,10 @@
   境界を wrapper 側で検証し、array/null/malformed/missing/unknown/invalid status/boolean count を traceback
   なしで拒否した。native MCP 56件で確認した verified partial sliceである。
   ADR: `docs/adr/decisions-v0.3-native-mcp-validate-report-root.md`。
+  `lsharp_check` の native output についても root、required fields、boolean `ok`、diagnostics 配列を
+  wrapper 側で fail-closed にし、array/null/malformed/missing/unknown/type mismatch を traceback なしで拒否した。
+  native MCP 57件で確認した verified partial sliceである。
+  ADR: `docs/adr/decisions-v0.3-native-mcp-check-output-root.md`。
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
   current-source/packaged runtime は残る。
