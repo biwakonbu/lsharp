@@ -4,6 +4,7 @@
 //! ソースファイルの関数・型ごとにレビューチェックポイントを YAML 形式で出力する。
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 use crate::tracker::{DocStatus, Freshness};
 
@@ -236,28 +237,28 @@ pub fn format_yaml(checkpoint: &ReviewCheckpoint) -> String {
     let mut out = String::new();
 
     out.push_str("---\n");
-    out.push_str(&format!("file: \"{}\"\n", checkpoint.file));
+    out.push_str(&format!("file: {}\n", yaml_quote(&checkpoint.file)));
     out.push_str("entries:\n");
 
     for entry in &checkpoint.entries {
-        out.push_str(&format!("  - name: \"{}\"\n", entry.name));
+        out.push_str(&format!("  - name: {}\n", yaml_quote(&entry.name)));
         out.push_str(&format!(
-            "    freshness: \"{}\"\n",
-            freshness_str(&entry.freshness)
+            "    freshness: {}\n",
+            yaml_quote(freshness_str(&entry.freshness))
         ));
         out.push_str(&format!("    has_doc: {}\n", entry.has_doc));
 
         if let Some(ref reviewer) = entry.reviewed_by {
-            out.push_str(&format!("    reviewed_by: \"{}\"\n", reviewer));
+            out.push_str(&format!("    reviewed_by: {}\n", yaml_quote(reviewer)));
         }
         if let Some(ref date) = entry.last_reviewed {
-            out.push_str(&format!("    last_reviewed: \"{}\"\n", date));
+            out.push_str(&format!("    last_reviewed: {}\n", yaml_quote(date)));
         }
 
         if !entry.metadata_issues.is_empty() {
             out.push_str("    issues:\n");
             for issue in &entry.metadata_issues {
-                out.push_str(&format!("      - \"{}\"\n", issue));
+                out.push_str(&format!("      - {}\n", yaml_quote(issue)));
             }
         }
     }
@@ -276,6 +277,37 @@ pub fn format_yaml(checkpoint: &ReviewCheckpoint) -> String {
     ));
 
     out
+}
+
+/// YAML の double-quoted scalar として安全に値を出力する。
+///
+/// review の対象名や診断はソース由来であり、引用符・改行・バックスラッシュを
+/// 含む可能性がある。未 escape のまま埋め込むと、出力が別の YAML 構造へ変質する。
+fn yaml_quote(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\0' => escaped.push_str("\\0"),
+            '\u{08}' => escaped.push_str("\\b"),
+            '\u{0C}' => escaped.push_str("\\f"),
+            character if character.is_control() => {
+                let code = character as u32;
+                if code <= 0xFF {
+                    let _ = write!(&mut escaped, "\\x{code:02X}");
+                } else {
+                    let _ = write!(&mut escaped, "\\u{code:04X}");
+                }
+            }
+            character => escaped.push(character),
+        }
+    }
+
+    format!("\"{escaped}\"")
 }
 
 /// Freshness を文字列に変換

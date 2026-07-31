@@ -88,6 +88,49 @@ fn test_format_yaml() {
 }
 
 #[test]
+fn test_format_yaml_escapes_double_quoted_scalars() {
+    let checkpoint = ReviewCheckpoint {
+        file: "docs/\"review\"\nnext\\file".to_string(),
+        entries: vec![ReviewEntry {
+            name: "fn \"quoted\"".to_string(),
+            freshness: Freshness::Unreviewed,
+            metadata_issues: vec!["line \"quoted\"\nnext".to_string()],
+            has_doc: false,
+            reviewed_by: Some("alice\\review".to_string()),
+            last_reviewed: Some("2026-07-31T12:34:56Z".to_string()),
+            span_start: 0,
+            span_end: 1,
+        }],
+        summary: ReviewSummary {
+            total: 1,
+            fresh: 0,
+            stale: 0,
+            unreviewed: 1,
+            with_issues: 1,
+        },
+    };
+
+    let yaml = format_yaml(&checkpoint);
+
+    assert!(
+        yaml.contains(r##"file: "docs/\"review\"\nnext\\file""##),
+        "file path は YAML double-quoted scalar として escape されるべき: {yaml}"
+    );
+    assert!(
+        yaml.contains(r##"  - name: "fn \"quoted\"""##),
+        "entry name は quote を壊さず escape されるべき: {yaml}"
+    );
+    assert!(
+        yaml.contains(r##"    reviewed_by: "alice\\review""##),
+        "reviewer は backslash を escape されるべき: {yaml}"
+    );
+    assert!(
+        yaml.contains(r##"      - "line \"quoted\"\nnext""##),
+        "metadata issue は改行を scalar 内へ保持すべき: {yaml}"
+    );
+}
+
+#[test]
 fn test_generate_review_with_type_defs() {
     let source = r#"(type Point (record (: x Int) (: y Int)))"#;
     let status = DocStatus::default();
