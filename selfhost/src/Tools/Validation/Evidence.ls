@@ -414,7 +414,7 @@
           (if (= relation (source-edge-contradicts)) "contradicts"
             (if (= relation (source-edge-evaluates)) "evaluates" "invalidates")))))))
 
-(defn validation-source-id-json [wire-id]
+(defn validation-source-id-fields [wire-id]
   (let [len (string-length wire-id)
     colon (source-find-char wire-id 58 0 len)
     slash (if (>= colon 0) (source-find-char wire-id 47 (+ colon 1) len) -1)
@@ -423,7 +423,9 @@
     fields0 ""
     fields1 (validation-json-append fields0 (validation-json-string-field "namespace" ns-text))
     fields2 (validation-json-append fields1 (validation-json-string-field "key" key-text))]
-    (validation-json-object-wrap fields2)))
+    fields2))
+(defn validation-source-id-json [wire-id]
+  (validation-json-object-wrap (validation-source-id-fields wire-id)))
 
 (defn validation-source-review-attestation-state-loop [review-id attestations idx len]
   (if (>= idx len)
@@ -571,23 +573,12 @@
   (let [fields0 ""
     fields1 (validation-json-append fields0
       (validation-json-string-field "kind" (validation-source-node-kind-text (source-node-kind node))))
-    fields2 (validation-json-append fields1
-      (validation-json-string-field "namespace"
-        (let [wire-id (source-node-id node)
-          colon (source-find-char wire-id 58 0 (string-length wire-id))]
-          (substring wire-id (+ colon 1)
-            (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))))))
-    fields3 (validation-json-append fields2
-      (validation-json-string-field "key"
-        (let [wire-id (source-node-id node)
-          colon (source-find-char wire-id 58 0 (string-length wire-id))
-          slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
-          (substring wire-id (+ slash 1) (string-length wire-id)))))
-    fields4 (validation-json-append fields3 (validation-json-string-field "text" (source-node-text node)))
-    fields5 (validation-json-append fields4
+    fields2 (validation-json-append fields1 (validation-source-id-fields (source-node-id node)))
+    fields3 (validation-json-append fields2 (validation-json-string-field "text" (source-node-text node)))
+    fields4 (validation-json-append fields3
       (validation-json-object-field "span"
         (validation-source-span-json (source-node-start node) (source-node-end node))))]
-    (validation-json-object-wrap fields5)))
+    (validation-json-object-wrap fields4)))
 
 (defn validation-source-nodes-json-state-loop [state]
   (let [nodes (vector-get state 0)
@@ -641,19 +632,8 @@
 
 (defn validation-source-subject-json-with-kind [subject kind-text]
   (let [fields0 (validation-json-string-field "kind" kind-text)
-    id-object-fields (string-concat
-      (validation-json-string-field "namespace"
-        (let [wire-id subject
-          colon (source-find-char wire-id 58 0 (string-length wire-id))
-          slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
-          (substring wire-id (+ colon 1) slash)))
-      (string-concat ","
-        (validation-json-string-field "key"
-          (let [wire-id subject
-            colon (source-find-char wire-id 58 0 (string-length wire-id))
-            slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
-            (substring wire-id (+ slash 1) (string-length wire-id))))))]
-    (validation-json-object-wrap (string-concat fields0 (string-concat "," id-object-fields)))))
+    fields1 (validation-json-append fields0 (validation-source-id-fields subject))]
+    (validation-json-object-wrap fields1)))
 
 (defn validation-source-subject-json [subject]
   (validation-source-subject-json-with-kind
@@ -669,20 +649,12 @@
 (defn validation-source-evidence-json [evidence-record]
   (let [id (source-evidence-record-id evidence-record)
     fields0 ""
-    fields1 (validation-json-append fields0
-      (validation-json-string-field "namespace"
-        (let [colon (source-find-char id 58 0 (string-length id))
-          slash (source-find-char id 47 (+ colon 1) (string-length id))]
-          (substring id (+ colon 1) slash))))
-    fields2 (validation-json-append fields1
-      (validation-json-string-field "key"
-        (let [colon (source-find-char id 58 0 (string-length id))
-          slash (source-find-char id 47 (+ colon 1) (string-length id))]
-          (substring id (+ slash 1) (string-length id)))))
-    fields3 (validation-json-append fields2 (validation-json-string-field "method" (source-evidence-record-method evidence-record)))
-    fields4 (validation-json-append fields3
+    fields1 (validation-json-append fields0 (validation-source-id-fields id))
+    fields2 (validation-json-append fields1 (validation-json-string-field "method" (source-evidence-record-method evidence-record)))
+    fields3 (validation-json-append fields2
       (validation-json-object-field "subject" (validation-source-subject-json (source-evidence-record-subject evidence-record))))
-    fields5 (validation-json-append fields4 (validation-json-string-field "outcome" (source-evidence-record-outcome evidence-record)))
+    fields4 (validation-json-append fields3 (validation-json-string-field "outcome" (source-evidence-record-outcome evidence-record)))
+    fields5 fields4
     sampling0 (validation-json-string-field "runner" (source-evidence-record-runner evidence-record))
     sampling1 (validation-json-append sampling0 (validation-json-string-field "target" (source-evidence-record-target evidence-record)))
     sampling2 (validation-json-append sampling1 (validation-json-string-field "source_commit" (source-evidence-record-source-commit evidence-record)))

@@ -62,7 +62,11 @@
   stdout/stderr、Wasm bytes、exit code の保存と digest/size manifest を contract test で固定した。
   これは実 target gate の operator evidence を保持する verified partial sliceであり、実 Mac/Linux
   runtime、provider取得、packaged bytes parity は残る。ADR:
-  `docs/adr/decisions-v0.3-native-source-smoke-evidence.md`。
+  `docs/adr/decisions-v0.3-native-source-smoke-evidence.md`。さらに native manifest の
+  node/evidence/subject ID fields を一つの serializer helper へ統合し、EC-M3-01 canonical
+  manifest bytes の working-tree preflight parity を確認した。これは serializer の verified
+  sliceであり、fresh producer と両 target runtime の証拠は残る。ADR:
+  `docs/adr/decisions-v0.3-ec-m3-native-id-serializer.md`。
 
 ## Current priority — v0.2 Milestone 2
 

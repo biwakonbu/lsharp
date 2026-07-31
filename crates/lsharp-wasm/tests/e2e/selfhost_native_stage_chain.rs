@@ -2049,6 +2049,27 @@ fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_duplicate_rejection()
     }
 }
 
+/// EC-M3-01: canonical manifest の ID fields は同じ serializer helper で
+/// node/evidence/subject に展開し、native の一時値寿命差でキーを失わない。
+#[test]
+fn test_native_validation_manifest_serializer_reuses_stable_id_fields() {
+    let evidence_path = selfhost_project_root().join("selfhost/src/Tools/Validation/Evidence.ls");
+    let evidence = std::fs::read_to_string(&evidence_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", evidence_path.display()));
+
+    for required in [
+        "(defn validation-source-id-fields [wire-id]",
+        "(validation-source-id-fields (source-node-id node))",
+        "(validation-source-id-fields subject)",
+        "(validation-source-id-fields id)",
+    ] {
+        assert!(
+            evidence.contains(required),
+            "Evidence.ls の canonical ID serializer 契約がありません: {required}"
+        );
+    }
+}
+
 #[test]
 fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
     let script_path = selfhost_project_root()
