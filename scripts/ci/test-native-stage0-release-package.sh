@@ -32,6 +32,8 @@ SOURCE_COMMIT="0000000000000000000000000000000000000000"
 ARCHIVE_NAME="lsharp-stage0-${VERSION}-${TARGET}"
 ARCHIVE_PATH="$DIST_DIR/${ARCHIVE_NAME}.tar.gz"
 IDENTITY_PATH="$INPUT_DIR/review-evidence-identity.json"
+TRUST_STORE_PATH="$INPUT_DIR/trust-store.json"
+LIFECYCLE_PATH="$INPUT_DIR/review-lifecycle.jsonl"
 
 mkdir -p "$INPUT_DIR" "$HOST_BIN"
 : >"$HOST_TOOL_LOG"
@@ -54,9 +56,25 @@ cat >"$INPUT_DIR/materializer.py" <<'PY'
 raise SystemExit(0)
 PY
 
-cat >"$IDENTITY_PATH" <<EOF
-{"subject_digest":"sha256:$(printf 'c%.0s' {1..64})","source_commit":"$SOURCE_COMMIT","artifact_digest":"sha256:$(printf 'd%.0s' {1..64})","trust_store_digest":"sha256:$(printf 'e%.0s' {1..64})","lifecycle_digest":"sha256:$(printf 'f%.0s' {1..64})","now":"2026-08-15T00:00:00Z"}
-EOF
+printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE_PATH"
+printf '%s\n' '{"review_id":"review:stage0/r1","state":"active"}' >"$LIFECYCLE_PATH"
+python3 - "$IDENTITY_PATH" "$TRUST_STORE_PATH" "$LIFECYCLE_PATH" "$SOURCE_COMMIT" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+identity_path, trust_store_path, lifecycle_path, source_commit = map(pathlib.Path, sys.argv[1:])
+identity = {
+    "subject_digest": "sha256:" + "c" * 64,
+    "source_commit": str(source_commit),
+    "artifact_digest": "sha256:" + "d" * 64,
+    "trust_store_digest": "sha256:" + hashlib.sha256(trust_store_path.read_bytes()).hexdigest(),
+    "lifecycle_digest": "sha256:" + hashlib.sha256(lifecycle_path.read_bytes()).hexdigest(),
+    "now": "2026-08-15T00:00:00Z",
+}
+identity_path.write_text(json.dumps(identity, separators=(",", ":")) + "\n", encoding="utf-8")
+PY
 
 for host_tool in cargo rustc lsharp; do
   cat >"$HOST_BIN/$host_tool" <<'SH'
@@ -83,6 +101,8 @@ NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
     --stage0-dir "$STAGE0_DIR" \
     --source-commit "$SOURCE_COMMIT" \
     --review-evidence-identity "$IDENTITY_PATH" \
+    --review-trust-store "$TRUST_STORE_PATH" \
+    --review-lifecycle "$LIFECYCLE_PATH" \
     --output-dir "$DIST_DIR"
 
 assert_eq "" "$(cat "$HOST_TOOL_LOG")"
@@ -149,5 +169,27 @@ PY
 "$ROOT/scripts/checksum.sh" "$EXTRACTED_STAGE0" >"$TMP_ROOT/actual-checksums.txt"
 cmp -s "$EXTRACTED_STAGE0/checksums.txt" "$TMP_ROOT/actual-checksums.txt" \
   || fail "archive package checksums do not match payload"
+
+printf '%s\n' '{"keys":["tampered-key"]}' >"$TRUST_STORE_PATH"
+TAMPER_DIST_DIR="$TMP_ROOT/tampered-dist"
+set +e
+tamper_output="$(
+  NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
+    PATH="$HOST_BIN:$PATH" \
+    "$RELEASE_PACKAGE" \
+      --target "$TARGET" \
+      --version "${VERSION}-tampered" \
+      --stage0-dir "$STAGE0_DIR" \
+      --source-commit "$SOURCE_COMMIT" \
+      --review-evidence-identity "$IDENTITY_PATH" \
+      --review-trust-store "$TRUST_STORE_PATH" \
+      --review-lifecycle "$LIFECYCLE_PATH" \
+      --output-dir "$TAMPER_DIST_DIR" 2>&1
+)"
+tamper_status=$?
+set -e
+[[ "$tamper_status" -ne 0 ]] || fail "tampered provider snapshot was accepted"
+grep -F "trust_store_digest" <<<"$tamper_output" >/dev/null \
+  || fail "tampered provider snapshot did not expose digest mismatch"
 
 echo "native stage0 release package tests: OK"

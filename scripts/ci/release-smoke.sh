@@ -10,6 +10,9 @@ EXTRACT_DIR="$WORK_DIR/extract"
 SMOKE_DIR="$WORK_DIR/smoke"
 MAX_ARCHIVE_BYTES="${LSHARP_RELEASE_SMOKE_MAX_ARCHIVE_BYTES:-536870912}"
 RELEASE_IDENTITY_VERIFIER="${RELEASE_IDENTITY_VERIFIER:-$ROOT/scripts/ci/verify-native-release-identity.py}"
+RELEASE_REVIEW_TRUST_STORE="${RELEASE_REVIEW_TRUST_STORE:-}"
+RELEASE_REVIEW_LIFECYCLE="${RELEASE_REVIEW_LIFECYCLE:-}"
+RELEASE_REVIEW_PROVIDER_ARGS=()
 
 cleanup() {
   local exit_code=$?
@@ -33,6 +36,28 @@ hash_file() {
     echo "ERROR: sha256sum or shasum not found" >&2
     exit 1
   fi
+}
+
+validate_release_review_provider_inputs() {
+  if [[ -z "$RELEASE_REVIEW_TRUST_STORE" && -z "$RELEASE_REVIEW_LIFECYCLE" ]]; then
+    return 0
+  fi
+  if [[ -z "$RELEASE_REVIEW_TRUST_STORE" || -z "$RELEASE_REVIEW_LIFECYCLE" ]]; then
+    echo "ERROR: RELEASE_REVIEW_TRUST_STORE and RELEASE_REVIEW_LIFECYCLE must be supplied together" >&2
+    exit 1
+  fi
+  if [[ ! -s "$RELEASE_REVIEW_TRUST_STORE" ]]; then
+    echo "ERROR: release review trust-store snapshot is not a non-empty file: $RELEASE_REVIEW_TRUST_STORE" >&2
+    exit 1
+  fi
+  if [[ ! -s "$RELEASE_REVIEW_LIFECYCLE" ]]; then
+    echo "ERROR: release review lifecycle snapshot is not a non-empty file: $RELEASE_REVIEW_LIFECYCLE" >&2
+    exit 1
+  fi
+  RELEASE_REVIEW_PROVIDER_ARGS=(
+    --trust-store "$RELEASE_REVIEW_TRUST_STORE"
+    --review-lifecycle "$RELEASE_REVIEW_LIFECYCLE"
+  )
 }
 
 find_archive_root() {
@@ -163,6 +188,7 @@ done
 NATIVE_ONLY=0
 if [[ -f "$PROGRAM_NATIVE" ]]; then
   NATIVE_ONLY=1
+  validate_release_review_provider_inputs
   if [[ ! -x "$PROGRAM_NATIVE" ]]; then
     echo "ERROR: native-only program.native is not executable: $PROGRAM_NATIVE" >&2
     exit 1
@@ -195,7 +221,11 @@ PY
       --expected-identity "$identity_path" \
       --artifact "$PROGRAM_NATIVE" \
       --source-commit "$native_source_commit" \
+      "${RELEASE_REVIEW_PROVIDER_ARGS[@]}" \
       --require-provider-input >/dev/null
+  elif [[ -n "$RELEASE_REVIEW_TRUST_STORE" || -n "$RELEASE_REVIEW_LIFECYCLE" ]]; then
+    echo "ERROR: release identity snapshots require review-evidence-identity" >&2
+    exit 1
   elif grep -q 'review_evidence_identity' "$ARCHIVE_ROOT/manifest.json"; then
     echo "ERROR: native-only manifest declares review_evidence_identity without its payload" >&2
     exit 1
@@ -420,6 +450,8 @@ print(manifest.get("target", ""), manifest.get("source_commit", ""), manifest.ge
 PY
   )
   WORK_DIR="$rollback_work_dir" \
+    RELEASE_REVIEW_TRUST_STORE="" \
+    RELEASE_REVIEW_LIFECYCLE="" \
     EXPECTED_ROLLBACK_TARGET="$rollback_target" \
     EXPECTED_ROLLBACK_SOURCE_COMMIT="$rollback_source_commit" \
     EXPECTED_ROLLBACK_VERSION="$rollback_version" \

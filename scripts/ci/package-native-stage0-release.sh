@@ -8,11 +8,14 @@ OUTPUT_DIR=""
 SOURCE_COMMIT=""
 REVIEW_EVIDENCE_IDENTITY=""
 REVIEW_EVIDENCE_IDENTITY_JSON=""
+REVIEW_TRUST_STORE=""
+REVIEW_LIFECYCLE=""
+REVIEW_IDENTITY_PROVIDER_ARGS=()
 REVIEW_IDENTITY_VERIFIER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/ci/verify-native-release-identity.py"
 
 usage() {
   cat <<'EOF'
-usage: scripts/ci/package-native-stage0-release.sh --target TARGET --version VERSION --stage0-dir DIR --output-dir DIR --source-commit COMMIT [--review-evidence-identity FILE]
+usage: scripts/ci/package-native-stage0-release.sh --target TARGET --version VERSION --stage0-dir DIR --output-dir DIR --source-commit COMMIT [--review-evidence-identity FILE] [--review-trust-store FILE --review-lifecycle FILE]
 
 options:
   --target TARGET      x86_64-unknown-linux-gnu or aarch64-apple-darwin
@@ -22,6 +25,10 @@ options:
   --source-commit COMMIT  40-hex source commit used to build the stage0 package
   --review-evidence-identity FILE
                        optional explicit review evidence identity JSON
+  --review-trust-store FILE
+                       optional raw trust-store snapshot for digest verification
+  --review-lifecycle FILE
+                       optional raw review-lifecycle snapshot for digest verification
   --help               show this help
 EOF
 }
@@ -127,6 +134,16 @@ while [[ $# -gt 0 ]]; do
       REVIEW_EVIDENCE_IDENTITY="$2"
       shift 2
       ;;
+    --review-trust-store)
+      require_option_value "$@"
+      REVIEW_TRUST_STORE="$2"
+      shift 2
+      ;;
+    --review-lifecycle)
+      require_option_value "$@"
+      REVIEW_LIFECYCLE="$2"
+      shift 2
+      ;;
     --help)
       usage
       exit 0
@@ -160,10 +177,25 @@ validate_native_stage0_package "$STAGE0_DIR" "$TARGET"
 if [[ -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then
   [[ -s "$REVIEW_EVIDENCE_IDENTITY" ]] \
     || die "review evidence identity is not a non-empty file: $REVIEW_EVIDENCE_IDENTITY"
+  if [[ -n "$REVIEW_TRUST_STORE" || -n "$REVIEW_LIFECYCLE" ]]; then
+    [[ -n "$REVIEW_TRUST_STORE" && -n "$REVIEW_LIFECYCLE" ]] \
+      || die "--review-trust-store and --review-lifecycle must be supplied together"
+    [[ -s "$REVIEW_TRUST_STORE" ]] \
+      || die "review trust-store snapshot is not a non-empty file: $REVIEW_TRUST_STORE"
+    [[ -s "$REVIEW_LIFECYCLE" ]] \
+      || die "review lifecycle snapshot is not a non-empty file: $REVIEW_LIFECYCLE"
+    REVIEW_IDENTITY_PROVIDER_ARGS=(
+      --trust-store "$REVIEW_TRUST_STORE"
+      --review-lifecycle "$REVIEW_LIFECYCLE"
+    )
+  fi
   REVIEW_EVIDENCE_IDENTITY_JSON="$(python3 "$REVIEW_IDENTITY_VERIFIER" \
     --identity "$REVIEW_EVIDENCE_IDENTITY" \
     --source-commit "$SOURCE_COMMIT" \
+    "${REVIEW_IDENTITY_PROVIDER_ARGS[@]}" \
     --require-provider-input)"
+elif [[ -n "$REVIEW_TRUST_STORE" || -n "$REVIEW_LIFECYCLE" ]]; then
+  die "review snapshots require --review-evidence-identity"
 fi
 
 ARCHIVE_ROOT_NAME="lsharp-stage0-${VERSION}-${TARGET}"

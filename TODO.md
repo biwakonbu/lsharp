@@ -39,12 +39,16 @@
   verified partial sliceを追加した。preparer/verifier の `now` は Rust canonical timestamp と同じ閏年・暦日・時分秒範囲を
   共有し、lexical shapeだけでは通る不正日時を fail-closed にする。verifier は明示 snapshot の raw bytes を任意に再計算し、trust-store/lifecycle digest mismatch と片側指定を fail-closed にする。
   native-only `scripts/release.sh` から snapshot path を verifier へ伝播し、packaging 前の digest mismatch を拒否する wiring も verified partial として追加した。
-  provider helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
-  stage0 package / release smoke / multi-target snapshot propagation、Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。ADR:
+  stage0 package は `--review-trust-store` / `--review-lifecycle` を同じ verifier へ渡し、release smoke は
+  `RELEASE_REVIEW_TRUST_STORE` / `RELEASE_REVIEW_LIFECYCLE` から native-only archive の identity を再検証する
+  offline propagation まで verified partial として追加した。provider helperの実取得、selfhost/native MCP
+  parity、current-source と packaged stage0 の provenance、multi-target orchestrator propagation、
+  Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。ADR:
   `docs/adr/decisions-v0.3-release-identity-gate.md`,
   `docs/adr/decisions-v0.3-provider-input-identity-preparer.md`,
   `docs/adr/decisions-v0.3-provider-snapshot-digest-verification.md`,
-  `docs/adr/decisions-v0.3-native-release-snapshot-wiring.md`。
+  `docs/adr/decisions-v0.3-native-release-snapshot-wiring.md`,
+  `docs/adr/decisions-v0.3-stage0-release-smoke-snapshot-wiring.md`。
 
 ## Current priority — v0.2 Milestone 2
 
