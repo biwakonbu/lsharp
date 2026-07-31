@@ -3,10 +3,15 @@
 use super::harness::run_evidence_registry_runtime;
 use lsharp_types::intent::review_attestation::{AttestationAlgorithm, ReviewAttestation};
 
-const VALID_SOURCE: &str = r#"(defn review [] :review-attestation :review-id "review:checkout/reviewer-001" :subject-digest "sha256:subject-001" :source-commit "0123456789abcdef" :provenance-digest "sha256:review-001" :provider "github" :key-id "org/reviews-2026" :algorithm "ed25519" :signature "AAECAw" :issued-at "2026-08-01T00:00:00Z" :expires-at "2026-09-01T00:00:00Z" :sequence 3 true)"#;
+// Rust-host E2E と native source-file smoke が同じ current-source fixture を使う。
+const VALID_SOURCE: &str =
+    include_str!("../../../../../tests/fixtures/validation/ec-m3-review-attestation-source.ls");
 
 fn quote_source(source: &str) -> String {
-    source.replace('"', "\\\"")
+    source
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
 }
 
 fn parse_bytes<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Vec<u8> {

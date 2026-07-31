@@ -2026,6 +2026,31 @@ fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_manifest_parity() {
 }
 
 #[test]
+fn test_native_review_attestation_smoke_uses_shared_current_source_fixture() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "VALIDATION_ATTESTATION_FIXTURE=\"$ROOT/tests/fixtures/validation/ec-m3-review-attestation-source.ls\"",
+        "require_file \"$VALIDATION_ATTESTATION_FIXTURE\"",
+        "cp \"$VALIDATION_ATTESTATION_FIXTURE\" \"$VALIDATION_ATTESTATION_SOURCE\"",
+        "VALIDATION_ATTESTATION_SOURCE",
+        "VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE",
+        "validation-attestation-json",
+        "validation-attestation-no-expiry-json",
+        "canonical_bytes",
+        "unverified",
+    ] {
+        assert!(
+            script.contains(required),
+            "native review attestation smoke は共有 current-source fixture 契約 `{required}` を固定するべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_duplicate_rejection() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
@@ -2252,6 +2277,9 @@ fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
         "ec-m3-canonical-source.ls",
         "ec-m3-canonical-manifest.json",
         "ec-m3-duplicate-node-source.ls",
+        "ec-m3-review-attestation-source.ls",
+        "EC-M3-04 review attestation source fixture",
+        "limactl copy \"${ROOT_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls\"",
         "selfhost",
         "VM free space gate",
         "trap cleanup EXIT",

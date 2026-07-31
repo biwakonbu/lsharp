@@ -78,6 +78,7 @@ for required in \
   'stale-reviews: 1' \
   'stale-evidence: 1' \
   'VALIDATION_ATTESTATION_SOURCE' \
+  'ec-m3-review-attestation-source.ls' \
   'VALIDATION_ATTESTATION_MANIFEST' \
   'VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE' \
   'VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST' \

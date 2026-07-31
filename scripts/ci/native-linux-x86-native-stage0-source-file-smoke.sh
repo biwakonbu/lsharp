@@ -98,6 +98,8 @@ require_file "${ROOT_DIR}/selfhost/src/App/Cli.ls" "native selfhost App.Cli sour
 require_file "${ROOT_DIR}/scripts/native-selfhost-dev.sh" "native selfhost runner"
 require_file "${ROOT_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh" "native source-file smoke"
 require_file "${ROOT_DIR}/scripts/ci/decode-native-selfhost-transport.py" "native transport decoder"
+require_file "${ROOT_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls" \
+  "EC-M3-04 review attestation source fixture"
 
 python3 - "${STAGE0_DIR}/manifest.json" "$SOURCE_COMMIT" <<'PY'
 import json
@@ -152,6 +154,8 @@ limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.jso
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json"
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-duplicate-node-source.ls" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-duplicate-node-source.ls"
+limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls" \
+  "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls"
 
 limactl shell "${VM_NAME}" -- env \
   NATIVE_STAGE0_DIR="${VM_WORK_DIR}/stage0" \

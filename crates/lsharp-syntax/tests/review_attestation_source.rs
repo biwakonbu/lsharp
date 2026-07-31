@@ -1,21 +1,8 @@
 use lsharp_syntax::{ast::Decl, metadata::MetadataFormKind, parse};
 
-const SOURCE: &str = r#"
-(defn review []
-  :review-attestation
-    :review-id "review:checkout/reviewer-001"
-    :subject-digest "sha256:subject-001"
-    :source-commit "0123456789abcdef"
-    :provenance-digest "sha256:review-001"
-    :provider "github"
-    :key-id "org/reviews-2026"
-    :algorithm "ed25519"
-    :signature "AAECAw"
-    :issued-at "2026-08-01T00:00:00Z"
-    :expires-at "2026-09-01T00:00:00Z"
-    :sequence 3
-  true)
-"#;
+// Rust parser、Rust-host selfhost、native source-file smoke が同じ fixture を読む。
+const SOURCE: &str =
+    include_str!("../../../tests/fixtures/validation/ec-m3-review-attestation-source.ls");
 
 #[test]
 fn review_attestation_named_fields_preserve_values_and_span() {
@@ -28,8 +15,13 @@ fn review_attestation_named_fields_preserve_values_and_span() {
         panic!("metadata 付き defn を期待しました");
     };
 
-    let MetadataFormKind::ReviewAttestation { attestation } = &metadata.forms[0].kind else {
-        panic!("review attestation form を期待しました");
+    let form = metadata
+        .forms
+        .iter()
+        .find(|form| matches!(&form.kind, MetadataFormKind::ReviewAttestation { .. }))
+        .expect("review attestation form を期待しました");
+    let MetadataFormKind::ReviewAttestation { attestation } = &form.kind else {
+        unreachable!("find で review attestation form を選択済み");
     };
     assert_eq!(attestation.review_id(), "review:checkout/reviewer-001");
     assert_eq!(attestation.subject_digest(), "sha256:subject-001");
@@ -43,7 +35,6 @@ fn review_attestation_named_fields_preserve_values_and_span() {
     assert_eq!(attestation.expires_at(), Some("2026-09-01T00:00:00Z"));
     assert_eq!(attestation.sequence(), 3);
 
-    let form = &metadata.forms[0];
     assert_eq!(
         form.span().start,
         SOURCE.find(":review-attestation").unwrap()

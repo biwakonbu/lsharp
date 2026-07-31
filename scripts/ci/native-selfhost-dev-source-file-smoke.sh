@@ -6,6 +6,7 @@ RUNNER="$ROOT/scripts/native-selfhost-dev.sh"
 VALIDATION_SOURCE="$ROOT/tests/fixtures/validation/ec-m3-canonical-source.ls"
 EXPECTED_VALIDATION_MANIFEST="$ROOT/tests/fixtures/validation/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_SOURCE="$ROOT/tests/fixtures/validation/ec-m3-duplicate-node-source.ls"
+VALIDATION_ATTESTATION_FIXTURE="$ROOT/tests/fixtures/validation/ec-m3-review-attestation-source.ls"
 STAGE0_DIR="${NATIVE_STAGE0_DIR:-}"
 SOURCE_ROOT="${NATIVE_SELFHOST_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_SELFHOST_STAGE_DIR:-}"
@@ -57,6 +58,7 @@ require_file "$SOURCE_ROOT/src/App/Cli.ls" "native selfhost App.Cli source"
 require_file "$VALIDATION_SOURCE" "EC-M3-01 validation source fixture"
 require_file "$EXPECTED_VALIDATION_MANIFEST" "EC-M3-01 canonical manifest fixture"
 require_file "$VALIDATION_INVALID_SOURCE" "EC-M3-01 duplicate node source fixture"
+require_file "$VALIDATION_ATTESTATION_FIXTURE" "EC-M3-04 review attestation source fixture"
 
 if [[ -n "$SOURCE_SMOKE_EVIDENCE_DIR" ]]; then
   [[ "$SOURCE_SMOKE_EVIDENCE_DIR" = /* && "$SOURCE_SMOKE_EVIDENCE_DIR" != "/" ]] \
@@ -390,23 +392,7 @@ cat >"$VALIDATION_STALE_SOURCE" <<'LSHARP'
   :invalidates "change:checkout/api-v2" "review:checkout/reviewer-001"
   true)
 LSHARP
-cat >"$VALIDATION_ATTESTATION_SOURCE" <<'LSHARP'
-(defn source-review-attestation []
-  :review "review:checkout/reviewer-001" "sha256:review-001" "redacted"
-  :review-attestation
-    :review-id "review:checkout/reviewer-001"
-    :subject-digest "sha256:subject-001"
-    :source-commit "0123456789abcdef"
-    :provenance-digest "sha256:review-001"
-    :provider "github"
-    :key-id "org/reviews-2026"
-    :algorithm "ed25519"
-    :signature "AAECAw"
-    :issued-at "2026-08-01T00:00:00Z"
-    :expires-at "2026-09-01T00:00:00Z"
-    :sequence 3
-  true)
-LSHARP
+cp "$VALIDATION_ATTESTATION_FIXTURE" "$VALIDATION_ATTESTATION_SOURCE"
 python3 - \
   "$VALIDATION_ATTESTATION_SOURCE" \
   "$VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE" \
