@@ -2638,3 +2638,30 @@ verified sliceである。record type-check全体、一般Map API、record schem
 record pattern/import target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後
 current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。`TODO.md` の
 `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
+
+### LEGACY-COMP-01 / LEGACY-LANG-01 selfhost bounded block and record export scans (2026-07-31)
+
+TypeInferBlock と TypeInferRecordDecl に残っていた大きな線形走査を、同じ native selfhost
+検証単位としてまとめた。`TypeInferBlock.ls` の do/computation 子要素走査は 64 要素単位の
+bounded/rooted continuationへ、`TypeInferRecordDecl.ls` の `:only` 判定と accessor filteringは
+64 要素単位の bounded/rooted scanへ移行した。移行後のファイルはそれぞれ 660 行と 714 行で、
+500〜800 行の運用境界内に収まる。
+
+Evidence: `selfhost_typeinfer_block_loops` の2 tests、`selfhost_typeinfer_record_filtering` の2
+tests、既存 `selfhost_typeinfer_records_computation` の10 tests、既存
+`selfhost_typeinfer_private_visibility` の1 test、Rust fixtureの `rustfmt --edition 2021 --check`、
+`git diff --check` が passした。source commit `f8780d62` に対する local Lima
+`lsharp-linux-x86` gateは一度だけ実行し、host-generated stage1 x86 payloadが Linux x86_64 VM内で
+stage2/stage3 native self-regenerationを完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/f8780d62-block-recorddecl/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11168596`、stdout SHA-256は双方
+`dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。VMは停止し、
+stage debug、stdout、stage1中間物、local Cargo targetは回収して summaryだけを残した。
+
+これは block/computation と record export filteringの bounded scan、ならびに Linux x86_64
+stage2/stage3 fixed-pointだけを閉じる verified sliceである。computation全体の意味論、record
+schema pattern semantic parity、full record/import target、ftable/linear-memory/runtime ABI、
+Mac Apple Siliconのこの変更後 current-source gate、full-program compiler closure、全公開
+surface、`LEGACY-COMP-01` / `LEGACY-LANG-01` aggregateの完了を意味しない。既知の
+`test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type` の `1` vs `0` baselineと
+Rust oracle / bootstrap / host integration境界は維持する。

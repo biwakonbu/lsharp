@@ -734,6 +734,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `Type.ls` の `type-record-field-type` / `type-record-fields-eq` も 64 要素 bounded/rooted
   scan へ移行し、65 field lookup/equality fixture、private visibility、record computation
   regression、Linux x86_64 fixed-pointを確認した。
+  `TypeInferRecordDecl.ls` の `:only` 判定と accessor filtering も 64 要素 bounded/rooted
+  scan へ移行し、65 要素 export filtering fixture と既存 private visibility regression を
+  確認した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
@@ -748,6 +751,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   self-regeneration の verified sliceであり、nominal/exhaustiveness、full ftable/import、
   linear-memory/WasmGC runtime parity、Mac/Linux aggregate は残る。
 - [~] `LEGACY-COMP-01` full-program compiler closure — 主要 CLI builder は full-program 化済み。
+  `TypeInferBlock.ls` の大きな do/computation 子要素走査は 64 要素 bounded/rooted scanへ移行し、
+  Linux x86_64 stage2/stage3 fixed-pointを確認した。full-program compiler closure、
   diagnostic-only legacy `lower`、no-arg pipeline runtime/native E2E、component sidecar の
   artifact boundary を閉じる。
 - [~] `V2-16b` / `LEGACY-IO-01` native artifact I/O — bounded argv/file/raw-byte Preview1 と
