@@ -9,6 +9,8 @@ LOG="$TMP_ROOT/limactl.log"
 STAGE0="$TMP_ROOT/stage0"
 SOURCE_COMMIT="$(git rev-parse --verify HEAD)"
 VM_NAME="lsharp-linux-x86"
+HOSTGEN_REPLAY_LOCK_PATH="/tmp/lsharp-linux-source-evidence-copy-hostgen-lock.$$"
+export LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR="$HOSTGEN_REPLAY_LOCK_PATH"
 
 cleanup() {
   rm -rf "$TMP_ROOT"

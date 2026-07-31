@@ -95,6 +95,10 @@
   smoke evidenceを別 leafへ保持する wiringを追加した。Linux側は evidence writerをVMへコピーし、source
   smoke終了後に stdout/stderr、Wasm digest/size、exit code、stage0 manifestをhostへ再帰コピーする。
   fake `limactl` の成功/失敗 copy-out contractで、失敗時の元 exit code保持も確認した。
+  official gateだけでなく直接の Linux source-file smoke入口も hostgen replay lockを
+  `limactl` 前に検査し、live ownerでは exit `90`、owner metadata出力、外部呼び出しなしで停止する
+  fake contractを追加した。これは operator safetyの verified partial sliceであり、Linux runtimeや
+  packaged provenanceの completion evidenceではない。
   2026-07-31 に fresh current `e44ca727` の Mac Apple Silicon stage0 producer（actual App.Cli E2E
   491.75秒）→stage0 archive→local HTTP `fetch-stage0.sh`→fetched package source-file smokeを完走し、
   source commit/target、stage0 payload、`compile.wasm` / `build.wasm` digest/size、App.Cli

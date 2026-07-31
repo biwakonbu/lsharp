@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
+HOSTGEN_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${VM_NAME}.lock}"
 STAGE0_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-}"
 SOURCE_SMOKE_EVIDENCE_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR:-}"
 KEEP_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR:-0}"
@@ -46,6 +47,45 @@ die() {
   echo "ERROR: $*" >&2
   exit 1
 }
+
+require_safe_lock_path() {
+  local path="$1"
+  case "${path}" in
+    ""|/|*/../*|*/..)
+      die "refusing unsafe Linux hostgen replay lock path: ${path}"
+      ;;
+  esac
+  case "${path}" in
+    /tmp/lsharp-*) ;;
+    *) die "Linux hostgen replay lock must be under /tmp/lsharp-*: ${path}" ;;
+  esac
+}
+
+preflight_hostgen_replay_lock() {
+  if [[ ! -e "${HOSTGEN_REPLAY_LOCK_DIR}" && ! -L "${HOSTGEN_REPLAY_LOCK_DIR}" ]]; then
+    return 0
+  fi
+  if [[ ! -d "${HOSTGEN_REPLAY_LOCK_DIR}" || -L "${HOSTGEN_REPLAY_LOCK_DIR}" ]]; then
+    echo "ERROR: Linux hostgen replay lock has an unsafe shape: ${HOSTGEN_REPLAY_LOCK_DIR}" >&2
+    exit 90
+  fi
+
+  local holder_pid
+  local holder_artifact_dir
+  local holder_vm_work_dir
+  holder_pid="$(cat "${HOSTGEN_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)"
+  holder_artifact_dir="$(cat "${HOSTGEN_REPLAY_LOCK_DIR}/artifact_dir" 2>/dev/null || true)"
+  holder_vm_work_dir="$(cat "${HOSTGEN_REPLAY_LOCK_DIR}/vm_work_dir" 2>/dev/null || true)"
+  if [[ "${holder_pid}" =~ ^[0-9]+$ ]] && kill -0 "${holder_pid}" 2>/dev/null; then
+    echo "ERROR: Linux hostgen replay lock is held: holder_pid=${holder_pid} artifact_dir=${holder_artifact_dir} vm_work_dir=${holder_vm_work_dir} lock_dir=${HOSTGEN_REPLAY_LOCK_DIR}" >&2
+    exit 90
+  fi
+
+  echo "ERROR: Linux hostgen replay lock exists without a live owner; refusing to remove it: lock_dir=${HOSTGEN_REPLAY_LOCK_DIR}" >&2
+  exit 90
+}
+
+require_safe_lock_path "${HOSTGEN_REPLAY_LOCK_DIR}"
 
 SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --verify HEAD 2>/dev/null || true)"
 [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -143,6 +183,7 @@ for field in ("compiler", "transport_driver", "materializer"):
         raise SystemExit(f"native stage0 executable is unavailable: {path}")
 PY
 
+preflight_hostgen_replay_lock
 ensure_vm_running
 require_vm_free_space
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"

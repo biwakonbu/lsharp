@@ -60,6 +60,9 @@ provider snapshot の取得・認証や release archive の identity 検証は�
   live hostgen replayを所有している場合は release/dist作成や `limactl` 呼び出しより前に exit `90` で
   fail-closed に停止する。fake lock contractと、実際に稼働中の parser replay lock（artifact/vm workdir/PID
   を含む）で preflight停止を確認した。stale/不正形状の lockも自動削除せず停止する。
+- GREEN: 直接入口の `native-linux-x86-native-stage0-source-file-smoke.sh` も同じ lockを
+  `ensure_vm_running` 前に検査し、fake lockで exit `90`、owner metadata、`limactl` 未呼び出しを確認した。
+  既存の fake Linux smoke/evidence testsは absent lock pathを明示して実 lockとの競合を避ける。
 - Direct Mac evidence: current `f6a6da30` の producer/package outputを Mac source-file smokeへ渡す経路は
   actual App.Cli E2E と `aarch64-apple-darwin native selfhost source-file smoke passed` まで通過した。
   これは `fetch-stage0.sh` を含む公式 orchestrator の証拠ではなく、Linux x86_64 runtimeも未検証である。

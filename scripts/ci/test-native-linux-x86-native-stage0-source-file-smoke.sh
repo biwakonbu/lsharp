@@ -358,6 +358,8 @@ done
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-linux-stage0-source-smoke-test.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+HOSTGEN_REPLAY_LOCK_PATH="/tmp/lsharp-linux-stage0-source-smoke-hostgen-lock.$$"
+export LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR="$HOSTGEN_REPLAY_LOCK_PATH"
 LOG_PATH="$TMP_ROOT/running-vm.log"
 STOPPED_LOG="$TMP_ROOT/stopped-vm.log"
 STOP_FAILURE_LOG="$TMP_ROOT/stop-failure.log"
