@@ -1037,12 +1037,13 @@
           (root_pop)
           (exit-runtime-error))
         (do
-          (run-test-source-json-suite (generate-tests-from-source src))
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (exit-success))))))
+          (let [status (run-test-source-json-suite (generate-tests-from-source src))]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              status))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
