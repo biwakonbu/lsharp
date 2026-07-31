@@ -28,6 +28,7 @@
 (import Tools.Validation.IntentSource)
 (import Tools.Validation.Evidence)
 (import Tools.Validation.Stale)
+(import Tools.Validation.ReviewIdentity)
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
 (defn exit-success [] 0)
@@ -343,7 +344,7 @@
       (vector-length attestations)
       "")))
 (defn validation-source-report-json
-  [state independent-reviews contradicting-observations stale-reviews stale-evidence attestations]
+  [state independent-reviews contradicting-observations stale-reviews stale-evidence attestations review-evidence-identity]
   (let [fields0 ""
     status-code (validation-source-status-code
       state
@@ -359,19 +360,27 @@
     fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))
     fields6 (docjson-append fields5 (docjson-int-field "stale_reviews" stale-reviews))
     fields7 (docjson-append fields6 (docjson-int-field "stale_evidence" stale-evidence))
-    fields8 (if (> (vector-length attestations) 0)
-      (docjson-append fields7
-        (docjson-array-field
-          "review_verifications"
-          (validation-source-review-verifications-json attestations)))
-      fields7)
+    fields8
+      (if (> (vector-length review-evidence-identity) 0)
+        (docjson-append
+          fields7
+          (docjson-object-field
+            "review_evidence_identity"
+            (source-review-evidence-identity-json review-evidence-identity)))
+        fields7)
     fields9 (if (> (vector-length attestations) 0)
       (docjson-append fields8
         (docjson-array-field
+          "review_verifications"
+          (validation-source-review-verifications-json attestations)))
+      fields8)
+    fields10 (if (> (vector-length attestations) 0)
+      (docjson-append fields9
+        (docjson-array-field
           "review_attestations"
           (validation-source-review-attestation-projections-json attestations)))
-      fields8)]
-    (docjson-object-wrap fields9)))
+      fields9)]
+    (docjson-object-wrap fields10)))
 (defn validation-report-text-line [key value]
   (string-concat key (string-concat ": " value)))
 (defn validation-report-text-append [out line]
@@ -423,8 +432,38 @@
         (+ idx 1)
         len
         (validation-report-text-append out line)))))
+(defn validation-source-review-identity-display [value]
+  (if (> (string-length value) 0) value "-"))
+(defn validation-source-review-identity-text [identity]
+  (let [subject (source-review-evidence-identity-subject-digest identity)
+    source (source-review-evidence-identity-source-commit identity)
+    artifact (source-review-evidence-identity-artifact-digest identity)
+    trust-store (validation-source-review-identity-display
+      (source-review-evidence-identity-trust-store-digest identity))
+    lifecycle (validation-source-review-identity-display
+      (source-review-evidence-identity-lifecycle-digest identity))
+    now (source-review-evidence-identity-now identity)]
+    (string-concat
+      "subject="
+      (string-concat
+        subject
+        (string-concat
+          " source="
+          (string-concat
+            source
+            (string-concat
+              " artifact="
+              (string-concat
+                artifact
+                (string-concat
+                  " trust-store="
+                  (string-concat
+                    trust-store
+                    (string-concat
+                      " lifecycle="
+                      (string-concat lifecycle (string-concat " now=" now)))))))))))))
 (defn validation-source-report-text
-  [state independent-reviews contradicting-observations stale-reviews stale-evidence attestations]
+  [state independent-reviews contradicting-observations stale-reviews stale-evidence attestations review-evidence-identity]
   (let [status-code (validation-source-status-code
       state
       independent-reviews
@@ -462,8 +501,31 @@
       0
       (vector-length attestations)
       line5)]
-    with-verifications))
+    (if (> (vector-length review-evidence-identity) 0)
+      (validation-report-text-append
+        with-verifications
+        (validation-report-text-line
+          "review-evidence-identity"
+          (validation-source-review-identity-text review-evidence-identity)))
+      with-verifications)))
 (defn validation-option-manifest-path [opts] (vector-get opts 1))
+(defn validate-options-review-subject-digest [result] (vector-get result 4))
+(defn validate-options-review-source-commit [result] (vector-get result 5))
+(defn validate-options-review-artifact-digest [result] (vector-get result 6))
+(defn validate-options-review-trust-store-digest [result] (vector-get result 7))
+(defn validate-options-review-lifecycle-digest [result] (vector-get result 8))
+(defn validate-options-review-now [result] (vector-get result 9))
+(defn validation-source-review-identity-result [opts]
+  (let [subject (validate-options-review-subject-digest opts)]
+    (if (= (string-length subject) 0)
+      (source-result 1 (vector-new 0))
+      (source-review-evidence-identity-result
+        subject
+        (validate-options-review-source-commit opts)
+        (validate-options-review-artifact-digest opts)
+        (validate-options-review-trust-store-digest opts)
+        (validate-options-review-lifecycle-digest opts)
+        (validate-options-review-now opts)))))
 (defn validation-source-write-manifest [graph manifest-path]
   (if (> (string-length manifest-path) 0)
     (write-file manifest-path (validation-source-manifest-json graph))
@@ -480,49 +542,78 @@
               (int-to-string (source-graph-error-code error))))
           (exit-code-compile-error)))
       (let [graph (source-result-value graph-result)
-        manifest-path (validation-option-manifest-path opts)
-        state (validation-source-state program)
-        metrics (validation-evidence-metrics graph)
-        independent-reviews (vector-get metrics 0)
-        contradicting-observations (vector-get metrics 1)
-        stale-reviews (vector-get metrics 2)
-        stale-evidence (vector-get metrics 3)
-        attestations (source-evidence-graph-attestations graph)
-        report
-          (if (= (validate-options-status opts) (validate-option-text))
-            (validation-source-report-text
-              state
-              independent-reviews
-              contradicting-observations
-              stale-reviews
-              stale-evidence
-              attestations)
-            (validation-source-report-json
-              state
-              independent-reviews
-              contradicting-observations
-              stale-reviews
-              stale-evidence
-              attestations))]
-        (if (and (> (string-length manifest-path) 0)
-            (< (validation-source-write-manifest graph manifest-path) 0))
-          (do
-            (cli-stderr "source validation manifest write failed")
-            (exit-code-compile-error))
-          (do
-            (print-string report)
-            (print-string "\n")
-            (let [status-code (validation-source-status-code
-                state
-                independent-reviews
-                contradicting-observations
-                stale-reviews
-                stale-evidence)]
-              (if (= status-code 1)
-                (exit-code-compile-error)
-                (if (= status-code 0)
-                  (exit-success)
-                  (exit-code-runtime-error))))))))))
+        identity-result (validation-source-review-identity-result opts)]
+        (if (= (source-result-status identity-result) 0)
+          (let [error (source-result-error identity-result)]
+            (do
+              (cli-stderr
+                (string-concat
+                  "source validation error:"
+                  (int-to-string (source-graph-error-code error))))
+              (exit-code-compile-error)))
+          (let [identity (source-result-value identity-result)
+            attached-result
+              (if (> (vector-length identity) 0)
+                (source-evidence-graph-attach-review-identity graph identity)
+                (source-result 1 graph))]
+            (if (= (source-result-status attached-result) 0)
+              (let [error (source-result-error attached-result)]
+                (do
+                  (cli-stderr
+                    (string-concat
+                      "source validation error:"
+                      (int-to-string (source-graph-error-code error))))
+                  (exit-code-compile-error)))
+              (let [graph2 (source-result-value attached-result)
+                manifest-path (validation-option-manifest-path opts)
+                state (validation-source-state program)
+                metrics (validation-evidence-metrics graph2)
+                independent-reviews (vector-get metrics 0)
+                contradicting-observations (vector-get metrics 1)
+                stale-reviews (vector-get metrics 2)
+                stale-evidence (vector-get metrics 3)
+                attestations (source-evidence-graph-attestations graph2)
+                review-evidence-identity
+                  (if (> (vector-length graph2) 5)
+                    (source-evidence-graph-review-identity graph2)
+                    (vector-new 0))
+                report
+                  (if (= (validate-options-status opts) (validate-option-text))
+                    (validation-source-report-text
+                      state
+                      independent-reviews
+                      contradicting-observations
+                      stale-reviews
+                      stale-evidence
+                      attestations
+                      review-evidence-identity)
+                    (validation-source-report-json
+                      state
+                      independent-reviews
+                      contradicting-observations
+                      stale-reviews
+                      stale-evidence
+                      attestations
+                      review-evidence-identity))]
+                (if (and (> (string-length manifest-path) 0)
+                    (< (validation-source-write-manifest graph2 manifest-path) 0))
+                  (do
+                    (cli-stderr "source validation manifest write failed")
+                    (exit-code-compile-error))
+                  (do
+                    (print-string report)
+                    (print-string "\n")
+                    (let [status-code (validation-source-status-code
+                        state
+                        independent-reviews
+                        contradicting-observations
+                        stale-reviews
+                        stale-evidence)]
+                      (if (= status-code 1)
+                        (exit-code-compile-error)
+                        (if (= status-code 0)
+                          (exit-success)
+                          (exit-code-runtime-error))))))))))))))
 (defn run-validate [file-path opts]
   (if (file-exists? file-path)
     (run-validate-source (read-file file-path) opts)
@@ -1716,20 +1807,214 @@
 (defn validate-option-json [] 1)
 (defn validate-option-text [] 2)
 (defn validate-option-invalid [] (- 0 1))
-(defn validate-options-result [status manifest-path detail source-path]
-  (let [result (vector-new 4)
+(defn validate-options-result-with-identity
+  [status manifest-path detail source-path subject source artifact trust lifecycle now]
+  (let [result (vector-new 10)
     with-status (push-int-vector-local result status)
     with-path (push-object-vector-local with-status manifest-path)
-    with-detail (push-object-vector-local with-path detail)]
-    (push-object-vector-local with-detail source-path)))
+    with-detail (push-object-vector-local with-path detail)
+    with-source (push-object-vector-local with-detail source-path)
+    with-subject (push-object-vector-local with-source subject)
+    with-source-commit (push-object-vector-local with-subject source)
+    with-artifact (push-object-vector-local with-source-commit artifact)
+    with-trust (push-object-vector-local with-artifact trust)
+    with-lifecycle (push-object-vector-local with-trust lifecycle)]
+    (push-object-vector-local with-lifecycle now)))
+(defn validate-options-result [status manifest-path detail source-path]
+  (validate-options-result-with-identity
+    status
+    manifest-path
+    detail
+    source-path
+    ""
+    ""
+    ""
+    ""
+    ""
+    ""))
 (defn validate-options-status [result] (vector-get result 0))
 (defn validate-options-manifest-path [result] (vector-get result 1))
 (defn validate-options-detail [result] (vector-get result 2))
 (defn validate-options-source-path [result] (vector-get result 3))
-(defn parse-validate-cli-options-loop [idx argc source-path manifest-path source-seen format-seen]
+(defn validate-option-review-flag? [flag]
+  (or
+    (or
+      (or
+        (string-eq flag "--review-subject-digest")
+        (string-eq flag "--review-source-commit"))
+      (or
+        (string-eq flag "--review-artifact-digest")
+        (string-eq flag "--review-trust-store-digest")))
+    (or
+      (string-eq flag "--review-lifecycle-digest")
+      (string-eq flag "--review-now"))))
+(defn validate-option-identity-context-valid? [subject source artifact now]
+  (if (and
+        (= (string-length subject) 0)
+        (and
+          (= (string-length source) 0)
+          (and (= (string-length artifact) 0) (= (string-length now) 0))))
+    1
+    (if (and
+          (> (string-length subject) 0)
+          (and
+            (> (string-length source) 0)
+            (and (> (string-length artifact) 0) (> (string-length now) 0))))
+      1
+      0)))
+(defn validate-review-option-state [status subject source artifact trust lifecycle now]
+  (let [result (vector-new 7)
+    with-status (push-int-vector-local result status)
+    with-subject (push-object-vector-local with-status subject)
+    with-source (push-object-vector-local with-subject source)
+    with-artifact (push-object-vector-local with-source artifact)
+    with-trust (push-object-vector-local with-artifact trust)
+    with-lifecycle (push-object-vector-local with-trust lifecycle)]
+    (push-object-vector-local with-lifecycle now)))
+(defn parse-validate-review-option
+  [flag value subject source artifact trust lifecycle now]
+  (if (= (string-length value) 0)
+    (validate-review-option-state 0 subject source artifact trust lifecycle now)
+    (if (string-eq flag "--review-subject-digest")
+      (validate-review-option-state 1 value source artifact trust lifecycle now)
+      (if (string-eq flag "--review-source-commit")
+        (validate-review-option-state 1 subject value artifact trust lifecycle now)
+        (if (string-eq flag "--review-artifact-digest")
+          (validate-review-option-state 1 subject source value trust lifecycle now)
+          (if (string-eq flag "--review-trust-store-digest")
+            (validate-review-option-state 1 subject source artifact value lifecycle now)
+            (if (string-eq flag "--review-lifecycle-digest")
+              (validate-review-option-state 1 subject source artifact trust value now)
+              (if (string-eq flag "--review-now")
+                (validate-review-option-state 1 subject source artifact trust lifecycle value)
+                (validate-review-option-state 0 subject source artifact trust lifecycle now)))))))))
+(defn parse-validate-cli-review-branch
+  [idx argc source-path manifest-path source-seen format-seen flag value subject source artifact trust lifecycle now]
+  (let [review-result
+      (parse-validate-review-option
+        flag
+        value
+        subject
+        source
+        artifact
+        trust
+        lifecycle
+        now)]
+    (if (= (vector-get review-result 0) 1)
+      (parse-validate-cli-options-loop
+        (+ idx 2)
+        argc
+        source-path
+        manifest-path
+        source-seen
+        format-seen
+        (vector-get review-result 1)
+        (vector-get review-result 2)
+        (vector-get review-result 3)
+        (vector-get review-result 4)
+        (vector-get review-result 5)
+        (vector-get review-result 6))
+      (validate-options-result (validate-option-invalid) manifest-path flag source-path))))
+(defn parse-validate-cli-option-step
+  [idx argc source-path manifest-path source-seen format-seen flag value subject source artifact trust lifecycle now]
+  (if (string-eq flag "--emit-manifest")
+    (if (> (string-length value) 0)
+      (parse-validate-cli-options-loop
+        (+ idx 2)
+        argc
+        source-path
+        value
+        source-seen
+        format-seen
+        subject
+        source
+        artifact
+        trust
+        lifecycle
+        now)
+      (validate-options-result (validate-option-invalid) manifest-path flag source-path))
+    (if (format-option-flag flag)
+      (if (string-eq value "json")
+        (parse-validate-cli-options-loop
+          (+ idx 2)
+          argc
+          source-path
+          manifest-path
+          source-seen
+          1
+          subject
+          source
+          artifact
+          trust
+          lifecycle
+          now)
+        (if (string-eq value "text")
+          (parse-validate-cli-options-loop
+            (+ idx 2)
+            argc
+            source-path
+            manifest-path
+            source-seen
+            2
+            subject
+            source
+            artifact
+            trust
+            lifecycle
+            now)
+          (validate-options-result (validate-option-invalid) manifest-path value source-path)))
+      (if (string-eq flag "--source")
+        (if (> (string-length value) 0)
+          (parse-validate-cli-options-loop
+            (+ idx 2)
+            argc
+            value
+            manifest-path
+            1
+            format-seen
+            subject
+            source
+            artifact
+            trust
+            lifecycle
+            now)
+          (validate-options-result (validate-option-invalid) manifest-path flag source-path))
+        (parse-validate-cli-review-branch
+          idx
+          argc
+          source-path
+          manifest-path
+          source-seen
+          format-seen
+          flag
+          value
+          subject
+          source
+          artifact
+          trust
+          lifecycle
+          now)))))
+(defn parse-validate-cli-options-loop
+  [idx argc source-path manifest-path source-seen format-seen subject source artifact trust lifecycle now]
   (if (>= idx argc)
     (if (and (= source-seen 1) (> format-seen 0))
-      (validate-options-result format-seen manifest-path "" source-path)
+      (if (= (validate-option-identity-context-valid? subject source artifact now) 1)
+        (validate-options-result-with-identity
+          format-seen
+          manifest-path
+          ""
+          source-path
+          subject
+          source
+          artifact
+          trust
+          lifecycle
+          now)
+        (validate-options-result
+          (validate-option-invalid)
+          manifest-path
+          "review identity requires --review-subject-digest --review-source-commit --review-artifact-digest --review-now"
+          source-path))
       (validate-options-result
         (validate-option-invalid)
         manifest-path
@@ -1737,51 +2022,30 @@
         source-path))
     (let [flag (command-line-arg idx)]
       (if (or
-            (or (string-eq flag "--source") (format-option-flag flag))
-            (string-eq flag "--emit-manifest"))
+            (or
+              (or (string-eq flag "--source") (format-option-flag flag))
+              (string-eq flag "--emit-manifest"))
+            (validate-option-review-flag? flag))
         (if (>= (+ idx 1) argc)
           (validate-options-result (validate-option-invalid) manifest-path flag source-path)
-          (let [value (command-line-arg (+ idx 1))]
-            (if (string-eq flag "--emit-manifest")
-              (if (> (string-length value) 0)
-                (parse-validate-cli-options-loop
-                  (+ idx 2)
-                  argc
-                  source-path
-                  value
-                  source-seen
-                  format-seen)
-                (validate-options-result (validate-option-invalid) manifest-path flag source-path))
-              (if (format-option-flag flag)
-                (if (string-eq value "json")
-                  (parse-validate-cli-options-loop
-                    (+ idx 2)
-                    argc
-                    source-path
-                    manifest-path
-                    source-seen
-                    1)
-                  (if (string-eq value "text")
-                    (parse-validate-cli-options-loop
-                      (+ idx 2)
-                      argc
-                      source-path
-                      manifest-path
-                      source-seen
-                      2)
-                    (validate-options-result (validate-option-invalid) manifest-path value source-path)))
-                (if (> (string-length value) 0)
-                  (parse-validate-cli-options-loop
-                    (+ idx 2)
-                    argc
-                    value
-                    manifest-path
-                    1
-                    format-seen)
-                  (validate-options-result (validate-option-invalid) manifest-path flag source-path))))))
+          (parse-validate-cli-option-step
+            idx
+            argc
+            source-path
+            manifest-path
+            source-seen
+            format-seen
+            flag
+            (command-line-arg (+ idx 1))
+            subject
+            source
+            artifact
+            trust
+            lifecycle
+            now))
         (validate-options-result (validate-option-invalid) manifest-path flag source-path)))))
 (defn parse-validate-cli-options [argc]
-  (parse-validate-cli-options-loop 1 argc "" "" 0 0))
+  (parse-validate-cli-options-loop 1 argc "" "" 0 0 "" "" "" "" "" ""))
 (defn parse-validate-cli-option [argc]
   (let [result (parse-validate-cli-options argc)]
     (if (or

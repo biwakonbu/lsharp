@@ -1159,6 +1159,124 @@ fn test_e2e_selfhost_embedded_cli_validate_projects_explicit_review_evidence_ide
     );
 }
 
+/// EC-M3-05-N1: 通常の selfhost App.Cli も EmbeddedCli と同じ review evidence identity を
+/// JSON/text/manifest の全出力へ投影すること。
+#[test]
+fn test_e2e_selfhost_cli_main_validate_projects_explicit_review_evidence_identity() {
+    let source = r#"
+(defn review []
+  :review "review:checkout/reviewer-001" "sha256:review-001" "redacted"
+  true)
+"#;
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        let wasm = compile_only(selfhost_cli_runtime_bundle());
+        let identity_args = [
+            "validate",
+            "--source",
+            "input.ls",
+            "--format",
+            "json",
+            "--emit-manifest",
+            "intent-graph.json",
+            "--review-subject-digest",
+            "sha256:graph",
+            "--review-source-commit",
+            "commit-1",
+            "--review-artifact-digest",
+            "sha256:artifact",
+            "--review-trust-store-digest",
+            "sha256:trust",
+            "--review-lifecycle-digest",
+            "sha256:lifecycle",
+            "--review-now",
+            "2026-08-15T00:00:00Z",
+        ];
+        let json_dir = cli_main_args_fixture_dir("cli_validate_review_evidence_identity_json");
+        let _ = std::fs::remove_dir_all(&json_dir);
+        std::fs::create_dir_all(&json_dir)
+            .expect("App.Cli identity JSON fixture directory の作成に失敗");
+        std::fs::write(json_dir.join("input.ls"), source)
+            .expect("App.Cli identity JSON fixture の書き込みに失敗");
+        let json_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &wasm,
+            Some(&json_dir),
+            &identity_args,
+            "",
+        )
+        .expect("App.Cli identity JSON の実行に失敗");
+        let manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(json_dir.join("intent-graph.json"))
+                .expect("App.Cli identity manifest は出力されるべき"),
+        )
+        .expect("App.Cli identity manifest は valid JSON であるべき");
+        let _ = std::fs::remove_dir_all(&json_dir);
+
+        assert_eq!(
+            json_output.exit_code, 2,
+            "identity を付けた未検証 review は unknown のままにするべき: stdout={:?}",
+            json_output.stdout
+        );
+        let report: Value = serde_json::from_str(json_output.stdout.trim())
+            .expect("App.Cli explicit identity report は valid JSON であるべき");
+        let expected_identity = serde_json::json!({
+            "subject_digest": "sha256:graph",
+            "source_commit": "commit-1",
+            "artifact_digest": "sha256:artifact",
+            "trust_store_digest": "sha256:trust",
+            "lifecycle_digest": "sha256:lifecycle",
+            "now": "2026-08-15T00:00:00Z"
+        });
+        assert_eq!(report["review_evidence_identity"], expected_identity);
+        assert_eq!(manifest["review_evidence_identity"], expected_identity);
+
+        let text_dir = cli_main_args_fixture_dir("cli_validate_review_evidence_identity_text");
+        let _ = std::fs::remove_dir_all(&text_dir);
+        std::fs::create_dir_all(&text_dir)
+            .expect("App.Cli identity text fixture directory の作成に失敗");
+        std::fs::write(text_dir.join("input.ls"), source)
+            .expect("App.Cli identity text fixture の書き込みに失敗");
+        let text_args = [
+            "validate",
+            "--source",
+            "input.ls",
+            "--format",
+            "text",
+            "--review-subject-digest",
+            "sha256:graph",
+            "--review-source-commit",
+            "commit-1",
+            "--review-artifact-digest",
+            "sha256:artifact",
+            "--review-trust-store-digest",
+            "sha256:trust",
+            "--review-lifecycle-digest",
+            "sha256:lifecycle",
+            "--review-now",
+            "2026-08-15T00:00:00Z",
+        ];
+        let text_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &wasm,
+            Some(&text_dir),
+            &text_args,
+            "",
+        )
+        .expect("App.Cli identity text の実行に失敗");
+        let _ = std::fs::remove_dir_all(&text_dir);
+        assert_eq!(text_output.exit_code, 2);
+        assert_eq!(
+            text_output.stdout.trim_end(),
+            "status: unknown\n\
+open-questions: 0\n\
+independent-reviews: 0\n\
+contradicting-observations: 0\n\
+stale-reviews: 0\n\
+stale-evidence: 0\n\
+review-evidence-identity: subject=sha256:graph source=commit-1 artifact=sha256:artifact trust-store=sha256:trust lifecycle=sha256:lifecycle now=2026-08-15T00:00:00Z",
+            "App.Cli text identity report は EmbeddedCli と同じ deterministic projection であるべき"
+        );
+    });
+}
+
 /// EC-M2-03: EmbeddedCli の invalidated review/evidence は stale facts と unknown を返す。
 #[test]
 fn test_e2e_selfhost_embedded_cli_validate_source_reports_stale_review_and_evidence() {
