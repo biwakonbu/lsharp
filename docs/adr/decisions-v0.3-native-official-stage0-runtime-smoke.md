@@ -44,17 +44,27 @@ provider snapshot の取得・認証や release archive の identity 検証は�
   の Linux writer/copy contract、stage0 package/provider snapshot tests、shell syntax、diff checkを通過した。
 - GREEN: `bash scripts/ci/test-native-linux-x86-source-smoke-evidence-copy.sh` の fake `limactl` で、Linux
   VM内の成功/失敗 source smokeが host evidenceへ再帰コピーされ、失敗時の元の exit code `23` が保持される
- ことを直接確認した。実 Lima VMは別の重い replayが所有しているため起動していない。
+  ことを直接確認した。実 Lima VMは別の重い replayが所有しているため起動していない。
+- Direct current-source Mac evidence: `e44ca72746e2c970588ac357979dc2b0bc8a67cc` の
+  `native-macos-aarch64-stage0-release.sh` が actual App.Cli producer E2E（1 passed、491.75s）から
+  `lsharp-native-selfhost-stage0` packageを生成し、manifestの target/source commit と
+  `bin/compiler` / `bin/transport-driver` / `bin/materializer` を検証した。release archiveを作成し、
+  local HTTPの `fetch-stage0.sh` で release/package checksum、target、source commitを再検証して
+  fetched packageをインストールした後、producer/fetched双方の Mac source-file smokeを通過した。
+  いずれも evidence manifestの `exit_code=0`、`compile.wasm` / `build.wasm` の同一 digest
+  `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`（2,559 bytes）、stage0
+  manifest digest `103566c49e1d16074e7cda46ff42ca59ea74c08210a41541d9b882adaa43586b` を確認した。
+  current App.Cli producerの `--version`（`lsharp 0.1.0`）と `--help` も exit `0` / stderr空で通過した。
 - Direct Mac evidence: current `f6a6da30` の producer/package outputを Mac source-file smokeへ渡す経路は
   actual App.Cli E2E と `aarch64-apple-darwin native selfhost source-file smoke passed` まで通過した。
   これは `fetch-stage0.sh` を含む公式 orchestrator の証拠ではなく、Linux x86_64 runtimeも未検証である。
 - `bash -n scripts/ci/native-official-release-local.sh scripts/ci/test-native-official-release-snapshots.sh`
   と `git diff --check` を通過した。
 
-この証拠は orchestrator の wiring、target別 evidence propagation、fake target boundaryに加え、direct Mac source-file smokeの実行を
-含む。current checkoutと一致する Linux x86_64 stage0、fetch後の provider snapshot digest bytes比較、
-packaged App.Cli の `--version` / `--help` と rollback/Wasm parity は未取得であり、N9 と EC-M3-05 は
-`[~]` のまま残す。
+この証拠は orchestrator の wiring、target別 evidence propagation、fresh current-source Mac stage0の
+producer → package → fetch → source-file smoke境界を含む。provider snapshot digest bytes比較、
+current checkoutと一致する Linux x86_64 stage0、Linux source-file smoke、両 targetの packaged App.Cli
+`--version` / `--help` と rollback/Wasm parityは未取得であり、N9 と EC-M3-05 は `[~]` のまま残す。
 
 ## Consequences
 
