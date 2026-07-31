@@ -29,11 +29,14 @@ VM or regenerating stage0.
   `lsharp_package_api` and generated `lsharp_stdlib_api` projections. The docs
   lookup, package context/search, package API lookup, and stdlib metadata lookup
   never execute a Rust or host compiler and never access a registry or network.
-- `lsharp_package_api` resolves a deterministic installed-package directory and
-  reads its existing `docs/api.json`, validating the full closed-world API
-  shape before returning it. The native subset does not generate or mutate
-  that file; package installation and API generation remain outside this
-  offline boundary.
+- `lsharp_package_api` resolves a deterministic installed-package directory.
+  When `docs/api.json` exists it is read without invoking the native program and
+  validated against the full closed-world API shape. When the artifact is absent,
+  the shim enumerates sorted `src/**/*.ls` files, invokes the native program's
+  read-only `doc <source> --json` contract for each file, maps the validated
+  documents to the package API shape in memory, and never writes `docs/api.json`.
+  Package installation and the native stage0/runtime boundary remain outside
+  this offline projection.
 - `lsharp_stdlib_api` reads the checked-in `stdlib/api.json`, generated from the
   Rust canonical `doc --json` output for every standard-library module. Native
   filtering is limited to an optional non-empty module name; artifact shape and
@@ -50,12 +53,12 @@ VM or regenerating stage0.
 
 ## Evidence
 
-- `scripts/ci/test-native-selfhost-mcp.py`: 25 focused tests cover protocol
+- `scripts/ci/test-native-selfhost-mcp.py`: 27 focused tests cover protocol
   discovery, native-only check/validate/format calls, canonical error lookup
   (LS codes, E0001-E0005 aliases, unknown codes, and no native execution),
   offline installed-package search, project context (TOML project/dependency
-  projection), package API (existing `docs/api.json` projection with full
-  closed-world validation), and stdlib API
+  projection), package API (existing `docs/api.json` projection and missing-file
+  native `doc --json` generation with full closed-world validation), and stdlib API
   (generated `stdlib/api.json` projection), including
   deterministic ordering, schema, argument rejection, and no native execution,
   identity forwarding, malformed input, missing executable, and provider-path
@@ -64,8 +67,12 @@ VM or regenerating stage0.
   limit.
 - `crates/lsharp-driver` schema and unit tests require the same closed-world
   `lsharp_errors`, `lsharp_search`, `lsharp_project_context`, `lsharp_package_api`,
-  and `lsharp_stdlib_api` boundaries; the Rust MCP focused suite passes 65 tests,
-  including equality with `stdlib/api.json`.
+  and `lsharp_stdlib_api` boundaries; `cargo test -p lsharp-driver
+  mcp_server::tests` passes 87 tests, including the six package-API cases and
+  equality with `stdlib/api.json`. The driver unit target passes 214 tests;
+  the separate `default_path_delegation` integration target remains at 34/46;
+  its 12 failures are embedded-component/default-path assertions outside this
+  MCP slice.
 - `scripts/ci/test-native-selfhost-dev.sh`: runner wiring test confirms
   `mcp-server` delegates to the shim and does not execute `program.native`
   directly or a host command.
@@ -75,14 +82,15 @@ VM or regenerating stage0.
 ## Remaining boundary
 
 The subset does not yet implement the Rust MCP tools for LSP intelligence,
-package API generation/package-install semantics, compile/run, or external provider
+package installation semantics, compile/run, or external provider
 snapshot acquisition and signature/lifecycle verification. `lsharp_errors` is only a verified
 documentation-table projection, `lsharp_search` is only a verified offline
 installed-package projection, and `lsharp_project_context` is only a verified
 offline TOML/package projection; `lsharp_package_api` is a verified existing
-`docs/api.json` projection with closed-world shape validation, and `lsharp_stdlib_api` is only a verified
-generated-artifact projection, not native compiler/package-install/generation
-semantics. N9 / `EC-M3-05`
+`docs/api.json` projection plus a no-mutation native `doc --json` source
+projection with closed-world shape validation, and `lsharp_stdlib_api` is only a verified
+generated-artifact projection; full native compiler/package-install semantics
+remain outside this slice. N9 / `EC-M3-05`
 therefore remains `[~]`; the next RED should select one additional tool or the
 explicit provider adapter contract and compare Rust/native output with the same
 fixture.

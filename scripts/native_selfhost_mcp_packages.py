@@ -1,5 +1,6 @@
 """Offline installed-package projection for the native MCP shim."""
 
+import importlib.util
 import json
 import os
 import pathlib
@@ -318,7 +319,141 @@ def call_project_context(arguments):
     }
 
 
-def call_package_api(arguments):
+_NATIVE_DOC_HELPER = None
+
+
+def _native_doc_helper():
+    global _NATIVE_DOC_HELPER
+    if _NATIVE_DOC_HELPER is None:
+        helper_path = pathlib.Path(__file__).resolve().with_name("native-selfhost-doc.py")
+        spec = importlib.util.spec_from_file_location("native_selfhost_doc", helper_path)
+        if spec is None or spec.loader is None:
+            raise PackageLookupError(f"native doc helper を読み込めません: {helper_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _NATIVE_DOC_HELPER = module
+    return _NATIVE_DOC_HELPER
+
+
+def _run_native_doc(program, source):
+    helper = _native_doc_helper()
+    try:
+        _, document = helper.run_native_doc(program, source)
+    except helper.NativeDocError as error:
+        detail = error.message
+        if error.child_stderr:
+            child_stderr = error.child_stderr.decode("utf-8", "replace").strip()
+            if child_stderr:
+                detail = f"{detail}: {child_stderr}"
+        raise PackageLookupError(f"{source}: native doc の生成に失敗しました: {detail}") from error
+    return document
+
+
+def _package_source_files(package_dir):
+    source_root = package_dir / "src"
+    if not source_root.is_dir():
+        return []
+    return sorted(
+        path
+        for path in source_root.rglob("*.ls")
+        if path.is_file() and not path.is_symlink()
+    )
+
+
+def _optional_doc_text(value):
+    return value if value else None
+
+
+def _module_name(document, source):
+    name = document["module"]
+    if name.startswith("module-"):
+        name = name[len("module-") :]
+    return source.stem if name in {"", "global"} else name
+
+
+def _module_doc(source):
+    try:
+        lines = source.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    comments = []
+    for line in lines:
+        trimmed = line.lstrip()
+        if trimmed.startswith(";;"):
+            comments.append(trimmed[2:].strip())
+            continue
+        if not trimmed:
+            continue
+        break
+    if comments and (".ls -" in comments[0] or ".ls:" in comments[0]):
+        comments.pop(0)
+    text = "\n".join(line for line in comments if line)
+    return text or None
+
+
+def _api_type_kind(kind):
+    return {
+        "recorddef": "record",
+        "type": "adt",
+        "typealias": "alias",
+        "typeconstrained": "trait",
+    }.get(kind, kind)
+
+
+def _generated_module(document, source):
+    functions = []
+    for function in document["functions"]:
+        params = function["params"]
+        return_entry = function["returns"]
+        signature = " -> ".join([param["type"] for param in params] + [return_entry["type"]])
+        functions.append(
+            {
+                "name": function["name"],
+                "signature": signature,
+                "params": [
+                    {
+                        "name": param["name"],
+                        "type": param["type"],
+                        "doc": _optional_doc_text(param["doc"]),
+                    }
+                    for param in params
+                ],
+                "returns": {
+                    "type": return_entry["type"],
+                    "doc": _optional_doc_text(return_entry["doc"]),
+                },
+                "doc": _optional_doc_text(function["doc"]),
+                "example": _optional_doc_text(function["example"]),
+            }
+        )
+    return {
+        "name": _module_name(document, source),
+        "doc": _module_doc(source),
+        "functions": functions,
+        "types": [
+            {"name": type_entry["name"], "kind": _api_type_kind(type_entry["kind"])}
+            for type_entry in document["types"]
+        ],
+    }
+
+
+def _generate_package_api(program, package_dir, package, version, api_path):
+    source_files = _package_source_files(package_dir)
+    if not source_files:
+        raise PackageLookupError(
+            f"{api_path}: api.json が無く、生成対象の src/**/*.ls が見つかりません"
+        )
+    modules = [
+        _generated_module(_run_native_doc(program, source), source)
+        for source in source_files
+    ]
+    modules.sort(key=lambda module: module["name"])
+    value = {"package": package, "version": version, "modules": modules}
+    _validate_package_api(value, api_path)
+    return value
+
+
+def call_package_api(program, arguments):
     unknown = sorted(set(arguments).difference({"name", "project_dir"}))
     if unknown:
         raise PackageLookupError(f"lsharp_package_api の未知の引数: {', '.join(unknown)}")
@@ -342,12 +477,17 @@ def call_package_api(arguments):
     except (OSError, StopIteration):
         raise PackageLookupError(f"インストール済みパッケージ '{name}' が見つかりません") from None
     api_path = package_dir / "docs" / "api.json"
-    try:
-        value = json.loads(api_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
-    _validate_package_api(value, api_path)
-    return value
+    if api_path.exists():
+        try:
+            value = json.loads(api_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
+        _validate_package_api(value, api_path)
+        return value
+
+    config = _project_config(package_dir)
+    package = config["name"] or package_dir.name
+    return _generate_package_api(program, package_dir, package, config["version"], api_path)
 
 
 def _validate_package_api(value, api_path):

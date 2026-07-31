@@ -9,8 +9,9 @@ lookup over the canonical Rust error-code table and never executes a host
 compiler.  ``lsharp_search`` is an offline projection of local
 ``.lsharp/packages`` metadata and never accesses a registry.  ``lsharp_project_context``
 is an offline projection of local ``lsharp.toml`` and installed package metadata.
-``lsharp_package_api`` reads an installed package's existing ``docs/api.json`` and
-never generates or mutates package files.
+``lsharp_package_api`` reads an installed package's existing ``docs/api.json``;
+when it is absent, the native program's read-only ``doc --json`` contract
+generates the same in-memory API projection without mutating package files.
 ``lsharp_stdlib_api`` reads the generated repository ``stdlib/api.json`` and
 never invokes a compiler or mutates the standard library.
 Explicit provider snapshot paths are an offline bytes-to-digest adapter; signature and lifecycle
@@ -370,7 +371,7 @@ TOOLS = [
     ),
     tool_descriptor(
         "lsharp_package_api",
-        "インストール済み L# package の docs/api.json を返す (native offline subset)",
+        "インストール済み L# package の docs/api.json または native doc 生成結果を返す",
         {
             "name": {"type": "string", "minLength": 1},
             "project_dir": {"type": "string", "minLength": 1},
@@ -694,7 +695,7 @@ def call_tool(program, name, arguments):
                     raise ToolError(str(error)) from error
             elif name == "lsharp_package_api":
                 try:
-                    value = call_package_api(arguments)
+                    value = call_package_api(program, arguments)
                 except PackageLookupError as error:
                     raise ToolError(str(error)) from error
             elif name == "lsharp_stdlib_api":

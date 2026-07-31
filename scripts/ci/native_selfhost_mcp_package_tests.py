@@ -118,6 +118,88 @@ def assert_package_api_projects_local_api_json(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_package_api_generates_from_native_doc(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        source = package / "src" / "Geometry.ls"
+        source.parent.mkdir(parents=True)
+        source.write_text("(module Geometry)\n(defn distance [left] left)\n", encoding="utf-8")
+        native_document = {
+            "module": "module-Geometry",
+            "functions": [{
+                "name": "distance",
+                "arity": 1,
+                "params": [{"name": "left", "type": "Point", "doc": "point"}],
+                "returns": {"type": "Float", "doc": "distance"},
+                "doc": "距離",
+                "example": "(distance p)",
+            }],
+            "types": [{"name": "Point", "kind": "recorddef"}],
+            "html": {
+                "title": "module-Geometry",
+                "sections": [{"id": "functions", "count": 1}, {"id": "types", "count": 1}],
+            },
+        }
+        payload = request(
+            1,
+            "tools/call",
+            {"name": "lsharp_package_api", "arguments": {"project_dir": str(root), "name": "demo"}},
+        )
+        result = test.run_shim(program, payload, root, doc_output=native_document)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        test.assertEqual(
+            response["result"]["structuredContent"],
+            {
+                "package": "demo",
+                "version": "1.0.0",
+                "modules": [{
+                    "name": "Geometry",
+                    "doc": None,
+                    "functions": [{
+                        "name": "distance",
+                        "signature": "Point -> Float",
+                        "params": [{"name": "left", "type": "Point", "doc": "point"}],
+                        "returns": {"type": "Float", "doc": "distance"},
+                        "doc": "距離",
+                        "example": "(distance p)",
+                    }],
+                    "types": [{"name": "Point", "kind": "record"}],
+                }],
+            },
+        )
+        test.assertFalse((package / "docs" / "api.json").exists())
+        test.assertEqual(
+            json.loads((root / "native.log").read_text(encoding="utf-8")),
+            ["doc", str(source), "--json"],
+        )
+
+
+def assert_package_api_rejects_malformed_native_doc(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        source = package / "src" / "Geometry.ls"
+        source.parent.mkdir(parents=True)
+        source.write_text("(module Geometry)\n", encoding="utf-8")
+        payload = request(
+            1,
+            "tools/call",
+            {"name": "lsharp_package_api", "arguments": {"project_dir": str(root), "name": "demo"}},
+        )
+        result = test.run_shim(program, payload, root, doc_output={"module": "module-Geometry"})
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        test.assertIn("native doc", response["result"]["content"][0]["text"])
+        test.assertIn("missing required keys", response["result"]["content"][0]["text"])
+        test.assertFalse((package / "docs" / "api.json").exists())
+
+
 def assert_package_api_rejects_invalid_arguments(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

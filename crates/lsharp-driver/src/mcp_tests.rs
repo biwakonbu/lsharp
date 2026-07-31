@@ -941,6 +941,60 @@ branch = "main"
     }
 
     #[test]
+    fn test_package_api_tool_generates_api_from_source_when_missing() {
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_api_generated_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let package_dir = root.join(".lsharp/packages/demo-1.0.0");
+        std::fs::create_dir_all(package_dir.join("src")).unwrap();
+        std::fs::write(
+            package_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            package_dir.join("src/Geometry.ls"),
+            r#"(module Geometry)
+(defn add
+  [x y]
+  :doc "2 つの整数を加算する"
+  :params [(x "左オペランド") (y "右オペランド")]
+  :returns "加算結果"
+  :example [(add 1 2)]
+  (+ x y))
+"#,
+        )
+        .unwrap();
+
+        let result = call_tool(
+            "lsharp_package_api",
+            &json!({
+                "project_dir": root.display().to_string(),
+                "name": "demo"
+            }),
+        )
+        .expect("api.json が無い package は source から生成するべき");
+
+        assert_eq!(result["package"], "demo");
+        assert_eq!(result["version"], "1.0.0");
+        assert_eq!(result["modules"][0]["name"], "Geometry");
+        assert_eq!(result["modules"][0]["functions"][0]["name"], "add");
+        assert_eq!(
+            result["modules"][0]["functions"][0]["signature"],
+            "Int -> Int -> Int"
+        );
+        assert_eq!(
+            result["modules"][0]["functions"][0]["params"][0]["doc"],
+            "左オペランド"
+        );
+        assert_eq!(result["modules"][0]["types"], json!([]));
+        assert!(!package_dir.join("docs/api.json").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn test_stdlib_api_tool_returns_stdlib_modules_with_metadata() {
         let result = call_tool("lsharp_stdlib_api", &json!({})).expect("stdlib_api が成功するべき");
         let artifact_path =

@@ -9,7 +9,7 @@ import tempfile
 import textwrap
 import unittest
 from native_selfhost_mcp_error_tests import assert_errors_lookup, assert_errors_reject_invalid_arguments
-from native_selfhost_mcp_package_tests import assert_package_api_projects_local_api_json, assert_package_api_rejects_invalid_arguments, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
+from native_selfhost_mcp_package_tests import assert_package_api_generates_from_native_doc, assert_package_api_projects_local_api_json, assert_package_api_rejects_invalid_arguments, assert_package_api_rejects_malformed_native_doc, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
 from native_selfhost_mcp_context_tests import assert_project_context_projects_local_metadata, assert_project_context_rejects_invalid_arguments
 from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -99,6 +99,13 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 if args[:1] == ["fmt"]:
                     print("(formatted)")
                     raise SystemExit(0)
+                if args[:1] == ["doc"]:
+                    output = os.environ.get("FAKE_NATIVE_DOC_OUTPUT")
+                    if output is None:
+                        sys.stderr.write("unexpected native doc invocation\\n")
+                        raise SystemExit(91)
+                    print(output)
+                    raise SystemExit(0)
                 sys.stderr.write("unexpected native arguments: " + repr(args) + "\\n")
                 raise SystemExit(91)
                 """
@@ -108,11 +115,13 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         os.chmod(program, 0o755)
         return program
 
-    def run_shim(self, program, payload, root, identity_mode=None):
+    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None):
         environment = os.environ.copy()
         environment["FAKE_NATIVE_LOG"] = str(root / "native.log")
         if identity_mode is not None:
             environment["FAKE_NATIVE_IDENTITY_MODE"] = identity_mode
+        if doc_output is not None:
+            environment["FAKE_NATIVE_DOC_OUTPUT"] = json.dumps(doc_output, ensure_ascii=False)
         return subprocess.run(
             [sys.executable, str(SHIM), "--program", str(program)],
             input=payload,
@@ -127,6 +136,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         assert_stdlib_api_projects_generated_metadata(self)
     def test_stdlib_api_rejects_invalid_arguments(self):
         assert_stdlib_api_rejects_invalid_arguments(self)
+    def test_package_api_generates_from_native_doc(self):
+        assert_package_api_generates_from_native_doc(self)
+    def test_package_api_rejects_malformed_native_doc(self):
+        assert_package_api_rejects_malformed_native_doc(self)
     def test_initialize_tools_and_supported_calls_stay_native_only(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
