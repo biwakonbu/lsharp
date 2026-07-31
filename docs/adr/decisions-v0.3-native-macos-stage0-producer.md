@@ -48,6 +48,11 @@ builder が個別に存在していたが、それらを一つの再現可能な
   `TMPDIR=/var/folders/.../T/` の actual producer/package を 484.89秒で完走した。
   `2abe8196c1cff06ae68265325b114e3c636e646` の source commit、Mac stage0 manifest、
   `aarch64-apple-darwin` target、および source-file smoke の一致を確認した。
+- GREEN: current `3e1b26901aef8191a47382b06bf87fe62c9fb9ad` の Mac Apple Silicon producer/package が
+  actual `App.Cli` E2E（510.15秒）を通過し、`aarch64-apple-darwin` stage0 manifest の source commit と
+  target を検証した。生成 stage0 を `native-selfhost-dev-source-file-smoke.sh` に渡し、
+  `aarch64-apple-darwin native selfhost source-file smoke passed` と evidence manifest の
+  Wasm digest/size、stdout/stderr、exit code、stage0 manifest digest を保存した。
 - `bash -n scripts/ci/native-macos-aarch64-stage0-release.sh scripts/ci/test-native-macos-aarch64-stage0-release.sh`
   と `git diff --check` を通過した。
 

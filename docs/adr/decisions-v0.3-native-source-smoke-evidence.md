@@ -32,6 +32,11 @@ N9 が要求する current-source target gate の実 bytes、stdout/stderr、exi
   既存 directory の上書き拒否を確認して通過した。
 - `bash -n scripts/ci/native-selfhost-dev-source-file-smoke.sh scripts/ci/test-native-selfhost-source-file-smoke-evidence.sh`
 - `python3 -m py_compile scripts/ci/write-native-source-smoke-evidence.py`
+- current `3e1b26901aef8191a47382b06bf87fe62c9fb9ad` の Mac stage0 を fresh evidence directoryへ渡し、
+  `aarch64-apple-darwin native selfhost source-file smoke passed` を確認した。保存した
+  `manifest.json` は stage0 source commit、stage0 manifest digest、`compile.wasm` / `build.wasm` の
+  同一 size/digest、stdout/stderr の相対 path、exit code `0` を記録し、期限付き/期限なし
+  `expires_at`、`unverified`、directive span、invalid source の error code `8` を含む fixture outputを保持した。
 
 これは証跡保存の contract evidence であり、実 Mac Apple Silicon / Linux x86_64 の current-source producer、
 packaged release、runtime parity を完了した証拠ではない。N9 の実 target gate と provider/rollback/Wasm byte

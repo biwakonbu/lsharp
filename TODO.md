@@ -39,7 +39,11 @@
   既定 macOS `TMPDIR` の task-owned producer artifact path拒否も再現し、`TMPDIR_ROOT/lsharp-*` のみを
   許可する safe cleanup boundaryを追加した。末尾 `/` を含む既定 `TMPDIR` の `T//lsharp-*` 連結も
   stage0 wrapperで正規化し、actual producer/package（484.89秒）と生成 stage0の source-file smokeを通過した。
-  Linux x86_64 current-source runtime、fetch後の packaged provenance と両 target matrixは残る。
+  さらに current `3e1b2690` の Mac Apple Silicon producer/package（actual `App.Cli` E2E 510.15秒）と
+  `aarch64-apple-darwin` stage0 manifest/source-file evidence smokeを実行し、source commit/target、
+  named-field attestation、期限付き/期限なし canonical bytes、`unverified`、directive span、invalid
+  source error code `8`、stdout/stderr、exit code、Wasm digest/sizeの一致を確認した。Linux x86_64
+  current-source runtime、fetch後の packaged provenance と両 target matrixは残る。
 - [~] `EC-M3-05` release / evidence gate — Rust CLI/MCP と manifest の入出力 roundtrip が、明示した
   subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
   として deterministic JSON/text/MCP/manifest へ投影し、競合を fail-closed に拒否する verified partial
