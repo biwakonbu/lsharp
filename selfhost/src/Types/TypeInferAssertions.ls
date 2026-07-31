@@ -329,10 +329,10 @@
             (if (<= expression-end expression-start)
               ""
               (substring payload expression-start expression-end))))))))
-(defn property-binder-source-loop [payload idx close len result]
+(defn property-binder-source-step-v3 [payload idx close len result]
   (let [name-start (property-skip-space payload idx len)]
     (if (>= name-start close)
-      result
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start result)
       (let [name-end (property-atom-expression-end payload name-start len)
         type-start (property-skip-space payload name-end len)
         type-end (if (= (string-char-at payload type-start) 40)
@@ -346,15 +346,65 @@
               (substring payload name-start name-end)
               (string-concat " " (string-concat (substring payload type-start type-end) ")")))))]
         (if (= (string-length binder) 0)
-          result
-          (property-binder-source-loop
+          (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start result)
+          (let [next-result (if (= (string-length result) 0)
+              binder
+              (string-concat result (string-concat " " binder)))]
+            (vector-push-triple-rooted-v3
+              (vector-new 3)
+              0
+              (property-skip-space payload type-end len)
+              next-result)))))))
+(defn property-binder-source-step-64-loop-bounded
+  [payload idx close len result remaining]
+  (do
+    (root_push payload)
+    (root_push result)
+    (let [step (property-binder-source-step-v3 payload idx close len result)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-binder-source-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                (vector-get step 2)
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-binder-source-rooted-v3 [payload idx close len result]
+  (let [step (property-binder-source-step-64-loop-bounded payload idx close len result 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (property-binder-source-rooted-v3
             payload
-            (property-skip-space payload type-end len)
+            (vector-get step 1)
             close
             len
-            (if (= (string-length result) 0)
-              binder
-              (string-concat result (string-concat " " binder)))))))))
+            (vector-get step 2))]
+          (do
+            (root_pop)
+            parsed))))))
+(defn property-binder-source-loop [payload idx close len result]
+  (do
+    (root_push payload)
+    (root_push result)
+    (let [parsed (property-binder-source-rooted-v3 payload idx close len result)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn property-probe-parameter-source [payload]
   (let [for-all-start (property-find-substring payload "(for-all")
     len (string-length payload)]
@@ -369,51 +419,160 @@
             (if (= (string-length binders) 0)
               "[result]"
               (string-concat "[" (string-concat binders " result]")))))))))
+(defn property-binder-name-conflict-rest-step-v3 [payload idx close len name]
+  (let [name-start (property-skip-space payload idx len)]
+    (if (>= name-start close)
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
+      (let [name-end (property-atom-expression-end payload name-start len)
+        type-start (property-skip-space payload name-end len)
+        type-end (if (= (string-char-at payload type-start) 40)
+          (property-balanced-expression-end payload type-start len 0)
+          (property-atom-expression-end payload type-start len))
+        current-name (if (= name-end name-start)
+          ""
+          (substring payload name-start name-end))]
+        (if (or (= name-end name-start) (<= type-end type-start))
+          (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            (if (string-eq current-name name) 1 0)
+            (property-skip-space payload type-end len)
+            (if (string-eq current-name name) 1 0)))))))
+(defn property-binder-name-conflict-rest-step-64-loop-bounded
+  [payload idx close len name remaining]
+  (do
+    (root_push payload)
+    (root_push name)
+    (let [step (property-binder-name-conflict-rest-step-v3 payload idx close len name)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-binder-name-conflict-rest-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                name
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-binder-name-conflict-rest-rooted-v3 [payload idx close len name]
+  (let [step
+    (property-binder-name-conflict-rest-step-64-loop-bounded payload idx close len name 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (property-binder-name-conflict-rest-rooted-v3
+            payload
+            (vector-get step 1)
+            close
+            len
+            name)]
+          (do
+            (root_pop)
+            parsed))))))
 (defn property-binder-name-conflict-rest? [payload idx close len name]
+  (do
+    (root_push payload)
+    (root_push name)
+    (let [parsed (property-binder-name-conflict-rest-rooted-v3 payload idx close len name)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
+(defn property-binder-name-conflict-step-v3 [payload idx close len]
   (let [name-start (property-skip-space payload idx len)]
     (if (>= name-start close)
-      0
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
       (let [name-end (property-atom-expression-end payload name-start len)
         type-start (property-skip-space payload name-end len)
         type-end (if (= (string-char-at payload type-start) 40)
           (property-balanced-expression-end payload type-start len 0)
           (property-atom-expression-end payload type-start len))]
         (if (or (= name-end name-start) (<= type-end type-start))
-          0
-          (if (string-eq (substring payload name-start name-end) name)
-            1
-            (property-binder-name-conflict-rest?
-              payload
-              (property-skip-space payload type-end len)
-              close
-              len
-              name)))))))
-(defn property-binder-name-conflict-loop [payload idx close len]
-  (let [name-start (property-skip-space payload idx len)]
-    (if (>= name-start close)
-      0
-      (let [name-end (property-atom-expression-end payload name-start len)
-        type-start (property-skip-space payload name-end len)
-        type-end (if (= (string-char-at payload type-start) 40)
-          (property-balanced-expression-end payload type-start len 0)
-          (property-atom-expression-end payload type-start len))]
-        (if (or (= name-end name-start) (<= type-end type-start))
-          0
+          (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
           (let [name (substring payload name-start name-end)]
-            (if (string-eq name "result")
-              1
-              (if (= (property-binder-name-conflict-rest?
-                  payload
-                  (property-skip-space payload type-end len)
-                  close
-                  len
-                  name) 1)
-                1
-                (property-binder-name-conflict-loop
-                  payload
-                  (property-skip-space payload type-end len)
-                  close
-                  len)))))))))
+            (do
+              (root_push name)
+              (if (string-eq name "result")
+                (let [state (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 1)]
+                  (do
+                    (root_pop)
+                    state))
+                (let [rest-result
+                  (property-binder-name-conflict-rest?
+                    payload
+                    (property-skip-space payload type-end len)
+                    close
+                    len
+                    name)]
+                  (if (= rest-result 1)
+                    (let [state (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 1)]
+                      (do
+                        (root_pop)
+                        state))
+                    (let [state
+                      (vector-push-triple-rooted-v3
+                        (vector-new 3)
+                        0
+                        (property-skip-space payload type-end len)
+                        0)]
+                      (do
+                        (root_pop)
+                        state))))))))))))
+(defn property-binder-name-conflict-step-64-loop-bounded
+  [payload idx close len remaining]
+  (do
+    (root_push payload)
+    (let [step (property-binder-name-conflict-step-v3 payload idx close len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-binder-name-conflict-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-binder-name-conflict-rooted-v3 [payload idx close len]
+  (let [step (property-binder-name-conflict-step-64-loop-bounded payload idx close len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (property-binder-name-conflict-rooted-v3
+            payload
+            (vector-get step 1)
+            close
+            len)]
+          (do
+            (root_pop)
+            parsed))))))
+(defn property-binder-name-conflict-loop [payload idx close len]
+  (do
+    (root_push payload)
+    (let [parsed (property-binder-name-conflict-rooted-v3 payload idx close len)]
+      (do
+        (root_pop)
+        parsed))))
 (defn property-binder-name-conflict? [payload]
   (let [open (property-find-substring payload "[")
     len (string-length payload)
@@ -499,37 +658,83 @@
                           (root_pop)
                           result))))))))))))))
 (defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 1 0)))))
-(defn check-property-preconditions-loop [payload idx close len]
+(defn check-property-preconditions-step-v3 [payload idx close len]
   (let [expression-start (property-skip-space payload idx len)]
     (if (>= expression-start close)
-      0
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 expression-start 0)
       (do
         (root_push payload)
         (let [expression-end (if (= (string-char-at payload expression-start) 40)
             (property-balanced-expression-end payload expression-start len 0)
             (property-atom-expression-end payload expression-start len))]
           (if (<= expression-end expression-start)
-            (do
-              (root_pop)
-              (canonical-property-type-error-code))
+            (let [state
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                1
+                expression-start
+                (canonical-property-type-error-code))]
+              (do
+                (root_pop)
+                state))
             (let [expression (substring payload expression-start expression-end)]
               (do
                 (root_push expression)
-                (let [code (if (string-eq expression "false") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 0 1))]
-                  (if (> code 0)
+                (let [code (if (string-eq expression "false")
+                    (canonical-assertion-vacuous-code)
+                    (check-property-predicate payload expression 0 1))]
+                  (let [state
+                    (if (> code 0)
+                      (vector-push-triple-rooted-v3 (vector-new 3) 1 expression-end code)
+                      (vector-push-triple-rooted-v3 (vector-new 3) 0 expression-end 0))]
                     (do
                       (root_pop)
                       (root_pop)
-                      code)
-                    (let [result (check-property-preconditions-loop
-                        payload
-                        expression-end
-                        close
-                        len)]
-                      (do
-                        (root_pop)
-                        (root_pop)
-                        result))))))))))))
+                      state)))))))))))
+(defn check-property-preconditions-step-64-loop-bounded
+  [payload idx close len remaining]
+  (do
+    (root_push payload)
+    (let [step (check-property-preconditions-step-v3 payload idx close len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (check-property-preconditions-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-property-preconditions-rooted-v3 [payload idx close len]
+  (let [step (check-property-preconditions-step-64-loop-bounded payload idx close len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (check-property-preconditions-rooted-v3
+            payload
+            (vector-get step 1)
+            close
+            len)]
+          (do
+            (root_pop)
+            parsed))))))
+(defn check-property-preconditions-loop [payload idx close len]
+  (do
+    (root_push payload)
+    (let [parsed (check-property-preconditions-rooted-v3 payload idx close len)]
+      (do
+        (root_pop)
+        parsed))))
 (defn check-property-precondition [payload]
   (let [marker (property-find-substring payload ":precondition")
     len (string-length payload)]
@@ -1360,17 +1565,61 @@
         (if (or (= ch 41) (= ch 93))
           1
           (if (= ch 58) 1 0))))))
-(defn property-balanced-bracket-end [src idx len depth]
+(defn property-balanced-bracket-end-step-v3 [src idx len depth]
   (if (>= idx len)
-    -1
+    (vector-push-quad-rooted-v3 (vector-new 4) 1 idx depth -1)
     (let [ch (string-char-at src idx)]
       (if (= ch 91)
-        (property-balanced-bracket-end src (+ idx 1) len (+ depth 1))
+        (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (+ depth 1) -1)
         (if (= ch 93)
           (if (= depth 1)
-            (+ idx 1)
-            (property-balanced-bracket-end src (+ idx 1) len (- depth 1)))
-          (property-balanced-bracket-end src (+ idx 1) len depth))))))
+            (vector-push-quad-rooted-v3 (vector-new 4) 1 (+ idx 1) 0 (+ idx 1))
+            (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (- depth 1) -1))
+          (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) depth -1))))))
+(defn property-balanced-bracket-end-step-64-loop-bounded
+  [src idx len depth remaining]
+  (do
+    (root_push src)
+    (let [step (property-balanced-bracket-end-step-v3 src idx len depth)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-balanced-bracket-end-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (vector-get step 2)
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-balanced-bracket-end-rooted-v3 [src idx len depth]
+  (let [step (property-balanced-bracket-end-step-64-loop-bounded src idx len depth 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 3)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-balanced-bracket-end-rooted-v3
+            src
+            (vector-get step 1)
+            len
+            (vector-get step 2))]
+          (do
+            (root_pop)
+            resolved))))))
+(defn property-balanced-bracket-end [src idx len depth]
+  (do
+    (root_push src)
+    (let [result (property-balanced-bracket-end-rooted-v3 src idx len depth)]
+      (do
+        (root_pop)
+        result))))
 (defn property-option-value-end [payload option-start len]
   (let [precondition? (= (property-option-prefix? payload option-start ":precondition") 1)
     postcondition? (= (property-option-prefix? payload option-start ":postcondition") 1)
@@ -1384,25 +1633,68 @@
         (if (and postcondition? (= (string-char-at payload value-start) 40))
           (property-balanced-expression-end payload value-start len 0)
           (property-atom-expression-end payload value-start len))))))
-(defn property-unknown-option-loop [payload idx len]
+(defn property-unknown-option-step-v3 [payload idx len]
   (if (< idx 0)
-    0
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 0)
     (let [current (property-skip-space payload idx len)]
       (if (>= current len)
-        0
+        (vector-push-triple-rooted-v3 (vector-new 3) 1 current 0)
         (let [ch (string-char-at payload current)]
           (if (= ch 41)
-            0
-          (if (= ch 58)
-            (if (= (property-unknown-option-at? payload current) 1)
-              1
-              (if (= (property-option-value-missing? payload current len) 1)
-                1
-                (property-unknown-option-loop
-                  payload
-                  (property-option-value-end payload current len)
-                  len)))
-            0)))))))
+            (vector-push-triple-rooted-v3 (vector-new 3) 1 current 0)
+            (if (= ch 58)
+              (if (= (property-unknown-option-at? payload current) 1)
+                (vector-push-triple-rooted-v3 (vector-new 3) 1 current 1)
+                (if (= (property-option-value-missing? payload current len) 1)
+                  (vector-push-triple-rooted-v3 (vector-new 3) 1 current 1)
+                  (vector-push-triple-rooted-v3
+                    (vector-new 3)
+                    0
+                    (property-option-value-end payload current len)
+                    0)))
+              (vector-push-triple-rooted-v3 (vector-new 3) 1 current 0))))))))
+(defn property-unknown-option-step-64-loop-bounded
+  [payload idx len remaining]
+  (do
+    (root_push payload)
+    (let [step (property-unknown-option-step-v3 payload idx len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-unknown-option-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-unknown-option-rooted-v3 [payload idx len]
+  (let [step (property-unknown-option-step-64-loop-bounded payload idx len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-unknown-option-rooted-v3
+            payload
+            (vector-get step 1)
+            len)]
+          (do
+            (root_pop)
+            resolved))))))
+(defn property-unknown-option-loop [payload idx len]
+  (do
+    (root_push payload)
+    (let [result (property-unknown-option-rooted-v3 payload idx len)]
+      (do
+        (root_pop)
+        result))))
 (defn property-unknown-option? [payload]
   (let [len (string-length payload)
     open (property-find-substring payload "[")

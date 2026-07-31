@@ -55,3 +55,110 @@ fn test_e2e_selfhost_typeinfer_assertion_scanners_preserve_cross_chunk_indexes()
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines, ["65", "65", "131", "65"]);
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_property_checks_use_bounded_chunks() {
+    let source = selfhost_module("TypeInferAssertions.ls");
+    for name in [
+        "property-binder-source-step-64-loop-bounded",
+        "property-binder-source-rooted-v3",
+        "property-binder-name-conflict-step-64-loop-bounded",
+        "property-binder-name-conflict-rooted-v3",
+        "check-property-preconditions-step-64-loop-bounded",
+        "check-property-preconditions-rooted-v3",
+        "property-balanced-bracket-end-step-64-loop-bounded",
+        "property-balanced-bracket-end-rooted-v3",
+        "property-unknown-option-step-64-loop-bounded",
+        "property-unknown-option-rooted-v3",
+    ] {
+        assert!(
+            source.contains(name),
+            "TypeInferAssertions の property check は {} を持つべき",
+            name
+        );
+    }
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_property_checks_preserve_cross_chunk_results() {
+    let binders = (0..65)
+        .map(|index| format!("p{index} Int"))
+        .collect::<Vec<_>>();
+    let binder_payload = format!("(for-all [{}] result)", binders.join(" "));
+    let expected_parameter_source = format!(
+        "[{} result]",
+        binders
+            .iter()
+            .map(|binder| {
+                let (name, ty) = binder.split_once(' ').expect("binder fixture should split");
+                format!("(: {name} {ty})")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let conflict_binders = (0..64)
+        .map(|index| format!("p{index} Int"))
+        .chain(std::iter::once("p0 Int".to_string()))
+        .collect::<Vec<_>>();
+    let conflict_payload = format!("[{}]", conflict_binders.join(" "));
+    let precondition_expression = "(>= value 0)";
+    let preconditions = (0..65)
+        .map(|_| precondition_expression)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let precondition_payload = format!(
+        "(for-all [value Int] :precondition [{}])",
+        preconditions
+    );
+    let bracket_payload = format!("{}{}", "[".repeat(65), "]".repeat(65));
+    let known_options = (0..65)
+        .map(|_| ":cases 0")
+        .collect::<Vec<_>>()
+        .join(" ");
+    let known_option_payload = format!("[seed] {known_options}");
+    let unknown_option_payload = format!("[seed] {known_options} :unknown 0");
+    let escaped_precondition_payload = precondition_payload.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [binder-payload "{binder_payload}"
+        conflict-payload "{conflict_payload}"
+        precondition-payload "{precondition_payload}"
+        bracket-payload "{bracket_payload}"
+        known-option-payload "{known_option_payload}"
+        unknown-option-payload "{unknown_option_payload}"]
+    (do
+      (print (string-length (property-probe-parameter-source binder-payload)))
+      (print (property-binder-name-conflict? binder-payload))
+      (print (property-binder-name-conflict? conflict-payload))
+      (print (check-property-precondition precondition-payload))
+      (print (property-balanced-bracket-end bracket-payload 0 {bracket_len} 0))
+      (print (property-unknown-option? known-option-payload))
+      (print (property-unknown-option? unknown-option-payload))
+      0)))
+"#,
+        binder_payload = binder_payload,
+        conflict_payload = conflict_payload,
+        precondition_payload = escaped_precondition_payload,
+        bracket_payload = bracket_payload,
+        known_option_payload = known_option_payload,
+        unknown_option_payload = unknown_option_payload,
+        bracket_len = bracket_payload.len(),
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected = vec![
+        expected_parameter_source.len().to_string(),
+        "0".to_string(),
+        "1".to_string(),
+        "0".to_string(),
+        bracket_payload.len().to_string(),
+        "0".to_string(),
+        "1".to_string(),
+    ];
+    assert_eq!(
+        lines.iter().map(|line| line.to_string()).collect::<Vec<_>>(),
+        expected
+    );
+}
