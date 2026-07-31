@@ -30,9 +30,13 @@ look stronger than its evidence.
 - Keep artifact and target/runtime results explicitly `pending` or `not-run`
   until the corresponding Rust differential, native, Wasm, and target gates
   produce evidence. The validator must not promote pending data to success.
+- Compare one `rust-oracle` report with one `native-stage0` report per target
+  using `scripts/ci/semantic_fixture_diff.py`. Equal diagnostics/exit/runtime/
+  artifact observations are `pass`; any mismatch is `mismatch`; an unobserved
+  artifact or runtime boundary is `pending` with exit code 2.
 - Validate the contract with the standalone Python helper and focused unittest;
-  the helper emits a deterministic projection suitable for the future
-  differential runner.
+  the matrix projector emits the deterministic input and the diff helper emits
+  a deterministic comparison result.
 
 ## Consequences
 
@@ -47,5 +51,7 @@ look stronger than its evidence.
 ## Evidence
 
 - `python3 scripts/ci/test-semantic-fixture-matrix.py` — focused contract tests.
+- `python3 scripts/ci/test-semantic-fixture-diff.py` — pending/pass/mismatch and
+  stale source/target contract tests.
 - `python3 scripts/ci/semantic_fixture_matrix.py --manifest scripts/ci/semantic-fixture-matrix.json --root .`
   — deterministic manifest projection.
