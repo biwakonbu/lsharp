@@ -126,6 +126,14 @@
   evidence は残る。ADR:
   `docs/adr/decisions-v0.3-native-validation-boundary-followups.md`。
 
+2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
+App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
+rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。
+Mac producer/fetched source-file smoke は exit `0` で Wasm bytes が一致し、Linux current-source
+source-file smoke は別タスクの live hostgen replay lock により exit `90` で待機中である。native
+MCP と provider API/auth adapter、および Linux runtime は未完了のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.3-current-source-two-target-runtime.md`。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:
