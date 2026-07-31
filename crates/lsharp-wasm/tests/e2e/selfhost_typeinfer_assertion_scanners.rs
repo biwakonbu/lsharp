@@ -267,6 +267,67 @@ fn test_e2e_selfhost_typeinfer_program_aggregation_preserve_cross_chunk_results(
 }
 
 #[test]
+fn test_e2e_selfhost_typeinfer_module_aggregation_use_bounded_rooted_chunks() {
+    let source = selfhost_module("TypeInferAssertions.ls");
+    for name in [
+        "canonical-module-program-step-64-loop-bounded",
+        "canonical-module-program-rooted-v3",
+        "check-module-program-step-64-loop-bounded",
+        "check-module-program-rooted-v3",
+        "check-case-module-program-step-64-loop-bounded",
+        "check-case-module-program-rooted-v3",
+    ] {
+        assert!(
+            source.contains(name),
+            "TypeInferAssertions の module aggregation は {} を持つべき",
+            name
+        );
+    }
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_module_aggregation_preserve_cross_chunk_results() {
+    let assertion_declarations = (0..65)
+        .map(|index| format!("(defn assertion{index} [] :assert [1] true)"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let case_declarations = (0..65)
+        .map(|index| format!("(defn case{index} [] :case [(expect 1 1)] 0)"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let assertion_source = format!(
+        "(module Assertions {assertion_declarations})",
+        assertion_declarations = assertion_declarations
+    );
+    let case_source = format!("(module Cases {case_declarations})", case_declarations = case_declarations);
+    let assertion_literal = assertion_source.replace('"', "\\\"");
+    let case_literal = case_source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [assertion-result (check-canonical-assertions (parse-program "{assertion_literal}"))
+        case-result (check-canonical-cases (parse-program "{case_literal}"))]
+    (do
+      (print (vector-get assertion-result 0))
+      (print (vector-get assertion-result 1))
+      (print (vector-get case-result 0))
+      (print (vector-get case-result 1))
+      0)))
+"#,
+        assertion_literal = assertion_literal,
+        case_literal = case_literal,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["65", "1002", "0", "0"],
+        "module assertion/case aggregation は64 declaration境界を跨いでも件数と先頭コードを保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_typeinfer_property_checks_preserve_cross_chunk_results() {
     let binders = (0..65)
         .map(|index| format!("p{index} Int"))
