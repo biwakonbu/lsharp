@@ -98,11 +98,46 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertEqual(responses[0]["result"]["protocolVersion"], "2025-11-25")
             tool_names = {tool["name"] for tool in responses[1]["result"]["tools"]}
             self.assertEqual(tool_names, {"lsharp_check", "lsharp_validate", "lsharp_format"})
-            check_schema = next(
+            check_tool = next(
                 tool for tool in responses[1]["result"]["tools"] if tool["name"] == "lsharp_check"
-            )["inputSchema"]
+            )
+            check_schema = check_tool["inputSchema"]
             self.assertEqual(
                 check_schema["oneOf"], [{"required": ["source"]}, {"required": ["file"]}]
+            )
+            migration_schema = check_tool["outputSchema"]["properties"]["migrationDiagnostics"]
+            self.assertEqual(migration_schema["type"], "array")
+            self.assertEqual(
+                migration_schema["items"]["required"],
+                ["code", "owner", "selectedSemantics", "disposition", "range"],
+            )
+            self.assertEqual(
+                migration_schema["items"]["properties"]["code"]["enum"],
+                ["LS2001", "LS2002", "LS2003"],
+            )
+            self.assertEqual(
+                migration_schema["items"]["properties"]["selectedSemantics"]["enum"],
+                [
+                    "legacy-example-truthiness",
+                    "legacy-invariant-deterministic-smoke",
+                ],
+            )
+            self.assertEqual(
+                migration_schema["items"]["properties"]["disposition"]["enum"],
+                [
+                    "docs-only-example",
+                    "assertion",
+                    "property-postcondition",
+                    "manual-review",
+                ],
+            )
+            self.assertEqual(
+                migration_schema["items"]["properties"]["range"]["properties"]["start"],
+                {"$ref": "#/$defs/position"},
+            )
+            self.assertEqual(
+                check_tool["outputSchema"]["$defs"]["position"]["required"],
+                ["line", "character"],
             )
             validate_schema = next(
                 tool for tool in responses[1]["result"]["tools"] if tool["name"] == "lsharp_validate"

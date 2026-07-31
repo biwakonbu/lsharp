@@ -63,7 +63,55 @@ CHECK_OUTPUT_SCHEMA = {
     "properties": {
         "ok": {"type": "boolean"},
         "diagnostics": {"type": "array"},
-        "migrationDiagnostics": {"type": "array"},
+        "migrationDiagnostics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["code", "owner", "selectedSemantics", "disposition", "range"],
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "enum": ["LS2001", "LS2002", "LS2003"],
+                    },
+                    "owner": {"type": "string"},
+                    "selectedSemantics": {
+                        "type": "string",
+                        "enum": [
+                            "legacy-example-truthiness",
+                            "legacy-invariant-deterministic-smoke",
+                        ],
+                    },
+                    "disposition": {
+                        "type": "string",
+                        "enum": [
+                            "docs-only-example",
+                            "assertion",
+                            "property-postcondition",
+                            "manual-review",
+                        ],
+                    },
+                    "range": {
+                        "type": "object",
+                        "required": ["start", "end"],
+                        "properties": {
+                            "start": {"$ref": "#/$defs/position"},
+                            "end": {"$ref": "#/$defs/position"},
+                        },
+                    },
+                    "message": {"type": "string"},
+                },
+            },
+        },
+    },
+    "$defs": {
+        "position": {
+            "type": "object",
+            "required": ["line", "character"],
+            "properties": {
+                "line": {"type": "integer", "minimum": 0},
+                "character": {"type": "integer", "minimum": 0},
+            },
+        }
     },
 }
 
