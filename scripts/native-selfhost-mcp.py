@@ -96,6 +96,24 @@ SOURCE_PROPERTIES = {
     "file": {"type": "string", "minLength": 1},
 }
 
+VALIDATE_ARGUMENT_NAMES = frozenset(
+    {
+        "source",
+        "file",
+        "manifest",
+        "manifest_file",
+        "include_manifest",
+        "trust_store",
+        "review_lifecycle",
+        "review_subject_digest",
+        "review_source_commit",
+        "review_artifact_digest",
+        "review_trust_store_digest",
+        "review_lifecycle_digest",
+        "review_now",
+    }
+)
+
 
 TOOLS = [
     tool_descriptor(
@@ -128,6 +146,7 @@ TOOLS = [
         [["source"], ["file"], ["manifest"], ["manifest_file"]],
         VALIDATE_OUTPUT_SCHEMA,
         {
+            "additionalProperties": False,
             "dependentRequired": {
                 "trust_store": ["review_lifecycle"],
                 "review_lifecycle": ["trust_store"],
@@ -259,6 +278,12 @@ def validate_input_file(arguments, temporary_directory):
     return path
 
 
+def reject_unknown_arguments(arguments, allowed, command_name):
+    unknown = sorted(set(arguments).difference(allowed))
+    if unknown:
+        raise ToolError(f"{command_name} の未知の引数: {', '.join(unknown)}")
+
+
 def provider_snapshot_arguments(arguments):
     path_names = ("trust_store", "review_lifecycle")
     present = [name for name in path_names if name in arguments]
@@ -334,6 +359,7 @@ def call_check(program, arguments, temporary_directory):
 
 
 def call_validate(program, arguments, temporary_directory):
+    reject_unknown_arguments(arguments, VALIDATE_ARGUMENT_NAMES, "lsharp_validate")
     path = validate_input_file(arguments, temporary_directory)
     include_manifest = arguments.get("include_manifest", False)
     if not isinstance(include_manifest, bool):

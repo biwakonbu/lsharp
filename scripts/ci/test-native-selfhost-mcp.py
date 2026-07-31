@@ -143,6 +143,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     ],
                 },
             )
+            self.assertFalse(validate_schema["additionalProperties"])
             self.assertEqual(responses[2]["result"]["structuredContent"]["ok"], True)
             self.assertEqual(responses[3]["result"]["structuredContent"]["status"], "unknown")
             self.assertEqual(responses[4]["result"]["structuredContent"], {"formatted": "(formatted)\n"})
@@ -209,6 +210,30 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             response = self.responses(result.stdout)[0]
             self.assertTrue(response["result"]["isError"])
             self.assertIn("review identity requires", response["result"]["content"][0]["text"])
+            self.assertFalse((root / "native.log").exists())
+
+    def test_unknown_validate_argument_is_rejected_before_native_execution(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "unexpected": True,
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]
+            self.assertTrue(response["result"]["isError"])
+            self.assertIn("未知", response["result"]["content"][0]["text"])
             self.assertFalse((root / "native.log").exists())
 
     def test_provider_paths_are_hashed_and_forwarded_to_native(self):
