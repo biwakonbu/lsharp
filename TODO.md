@@ -22,7 +22,8 @@
 - [~] `EC-M3-02` lifecycle transition — append-only registry と stale/revoked 境界の Rust verified
   slice。source/selfhost/native report parity と release evidence は残る。
 - [~] `EC-M3-03` CLI/MCP explicit inputs — explicit context、clock、trust/lifecycle input の Rust
-  CLI/MCP boundary は verified partial slice。selfhost/native MCP と target artifact parity は残る。
+  CLI/MCP boundary は verified partial slice。MCP input schema の subject/source/now/artifact all-or-none
+  も `dependentRequired` で runtime boundaryへ接続した。selfhost/native MCP と target artifact parity は残る。
 - [~] `EC-M3-04` source / selfhost / native producer parity — `:review` 互換を維持した named-field
   `:review-attestation` の Rust parser/source adapter、selfhost kind 20、`unverified` state、span、
   canonical bytes parity、invalid algorithm/signature/timestamp/time-window の fail-closed contract を verified。native
@@ -495,6 +496,14 @@ EC-M2-02/03 aggregate は残件。ADR: `docs/adr/decisions-v0.2-mcp-validation-m
 lexical schema/parser boundary を固定した。Rust-host schema verified partial sliceであり、暦日の実在性を含む
 validator matrix、provider/authentication、selfhost/native producer、対応2 target、EC-M3 aggregate は残件。
 ADR: `docs/adr/decisions-v0.3-review-wire-schema-timestamp.md`。
+
+2026-07-31 に MCP `lsharp_validate` input schema の review verification context を runtime の all-or-none
+policyへ接続した。`review_subject_digest` / `review_source_commit` / `review_now` の相互依存と、
+`review_artifact_digest` 指定時の4 field依存を Draft 2020-12 `dependentRequired` で宣言し、complete contextを
+保ったまま5種類の partial inputを `test_validate_tool_input_schema_requires_complete_review_context` で拒否する
+validator matrixを追加した。Rust-host MCP schema/runtime verified partial sliceであり、selfhost/native MCP、
+current-source artifact/runtime、provider/authentication、対応2 target、EC-M3 aggregate は残件。ADR:
+`docs/adr/decisions-v0.3-review-explicit-context.md`。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

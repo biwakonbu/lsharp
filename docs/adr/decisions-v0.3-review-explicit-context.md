@@ -46,6 +46,23 @@ review を `verified` と誤認できる。
   通り、malformed clock は report/manifest 生成前に no-report/no-manifest で拒否する。詳細は
   [`decisions-v0.3-review-explicit-clock-boundary.md`](decisions-v0.3-review-explicit-clock-boundary.md) を参照。
 
+### MCP input schema closure (2026-07-31)
+
+runtime の `ReviewVerificationContext::from_options` は subject/source/now の3 fieldを all-or-noneで
+要求し、artifact digestが指定された場合は4 fieldを要求する。一方、MCP input schemaは各 fieldを
+optional propertyとして宣言するだけで、partial contextを static validator が受理していた。
+
+- `dependentRequired` で subject/source/now の相互依存を宣言する。
+- `review_artifact_digest` が存在する場合は subject/source/now も要求する。
+- field の `minLength`、canonical timestamp、runtimeの diagnostic/no-report semantics は変更しない。
+- RED: `test_validate_tool_input_schema_requires_complete_review_context` で、complete 3-field contextを
+  保持したまま subject-only/source-only/now-only/artifact-only/artifact-without-now を validator が受理する
+  ことを確認した。
+- GREEN: Draft 2020-12 `dependentRequired` を追加し、同じ5つの partial inputを拒否することを固定した。
+
+これは Rust-host MCP schema/runtime parity の verified partial sliceであり、selfhost/native MCP、
+current-source artifact/runtime、provider/authentication、対応2 target、EC-M3 aggregateの完了証拠ではない。
+
 ## Boundary
 
 これは EC-M3-03 の Rust CLI/MCP context/expiry/binding verified partial slice である。source/

@@ -259,6 +259,16 @@ fn validate_input_schema() -> Value {
             "review_artifact_digest": { "type": "string", "minLength": 1 },
             "review_now": { "type": "string", "minLength": 1 }
         },
+        "dependentRequired": {
+            "review_subject_digest": ["review_source_commit", "review_now"],
+            "review_source_commit": ["review_subject_digest", "review_now"],
+            "review_artifact_digest": [
+                "review_subject_digest",
+                "review_source_commit",
+                "review_now"
+            ],
+            "review_now": ["review_subject_digest", "review_source_commit"]
+        },
         "oneOf": [
             { "required": ["source"] },
             { "required": ["file"] },

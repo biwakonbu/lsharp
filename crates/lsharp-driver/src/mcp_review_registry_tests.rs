@@ -198,6 +198,78 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_input_schema_requires_complete_review_context() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let validator = jsonschema::draft202012::new(&tool["inputSchema"])
+            .expect("MCP validation input schema は Draft 2020-12 validator を構築できるべき");
+
+        let complete = json!({
+            "source": "",
+            "review_subject_digest": "sha256:graph",
+            "review_source_commit": "commit-1",
+            "review_now": "2026-08-15T00:00:00Z"
+        });
+        assert!(
+            validator.is_valid(&complete),
+            "review verification context の3 fieldは揃っていれば受理するべき"
+        );
+        let complete_with_artifact = json!({
+            "source": "",
+            "review_subject_digest": "sha256:graph",
+            "review_source_commit": "commit-1",
+            "review_artifact_digest": "sha256:artifact",
+            "review_now": "2026-08-15T00:00:00Z"
+        });
+        assert!(
+            validator.is_valid(&complete_with_artifact),
+            "review verification context の4 fieldも揃っていれば受理するべき"
+        );
+
+        for (label, arguments) in [
+            (
+                "subject only",
+                json!({"source":"", "review_subject_digest":"sha256:graph"}),
+            ),
+            (
+                "source commit only",
+                json!({"source":"", "review_source_commit":"commit-1"}),
+            ),
+            (
+                "now only",
+                json!({"source":"", "review_now":"2026-08-15T00:00:00Z"}),
+            ),
+            (
+                "artifact only",
+                json!({"source":"", "review_artifact_digest":"sha256:artifact"}),
+            ),
+            (
+                "artifact without now",
+                json!({
+                    "source":"",
+                    "review_subject_digest":"sha256:graph",
+                    "review_source_commit":"commit-1",
+                    "review_artifact_digest":"sha256:artifact"
+                }),
+            ),
+        ] {
+            assert!(
+                !validator.is_valid(&arguments),
+                "{label}: incomplete review verification context は schema で拒否するべき"
+            );
+        }
+    }
+
+    #[test]
     fn test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",
