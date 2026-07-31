@@ -16,6 +16,10 @@
 
 正本: [`v0.3-review-provenance-lifecycle.md`](docs/development/planning/v0.3-review-provenance-lifecycle.md)
 
+次版の設計と task 分解（v0.3 completion 後に active backlog へ昇格）:
+[`v0.4-lsharp-next-shape.md`](docs/development/planning/v0.4-lsharp-next-shape.md)、
+[`v0.4-milestone-01.md`](docs/development/planning/v0.4-milestone-01.md)。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。
