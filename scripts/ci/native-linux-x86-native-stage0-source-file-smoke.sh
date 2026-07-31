@@ -10,12 +10,32 @@ TRANSPORT_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE:-64}"
 TRANSPORT_TIMEOUT_SECONDS="${LSHARP_NATIVE_LINUX_X86_TRANSPORT_TIMEOUT_SECONDS:-900}"
 VM_WORK_DIR="/tmp/lsharp-native-stage0-source-file-smoke-$$"
 VM_WORK_DIR_CREATED=0
+VM_STARTED_BY_SMOKE=0
 
 cleanup() {
+  local exit_status=$?
+  local cleanup_status=0
   if [[ "${VM_WORK_DIR_CREATED}" -eq 1 && "${KEEP_WORK_DIR}" != "1" ]] \
     && command -v limactl >/dev/null 2>&1; then
-    limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}" >/dev/null 2>&1 || true
+    if ! limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}" >/dev/null 2>&1; then
+      cleanup_status=1
+    fi
   fi
+  if [[ "${VM_STARTED_BY_SMOKE}" -eq 1 ]] && command -v limactl >/dev/null 2>&1; then
+    if ! limactl stop "${VM_NAME}" >/dev/null 2>&1; then
+      cleanup_status=1
+    fi
+  fi
+  if [[ "${cleanup_status}" -ne 0 ]]; then
+    echo "ERROR: Linux native stage0 source-file smoke cleanup failed" >&2
+  fi
+  if [[ "${exit_status}" -ne 0 ]]; then
+    exit "${exit_status}"
+  fi
+  if [[ "${cleanup_status}" -ne 0 ]]; then
+    exit 1
+  fi
+  exit 0
 }
 trap cleanup EXIT
 
@@ -44,6 +64,7 @@ ensure_vm_running() {
   status="$(limactl list "${VM_NAME}" --format '{{.Status}}' 2>/dev/null || true)"
   if [[ "${status}" != "Running" ]]; then
     limactl start --tty=false "${VM_NAME}"
+    VM_STARTED_BY_SMOKE=1
   fi
 }
 

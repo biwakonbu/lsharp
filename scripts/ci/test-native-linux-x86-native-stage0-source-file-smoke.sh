@@ -341,6 +341,9 @@ done
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-linux-stage0-source-smoke-test.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+LOG_PATH="$TMP_ROOT/running-vm.log"
+STOPPED_LOG="$TMP_ROOT/stopped-vm.log"
+STOP_FAILURE_LOG="$TMP_ROOT/stop-failure.log"
 
 STAGE0_DIR="$TMP_ROOT/stage0"
 BIN_DIR="$TMP_ROOT/bin"
@@ -376,9 +379,19 @@ chmod 0755 "$BIN_DIR/uname"
 cat >"$BIN_DIR/limactl" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "limactl $*" >>"${FAKE_LOG:-/dev/null}"
+if [[ "${FAIL_LIMACTL_STOP:-0}" == "1" && "${1:-}" == "stop" ]]; then
+  exit 19
+fi
 case "${1:-}" in
   list)
-    printf 'Running\n'
+    if [[ "${FAKE_LIMA_RUNNING:-1}" == "1" ]]; then
+      printf 'Running\n'
+    else
+      printf 'Stopped\n'
+    fi
+    ;;
+  start|stop)
     ;;
   shell)
     if [[ "$*" == *"df -Pk /tmp"* ]]; then
@@ -397,6 +410,8 @@ chmod 0755 "$BIN_DIR/limactl"
 
 run_smoke() {
   PATH="$BIN_DIR:$PATH" \
+    FAKE_LIMA_RUNNING=1 \
+    FAKE_LOG="$LOG_PATH" \
     LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="$STAGE0_DIR" \
     LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR=1 \
     "$SMOKE"
@@ -417,5 +432,51 @@ with open(path, "w", encoding="utf-8") as handle:
 PY
 
 expect_reject "stale stage0 source commit" run_smoke
+
+python3 - "$STAGE0_DIR/manifest.json" "$SOURCE_COMMIT" <<'PY'
+import json
+import sys
+
+path, source_commit = sys.argv[1:]
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["source_commit"] = source_commit
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(manifest, handle)
+    handle.write("\n")
+PY
+
+run_stopped_vm_smoke() {
+  PATH="$BIN_DIR:$PATH" \
+    FAKE_LIMA_RUNNING=0 \
+    FAKE_LOG="$STOPPED_LOG" \
+    LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="$STAGE0_DIR" \
+    LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR=1 \
+    "$SMOKE"
+}
+
+run_stopped_vm_smoke
+grep -F 'limactl start --tty=false lsharp-linux-x86' "$STOPPED_LOG" >/dev/null \
+  || fail 'stopped VM smoke did not record gate-owned start'
+grep -F 'limactl stop lsharp-linux-x86' "$STOPPED_LOG" >/dev/null \
+  || fail 'gate-owned VM smoke did not stop its VM'
+if grep -F 'limactl stop lsharp-linux-x86' "$LOG_PATH" >/dev/null; then
+  fail 'already-running VM smoke was stopped by the gate'
+fi
+
+set +e
+stop_failure_output="$(
+  PATH="$BIN_DIR:$PATH" \
+    FAIL_LIMACTL_STOP=1 \
+    FAKE_LIMA_RUNNING=0 \
+    FAKE_LOG="$STOP_FAILURE_LOG" \
+    LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="$STAGE0_DIR" \
+    LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR=1 \
+    "$SMOKE" 2>&1
+)"
+stop_failure_status=$?
+set -e
+[[ "$stop_failure_status" -ne 0 ]] || fail 'owned VM stop failure was reported as success'
+grep -F 'Linux native stage0 source-file smoke cleanup failed' <<<"$stop_failure_output" >/dev/null \
+  || fail 'owned VM stop failure did not report cleanup failure'
 
 echo "Linux native stage0 source-file provenance tests: OK"
