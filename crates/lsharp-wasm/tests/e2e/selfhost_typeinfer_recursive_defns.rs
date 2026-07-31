@@ -138,3 +138,58 @@ fn test_e2e_selfhost_typeinfer_program_analysis_predeclares_mutual_recursion() {
         "program 推論は相互再帰を未定義変数にせず、関数型を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_program_analysis_uses_bounded_chunks() {
+    let type_infer = selfhost_module("TypeInfer.ls");
+
+    assert!(
+        type_infer.contains("typeinfer-program-analysis-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-program-analysis-rooted-v3")
+            && type_infer.contains("typeinfer-program-analysis-step-state"),
+        "program analysis は bounded helper と rooted continuation へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_program_analysis_preserves_results() {
+    let mut program_expr = "(vector-new 0)".to_string();
+    for idx in 0..65 {
+        let defn_name = 5000 + idx;
+        let defn_expr = format!(
+            "(vector-push (vector-push (vector-push (vector-push (vector-new 4) 20) {}) 0) (make-lit-int {}))",
+            defn_name, idx
+        );
+        program_expr = format!("(vector-push {} {})", program_expr, defn_expr);
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [analysis (infer-program-analysis {program_expr})
+        first-ty (infer-program-analysis-type analysis)
+        failure-kinds (infer-program-analysis-failure-kinds analysis)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      (print (infer-program-analysis-first-error-index analysis))
+      (print (ty-tag first-ty))
+      (print (ty-name first-ty))
+      (print (vector-length failure-kinds))
+      (print (vector-get failure-kinds 64))
+      0)))
+"#,
+        program_expr = program_expr,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "-1", "1", "200", "65", "0"],
+        "65件の program analysis は chunk 境界を越えて全 defn の結果を保持するべき"
+    );
+}

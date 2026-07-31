@@ -3085,9 +3085,18 @@
         (root_pop)
         result))))
 
-(defn typeinfer-program-analysis-loop [program idx len placeholders counter alias-env state]
+(defn typeinfer-program-analysis-step-state [done next-idx state]
+  (do
+    (root_push state)
+    (let [result (vector-push-triple-rooted (vector-new 3) done next-idx state)]
+      (do
+        (root_pop)
+        result))))
+
+(defn typeinfer-program-analysis-step-v3
+  [program idx len placeholders counter alias-env state]
   (if (>= idx len)
-    state
+    (typeinfer-program-analysis-step-state 1 idx state)
     (if (= (vector-get (vector-get program idx) 0) (ast-module-decl))
       (let [env (infer-program-analysis-env state)
         module-end (typeinfer-next-module-index program (+ idx 1) len)
@@ -3107,142 +3116,217 @@
               (root_pop)
               (root_push next-state)
               (let [result
-                      (typeinfer-program-analysis-loop
-                        program
+                      (typeinfer-program-analysis-step-state
+                        0
                         (+ idx 1)
-                        len
-                        placeholders
-                        counter
-                        alias-env
                         next-state)]
                 (do
                   (root_pop)
                   result))))))
       (do
-      ;; native backend では state / out と、その中から取り出した live object を
-      ;; 次の allocation と再帰呼び出しの間も明示的に保持する。
-      (root_push state)
-      (let [decl (typeinfer-unprivate-defn (vector-get program idx))
-        tag (vector-get decl 0)]
-        (do
-          (root_push decl)
-          (let [next-state
-                  (if (= tag (ast-import-decl))
-                    (let [env (infer-program-analysis-env state)
-                      open-env
-                        (typeinfer-open-import-source
-                          program
-                          idx
-                          decl
-                          env
-                          (var-counter-record-env counter))]
+        ;; native backend では state / out と、その中から取り出した live object を
+        ;; 次の allocation の間も明示的に保持する。
+        (root_push state)
+        (let [decl (typeinfer-unprivate-defn (vector-get program idx))
+          tag (vector-get decl 0)]
+          (do
+            (root_push decl)
+            (let [next-state
+                    (if (= tag (ast-import-decl))
+                      (let [env (infer-program-analysis-env state)
+                        open-env
+                          (typeinfer-open-import-source
+                            program
+                            idx
+                            decl
+                            env
+                            (var-counter-record-env counter))]
+                        (do
+                          (root_push open-env)
+                          (let [next-state
+                                  (typeinfer-program-analysis-state-with-env state open-env)]
+                            (do
+                              (root_pop)
+                              (root_push next-state)
+                              (let [result
+                                      (typeinfer-program-analysis-step-state
+                                        0
+                                        (+ idx 1)
+                                        next-state)]
+                                (do
+                                  (root_pop)
+                                  result))))))
+                      (if (= tag 20)
+                        (let [env (infer-program-analysis-env state)
+                        subst (infer-program-analysis-subst state)
+                        first-ty (infer-program-analysis-raw-type state)
+                        first-seen (infer-program-analysis-first-seen state)
+                        diagnostic-count (infer-program-analysis-diagnostic-count state)
+                        first-error-code (infer-program-analysis-first-error-code state)
+                        first-error-index (infer-program-analysis-first-error-index state)
+                        first-error-name-hash (infer-program-analysis-first-error-name-hash state)
+                        first-error-start (infer-program-analysis-first-error-start state)
+                        first-error-end (infer-program-analysis-first-error-end state)
+                        failure-kinds (infer-program-analysis-failure-kinds state)
+                        name-hash (vector-get decl 1)
+                        placeholder (map-get-safe placeholders name-hash)
+                        pending-env-vars (typeinfer-pending-env-vars program (+ idx 1) len placeholders subst)
+                        out (infer-defn-predeclared decl env env counter subst placeholder pending-env-vars alias-env)]
+                          (do
+                            (root_push out)
+                            (let [next-first-ty (if (= first-seen 0) (result-type out) first-ty)]
+                              (do
+                                ;; result-type out は後続の環境/置換取得より先に保持する。
+                                (root_push next-first-ty)
+                                (let [next-first-seen (if (= first-seen 0) 1 first-seen)
+                                  next-first-error-code (if (= first-error-code 0) (result-error-code out) first-error-code)
+                                  next-env (if (= (result-failed out) 1)
+                                    (type-env-remove env name-hash)
+                                    (vector-get out 3))
+                                  next-subst (if (= (result-failed out) 1) subst (result-subst out))
+                                  next-first-error-index
+                                    (if (= (result-failed out) 1)
+                                      (if (< first-error-index 0) idx first-error-index)
+                                      first-error-index)
+                                  next-first-error-name-hash
+                                    (if (= (result-failed out) 1)
+                                      (if (< first-error-index 0) name-hash first-error-name-hash)
+                                      first-error-name-hash)
+                                  next-first-error-start
+                                    (if (= (result-failed out) 1)
+                                      (if (< first-error-index 0) (result-error-start out) first-error-start)
+                                      first-error-start)
+                                  next-first-error-end
+                                    (if (= (result-failed out) 1)
+                                      (if (< first-error-index 0) (result-error-end out) first-error-end)
+                                      first-error-end)
+                                  failure-kind
+                                    (if (= (result-failed out) 1)
+                                      (typeinfer-definition-failure-kind program failure-kinds idx out)
+                                      0)
+                                  next-failure-kinds (push-int-vector-local failure-kinds failure-kind)]
+                                  (do
+                                    (root_push next-env)
+                                    (root_push next-subst)
+                                    (let [result
+                                            (typeinfer-program-analysis-state
+                                              next-env
+                                              next-subst
+                                              next-first-ty
+                                              next-first-seen
+                                              (if (= (result-failed out) 1) (+ diagnostic-count 1) diagnostic-count)
+                                              (if (= (result-failed out) 1) next-first-error-code first-error-code)
+                                              next-first-error-index
+                                              next-first-error-name-hash
+                                              next-first-error-start
+                                              next-first-error-end
+                                              next-failure-kinds)]
+                                      (do
+                                        (root_push result)
+                                        (let [step-result
+                                                (typeinfer-program-analysis-step-state
+                                                  0
+                                                  (+ idx 1)
+                                                  result)]
+                                          (do
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            step-result))))))))))
+                        (typeinfer-program-analysis-step-state 0 (+ idx 1) state)))]
+              (do
+                (root_pop)
+                (root_pop)
+                next-state))))))))
+
+(defn typeinfer-program-analysis-step-64-loop-bounded
+  [program idx len placeholders counter alias-env state remaining]
+  (do
+    (root_push program)
+    (root_push placeholders)
+    (root_push counter)
+    (root_push alias-env)
+    (root_push state)
+    (let [step
+            (typeinfer-program-analysis-step-v3
+              program idx len placeholders counter alias-env state)
+          done (vector-get step 0)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (let [next-state (vector-get step 2)]
                       (do
-                        (root_push open-env)
-                        (let [next-state
-                                (typeinfer-program-analysis-state-with-env state open-env)]
+                        (root_push next-state)
+                        (let [result
+                                (typeinfer-program-analysis-step-64-loop-bounded
+                                  program
+                                  (vector-get step 1)
+                                  len
+                                  placeholders
+                                  counter
+                                  alias-env
+                                  next-state
+                                  (- remaining 1))]
                           (do
                             (root_pop)
-                            (root_push next-state)
-                            (let [result
-                                    (typeinfer-program-analysis-loop
-                                      program
-                                      (+ idx 1)
-                                      len
-                                      placeholders
-                                      counter
-                                      alias-env
-                                      next-state)]
-                              (do
-                                (root_pop)
-                                result))))))
-                    (if (= tag 20)
-                      (let [env (infer-program-analysis-env state)
-                      subst (infer-program-analysis-subst state)
-                      first-ty (infer-program-analysis-raw-type state)
-                      first-seen (infer-program-analysis-first-seen state)
-                      diagnostic-count (infer-program-analysis-diagnostic-count state)
-                      first-error-code (infer-program-analysis-first-error-code state)
-                      first-error-index (infer-program-analysis-first-error-index state)
-                      first-error-name-hash (infer-program-analysis-first-error-name-hash state)
-                      first-error-start (infer-program-analysis-first-error-start state)
-                      first-error-end (infer-program-analysis-first-error-end state)
-                      failure-kinds (infer-program-analysis-failure-kinds state)
-                      name-hash (vector-get decl 1)
-                      placeholder (map-get-safe placeholders name-hash)
-                      pending-env-vars (typeinfer-pending-env-vars program (+ idx 1) len placeholders subst)
-                      out (infer-defn-predeclared decl env env counter subst placeholder pending-env-vars alias-env)]
-                      (do
-                        (root_push out)
-                        (let [next-first-ty (if (= first-seen 0) (result-type out) first-ty)]
-                          (do
-                            ;; result-type out は後続の環境/置換取得より先に保持する。
-                            (root_push next-first-ty)
-                            (let [next-first-seen (if (= first-seen 0) 1 first-seen)
-                              next-first-error-code (if (= first-error-code 0) (result-error-code out) first-error-code)
-                              next-env (if (= (result-failed out) 1)
-                                (type-env-remove env name-hash)
-                                (vector-get out 3))
-                              next-subst (if (= (result-failed out) 1) subst (result-subst out))
-                              next-first-error-index
-                                (if (= (result-failed out) 1)
-                                  (if (< first-error-index 0) idx first-error-index)
-                                  first-error-index)
-                              next-first-error-name-hash
-                                (if (= (result-failed out) 1)
-                                  (if (< first-error-index 0) name-hash first-error-name-hash)
-                                  first-error-name-hash)
-                              next-first-error-start
-                                (if (= (result-failed out) 1)
-                                  (if (< first-error-index 0) (result-error-start out) first-error-start)
-                                  first-error-start)
-                              next-first-error-end
-                                (if (= (result-failed out) 1)
-                                  (if (< first-error-index 0) (result-error-end out) first-error-end)
-                                  first-error-end)
-                              failure-kind
-                                (if (= (result-failed out) 1)
-                                  (typeinfer-definition-failure-kind program failure-kinds idx out)
-                                  0)
-                              next-failure-kinds (push-int-vector-local failure-kinds failure-kind)]
-                              (do
-                                (root_push next-env)
-                                (root_push next-subst)
-                                (let [result
-                                        (typeinfer-program-analysis-state
-                                          next-env
-                                          next-subst
-                                          next-first-ty
-                                          next-first-seen
-                                          (if (= (result-failed out) 1) (+ diagnostic-count 1) diagnostic-count)
-                                          (if (= (result-failed out) 1) next-first-error-code first-error-code)
-                                          next-first-error-index
-                                          next-first-error-name-hash
-                                          next-first-error-start
-                                          next-first-error-end
-                                          next-failure-kinds)]
-                                  (do
-                                    (root_push result)
-                                    (let [recur-result
-                                            (typeinfer-program-analysis-loop
-                                              program
-                                              (+ idx 1)
-                                              len
-                                              placeholders
-                                              counter
-                                              alias-env
-                                              result)]
-                                      (do
-                                        (root_pop)
-                                        (root_pop)
-                                        (root_pop)
-                                        (root_pop)
-                                        (root_pop)
-                                        recur-result))))))))))
-                    (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env state)))]
-            (do
-              (root_pop)
-              (root_pop)
-              next-state))))))))
+                            result))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-program-analysis-step-64
+  [program idx len placeholders counter alias-env state]
+  (typeinfer-program-analysis-step-64-loop-bounded
+    program idx len placeholders counter alias-env state 64))
+
+(defn typeinfer-program-analysis-rooted-v3
+  [program idx len placeholders counter alias-env state]
+  (let [step
+          (typeinfer-program-analysis-step-64
+            program idx len placeholders counter alias-env state)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push placeholders)
+        (root_push counter)
+        (root_push alias-env)
+        (root_push step)
+        (let [next-state (vector-get step 2)]
+          (do
+            (root_push next-state)
+            (let [resolved
+                    (typeinfer-program-analysis-rooted-v3
+                      program
+                      (vector-get step 1)
+                      len
+                      placeholders
+                      counter
+                      alias-env
+                      next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-program-analysis-loop [program idx len placeholders counter alias-env state]
+  (typeinfer-program-analysis-rooted-v3
+    program idx len placeholders counter alias-env state))
 
 ;; top-level defn を先行登録して一度だけ推論し、CLI/LSP が共有する結果を返す。
 (defn infer-program-analysis [program]
