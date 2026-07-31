@@ -28,13 +28,15 @@ fn run_lifecycle_runtime(harness: &str) -> String {
 #[test]
 fn selfhost_lifecycle_reducer_orders_events_and_rejects_invalid_transitions() {
     let harness = r#"
-(defn event [review-id sequence state]
+(defn event-at [review-id sequence state effective-at]
   (source-review-lifecycle-event
     review-id
     sequence
     state
-    "2026-08-01T00:00:00Z"
+    effective-at
     ""))
+(defn event [review-id sequence state]
+  (event-at review-id sequence state "2026-08-01T00:00:00Z"))
 (defn push-event [events elem]
   (vector-push-single-rooted-v3 events elem))
 (defn main []
@@ -67,6 +69,14 @@ fn selfhost_lifecycle_reducer_orders_events_and_rejects_invalid_transitions() {
           (source-review-lifecycle-add-event
             (source-result-value first-add)
             (event "review:orders/reviewer-001" 1 "active"))
+        effective-time-rollback
+          (source-review-lifecycle-add-event
+            (source-result-value first-add)
+            (event-at
+              "review:orders/reviewer-001"
+              3
+              "superseded"
+              "2026-07-31T23:59:59Z"))
         first-terminal
           (source-review-lifecycle-add-event
             (source-result-value first-add)
@@ -96,6 +106,18 @@ fn selfhost_lifecycle_reducer_orders_events_and_rejects_invalid_transitions() {
       (print (source-review-lifecycle-error-code (source-result-error invalid-initial)))
       (print (source-result-status rollback))
       (print (source-review-lifecycle-error-code (source-result-error rollback)))
+      (print (source-result-status effective-time-rollback))
+      (print
+        (source-review-lifecycle-error-code
+          (source-result-error effective-time-rollback)))
+      (print-string
+        (source-review-lifecycle-error-effective-at
+          (source-result-error effective-time-rollback)))
+      (print-string "\n")
+      (print-string
+        (source-review-lifecycle-error-previous-effective-at
+          (source-result-error effective-time-rollback)))
+      (print-string "\n")
       (print (source-result-status resurrection))
       (print (source-review-lifecycle-error-code (source-result-error resurrection)))
       0)))
@@ -121,6 +143,10 @@ fn selfhost_lifecycle_reducer_orders_events_and_rejects_invalid_transitions() {
             "6",
             "0",
             "5",
+            "0",
+            "8",
+            "2026-07-31T23:59:59Z",
+            "2026-08-01T00:00:00Z",
             "0",
             "7",
         ]

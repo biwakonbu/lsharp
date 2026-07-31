@@ -19,6 +19,7 @@
 (defn source-review-lifecycle-error-sequence-rollback [] 5)
 (defn source-review-lifecycle-error-invalid-initial-state [] 6)
 (defn source-review-lifecycle-error-invalid-transition [] 7)
+(defn source-review-lifecycle-error-effective-time-rollback [] 8)
 
 (defn source-review-lifecycle-event
   [review-id sequence state effective-at reason-digest]
@@ -55,6 +56,20 @@
 (defn source-review-lifecycle-error-previous-sequence [error] (vector-get error 3))
 (defn source-review-lifecycle-error-state [error] (vector-get error 4))
 (defn source-review-lifecycle-error-previous-state [error] (vector-get error 5))
+(defn source-review-lifecycle-error-effective-at [error] (vector-get error 6))
+(defn source-review-lifecycle-error-previous-effective-at [error] (vector-get error 7))
+
+(defn source-review-lifecycle-error-with-effective-time
+  [code event previous-sequence previous-state previous-effective-at]
+  (let [base (source-review-lifecycle-error
+      code
+      event
+      previous-sequence
+      previous-state)
+    with-effective (vector-push-single-rooted-v3
+      base
+      (source-review-lifecycle-event-effective-at event))]
+    (vector-push-single-rooted-v3 with-effective previous-effective-at)))
 
 (defn source-review-lifecycle-state-valid? [state]
   (or
@@ -302,17 +317,30 @@
                     event
                     previous-sequence
                     previous-state))
-                (if (source-review-lifecycle-transition-valid? previous-state state)
-                  (source-result
-                    1
-                    (vector-push-single-rooted-v3 registry event))
+                (if
+                  (= (source-review-lifecycle-string-before?
+                       (source-review-lifecycle-event-effective-at event)
+                       (source-review-lifecycle-event-effective-at current))
+                     1)
                   (source-result
                     0
-                    (source-review-lifecycle-error
-                      (source-review-lifecycle-error-invalid-transition)
+                    (source-review-lifecycle-error-with-effective-time
+                      (source-review-lifecycle-error-effective-time-rollback)
                       event
                       previous-sequence
-                      previous-state)))))))))))
+                      previous-state
+                      (source-review-lifecycle-event-effective-at current)))
+                  (if (source-review-lifecycle-transition-valid? previous-state state)
+                    (source-result
+                      1
+                      (vector-push-single-rooted-v3 registry event))
+                    (source-result
+                      0
+                      (source-review-lifecycle-error
+                        (source-review-lifecycle-error-invalid-transition)
+                        event
+                        previous-sequence
+                        previous-state))))))))))))
 
 (defn source-review-lifecycle-add-events-loop [events idx len registry]
   (if (>= idx len)

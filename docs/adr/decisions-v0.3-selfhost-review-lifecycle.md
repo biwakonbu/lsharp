@@ -24,13 +24,17 @@ error boundary を selfhost に固定する必要がある。
 - `selfhost/src/Tools/Validation/Lifecycle.ls` に、
   `[review-id, sequence, state, effective-at, reason-digest]` event と
   `[code, review-id, sequence, previous-sequence, state, previous-state]` error を定義する。
+  `effective_at` の巻き戻しには code `8` として、入力側/既存側の timestamp を末尾 payload に付加する。
 - event は既存の source review wire と strict UTC timestamp、nonblank field policy を再利用し、
   review ID、sequence、state、optional reason digest を fail-closed に検証する。
 - registry の view は review ID の byte-wise lexical order、同一 review 内の sequence order へ
   insertion sort で正規化する。入力配列の順序を結果や digest の意味論にしない。
 - 初期 state は `proposed` / `active` のみ、遷移は `proposed → active`、
   `active → superseded`、`active → revoked` のみとする。terminal state からの resurrection、
-  duplicate sequence、sequence rollback は明示 error code で拒否する。
+  duplicate sequence、sequence rollback、同一 review 内の `effective_at` rollback は明示 error code で拒否する。
+- timestamp は event construction 時に strict canonical UTC へ検証済みなので、Rust canonical reducer と
+  同じ UTF-8 byte-wise lexical order を chronological order として比較する。既存の sequence/transition
+  error precedence は維持する。
 - この module は lifecycle state の純粋な reducer とし、provider 取得、signature/trust、
   report projection、CLI/MCP の入力解決は外部境界として残す。
 
@@ -42,6 +46,12 @@ error boundary を selfhost に固定する必要がある。
   out-of-order events の正規化、terminal state、duplicate、initial state、rollback を同じ
   Wasm runtime で検証した。
 - Rust oracle: `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/lsharp-m3-selfhost-lifecycle/target cargo test -p lsharp-types --test review_lifecycle`（5 passed）。
+- RED: selfhost に `effective_at` rollback fixture を追加すると、sequence/transition だけでは拒否できず
+  既存 boundaryへ誤って流れることを確認した。
+- GREEN: code `8` の `EffectiveTimeRollback` と入力/既存 timestamp payloadを selfhost Wasm で確認し、
+  Rust `lifecycle_rejects_effective_time_rollback` と同じ fixture意味論へ揃えた。
+- Regression: `cargo test -p lsharp-types --test review_lifecycle`（6 passed）と
+  selfhost lifecycle E2E（1 passed）を通過した。
 - Regression: selfhost evidence registry 全体（51 tests）が passed。
 - Contract: 対象 Rust files の `rustfmt --edition 2024 --check`、`git diff --check`、
   `bash scripts/audit_docs.sh`（0 errors, 0 warnings）が passed。
