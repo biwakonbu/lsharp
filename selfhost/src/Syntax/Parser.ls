@@ -5716,12 +5716,52 @@
 
 ;; 次の同期ポイント (閉じ括弧 or トップレベル) まで回復
 ;; kind=1 (RParen), kind=99 (EOF) で停止
-(defn recover-to-next [spans pos-ref]
+(defn recover-to-next-step-v3 [spans pos-ref]
   (let [kind (p-current spans pos-ref)]
-    (if (== kind 99) 0 ;; EOF で停止
-      (if (== kind 1) 0 ;; ) で停止
-        (do (p-advance pos-ref)
-          (recover-to-next spans pos-ref))))))
+    (if (or (== kind 99) (== kind 1))
+      (make-parse-loop-state 1 0)
+      (do
+        (p-advance pos-ref)
+        (make-parse-loop-state 0 0)))))
+
+(defn recover-to-next-step-64-loop-bounded [spans pos-ref remaining]
+  (let [step (recover-to-next-step-v3 spans pos-ref)
+    done (vector-get step 0)]
+    (do
+      (root_push step)
+      (let [parsed
+        (if (= done 1)
+          step
+          (if (<= remaining 1)
+            step
+            (recover-to-next-step-64-loop-bounded spans pos-ref (- remaining 1))))]
+        (do
+          (root_pop)
+          parsed)))))
+
+(defn recover-to-next-step-64 [spans pos-ref]
+  (recover-to-next-step-64-loop-bounded spans pos-ref 64))
+
+(defn recover-to-next-rooted-v3 [spans pos-ref]
+  (let [step (recover-to-next-step-64 spans pos-ref)]
+    (if (= (vector-get step 0) 1)
+      0
+      (do
+        (root_push step)
+        (let [parsed (recover-to-next-rooted-v3 spans pos-ref)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn recover-to-next [spans pos-ref]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [parsed (recover-to-next-rooted-v3 spans pos-ref)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 ;; recovery 付きパース: パースに失敗したら回復して診断を記録
 ;; 戻り値: [ast-node, diagnostics-vector]

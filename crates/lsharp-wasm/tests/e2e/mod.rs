@@ -34,6 +34,7 @@ mod selfhost_native_tokenizer_probe;
 mod selfhost_parser_forms;
 mod selfhost_parser_primitive_scanners;
 mod selfhost_parser_collection_helpers;
+mod selfhost_parser_recovery;
 mod selfhost_parser_metadata_forms;
 mod selfhost_private_record_compiler;
 mod selfhost_assertion_spans;
