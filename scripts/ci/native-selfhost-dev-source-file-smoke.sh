@@ -1632,7 +1632,7 @@ if report.get("status") != "fail":
     raise SystemExit(f"validation fail status is invalid: {report!r}")
 if report.get("trace_gaps") != [] or report.get("open_questions") != 0:
     raise SystemExit(f"validation fail graph metrics are invalid: {report!r}")
-if report.get("independent_reviews") != 1:
+if report.get("independent_reviews") != 0:
     raise SystemExit(f"validation fail review metric is invalid: {report!r}")
 if report.get("contradicting_observations") != 1:
     raise SystemExit(f"validation fail contradiction metric is invalid: {report!r}")
@@ -1643,7 +1643,7 @@ PY
 run_report_failure validation-fail-text 0 validate \
   --source "$VALIDATION_FAIL_SOURCE" \
   --format text
-require_exact_output validation-fail-text $'status: fail\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 1\nstale-reviews: 0\nstale-evidence: 0\n'
+require_exact_output validation-fail-text $'status: fail\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 1\nstale-reviews: 0\nstale-evidence: 0\n'
 
 run_expected_failure validation-stale-json 0 validate \
   --source "$VALIDATION_STALE_SOURCE" \

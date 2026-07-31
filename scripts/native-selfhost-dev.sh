@@ -435,4 +435,14 @@ if COMPONENT_OUTPUT="$(component_output_path "$@")"; then
     --output "$COMPONENT_OUTPUT"
 fi
 
-exec "$STAGE_DIR/program.native" "$@"
+set +e
+"$STAGE_DIR/program.native" "$@" | while IFS= read -r output_line; do
+  if [[ "$output_line" == error:* ]]; then
+    printf '%s\n' "$output_line" >&2
+  else
+    printf '%s\n' "$output_line"
+  fi
+done
+program_status=${PIPESTATUS[0]}
+set -e
+exit "$program_status"

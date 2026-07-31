@@ -29,6 +29,7 @@
 (import Tools.Validation.Evidence)
 (import Tools.Validation.Stale)
 (import Tools.Validation.ReviewIdentity)
+(import Tools.Validation.ManifestInput)
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
 (defn exit-success [] 0)
@@ -241,7 +242,9 @@
       next-count
         (if (and
               (string-eq (source-evidence-record-method evidence-record) "review")
-              (string-eq (source-evidence-record-independence evidence-record) "independent-review"))
+              (and
+                (string-eq (source-evidence-record-independence evidence-record) "independent-review")
+                (string-eq (source-evidence-record-outcome evidence-record) "pass")))
           (+ count 1)
           count)]
       (validation-independent-review-count-loop registry (+ idx 1) len next-count))))
@@ -528,8 +531,56 @@
         (validate-options-review-now opts)))))
 (defn validation-source-write-manifest [graph manifest-path]
   (if (> (string-length manifest-path) 0)
-    (write-file manifest-path (validation-source-manifest-json graph))
+    (do
+      (write-file manifest-path (validation-source-manifest-json graph))
+      (if (file-exists? manifest-path) 0 -1))
     0))
+(defn validation-manifest-state [src]
+  (let [state (validation-state-new)]
+    (do
+      (ref-set
+        (vector-get state 4)
+        (validation-manifest-open-question-count src))
+      state)))
+(defn run-validate-manifest [src opts]
+  (if (= (validation-manifest-required-trace? src) 0)
+    (do
+      (cli-stderr "manifest validation requires motivates and tested-by edges")
+      (exit-code-compile-error))
+    (let [state (validation-manifest-state src)
+      independent-reviews (validation-manifest-independent-review-count src)
+      contradicting-observations (validation-manifest-contradiction-count src)
+      stale-reviews (validation-manifest-stale-review-count src)
+      stale-evidence (validation-manifest-stale-evidence-count src)
+      report
+        (if (= (validate-options-status opts) (validate-option-text))
+          (validation-source-report-text
+            state
+            independent-reviews
+            contradicting-observations
+            stale-reviews
+            stale-evidence)
+          (validation-source-report-json
+            state
+            independent-reviews
+            contradicting-observations
+            stale-reviews
+            stale-evidence
+            (vector-new 0)
+            (vector-new 0)))]
+      (do
+        (print-string report)
+        (print-string "\n")
+        (if (= (validation-source-status-code
+            state
+            independent-reviews
+            contradicting-observations
+            stale-reviews
+            stale-evidence) 0)
+          (exit-success)
+          (if (> contradicting-observations 0)
+            (exit-code-compile-error)
+            (exit-code-runtime-error)))))))
 (defn run-validate-source [src opts]
   (let [program (parse-program src)
     graph-result (source-evidence-graph-from-program program)]
@@ -616,7 +667,10 @@
                           (exit-code-runtime-error))))))))))))))
 (defn run-validate [file-path opts]
   (if (file-exists? file-path)
-    (run-validate-source (read-file file-path) opts)
+    (let [src (read-file file-path)]
+      (if (= (validation-manifest-json-input? src) 1)
+        (run-validate-manifest src opts)
+        (run-validate-source src opts)))
     (do
       (cli-stderr "source file not found")
       (exit-code-compile-error))))
@@ -2022,29 +2076,47 @@
         "validate requires --source <file> --format text|json"
         source-path))
     (let [flag (command-line-arg idx)]
-      (if (or
-            (or
-              (or (string-eq flag "--source") (format-option-flag flag))
-              (string-eq flag "--emit-manifest"))
-            (validate-option-review-flag? flag))
-        (if (>= (+ idx 1) argc)
-          (validate-options-result (validate-option-invalid) manifest-path flag source-path)
-          (parse-validate-cli-option-step
-            idx
-            argc
-            source-path
-            manifest-path
-            source-seen
-            format-seen
-            flag
-            (command-line-arg (+ idx 1))
-            subject
-            source
-            artifact
-            trust
-            lifecycle
-            now))
-        (validate-options-result (validate-option-invalid) manifest-path flag source-path)))))
+      (if (and
+            (= idx 1)
+            (and
+              (= source-seen 0)
+              (= (validation-manifest-positional-path? flag) 1)))
+        (parse-validate-cli-options-loop
+          (+ idx 1)
+          argc
+          flag
+          manifest-path
+          1
+          format-seen
+          subject
+          source
+          artifact
+          trust
+          lifecycle
+          now)
+        (if (or
+              (or
+                (or (string-eq flag "--source") (format-option-flag flag))
+                (string-eq flag "--emit-manifest"))
+              (validate-option-review-flag? flag))
+          (if (>= (+ idx 1) argc)
+            (validate-options-result (validate-option-invalid) manifest-path flag source-path)
+            (parse-validate-cli-option-step
+              idx
+              argc
+              source-path
+              manifest-path
+              source-seen
+              format-seen
+              flag
+              (command-line-arg (+ idx 1))
+              subject
+              source
+              artifact
+              trust
+              lifecycle
+              now))
+          (validate-options-result (validate-option-invalid) manifest-path flag source-path)))))
 (defn parse-validate-cli-options [argc]
   (parse-validate-cli-options-loop 1 argc "" "" 0 0 "" "" "" "" "" ""))
 (defn parse-validate-cli-option [argc]

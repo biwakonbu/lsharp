@@ -2070,6 +2070,170 @@ fn test_native_validation_manifest_serializer_reuses_stable_id_fields() {
     }
 }
 
+/// EC-M2-03/EC-M3-01: native validate は source だけでなく positional
+/// version 1 manifest input も Rust CLI と同じ report 境界へ渡す。
+#[test]
+fn test_native_validate_accepts_positional_manifest_input() {
+    let cli_path = selfhost_project_root().join("selfhost/src/App/Cli.ls");
+    let cli = std::fs::read_to_string(&cli_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", cli_path.display()));
+    let manifest_path = selfhost_project_root().join("selfhost/src/Tools/Validation/ManifestInput.ls");
+    let manifest = std::fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", manifest_path.display()));
+
+    assert!(
+        manifest.contains("(defn validation-manifest-json-input? [src]"),
+        "ManifestInput.ls の positional manifest 判定契約がありません"
+    );
+    for required in [
+        "(defn run-validate-manifest [src opts]",
+        "(run-validate-manifest src opts)",
+        "(if (file-exists? manifest-path) 0 -1)",
+        "(string-eq (source-evidence-record-outcome evidence-record) \"pass\")",
+    ] {
+        assert!(
+            cli.contains(required),
+            "App.Cli の positional manifest input 契約がありません: {required}"
+        );
+    }
+}
+
+#[test]
+fn test_native_review_attestation_span_covers_named_fields() {
+    let parser_path = selfhost_project_root().join("selfhost/src/Syntax/Parser.ls");
+    let parser = std::fs::read_to_string(&parser_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", parser_path.display()));
+    let body = parser
+        .split("(defn parse-defn-meta-review-attestation-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-meta-source-pair-v3").next())
+        .expect("review-attestation parser が存在すること");
+    let payload_pos = body
+        .find("parse-source-review-attestation-fields-loop-v3")
+        .expect("review-attestation fields parser が存在すること");
+    let end_pos = body
+        .find("directive-end (metadata-directive-end-v3 spans pos-ref)")
+        .expect("review-attestation directive end が存在すること");
+
+    assert!(
+        payload_pos < end_pos,
+        "review-attestation の span end は named fields を読み終えてから計算すること"
+    );
+}
+
+#[test]
+fn test_native_validation_evidence_registry_precedes_wire_id_validation() {
+    let evidence_path = selfhost_project_root().join("selfhost/src/Tools/Validation/Evidence.ls");
+    let evidence = std::fs::read_to_string(&evidence_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", evidence_path.display()));
+    let body = evidence
+        .split("(defn source-evidence-edge-form-result-with-reviews ")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn source-evidence-append-edge-forms ").next())
+        .expect("evidence edge validation が存在すること");
+    let registry_pos = body
+        .find("(source-evidence-id-exists? registry evidence-id)")
+        .expect("evidence registry lookup が存在すること");
+    let wire_pos = body
+        .find("(source-wire-valid? evidence-id (source-edge-supports))")
+        .expect("evidence wire-id validation が存在すること");
+
+    assert!(
+        registry_pos < wire_pos,
+        "supports/contradicts は invalid wire ID より先に evidence registry を検証すること"
+    );
+}
+
+#[test]
+fn test_native_evidence_parser_marks_missing_required_fields_malformed() {
+    let parser_path = selfhost_project_root().join("selfhost/src/Syntax/Parser.ls");
+    let parser = std::fs::read_to_string(&parser_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", parser_path.display()));
+    let body = parser
+        .split("(defn parse-defn-meta-evidence-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn source-evidence-seen-new-v3-loop").next())
+        .expect("evidence parser が存在すること");
+
+    assert!(
+        parser.contains("(defn source-evidence-required-fields-present-v3 [seen]")
+            && body.contains("(vector-push-single-rooted-v3 payload -1)"),
+        "evidence parser は required named field の欠落を malformed sentinel に変換すること"
+    );
+}
+
+#[test]
+fn test_native_review_parser_marks_missing_triple_field_malformed() {
+    let parser_path = selfhost_project_root().join("selfhost/src/Syntax/Parser.ls");
+    let parser = std::fs::read_to_string(&parser_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", parser_path.display()));
+    let body = parser
+        .split("(defn parse-defn-meta-source-triple-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn defn-metadata-present-v3").next())
+        .expect("review triple parser が存在すること");
+
+    assert!(
+        body.contains("consumed")
+            && body.contains("(== (p-current spans pos-ref) 12)")
+            && body.contains("p-next-token-kind-v3")
+            && body.contains("(vector-push-single-rooted-v3 payload0 -1)"),
+        "review parser は missing/extra triple field を malformed sentinel に変換すること"
+    );
+}
+
+#[test]
+fn test_native_source_pair_parser_marks_extra_field_malformed() {
+    let parser_path = selfhost_project_root().join("selfhost/src/Syntax/Parser.ls");
+    let parser = std::fs::read_to_string(&parser_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", parser_path.display()));
+    let body = parser
+        .split("(defn parse-defn-meta-source-pair-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-meta-source-triple-v3").next())
+        .expect("source pair parser が存在すること");
+
+    assert!(
+        body.contains("consumed")
+            && body.contains("(== (p-current spans pos-ref) 12)")
+            && body.contains("p-next-token-kind-v3")
+            && body.contains("(vector-push-single-rooted-v3 payload0 -1)"),
+        "source pair parser は extra field を malformed sentinel に変換すること"
+    );
+}
+
+#[test]
+fn test_native_duplicate_node_diagnostic_uses_ec_m3_code() {
+    let intent_source_path = selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls");
+    let intent_source = std::fs::read_to_string(&intent_source_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", intent_source_path.display()));
+
+    assert!(
+        intent_source.contains("(defn source-error-duplicate-node [] 2)"),
+        "EC-M3 duplicate node は native source smoke の canonical code 2 を返すこと"
+    );
+}
+
+#[test]
+fn test_native_selfhost_dev_routes_cli_error_lines_to_stderr() {
+    let script_path = selfhost_project_root().join("scripts/native-selfhost-dev.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains("if [[ \"$output_line\" == error:* ]]"),
+        "native runner は App.Cli の error line を識別するべき"
+    );
+    assert!(
+        script.contains("printf '%s\\n' \"$output_line\" >&2"),
+        "native runner は error line を stderr へ送るべき"
+    );
+    assert!(
+        script.contains("program_status=${PIPESTATUS[0]}"),
+        "native runner は program の exit code を保持するべき"
+    );
+}
+
 #[test]
 fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
     let script_path = selfhost_project_root()

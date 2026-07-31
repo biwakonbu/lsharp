@@ -66,7 +66,14 @@
   node/evidence/subject ID fields を一つの serializer helper へ統合し、EC-M3-01 canonical
   manifest bytes の working-tree preflight parity を確認した。これは serializer の verified
   sliceであり、fresh producer と両 target runtime の証拠は残る。ADR:
-  `docs/adr/decisions-v0.3-ec-m3-native-id-serializer.md`。
+  `docs/adr/decisions-v0.3-ec-m3-native-id-serializer.md`。さらに native parser/CLI の
+  review-attestation span、missing/extra metadata の malformed boundary、evidence registry
+  precedence、positional manifest input、manifest write failure、stderr/exit propagation を
+  Rust contract に揃え、Mac source-file smoke の全 negative/manifest/report cases を blocked
+  tool preflight で通過した。これは working-tree source と旧 stage0 を使った verified preflight
+  であり、fresh current-source producer、packaged bytes、Linux x86_64 runtime、provider/rollback
+  evidence は残る。ADR:
+  `docs/adr/decisions-v0.3-native-validation-boundary-followups.md`。
 
 ## Current priority — v0.2 Milestone 2
 

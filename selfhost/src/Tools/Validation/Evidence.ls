@@ -838,14 +838,14 @@
           (let [evidence-id (vector-get payload 0) claim-id (vector-get payload 1)]
           (if (or (= (string-length evidence-id) 0) (= (string-length claim-id) 0))
             (source-result 0 (source-graph-error-at (source-error-malformed) relation evidence-id start end))
-            (if (= (source-wire-valid? evidence-id (source-edge-supports)) 0)
-              (source-result 0 (source-graph-error-at (source-error-invalid-id) relation evidence-id start end))
-              (if (= (source-wire-valid? claim-id (source-node-claim)) 0)
-                (source-result 0 (source-graph-error-at (source-error-invalid-id) relation claim-id start end))
-                (if (= (source-node-id-exists? nodes claim-id) 0)
-                  (source-result 0 (source-graph-error-at (source-error-missing-node) relation claim-id start end))
-                  (if (= (source-evidence-id-exists? registry evidence-id) 0)
-                    (source-result 0 (source-graph-error-at (source-error-evidence-registry-required) relation evidence-id start end))
+            (if (= (source-evidence-id-exists? registry evidence-id) 0)
+              (source-result 0 (source-graph-error-at (source-error-evidence-registry-required) relation evidence-id start end))
+              (if (= (source-wire-valid? evidence-id (source-edge-supports)) 0)
+                (source-result 0 (source-graph-error-at (source-error-invalid-id) relation evidence-id start end))
+                (if (= (source-wire-valid? claim-id (source-node-claim)) 0)
+                  (source-result 0 (source-graph-error-at (source-error-invalid-id) relation claim-id start end))
+                  (if (= (source-node-id-exists? nodes claim-id) 0)
+                    (source-result 0 (source-graph-error-at (source-error-missing-node) relation claim-id start end))
                     (source-result 1 (source-edge-record relation evidence-id claim-id start end)))))))))))))
 
 (defn source-evidence-append-edge-forms [forms idx len registry nodes reviews evidence-ids edges]

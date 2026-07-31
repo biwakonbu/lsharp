@@ -57,6 +57,12 @@
       99 ;; EOF ガード: spans 境界外は EOF として扱う
       (span-kind spans pos))))
 
+(defn p-next-token-kind-v3 [spans pos-ref]
+  (let [idx (+ (ref-get pos-ref) 1)]
+    (if (>= (* idx 3) (vector-length spans))
+      99
+      (span-kind spans idx))))
+
 ;; パーサー位置を1つ進める
 (defn p-advance [pos-ref]
   (ref-set pos-ref (+ (ref-get pos-ref) 1)))
@@ -1577,6 +1583,18 @@
   ;; vector-new は capacity だけを確保するため、field 数分の 0 を明示的に詰める。
   (source-evidence-seen-new-v3-loop 0 (vector-new 17)))
 
+(defn source-evidence-required-fields-present-loop-v3 [seen idx]
+  (if (>= idx 17)
+    1
+    (if (or (= idx 11) (= idx 12))
+      (source-evidence-required-fields-present-loop-v3 seen (+ idx 1))
+      (if (= (vector-get seen idx) 1)
+        (source-evidence-required-fields-present-loop-v3 seen (+ idx 1))
+        0))))
+
+(defn source-evidence-required-fields-present-v3 [seen]
+  (source-evidence-required-fields-present-loop-v3 seen 1))
+
 (defn make-empty-source-evidence-payload-v3 [id]
   (do
     (root_push id)
@@ -1604,16 +1622,22 @@
           seen-ref)]
         (do
           (root_push payload)
-          (let [updated (append-defn-metadata-form-v3
-              meta
-              15
-              payload
-              directive-start
-              directive-end)]
+          (let [checked-payload (if (= (source-evidence-required-fields-present-v3 (ref-get seen-ref)) 1)
+            payload
+            (vector-push-single-rooted-v3 payload -1))]
             (do
-              (root_pop)
-              (root_pop)
-              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+              (root_push checked-payload)
+              (let [updated (append-defn-metadata-form-v3
+                  meta
+                  15
+                  checked-payload
+                  directive-start
+                  directive-end)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))))
 
 ;; v0.3 review attestation の named-field payload。
 ;; payload: [review-id, subject-digest, source-commit, provenance-digest,
@@ -1715,12 +1739,12 @@
 (defn parse-defn-meta-review-attestation-v3 [spans pos-ref src meta]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
     payload0 (make-empty-source-review-attestation-payload-v3)
-    seen-ref (ref-new (source-review-attestation-seen-new-v3))
-    directive-end (metadata-directive-end-v3 spans pos-ref)]
+    seen-ref (ref-new (source-review-attestation-seen-new-v3))]
     (do
       (root_push seen-ref)
       (let [payload (parse-source-review-attestation-fields-loop-v3
-          spans pos-ref src payload0 seen-ref)]
+          spans pos-ref src payload0 seen-ref)
+        directive-end (metadata-directive-end-v3 spans pos-ref)]
         (do
           (root_push payload)
           (let [updated (append-defn-metadata-form-v3
@@ -1736,35 +1760,59 @@
 
 (defn parse-defn-meta-source-pair-v3 [spans pos-ref src meta form-kind]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
-    payload (parse-source-metadata-pair-v3 spans pos-ref src)
-    directive-end (metadata-directive-end-v3 spans pos-ref)]
+    start-pos (ref-get pos-ref)
+    payload0 (parse-source-metadata-pair-v3 spans pos-ref src)
+    consumed (- (ref-get pos-ref) start-pos)]
     (do
-      (root_push payload)
-      (let [updated (append-defn-metadata-form-v3
-          meta
-          form-kind
-          payload
-          directive-start
-          directive-end)]
+      (root_push payload0)
+      (let [payload (if (or
+          (< consumed 2)
+          (and
+            (== (p-current spans pos-ref) 12)
+            (!= (p-next-token-kind-v3 spans pos-ref) 1)))
+        (vector-push-single-rooted-v3 payload0 -1)
+        payload0)
+        directive-end (metadata-directive-end-v3 spans pos-ref)]
         (do
-          (root_pop)
-          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+          (root_push payload)
+          (let [updated (append-defn-metadata-form-v3
+              meta
+              form-kind
+              payload
+              directive-start
+              directive-end)]
+            (do
+              (root_pop)
+              (root_pop)
+              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
 
 (defn parse-defn-meta-source-triple-v3 [spans pos-ref src meta form-kind]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
-    payload (parse-source-metadata-triple-v3 spans pos-ref src)
-    directive-end (metadata-directive-end-v3 spans pos-ref)]
+    start-pos (ref-get pos-ref)
+    payload0 (parse-source-metadata-triple-v3 spans pos-ref src)
+    consumed (- (ref-get pos-ref) start-pos)]
     (do
-      (root_push payload)
-      (let [updated (append-defn-metadata-form-v3
-          meta
-          form-kind
-          payload
-          directive-start
-          directive-end)]
+      (root_push payload0)
+      (let [payload (if (or
+          (< consumed 3)
+          (and
+            (== (p-current spans pos-ref) 12)
+            (!= (p-next-token-kind-v3 spans pos-ref) 1)))
+        (vector-push-single-rooted-v3 payload0 -1)
+        payload0)
+        directive-end (metadata-directive-end-v3 spans pos-ref)]
         (do
-          (root_pop)
-          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+          (root_push payload)
+          (let [updated (append-defn-metadata-form-v3
+              meta
+              form-kind
+              payload
+              directive-start
+              directive-end)]
+            (do
+              (root_pop)
+              (root_pop)
+              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
 
 (defn defn-metadata-present-v3 [meta]
   (if (> (string-length (vector-get meta 0)) 0)
