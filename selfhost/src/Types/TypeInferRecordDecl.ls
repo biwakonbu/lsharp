@@ -640,60 +640,134 @@
                                 (root_pop)
                                 (root_pop)
                                 schema))))))))))))))))
-;; source order で作成済み schema を registry に登録して次の宣言へ進む。
-(defn typeinfer-predeclare-record-env-with-schema [program idx len alias-env record-env counter decl schema]
+;; source order で record schema を registry に登録する。
+(defn typeinfer-predeclare-record-env-step-state [done next-idx record-env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx record-env))
+
+(defn typeinfer-predeclare-record-env-step-v3
+  [program idx len alias-env record-env counter]
+  (if (>= idx len)
+    (typeinfer-predeclare-record-env-step-state 1 idx record-env)
+    (do
+      (root_push program)
+      (root_push alias-env)
+      (root_push record-env)
+      (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
+        tag (vector-get decl 0)]
+        (do
+          (root_push decl)
+          (if (= tag (ast-recorddef))
+            (let [schema (typeinfer-record-decl-schema decl alias-env counter)]
+              (if (= schema 0)
+                (let [state
+                        (typeinfer-predeclare-record-env-step-state
+                          0 (+ idx 1) record-env)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))
+                (do
+                  (root_push schema)
+                  (let [next-record-env
+                          (map-insert-object-safe
+                            record-env
+                            (vector-get decl 1)
+                            schema)]
+                    (do
+                      (root_push next-record-env)
+                      (let [state
+                              (typeinfer-predeclare-record-env-step-state
+                                0 (+ idx 1) next-record-env)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          state)))))))
+            (let [state
+                    (typeinfer-predeclare-record-env-step-state
+                      0 (+ idx 1) record-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn typeinfer-predeclare-record-env-step-64-loop-bounded
+  [program idx len alias-env record-env counter remaining]
   (do
-    (root_push schema)
+    (root_push program)
+    (root_push alias-env)
     (root_push record-env)
-    (let [next-record-env
-            (map-insert-object-safe record-env (vector-get decl 1) schema)]
+    (let [step
+            (typeinfer-predeclare-record-env-step-v3
+              program idx len alias-env record-env counter)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-record-env (vector-get step 2)]
       (do
+        (root_push step)
         (root_push next-record-env)
         (let [parsed
-                (typeinfer-predeclare-record-env-loop
-                  program
-                  (+ idx 1)
-                  len
-                  alias-env
-                  next-record-env
-                  counter)]
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-predeclare-record-env-step-64-loop-bounded
+                      program
+                      next-idx
+                      len
+                      alias-env
+                      next-record-env
+                      counter
+                      (- remaining 1))))]
           (do
             (root_pop)
             (root_pop)
             (root_pop)
+            (root_pop)
+            (root_pop)
             parsed))))))
-;; source order で record schema を registry に登録する。
+
+(defn typeinfer-predeclare-record-env-step-64
+  [program idx len alias-env record-env counter]
+  (typeinfer-predeclare-record-env-step-64-loop-bounded
+    program idx len alias-env record-env counter 64))
+
+(defn typeinfer-predeclare-record-env-rooted-v3
+  [program idx len alias-env record-env counter]
+  (let [step
+          (typeinfer-predeclare-record-env-step-64
+            program idx len alias-env record-env counter)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-record-env (vector-get step 2)]
+          (do
+            (root_push next-record-env)
+            (let [resolved
+                    (typeinfer-predeclare-record-env-rooted-v3
+                      program
+                      next-idx
+                      len
+                      alias-env
+                      next-record-env
+                      counter)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
 (defn typeinfer-predeclare-record-env-loop [program idx len alias-env record-env counter]
-  (if (>= idx len)
-    record-env
-    (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
-      tag (vector-get decl 0)]
-      (if (= tag (ast-recorddef))
-        (let [schema (typeinfer-record-decl-schema decl alias-env counter)]
-          (if (= schema 0)
-            (typeinfer-predeclare-record-env-loop
-              program
-              (+ idx 1)
-              len
-              alias-env
-              record-env
-              counter)
-            (typeinfer-predeclare-record-env-with-schema
-              program
-              idx
-              len
-              alias-env
-              record-env
-              counter
-              decl
-              schema)))
-        (typeinfer-predeclare-record-env-loop
-          program
-          (+ idx 1)
-          len
-          alias-env
-          record-env
-          counter)))))
+  (typeinfer-predeclare-record-env-rooted-v3
+    program idx len alias-env record-env counter))
 (defn typeinfer-predeclare-record-env [program alias-env counter]
   (do
     (root_push program)
@@ -804,9 +878,13 @@
 ;; Type.field accessor を record schema と同じ bound variable で値環境へ登録する。
 ;; raw field は [field-hash, accessor-hash, raw-TypeExpr] の triple で保持されるが、
 ;; schema の record-ty は [field-hash, field-ty] の pair だけを持つ。
-(defn typeinfer-register-record-accessors-loop [raw-fields idx len env record-ty bound-vars]
+(defn typeinfer-register-record-accessors-step-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-register-record-accessors-step-v3
+  [raw-fields idx len env record-ty bound-vars]
   (if (>= idx len)
-    env
+    (typeinfer-register-record-accessors-step-state 1 idx env)
     (do
       (root_push raw-fields)
       (root_push env)
@@ -827,14 +905,9 @@
                           (type-env-insert env accessor-hash accessor-scheme)]
                     (do
                       (root_push next-env)
-                      (let [result
-                              (typeinfer-register-record-accessors-loop
-                                raw-fields
-                                (+ idx 3)
-                                len
-                                next-env
-                                record-ty
-                                bound-vars)]
+                      (let [state
+                              (typeinfer-register-record-accessors-step-state
+                                0 (+ idx 3) next-env)]
                         (do
                           (root_pop)
                           (root_pop)
@@ -844,7 +917,81 @@
                           (root_pop)
                           (root_pop)
                           (root_pop)
-                          result)))))))))))))
+                          state)))))))))))))
+
+(defn typeinfer-register-record-accessors-step-64-loop-bounded
+  [raw-fields idx len env record-ty bound-vars remaining]
+  (do
+    (root_push raw-fields)
+    (root_push env)
+    (root_push record-ty)
+    (root_push bound-vars)
+    (let [step
+            (typeinfer-register-record-accessors-step-v3
+              raw-fields idx len env record-ty bound-vars)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-register-record-accessors-step-64-loop-bounded
+                      raw-fields
+                      next-idx
+                      len
+                      next-env
+                      record-ty
+                      bound-vars
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-register-record-accessors-step-64
+  [raw-fields idx len env record-ty bound-vars]
+  (typeinfer-register-record-accessors-step-64-loop-bounded
+    raw-fields idx len env record-ty bound-vars 64))
+
+(defn typeinfer-register-record-accessors-rooted-v3
+  [raw-fields idx len env record-ty bound-vars]
+  (let [step
+          (typeinfer-register-record-accessors-step-64
+            raw-fields idx len env record-ty bound-vars)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-register-record-accessors-rooted-v3
+                      raw-fields
+                      next-idx
+                      len
+                      next-env
+                      record-ty
+                      bound-vars)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-register-record-accessors-loop
+  [raw-fields idx len env record-ty bound-vars]
+  (typeinfer-register-record-accessors-rooted-v3
+    raw-fields idx len env record-ty bound-vars))
 (defn typeinfer-register-record-accessors [raw-fields env record-ty bound-vars]
   (if (= raw-fields 0)
     env
@@ -912,26 +1059,109 @@
                             (root_pop)
                             (root_pop)
                             result))))))))))))))
-(defn typeinfer-register-record-defs-loop [program idx len env record-env]
+(defn typeinfer-register-record-defs-step-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-register-record-defs-step-v3
+  [program idx len env record-env]
   (if (>= idx len)
-    env
-    (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
-      tag (vector-get decl 0)]
-      (if (= tag (ast-recorddef))
-        (let [next-env (typeinfer-register-record-def decl env record-env)]
-          (do
-            (root_push next-env)
-            (let [parsed
-                    (typeinfer-register-record-defs-loop
-                      program
-                      (+ idx 1)
-                      len
-                      next-env
-                      record-env)]
+    (typeinfer-register-record-defs-step-state 1 idx env)
+    (do
+      (root_push program)
+      (root_push env)
+      (root_push record-env)
+      (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
+        tag (vector-get decl 0)]
+        (do
+          (root_push decl)
+          (if (= tag (ast-recorddef))
+            (let [next-env (typeinfer-register-record-def decl env record-env)]
+              (do
+                (root_push next-env)
+                (let [state
+                        (typeinfer-register-record-defs-step-state
+                          0 (+ idx 1) next-env)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))
+            (let [state
+                    (typeinfer-register-record-defs-step-state
+                      0 (+ idx 1) env)]
               (do
                 (root_pop)
-                parsed))))
-        (typeinfer-register-record-defs-loop program (+ idx 1) len env record-env)))))
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn typeinfer-register-record-defs-step-64-loop-bounded
+  [program idx len env record-env remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push record-env)
+    (let [step
+            (typeinfer-register-record-defs-step-v3
+              program idx len env record-env)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-register-record-defs-step-64-loop-bounded
+                      program
+                      next-idx
+                      len
+                      next-env
+                      record-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-register-record-defs-step-64
+  [program idx len env record-env]
+  (typeinfer-register-record-defs-step-64-loop-bounded
+    program idx len env record-env 64))
+
+(defn typeinfer-register-record-defs-rooted-v3
+  [program idx len env record-env]
+  (let [step
+          (typeinfer-register-record-defs-step-64
+            program idx len env record-env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-register-record-defs-rooted-v3
+                      program next-idx len next-env record-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-register-record-defs-loop [program idx len env record-env]
+  (typeinfer-register-record-defs-rooted-v3
+    program idx len env record-env))
 (defn typeinfer-register-record-defs [program env counter]
   (let [record-env (var-counter-record-env counter)]
     (do
