@@ -66,6 +66,31 @@ mod tests {
     }
 
     #[test]
+    fn test_project_context_tool_schema_is_closed_world() {
+        let input = tool_input_schema("lsharp_project_context");
+        assert_eq!(input["additionalProperties"], json!(false));
+
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .and_then(|tools| {
+                tools
+                    .iter()
+                    .find(|tool| tool["name"] == "lsharp_project_context")
+            })
+            .expect("lsharp_project_context が tools/list に必要");
+        assert_eq!(
+            tool["outputSchema"]["required"],
+            json!(["project", "dependencies", "installedPackages"])
+        );
+        assert_eq!(tool["outputSchema"]["additionalProperties"], json!(false));
+    }
+
+    #[test]
     fn test_initialize_response_advertises_mcp_protocol_and_tools_capability() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",
@@ -688,6 +713,62 @@ description = "context fixture"
     }
 
     #[test]
+    fn test_project_context_tool_projects_sorted_dependencies_and_packages() {
+        let root = std::env::temp_dir().join(format!("lsharp_mcp_context_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/main.ls"), "(defn main [] true)\n").unwrap();
+        std::fs::write(
+            root.join("lsharp.toml"),
+            r#"[project]
+name = "context-demo"
+version = "1.2.3"
+description = "context fixture"
+
+[project.exports]
+modules = ["Demo", "Demo.Util"]
+
+[dependencies]
+math = "1.0.0"
+
+[dependencies.local]
+path = "./libs/local"
+
+[dependencies.gitlib]
+git = "https://example.invalid/gitlib.git"
+branch = "main"
+"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("libs/local")).unwrap();
+        let package = root.join(".lsharp/packages/zeta-2.0.0");
+        std::fs::create_dir_all(&package).unwrap();
+        std::fs::write(
+            package.join("lsharp.toml"),
+            "[project]\nname = \"zeta\"\nversion = \"2.0.0\"\n",
+        )
+        .unwrap();
+
+        let result = call_tool(
+            "lsharp_project_context",
+            &json!({"project_dir": root.display().to_string()}),
+        )
+        .expect("lsharp_project_context は local metadata を返すべき");
+        assert_eq!(result["project"]["name"], "context-demo");
+        assert_eq!(result["project"]["exports"], json!(["Demo", "Demo.Util"]));
+        assert_eq!(result["dependencies"][0]["name"], "gitlib");
+        assert_eq!(result["dependencies"][1]["name"], "local");
+        assert_eq!(result["dependencies"][2]["name"], "math");
+        assert_eq!(
+            result["dependencies"][1]["path"],
+            format!("{}/./libs/local", root.display())
+        );
+        assert_eq!(result["installedPackages"][0]["name"], "zeta");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn test_search_tool_rejects_unknown_or_non_string_arguments() {
         let unknown = call_tool("lsharp_search", &json!({"unknown": true}))
             .expect_err("未知引数は reject するべき");
@@ -698,6 +779,17 @@ description = "context fixture"
         assert!(non_string.contains("query"));
 
         let invalid_project = call_tool("lsharp_search", &json!({"project_dir": 42}))
+            .expect_err("project_dir の数値は reject するべき");
+        assert!(invalid_project.contains("project_dir"));
+    }
+
+    #[test]
+    fn test_project_context_tool_rejects_unknown_or_non_string_arguments() {
+        let unknown = call_tool("lsharp_project_context", &json!({"unknown": true}))
+            .expect_err("未知引数は reject するべき");
+        assert!(unknown.contains("未知の引数"));
+
+        let invalid_project = call_tool("lsharp_project_context", &json!({"project_dir": 42}))
             .expect_err("project_dir の数値は reject するべき");
         assert!(invalid_project.contains("project_dir"));
     }

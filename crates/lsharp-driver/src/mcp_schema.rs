@@ -52,10 +52,11 @@ fn tool_input_schema(name: &str) -> Value {
         "lsharp_project_context" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
+            "additionalProperties": false,
             "properties": {
-                "project_dir": { "type": "string" },
-                "query": { "type": "string" }
-            }
+                "project_dir": { "type": "string", "minLength": 1 }
+            },
+            "oneOf": [{ "required": [] }]
         }),
         "lsharp_search" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -222,6 +223,55 @@ fn tool_output_schema(name: &str) -> Value {
                     }
                 },
                 "manifest": intent_graph_manifest_schema()
+            }
+        }),
+        "lsharp_project_context" => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["project", "dependencies", "installedPackages"],
+            "properties": {
+                "project": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "version", "description", "exports"],
+                    "properties": {
+                        "name": { "type": "string" },
+                        "version": { "type": "string" },
+                        "description": { "type": "string" },
+                        "exports": { "type": "array", "items": { "type": "string" } }
+                    }
+                },
+                "dependencies": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["name", "source"],
+                        "properties": {
+                            "name": { "type": "string", "minLength": 1 },
+                            "source": { "type": "string", "enum": ["registry", "path", "git"] },
+                            "version": { "type": "string" },
+                            "path": { "type": "string", "minLength": 1 },
+                            "git": { "type": "string", "minLength": 1 },
+                            "branch": { "type": ["string", "null"] },
+                            "tag": { "type": ["string", "null"] }
+                        }
+                    }
+                },
+                "installedPackages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["name", "version", "path"],
+                        "properties": {
+                            "name": { "type": "string", "minLength": 1 },
+                            "version": { "type": "string" },
+                            "path": { "type": "string", "minLength": 1 }
+                        }
+                    }
+                }
             }
         }),
         "lsharp_errors" => json!({

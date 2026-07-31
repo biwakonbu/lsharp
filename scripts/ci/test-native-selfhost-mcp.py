@@ -15,18 +15,16 @@ from native_selfhost_mcp_error_tests import (
     assert_errors_reject_invalid_arguments,
 )
 from native_selfhost_mcp_package_tests import assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
-
+from native_selfhost_mcp_context_tests import assert_project_context_projects_local_metadata, assert_project_context_rejects_invalid_arguments
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
-
 
 def request(request_id, method, params=None):
     payload = {"jsonrpc": "2.0", "id": request_id, "method": method}
     if params is not None:
         payload["params"] = params
     return (json.dumps(payload, separators=(",", ":")) + "\n").encode()
-
 
 class NativeSelfhostMcpTest(unittest.TestCase):
     def write_fake_program(self, root):
@@ -164,6 +162,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     "lsharp_format",
                     "lsharp_errors",
                     "lsharp_search",
+                    "lsharp_project_context",
                 },
             )
             check_tool = next(
@@ -352,15 +351,17 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_errors_lookup_projects_canonical_table_without_native_execution(self):
         assert_errors_lookup(self)
-
     def test_errors_rejects_missing_or_unknown_arguments_before_native_execution(self):
         assert_errors_reject_invalid_arguments(self)
-
     def test_search_projects_local_packages_without_native_execution(self):
         assert_search_projects_local_packages(self)
-
     def test_search_rejects_invalid_arguments_before_native_execution(self):
         assert_search_rejects_invalid_arguments(self)
+    def test_project_context_projects_local_metadata_without_native_execution(self):
+        assert_project_context_projects_local_metadata(self)
+
+    def test_project_context_rejects_invalid_arguments_before_native_execution(self):
+        assert_project_context_rejects_invalid_arguments(self)
 
     def test_validate_forwards_explicit_identity_and_manifest_request(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

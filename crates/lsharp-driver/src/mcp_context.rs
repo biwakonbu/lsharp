@@ -1,11 +1,26 @@
 fn project_context_tool(arguments: &Value) -> Result<Value, String> {
-    let project_dir = project_dir_argument(arguments);
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| "lsharp_project_context の arguments は object が必要です".to_string())?;
+    if let Some(unknown) = object.keys().find(|key| key.as_str() != "project_dir") {
+        return Err(format!("lsharp_project_context の未知の引数: {unknown}"));
+    }
+    let project_dir = match arguments.get("project_dir") {
+        None => project_dir_argument(arguments),
+        Some(Value::String(project_dir)) if !project_dir.trim().is_empty() => {
+            PathBuf::from(project_dir)
+        }
+        Some(_) => {
+            return Err("lsharp_project_context の project_dir は文字列が必要です".to_string());
+        }
+    };
     let cfg = config::load_config(&project_dir);
-    let dependencies = cfg
+    let mut dependencies = cfg
         .dependencies
         .iter()
         .map(|(name, spec)| dependency_summary(name, spec, &project_dir))
         .collect::<Vec<_>>();
+    dependencies.sort_by(|left, right| left["name"].as_str().cmp(&right["name"].as_str()));
 
     Ok(json!({
         "project": {

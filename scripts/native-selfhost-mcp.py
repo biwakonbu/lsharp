@@ -7,8 +7,9 @@ translates JSON-RPC requests into the existing ``check``, ``validate`` and
 provider/network helper.  ``lsharp_errors`` is a read-only documentation
 lookup over the canonical Rust error-code table and never executes a host
 compiler.  ``lsharp_search`` is an offline projection of local
-``.lsharp/packages`` metadata and never accesses a registry.  Explicit provider
-snapshot paths are an offline bytes-to-digest adapter; signature and lifecycle
+``.lsharp/packages`` metadata and never accesses a registry.  ``lsharp_project_context``
+is an offline projection of local ``lsharp.toml`` and installed package metadata.
+Explicit provider snapshot paths are an offline bytes-to-digest adapter; signature and lifecycle
 semantic verification remain an external provider boundary until a native
 verifier is available.
 """
@@ -31,7 +32,13 @@ from native_selfhost_mcp_schema import (
     review_registry_schema,
 )
 from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
-from native_selfhost_mcp_packages import PackageLookupError, SEARCH_OUTPUT_SCHEMA, call_search
+from native_selfhost_mcp_packages import (
+    PackageLookupError,
+    PROJECT_CONTEXT_OUTPUT_SCHEMA,
+    SEARCH_OUTPUT_SCHEMA,
+    call_project_context,
+    call_search,
+)
 
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
@@ -359,6 +366,14 @@ TOOLS = [
         SEARCH_OUTPUT_SCHEMA,
         {"additionalProperties": False},
     ),
+    tool_descriptor(
+        "lsharp_project_context",
+        "L# project と local package context を返す (native offline subset)",
+        {"project_dir": {"type": "string", "minLength": 1}},
+        [[]],
+        PROJECT_CONTEXT_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
 ]
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
@@ -659,6 +674,11 @@ def call_tool(program, name, arguments):
             elif name == "lsharp_search":
                 try:
                     value = call_search(arguments)
+                except PackageLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_project_context":
+                try:
+                    value = call_project_context(arguments)
                 except PackageLookupError as error:
                     raise ToolError(str(error)) from error
             else:
