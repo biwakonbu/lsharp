@@ -14,6 +14,8 @@ import pathlib
 import re
 import sys
 
+from review_identity_timestamp import is_valid_utc_timestamp
+
 
 IDENTITY_KEYS = (
     "subject_digest",
@@ -25,7 +27,6 @@ IDENTITY_KEYS = (
 )
 SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-UTC_TIMESTAMP_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 
 
 class IdentityError(ValueError):
@@ -92,7 +93,7 @@ def validate_identity(identity, expected_source_commit=None, artifact=None, requ
     validate_digest(identity["artifact_digest"], "artifact_digest", nullable=False)
     validate_digest(identity["trust_store_digest"], "trust_store_digest", nullable=True)
     validate_digest(identity["lifecycle_digest"], "lifecycle_digest", nullable=True)
-    if not UTC_TIMESTAMP_PATTERN.fullmatch(identity["now"]):
+    if not is_valid_utc_timestamp(identity["now"]):
         raise IdentityError("now must be a strict UTC timestamp ending in Z")
 
     if require_provider and (

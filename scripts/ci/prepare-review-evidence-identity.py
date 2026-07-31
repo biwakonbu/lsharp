@@ -18,6 +18,8 @@ import re
 import sys
 import tempfile
 
+from review_identity_timestamp import is_valid_utc_timestamp
+
 
 IDENTITY_KEYS = (
     "subject_digest",
@@ -29,9 +31,6 @@ IDENTITY_KEYS = (
 )
 SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-UTC_TIMESTAMP_PATTERN = re.compile(
-    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
-)
 
 
 class IdentityInputError(ValueError):
@@ -57,7 +56,7 @@ def build_identity(arguments: argparse.Namespace) -> dict[str, str | None]:
         raise IdentityInputError(
             "source_commit must be a 40-character lowercase hexadecimal commit"
         )
-    if not UTC_TIMESTAMP_PATTERN.fullmatch(arguments.now):
+    if not is_valid_utc_timestamp(arguments.now):
         raise IdentityInputError("now must be a strict UTC timestamp ending in Z")
 
     has_trust_store = arguments.trust_store is not None

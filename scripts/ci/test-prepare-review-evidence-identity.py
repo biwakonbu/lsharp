@@ -164,6 +164,41 @@ class PrepareReviewEvidenceIdentityTest(unittest.TestCase):
             self.assertNotEqual(invalid_clock.returncode, 0)
             self.assertIn("now", invalid_clock.stderr)
 
+    def test_matches_rust_calendar_timestamp_boundary(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            base = (
+                "--subject-digest",
+                "sha256:" + "c" * 64,
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--artifact",
+                str(artifact),
+            )
+
+            valid_leap_day = self.run_preparer(*base, "--now", "2024-02-29T23:59:59Z")
+            self.assertEqual(valid_leap_day.returncode, 0, valid_leap_day.stderr)
+
+            for invalid_timestamp in (
+                "0000-01-01T00:00:00Z",
+                "2023-02-29T00:00:00Z",
+                "2024-02-30T00:00:00Z",
+                "2026-04-31T00:00:00Z",
+                "2026-12-31T24:00:00Z",
+                "2026-12-31T23:60:00Z",
+                "2026-12-31T23:59:60Z",
+            ):
+                with self.subTest(invalid_timestamp=invalid_timestamp):
+                    result = self.run_preparer(
+                        *base,
+                        "--now",
+                        invalid_timestamp,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("now", result.stderr)
+
     def test_missing_output_parent_fails_before_claiming_success(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

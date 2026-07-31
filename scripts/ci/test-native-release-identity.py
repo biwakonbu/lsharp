@@ -137,6 +137,33 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("field order", result.stderr)
 
+    def test_matches_rust_calendar_timestamp_boundary(self):
+        valid = identity_for("sha256:" + "e" * 64)
+        valid["now"] = "2024-02-29T23:59:59Z"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            identity_path = root / "identity.json"
+            self.write_identity(identity_path, valid)
+            accepted = self.run_verifier("--identity", str(identity_path))
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+
+            for invalid_timestamp in (
+                "0000-01-01T00:00:00Z",
+                "2023-02-29T00:00:00Z",
+                "2024-02-30T00:00:00Z",
+                "2026-04-31T00:00:00Z",
+                "2026-12-31T24:00:00Z",
+                "2026-12-31T23:60:00Z",
+                "2026-12-31T23:59:60Z",
+            ):
+                with self.subTest(invalid_timestamp=invalid_timestamp):
+                    invalid = dict(valid)
+                    invalid["now"] = invalid_timestamp
+                    self.write_identity(identity_path, invalid)
+                    result = self.run_verifier("--identity", str(identity_path))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("timestamp", result.stderr)
+
     def test_release_surfaces_use_the_same_offline_identity_gate(self):
         project_root = SCRIPTS_DIR.parent.parent
         for relative_path in (

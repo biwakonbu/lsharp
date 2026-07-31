@@ -24,16 +24,20 @@ offline producer with these rules:
   the named snapshot bytes; when absent, both identity fields are `null` and remain unverified.
 - The output key order is exactly `subject_digest`, `source_commit`, `artifact_digest`,
   `trust_store_digest`, `lifecycle_digest`, `now`, matching the release verifier.
+- `now` uses the shared [`review_identity_timestamp.py`](../../scripts/ci/review_identity_timestamp.py)
+  parser. It rejects year zero, out-of-range clock fields, nonexistent month days, and non-leap
+  February 29 while accepting valid leap days, matching Rust's `validate_canonical_timestamp`.
 - `--output` uses a same-directory temporary file, `fsync`, and `os.replace`; a missing parent or write
   failure produces no success output.
 - The helper does not read network, environment, current checkout, or an implicit trust root.
 
 ## Evidence
 
-RED was a contract test that invoked the missing helper and failed. GREEN is the three-case producer
-suite plus the existing five-case release identity verifier suite. The producer output is passed back
-through the verifier with an artifact and `--require-provider-input`, proving the two boundaries agree on
-field order and digest bytes.
+RED was a contract test that invoked the missing helper and failed, followed by calendar-boundary tests
+that demonstrated both Python boundaries accepted invalid timestamps. GREEN is the combined 11-test
+producer/verifier suite, including a valid leap day and invalid calendar/clock values. The producer output
+is passed back through the verifier with an artifact and `--require-provider-input`, proving the two
+boundaries agree on field order and digest bytes.
 
 ## Boundary
 

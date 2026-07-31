@@ -36,7 +36,8 @@
   release identity verifier を native-only
   archive / packaged stage0 の optional identity projection と release smoke の再検証へ接続したが、
   明示 artifact/trust-store/lifecycle bytes を canonical identity へ変換する offline input preparer の
-  verified partial sliceを追加した。provider helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
+  verified partial sliceを追加した。preparer/verifier の `now` は Rust canonical timestamp と同じ閏年・暦日・時分秒範囲を
+  共有し、lexical shapeだけでは通る不正日時を fail-closed にする。provider helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
   Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。ADR:
   `docs/adr/decisions-v0.3-release-identity-gate.md`,
   `docs/adr/decisions-v0.3-provider-input-identity-preparer.md`。
