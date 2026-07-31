@@ -1520,6 +1520,36 @@ fn test_e2e_selfhost_typeinfer_import_source_scan_uses_bounded_chunks() {
     );
 }
 
+/// qualified import の declaration scan 自体も、program 全体の native recursion にしない。
+#[test]
+fn test_e2e_selfhost_typeinfer_import_qualification_with_open_uses_bounded_chunks() {
+    let source = selfhost_module("TypeInfer.ls");
+    let rooted_body = source
+        .split("(defn typeinfer-qualify-imports-with-open-rooted-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn typeinfer-predeclare-qualified-imports")
+                .next()
+        })
+        .expect("TypeInfer.ls に import qualification rooted loop が存在すること");
+    let step_body = source
+        .split("(defn typeinfer-qualify-imports-with-open-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn typeinfer-qualify-imports-with-open-step-64-loop-bounded")
+                .next()
+        })
+        .expect("TypeInfer.ls に import qualification step helper が存在すること");
+
+    assert!(
+        source.contains("(defn typeinfer-qualify-imports-with-open-step-64-loop-bounded")
+            && source.contains("(defn typeinfer-qualify-imports-with-open-step-64")
+            && rooted_body.contains("typeinfer-qualify-imports-with-open-step-64")
+            && !step_body.contains("typeinfer-qualify-imports-with-open-rooted-v3"),
+        "import qualification outer loop は 64 declaration handoff の bounded helper と rooted continuation を使うべき"
+    );
+}
+
 /// source metadata pair の二つの文字列は、深い nested let/do を作らず保持する。
 #[test]
 fn test_e2e_selfhost_parser_source_metadata_pair_uses_flat_root_bindings() {

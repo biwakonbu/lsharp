@@ -3780,3 +3780,64 @@ fn test_e2e_selfhost_typeinfer_large_declaration_scans_preserve_results() {
         "65要素の宣言前処理走査は chunk 境界を越えて env/map/state の結果を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_import_qualification_with_open_preserves_results() {
+    let mut program_expr = "(vector-new 0)".to_string();
+    let mut env_expr = "(type-env-new)".to_string();
+
+    for idx in 0..65 {
+        let module_name = 10000 + idx;
+        let defn_name = 20000 + idx;
+        let defn = format!(
+            "(vector-push (vector-push (vector-new 2) 20) {})",
+            defn_name
+        );
+        program_expr = format!(
+            "(vector-push {} (make-module-decl {}))",
+            program_expr, module_name
+        );
+        program_expr = format!("(vector-push {} {})", program_expr, defn);
+        program_expr = format!(
+            "(vector-push {} (make-import-decl-with-open {} 0 0))",
+            program_expr, module_name
+        );
+        env_expr = format!(
+            "(type-env-insert {} {} (mono (mk-int)))",
+            env_expr, defn_name
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program {program_expr}
+        env (typeinfer-predeclare-qualified-imports-for-module
+              program
+              0
+              195
+              {env_expr}
+              (type-env-new))]
+    (do
+      (print (if (= (type-env-lookup env (ast-qualified-name-hash 10000 20000)) 0) 0 1))
+      (print (if (= (type-env-lookup env (ast-qualified-name-hash 10064 20064)) 0) 0 1))
+      (print (if (= (type-env-lookup env 20000) 0) 0 1))
+      (print (if (= (type-env-lookup env 20064) 0) 0 1))
+      (print (if (= (type-env-lookup env (ast-qualified-name-hash 10000 29999)) 0) 1 0))
+      0)))
+"#,
+        program_expr = program_expr,
+        env_expr = env_expr,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1", "1", "1", "1"],
+        "65件の :open import qualification は chunk 境界を越えて qualified/raw export を保持するべき"
+    );
+}
