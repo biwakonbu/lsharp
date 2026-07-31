@@ -9,7 +9,7 @@
 ;;
 ;; infer-record-fields: record field 値群の順次推論
 ;; infer-recordlit-fields: record literal 用に field 型を保持して推論
-;; recordlit-field-node-loop: record literal から特定 field の value node 取得 (ループ)
+;; recordlit-field-node-scan: record literal から特定 field の value node 取得 (bounded scan)
 ;; recordlit-field-node: record literal から特定 field の value node 取得
 ;; infer-recordlit: record literal の型推論
 ;; infer-fieldaccess: field access の型推論
@@ -17,20 +17,131 @@
 
 ;; record field value 群を順に推論する
 ;; node は [tag, ..., field-count, field1-hash, expr1, ...]
+(defn infer-record-fields-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn infer-record-fields-step-v3
+  [node idx count env current-result counter]
+  (if (>= idx count)
+    (infer-record-fields-state 1 idx current-result)
+    (do
+      (root_push node)
+      (root_push env)
+      (root_push current-result)
+      (root_push counter)
+      (let [value-node (vector-get node (+ 4 (* idx 2)))]
+        (do
+          (root_push value-node)
+          (let [value-result
+                  (infer-expr
+                    value-node
+                    env
+                    (result-subst current-result)
+                    counter)]
+            (do
+              (root_push value-result)
+              (let [next-result
+                      (if (= (result-failed value-result) 1)
+                        (propagate-error-result value-result)
+                        (make-result (result-subst value-result) (mk-int)))]
+                (do
+                  (root_push next-result)
+                  (let [state
+                          (if (= (result-failed next-result) 1)
+                            (infer-record-fields-state 1 idx next-result)
+                            (infer-record-fields-state 0 (+ idx 1) next-result))]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state)))))))))))
+
+(defn infer-record-fields-step-64-loop-bounded
+  [node idx count env current-result counter remaining]
+  (do
+    (root_push node)
+    (root_push env)
+    (root_push current-result)
+    (root_push counter)
+    (let [step
+            (infer-record-fields-step-v3
+              node idx count env current-result counter)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (infer-record-fields-step-64-loop-bounded
+                      node
+                      next-idx
+                      count
+                      env
+                      next-result
+                      counter
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn infer-record-fields-step-64
+  [node idx count env current-result counter]
+  (infer-record-fields-step-64-loop-bounded
+    node idx count env current-result counter 64))
+
+(defn infer-record-fields-rooted-v3
+  [node idx count env current-result counter]
+  (let [step
+          (infer-record-fields-step-64
+            node idx count env current-result counter)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (infer-record-fields-rooted-v3
+                      node
+                      next-idx
+                      count
+                      env
+                      next-result
+                      counter)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
 (defn infer-record-fields [node idx count env subst counter]
-  (if (= idx count)
-    (make-result subst (mk-int))
-    (let [value-node (vector-get node (+ 4 (* idx 2)))
-      value-result (infer-expr value-node env subst counter)]
-      (if (= (result-failed value-result) 1)
-        (propagate-error-result value-result)
-        (infer-record-fields
-          node
-          (+ idx 1)
-          count
-          env
-          (result-subst value-result)
-          counter)))))
+  (do
+    (root_push subst)
+    (let [initial (make-result subst (mk-int))]
+      (do
+        (root_push initial)
+        (let [result
+                (infer-record-fields-rooted-v3
+                  node idx count env initial counter)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; record literal 用に field 型を保持しながら順に推論する
 (defn infer-recordlit-fields [node idx count env subst counter record-ty]
@@ -38,57 +149,257 @@
 
 ;; record literal から特定 field の value node を取り出す
 ;; 見つからない場合は 0 を返す
-(defn recordlit-field-node-loop [record-node field-name-hash idx field-count]
+(defn recordlit-field-node-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn recordlit-field-node-step-v3
+  [record-node field-name-hash idx field-count]
   (if (>= idx field-count)
-    0
-    (let [field-offset (+ 3 (* idx 2))
-      current-field-hash (vector-get record-node field-offset)]
-      (if (= current-field-hash field-name-hash)
-        (vector-get record-node (+ field-offset 1))
-        (recordlit-field-node-loop
-          record-node
-          field-name-hash
-          (+ idx 1)
-          field-count)))))
+    (recordlit-field-node-state 1 idx 0)
+    (do
+      (root_push record-node)
+      (let [field-offset (+ 3 (* idx 2))
+            current-field-hash (vector-get record-node field-offset)]
+        (if (= current-field-hash field-name-hash)
+          (let [field-node (vector-get record-node (+ field-offset 1))]
+            (do
+              (root_push field-node)
+              (let [state (recordlit-field-node-state 1 idx field-node)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  state))))
+          (let [state
+                  (recordlit-field-node-state 0 (+ idx 1) 0)]
+            (do
+              (root_pop)
+              state)))))))
+
+(defn recordlit-field-node-step-64-loop-bounded
+  [record-node field-name-hash idx field-count remaining]
+  (do
+    (root_push record-node)
+    (let [step
+            (recordlit-field-node-step-v3
+              record-node field-name-hash idx field-count)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (recordlit-field-node-step-64-loop-bounded
+                      record-node
+                      field-name-hash
+                      next-idx
+                      field-count
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn recordlit-field-node-step-64
+  [record-node field-name-hash idx field-count]
+  (recordlit-field-node-step-64-loop-bounded
+    record-node field-name-hash idx field-count 64))
+
+(defn recordlit-field-node-rooted-v3
+  [record-node field-name-hash idx field-count]
+  (let [step
+          (recordlit-field-node-step-64
+            record-node field-name-hash idx field-count)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (recordlit-field-node-rooted-v3
+                      record-node field-name-hash next-idx field-count)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn recordlit-field-node [record-node field-name-hash]
-  (recordlit-field-node-loop
+  (recordlit-field-node-rooted-v3
     record-node
     field-name-hash
     0
     (vector-get record-node 2)))
 
-;; declared record literal の各 field を具体化済み schema の field 型と単一化する。
-(defn infer-declared-recordlit-fields [node idx count env subst counter record-ty]
+(defn infer-declared-recordlit-fields-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn infer-declared-recordlit-fields-step-v3
+  [node idx count env current-result counter record-ty]
+  (if (>= idx count)
+    (infer-declared-recordlit-fields-state 1 idx current-result)
+    (do
+      (root_push node)
+      (root_push env)
+      (root_push current-result)
+      (root_push counter)
+      (root_push record-ty)
+      (let [field-offset (+ 3 (* idx 2))
+            field-name-hash (vector-get node field-offset)
+            value-node (vector-get node (+ field-offset 1))
+            expected-ty (type-record-field-type record-ty field-name-hash)]
+        (do
+          (root_push expected-ty)
+          (root_push value-node)
+          (let [field-result
+                  (if (= expected-ty 0)
+                    (make-error-result-code (error-code-general))
+                    (let [value-result
+                              (infer-expr
+                                value-node
+                                env
+                                (result-subst current-result)
+                                counter)]
+                        (do
+                          (root_push value-result)
+                          (let [next-result
+                                  (if (= (result-failed value-result) 1)
+                                    (propagate-error-result value-result)
+                                    (let [next-subst
+                                            (unify
+                                              expected-ty
+                                              (result-type value-result)
+                                              (result-subst value-result))]
+                                      (do
+                                        (root_push next-subst)
+                                        (let [unified-result
+                                                (if (= (unify-failed next-subst) 1)
+                                                  (make-error-result-code (error-code-general))
+                                                  (make-result next-subst record-ty))]
+                                          (do
+                                            (root_pop)
+                                            unified-result)))))]
+                            (do
+                              (root_push next-result)
+                              (let [result next-result]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                                                    result)))))))]
+            (do
+              (root_push field-result)
+              (let [state
+                      (if (= (result-failed field-result) 1)
+                        (infer-declared-recordlit-fields-state 1 idx field-result)
+                        (infer-declared-recordlit-fields-state
+                          0 (+ idx 1) field-result))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn infer-declared-recordlit-fields-step-64-loop-bounded
+  [node idx count env current-result counter record-ty remaining]
   (do
+    (root_push node)
+    (root_push env)
+    (root_push current-result)
+    (root_push counter)
     (root_push record-ty)
-    (let [result
-            (if (>= idx count)
-              (make-result subst record-ty)
-              (let [field-offset (+ 3 (* idx 2))
-                field-name-hash (vector-get node field-offset)
-                value-node (vector-get node (+ field-offset 1))
-                expected-ty (type-record-field-type record-ty field-name-hash)]
-                (if (= expected-ty 0)
-                  (make-error-result-code (error-code-general))
-                  (let [value-result (infer-expr value-node env subst counter)]
-                    (if (= (result-failed value-result) 1)
-                      (propagate-error-result value-result)
-                      (let [next-subst
-                              (unify expected-ty (result-type value-result) (result-subst value-result))]
-                        (if (= (unify-failed next-subst) 1)
-                          (make-error-result-code (error-code-general))
-                          (infer-declared-recordlit-fields
-                            node
-                            (+ idx 1)
-                            count
-                            env
-                            next-subst
-                            counter
-                            record-ty))))))))]
+    (let [step
+            (infer-declared-recordlit-fields-step-v3
+              node idx count env current-result counter record-ty)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
       (do
-        (root_pop)
-        result))))
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (infer-declared-recordlit-fields-step-64-loop-bounded
+                      node
+                      next-idx
+                      count
+                      env
+                      next-result
+                      counter
+                      record-ty
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn infer-declared-recordlit-fields-step-64
+  [node idx count env current-result counter record-ty]
+  (infer-declared-recordlit-fields-step-64-loop-bounded
+    node idx count env current-result counter record-ty 64))
+
+(defn infer-declared-recordlit-fields-rooted-v3
+  [node idx count env current-result counter record-ty]
+  (let [step
+          (infer-declared-recordlit-fields-step-64
+            node idx count env current-result counter record-ty)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (infer-declared-recordlit-fields-rooted-v3
+                      node
+                      next-idx
+                      count
+                      env
+                      next-result
+                      counter
+                      record-ty)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn infer-declared-recordlit-fields
+  [node idx count env subst counter record-ty]
+  (do
+    (root_push subst)
+    (root_push record-ty)
+    (let [initial (make-result subst record-ty)]
+      (do
+        (root_push initial)
+        (let [result
+                (infer-declared-recordlit-fields-rooted-v3
+                  node idx count env initial counter record-ty)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; qualified record literal は visible な constructor scheme の戻り型から
 ;; record schema を取得する。record-env に raw 名しかない import 境界でも、
@@ -218,36 +529,189 @@
 
 ;; record update の型推論
 ;; [14, base-expr, field-count, field1-hash, expr1, ...]
-(defn infer-declared-recordupdate-fields [node idx count env subst counter record-ty]
+(defn infer-declared-recordupdate-fields-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn infer-declared-recordupdate-fields-step-v3
+  [node idx count env current-result counter record-ty]
+  (if (>= idx count)
+    (do
+      (root_push current-result)
+      (root_push record-ty)
+      (let [final-subst (result-subst current-result)]
+        (do
+          (root_push final-subst)
+          (let [final-type (apply-subst final-subst record-ty)]
+            (do
+              (root_push final-type)
+              (let [final-result (make-result final-subst final-type)]
+                (do
+                  (root_push final-result)
+                  (let [state
+                          (infer-declared-recordupdate-fields-state
+                            1 idx final-result)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state)))))))))
+    (do
+      (root_push node)
+      (root_push env)
+      (root_push current-result)
+      (root_push counter)
+      (root_push record-ty)
+      (let [field-offset (+ 3 (* idx 2))
+            field-name-hash (vector-get node field-offset)
+            value-node (vector-get node (+ field-offset 1))
+            expected-ty (type-record-field-type record-ty field-name-hash)]
+        (do
+          (root_push expected-ty)
+          (root_push value-node)
+          (let [field-result
+                  (if (= expected-ty 0)
+                    (make-error-result-code (error-code-general))
+                    (let [value-result
+                              (infer-expr
+                                value-node
+                                env
+                                (result-subst current-result)
+                                counter)]
+                        (do
+                          (root_push value-result)
+                          (let [next-result
+                                  (if (= (result-failed value-result) 1)
+                                    (propagate-error-result value-result)
+                                    (let [next-subst
+                                            (unify
+                                              expected-ty
+                                              (result-type value-result)
+                                              (result-subst value-result))]
+                                      (do
+                                        (root_push next-subst)
+                                        (let [unified-result
+                                                (if (= (unify-failed next-subst) 1)
+                                                  (make-error-result-code (error-code-general))
+                                                  (make-result next-subst record-ty))]
+                                          (do
+                                            (root_pop)
+                                            unified-result)))))]
+                            (do
+                              (root_push next-result)
+                              (let [result next-result]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                                                    result)))))))]
+            (do
+              (root_push field-result)
+              (let [state
+                      (if (= (result-failed field-result) 1)
+                        (infer-declared-recordupdate-fields-state 1 idx field-result)
+                        (infer-declared-recordupdate-fields-state
+                          0 (+ idx 1) field-result))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn infer-declared-recordupdate-fields-step-64-loop-bounded
+  [node idx count env current-result counter record-ty remaining]
   (do
+    (root_push node)
+    (root_push env)
+    (root_push current-result)
+    (root_push counter)
     (root_push record-ty)
-    (let [result
-            (if (>= idx count)
-              (make-result subst (apply-subst subst record-ty))
-              (let [field-offset (+ 3 (* idx 2))
-                field-name-hash (vector-get node field-offset)
-                value-node (vector-get node (+ field-offset 1))
-                expected-ty (type-record-field-type record-ty field-name-hash)]
-                (if (= expected-ty 0)
-                  (make-error-result-code (error-code-general))
-                  (let [value-result (infer-expr value-node env subst counter)]
-                    (if (= (result-failed value-result) 1)
-                      (propagate-error-result value-result)
-                      (let [next-subst
-                              (unify expected-ty (result-type value-result) (result-subst value-result))]
-                        (if (= (unify-failed next-subst) 1)
-                          (make-error-result-code (error-code-general))
-                          (infer-declared-recordupdate-fields
-                            node
-                            (+ idx 1)
-                            count
-                            env
-                            next-subst
-                            counter
-                            record-ty))))))))]
+    (let [step
+            (infer-declared-recordupdate-fields-step-v3
+              node idx count env current-result counter record-ty)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
       (do
-        (root_pop)
-        result))))
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (infer-declared-recordupdate-fields-step-64-loop-bounded
+                      node
+                      next-idx
+                      count
+                      env
+                      next-result
+                      counter
+                      record-ty
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn infer-declared-recordupdate-fields-step-64
+  [node idx count env current-result counter record-ty]
+  (infer-declared-recordupdate-fields-step-64-loop-bounded
+    node idx count env current-result counter record-ty 64))
+
+(defn infer-declared-recordupdate-fields-rooted-v3
+  [node idx count env current-result counter record-ty]
+  (let [step
+          (infer-declared-recordupdate-fields-step-64
+            node idx count env current-result counter record-ty)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (infer-declared-recordupdate-fields-rooted-v3
+                      node
+                      next-idx
+                      count
+                      env
+                      next-result
+                      counter
+                      record-ty)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn infer-declared-recordupdate-fields
+  [node idx count env subst counter record-ty]
+  (do
+    (root_push subst)
+    (root_push record-ty)
+    (let [initial (make-result subst record-ty)]
+      (do
+        (root_push initial)
+        (let [result
+                (infer-declared-recordupdate-fields-rooted-v3
+                  node idx count env initial counter record-ty)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn infer-recordupdate-node [node env subst counter]
   (let [base-result (infer-expr (vector-get node 1) env subst counter)]
