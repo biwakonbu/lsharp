@@ -2692,3 +2692,27 @@ verified sliceである。`selfhost_type_parser_parity` の既存 `nested_module
 Parser.ls の大規模ファイル分割、Mac Apple Siliconのこの変更後 current-source gate、全公開
 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration
 境界と TODO の `[~]` は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser collection scans (2026-08-01)
+
+`Syntax.Parser.ls` に残っていた `vector-set-at` と
+`defn-signature-param-present-v3` の直接再帰 collection scanを、64要素単位の bounded loopと
+chunk境界の rooted continuationへ移行した。setterは不変 vector の結果を維持し、signature scanは
+既存の presence 判定値と return-type 判定を維持する。fixtureは深い nested `vector-push` を
+避け、`tokenize-with-spans` が生成した64要素超の flat vectorでchunk境界を検証した。
+
+Evidence: `selfhost_parser_collection_scanners` の static/runtime 3 tests、
+`selfhost_parser_forms` の22 tests、`selfhost_parser_metadata_forms` の29 tests、Rust fixtureの
+`rustfmt --edition 2021 --check`、`git diff --check` が passした。source commit `3d20368c` に対する
+local Lima `lsharp-linux-x86` gateは一度だけ実行し、host-generated stage1 x86 payloadが Linux
+x86_64 VM内でstage2/stage3 native self-regenerationを完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/3d20368c-parser-collection/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11208875`、stdout SHA-256は双方
+`6a58242abe669b9fbf8add62e36e68e8c7ba251b90b7f0d67c076d9641b1a603` で一致した。VMは停止し、
+stage debug、stdout、stage1中間物、local Cargo targetは回収して summaryだけを残した。
+
+これは parser collectionの bounded scanと Linux x86_64 stage2/stage3 fixed-pointだけを閉じる
+verified sliceである。parser recovery/metadata全体、Parser.lsの大規模ファイル分割、record schema
+pattern semantic parity、全 pattern/import target、ftable/linear-memory/runtime ABI、Mac Apple
+Siliconのこの変更後 current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を
+意味しない。Rust oracle / bootstrap / host integration境界と TODOの `[~]` は維持する。

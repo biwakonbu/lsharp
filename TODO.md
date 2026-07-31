@@ -769,6 +769,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `Syntax.Parser.ls` の name hash、qualified symbol dot、整数桁、string literal hash scanも
   64 要素 bounded/rooted scanへ移行し、65文字境界、正負整数、escape hash、parser formsの
   regression、Linux x86_64 fixed-pointを確認した。
+  `vector-set-at` と `defn-signature-param-present-v3` の collection scanも 64 要素
+  bounded/rooted continuationへ移行し、tokenizerが生成した64要素超のvectorで setter と
+  signature presence の chunk境界を確認した。`selfhost_parser_collection_scanners` の
+  3 tests、parser forms 22 tests、metadata forms 29 tests、Linux x86_64 fixed-pointを確認した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
