@@ -2665,3 +2665,30 @@ Mac Apple Siliconのこの変更後 current-source gate、full-program compiler 
 surface、`LEGACY-COMP-01` / `LEGACY-LANG-01` aggregateの完了を意味しない。既知の
 `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type` の `1` vs `0` baselineと
 Rust oracle / bootstrap / host integration境界は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser primitive scans (2026-07-31)
+
+`Syntax.Parser.ls` に残っていた name hash、qualified symbol dot、整数桁、string literal hashの
+直接再帰 scanを、各 64 要素単位の bounded loopと rooted continuationへ移行した。escape時の
+2文字進行、負数の符号処理、record accessor hashの初期 accumulatorは既存契約を維持する。
+
+Evidence: `selfhost_parser_primitive_scanners` の2 tests、`selfhost_parser_forms` の22 tests、
+`selfhost_parser_metadata_forms` の29 tests、`selfhost_type_parser_parity` の22 tests、
+`selfhost_private_record_compiler` の2 tests、`string_escape_sequences` の4 tests、Rust fixtureの
+`rustfmt --edition 2021 --check`、`git diff --check` が passした。`selfhost_lexer_parser` は31 tests
+が passし、1 testは変更前 `fd8bf7fc`でも同じ parser errorとなる baseline failureだった。
+
+source commit `0fc4af92` に対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、
+host-generated stage1 x86 payloadが Linux x86_64 VM内でstage2/stage3 native self-regenerationを
+完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/0fc4af92-parser-primitive/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11193360`、stdout SHA-256は双方
+`92afcfd91b4512af66722eca380e3fe20f805f669b917b146c39a6bf51239aad` で一致した。VMは停止し、
+stage debug、stdout、stage1中間物、local Cargo targetは回収して summaryだけを残した。
+
+これは4つの parser primitive bounded scanと Linux x86_64 stage2/stage3 fixed-pointだけを閉じる
+verified sliceである。`selfhost_type_parser_parity` の既存 `nested_module_decl` failure、
+`selfhost_lexer_parser` の既存 `negative_int` parse failure、parser recovery/metadata全体、
+Parser.ls の大規模ファイル分割、Mac Apple Siliconのこの変更後 current-source gate、全公開
+surface、`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration
+境界と TODO の `[~]` は維持する。
