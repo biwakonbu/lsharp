@@ -14,12 +14,17 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
 
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
+CANONICAL_UTC_TIMESTAMP_PATTERN = (
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+)
+CANONICAL_UTC_TIMESTAMP_RE = re.compile(CANONICAL_UTC_TIMESTAMP_PATTERN)
 
 
 class ShimError(Exception):
@@ -266,7 +271,11 @@ TOOLS = [
             "review_artifact_digest": {"type": "string", "minLength": 1},
             "review_trust_store_digest": {"type": "string", "minLength": 1},
             "review_lifecycle_digest": {"type": "string", "minLength": 1},
-            "review_now": {"type": "string", "minLength": 1},
+            "review_now": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": CANONICAL_UTC_TIMESTAMP_PATTERN,
+            },
         },
         [["source"], ["file"], ["manifest"], ["manifest_file"]],
         VALIDATE_OUTPUT_SCHEMA,
@@ -460,6 +469,12 @@ def identity_arguments(arguments, excluded=()):
             "review identity requires --review-subject-digest --review-source-commit "
             "--review-artifact-digest --review-now"
         )
+    if "review_now" in arguments:
+        review_now = require_string(arguments, "review_now")
+        if CANONICAL_UTC_TIMESTAMP_RE.fullmatch(review_now) is None:
+            raise ToolError(
+                "review_now must be a canonical UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)"
+            )
     flags = (
         ("review_subject_digest", "--review-subject-digest"),
         ("review_source_commit", "--review-source-commit"),

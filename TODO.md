@@ -26,7 +26,9 @@
   source/native report parity、provider snapshot、release evidence は残る。
 - [~] `EC-M3-03` CLI/MCP explicit inputs — explicit context、clock、trust/lifecycle input の Rust
   CLI/MCP boundary は verified partial slice。MCP input schema の subject/source/now/artifact all-or-none
-  も `dependentRequired` で runtime boundaryへ接続した。selfhost/native MCP と target artifact parity は残る。
+  も `dependentRequired` で runtime boundaryへ接続した。native MCP subset の `review_now` canonical UTC
+  lexical schema と実行前 reject も verified partial として追加した。selfhost/native MCP と target artifact
+  parity は残る。ADR: `docs/adr/decisions-v0.3-native-mcp-review-clock-schema.md`。
 - [~] `EC-M3-04` source / selfhost / native producer parity — `:review` 互換を維持した named-field
   `:review-attestation` の Rust parser/source adapter、selfhost kind 20、`unverified` state、span、
   canonical bytes parity、invalid algorithm/signature/timestamp/time-window の fail-closed contract を verified。native

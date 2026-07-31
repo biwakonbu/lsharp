@@ -180,6 +180,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 },
             )
             self.assertFalse(validate_schema["additionalProperties"])
+            self.assertEqual(
+                validate_schema["properties"]["review_now"]["pattern"],
+                r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+            )
             validate_output_schema = validate_tool["outputSchema"]
             self.assertFalse(validate_output_schema["additionalProperties"])
             trace_gap_schema = validate_output_schema["properties"]["trace_gaps"]["items"]
@@ -285,6 +289,33 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             response = self.responses(result.stdout)[0]
             self.assertTrue(response["result"]["isError"])
             self.assertIn("review identity requires", response["result"]["content"][0]["text"])
+            self.assertFalse((root / "native.log").exists())
+
+    def test_noncanonical_review_now_is_rejected_before_native_execution(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_subject_digest": "sha256:subject",
+                        "review_source_commit": "a" * 40,
+                        "review_artifact_digest": "sha256:artifact",
+                        "review_now": "2026-08-01 00:00:00Z",
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]
+            self.assertTrue(response["result"]["isError"])
+            self.assertIn("review_now", response["result"]["content"][0]["text"])
             self.assertFalse((root / "native.log").exists())
 
     def test_unknown_validate_argument_is_rejected_before_native_execution(self):
