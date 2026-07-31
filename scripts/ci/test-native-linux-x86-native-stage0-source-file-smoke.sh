@@ -110,6 +110,7 @@ for required in \
   'validation-identity-optional-json' \
   'validation-identity-text' \
   'review_evidence_identity' \
+  'review identity must remain absent without explicit review context' \
   'review-evidence-identity: subject=sha256:graph source=commit-1 artifact=sha256:artifact trust-store=- lifecycle=- now=2026-08-15T00:00:00Z' \
   'validation-identity-partial' \
   'review identity requires --review-subject-digest --review-source-commit --review-artifact-digest --review-now' \

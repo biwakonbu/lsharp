@@ -1745,7 +1745,12 @@ source = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
 expected_span = {"start": source.find(":review-attestation"), "end": source.rfind("\n  true")}
 if attestation.get("span") != expected_span:
     raise SystemExit(f"native source attestation span is invalid: {attestation!r}")
-reviews = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")).get("reviews")
+manifest = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+if "review_evidence_identity" in report or "review_evidence_identity" in manifest:
+    raise SystemExit(
+        "review identity must remain absent without explicit review context"
+    )
+reviews = manifest.get("reviews")
 if not isinstance(reviews, list) or len(reviews) != 1:
     raise SystemExit(f"native source attestation manifest reviews are invalid: {reviews!r}")
 for review in reviews:

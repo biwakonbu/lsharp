@@ -23,9 +23,17 @@ digestを補ったりしても検知できない。
   exit `1`、stdout 空、manifestなしに fail-closed する。
 - review 自体に verification input がない fixtureは identity を付けても `unverified` のまま
   `unknown` (exit `2`) とし、identity を `verified` shortcut として扱わない。
+- identity options を一つも渡さない後方互換 route は、JSON report / manifest に
+  `review_evidence_identity` を暗黙生成せず、system clock・environment・checkout・manifestから
+  値を補わない。明示 context route だけが identity を投影する。
 
 ## Evidence
 
+- RED: `test_native_review_identity_is_never_implicit_without_explicit_context` を先に追加し、
+  identity options のない native JSON/manifest に暗黙 identity が混入しないことを示す marker が
+  source smoke にない状態で失敗した。
+- GREEN: identity options なしの report/manifest の両方で `review_evidence_identity` の不在を検査し、
+  Linux fake Lima/provenance harness が `Linux native stage0 source-file provenance tests: OK` で通過した。
 - RED: `scripts/ci/test-native-linux-x86-native-stage0-source-file-smoke.sh` が identity markerを
   先に要求し、実装前に `VALIDATION_IDENTITY_MANIFEST` 欠落で失敗した。
 - GREEN: native source smokeへ full/optional identity の JSON+manifest、text projection、partial

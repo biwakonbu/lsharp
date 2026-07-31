@@ -2051,6 +2051,28 @@ fn test_native_review_attestation_smoke_uses_shared_current_source_fixture() {
 }
 
 #[test]
+fn test_native_review_identity_is_never_implicit_without_explicit_context() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "validation-attestation-json",
+        "review_evidence_identity",
+        "review identity must remain absent without explicit review context",
+        "validation-identity-optional-json",
+        "validation-identity-partial",
+        "review identity requires --review-subject-digest --review-source-commit --review-artifact-digest --review-now",
+    ] {
+        assert!(
+            script.contains(required),
+            "native source-file smoke は explicit identity boundary `{required}` を固定するべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_duplicate_rejection() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
