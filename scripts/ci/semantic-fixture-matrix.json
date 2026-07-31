@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "suite": "v4-m1-01",
+  "targets": [
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu"
+  ],
+  "execution": {
+    "stage0": "current-source",
+    "fallback": "forbidden",
+    "network": "forbidden"
+  },
+  "fixtures": [
+    {
+      "id": "invalid/lexer-unexpected-character",
+      "source": "scripts/ci/semantic-fixtures/invalid-lexer.ls",
+      "kind": "invalid",
+      "layers": ["syntax"],
+      "observables": ["ast", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [
+          {
+            "code": "LS0001",
+            "span": {
+              "start": {"line": 1, "column": 1},
+              "end": {"line": 1, "column": 2}
+            }
+          }
+        ],
+        "exit_code": 1,
+        "artifact": {"required": false, "status": "not-applicable"},
+        "runtime": {"status": "not-run", "exit_code": null, "stdout": null, "stderr": null}
+      }
+    },
+    {
+      "id": "invalid/module-not-found",
+      "source": "scripts/ci/semantic-fixtures/invalid-module.ls",
+      "kind": "invalid",
+      "layers": ["syntax", "types", "ir"],
+      "observables": ["ast", "type", "ir", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [
+          {
+            "code": "LS3102",
+            "span": {
+              "start": {"line": 1, "column": 1},
+              "end": {"line": 1, "column": 23}
+            }
+          }
+        ],
+        "exit_code": 1,
+        "artifact": {"required": false, "status": "not-applicable"},
+        "runtime": {"status": "not-run", "exit_code": null, "stdout": null, "stderr": null}
+      }
+    },
+    {
+      "id": "invalid/parser-unexpected-eof",
+      "source": "scripts/ci/semantic-fixtures/invalid-parser.ls",
+      "kind": "invalid",
+      "layers": ["syntax"],
+      "observables": ["ast", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [
+          {
+            "code": "LS0102",
+            "span": {
+              "start": {"line": 1, "column": 1},
+              "end": {"line": 1, "column": 14}
+            }
+          }
+        ],
+        "exit_code": 1,
+        "artifact": {"required": false, "status": "not-applicable"},
+        "runtime": {"status": "not-run", "exit_code": null, "stdout": null, "stderr": null}
+      }
+    },
+    {
+      "id": "invalid/type-undefined-value",
+      "source": "scripts/ci/semantic-fixtures/invalid-type.ls",
+      "kind": "invalid",
+      "layers": ["syntax", "types"],
+      "observables": ["ast", "type", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [
+          {
+            "code": "LS1001",
+            "span": {
+              "start": {"line": 1, "column": 17},
+              "end": {"line": 1, "column": 30}
+            }
+          }
+        ],
+        "exit_code": 1,
+        "artifact": {"required": false, "status": "not-applicable"},
+        "runtime": {"status": "not-run", "exit_code": null, "stdout": null, "stderr": null}
+      }
+    },
+    {
+      "id": "valid/adt-pattern",
+      "source": "examples/types.ls",
+      "kind": "valid",
+      "layers": ["syntax", "types", "ir", "codegen", "runtime"],
+      "observables": ["ast", "type", "ir", "wasm", "runtime", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check", "compile", "build"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [],
+        "exit_code": 0,
+        "artifact": {"required": true, "status": "pending"},
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "42\n0\n", "stderr": ""}
+      }
+    },
+    {
+      "id": "valid/io-read-file",
+      "source": "scripts/ci/semantic-fixtures/io-read-file.ls",
+      "kind": "valid",
+      "layers": ["syntax", "types", "ir", "codegen", "runtime"],
+      "observables": ["ast", "type", "ir", "wasm", "runtime", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check", "compile", "build"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [],
+        "exit_code": 0,
+        "artifact": {"required": true, "status": "pending"},
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "payload", "stderr": ""}
+      }
+    },
+    {
+      "id": "valid/module-import",
+      "source": "examples/module.ls",
+      "kind": "valid",
+      "layers": ["syntax", "types", "ir", "codegen", "runtime"],
+      "observables": ["ast", "type", "ir", "wasm", "runtime", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check", "compile", "build"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [],
+        "exit_code": 0,
+        "artifact": {"required": true, "status": "pending"},
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "41\n", "stderr": ""}
+      }
+    },
+    {
+      "id": "valid/record-accessor",
+      "source": "examples/record.ls",
+      "kind": "valid",
+      "layers": ["syntax", "types", "ir", "codegen", "runtime"],
+      "observables": ["ast", "type", "ir", "wasm", "runtime", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check", "compile", "build"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [],
+        "exit_code": 0,
+        "artifact": {"required": true, "status": "pending"},
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "10\n", "stderr": ""}
+      }
+    },
+    {
+      "id": "valid/recursive-runtime",
+      "source": "examples/fib.ls",
+      "kind": "valid",
+      "layers": ["syntax", "types", "ir", "codegen", "runtime"],
+      "observables": ["ast", "type", "ir", "wasm", "runtime", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check", "compile", "build"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [],
+        "exit_code": 0,
+        "artifact": {"required": true, "status": "pending"},
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "55\n", "stderr": ""}
+      }
+    },
+    {
+      "id": "valid/syntax-basic",
+      "source": "examples/hello.ls",
+      "kind": "valid",
+      "layers": ["syntax", "types", "ir", "codegen", "runtime", "public"],
+      "observables": ["ast", "type", "ir", "wasm", "runtime", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check", "compile", "test", "build"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [],
+        "exit_code": 0,
+        "artifact": {"required": true, "status": "pending"},
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "42\n", "stderr": ""}
+      }
+    }
+  ]
+}
