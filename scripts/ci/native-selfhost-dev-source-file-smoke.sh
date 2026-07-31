@@ -207,6 +207,7 @@ VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
 VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
 VALIDATION_ATTESTATION_SOURCE="$WORK_DIR/ec-m3-review-attestation-source.ls"
 VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE="$WORK_DIR/ec-m3-review-attestation-no-expiry-source.ls"
+VALIDATION_IDENTITY_SOURCE="$WORK_DIR/ec-m3-review-identity-source.ls"
 VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-algorithm-source.ls"
 VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-signature-source.ls"
 VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-timestamp-source.ls"
@@ -396,6 +397,15 @@ cat >"$VALIDATION_STALE_SOURCE" <<'LSHARP'
   true)
 LSHARP
 cp "$VALIDATION_ATTESTATION_FIXTURE" "$VALIDATION_ATTESTATION_SOURCE"
+cp "$VALIDATION_ATTESTATION_FIXTURE" "$VALIDATION_IDENTITY_SOURCE"
+cat >>"$VALIDATION_IDENTITY_SOURCE" <<'LSHARP'
+(defn review-identity-trace []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  true)
+LSHARP
 python3 - \
   "$VALIDATION_ATTESTATION_SOURCE" \
   "$VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE" \
@@ -1866,7 +1876,7 @@ run_expected_failure validation-attestation-no-expiry-text 0 validate \
 require_exact_output validation-attestation-no-expiry-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\nreview-verification: review:checkout/reviewer-001=unverified\n'
 
 run_expected_failure validation-identity-json 0 validate \
-  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --source "$VALIDATION_IDENTITY_SOURCE" \
   --format json \
   --emit-manifest "$VALIDATION_IDENTITY_MANIFEST" \
   --review-subject-digest "sha256:graph" \
@@ -1951,7 +1961,7 @@ grep -F "source validation error:14" \
   || die "validation-identity-manifest-conflict must produce no report or manifest"
 
 run_expected_failure validation-identity-optional-json 0 validate \
-  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --source "$VALIDATION_IDENTITY_SOURCE" \
   --format json \
   --emit-manifest "$VALIDATION_IDENTITY_OPTIONAL_MANIFEST" \
   --review-subject-digest "sha256:graph" \
@@ -1982,7 +1992,7 @@ if manifest_identity != expected or list(manifest_identity) != list(expected):
 PY
 
 run_expected_failure validation-identity-text 0 validate \
-  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --source "$VALIDATION_IDENTITY_SOURCE" \
   --format text \
   --review-subject-digest "sha256:graph" \
   --review-source-commit "commit-1" \
@@ -1992,7 +2002,7 @@ require_exact_output validation-identity-text $'status: unknown\nopen-questions:
 
 run_expected_validation_error validation-identity-partial \
   validate \
-  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --source "$VALIDATION_IDENTITY_SOURCE" \
   --format json \
   --emit-manifest "$VALIDATION_IDENTITY_PARTIAL_MANIFEST" \
   --review-subject-digest "sha256:graph"

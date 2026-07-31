@@ -2096,6 +2096,27 @@ fn test_native_review_identity_manifest_input_reattaches_and_rejects_conflicts()
 }
 
 #[test]
+fn test_native_review_identity_manifest_fixture_preserves_validation_trace() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "VALIDATION_IDENTITY_SOURCE",
+        ":motivates",
+        ":tested-by",
+        "validation-identity-json",
+        "validation-identity-manifest-reattach-json",
+    ] {
+        assert!(
+            script.contains(required),
+            "identity manifest fixture は validation trace boundary `{required}` を保持するべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_duplicate_rejection() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");

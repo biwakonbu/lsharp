@@ -48,6 +48,12 @@ manifest identity の不一致を検知できないまま続行すると、evide
 - GREEN: native source smokeへ full/optional identity の JSON+manifest、text projection、partial
   identity rejection を追加し、fake Lima/provenance harness が
   `Linux native stage0 source-file provenance tests: OK` で通過した。
+- RED (actual Mac runtime): identity再 attach用 manifestを attestation-only sourceから作っていたため、
+  trace (`motivates` / `tested-by`) がなく、current Mac smokeは identity判定前の
+  `manifest validation requires motivates and tested-by edges` / exit `1` で停止した。
+- GREEN (actual Mac runtime): identity用 source fixtureへ最小の intent/claim/`motivates`/`tested-by` traceを
+  保持する派生 fixtureを追加し、current `f6a6da30` の Mac stage0 packageで explicit identity JSON/text/manifest、
+  同値 manifest reattach、conflict code `14` fail-closedを含む source-file smokeを完走した。
 - RED: `test_native_review_identity_manifest_input_reattaches_and_rejects_conflicts` を先に追加し、
   positional manifest の既存 identity を再 attach し、conflicting caller identity を拒否する
   marker が source smoke にない状態で失敗した。
@@ -60,7 +66,6 @@ manifest identity の不一致を検知できないまま続行すると、evide
 
 ## Boundary
 
-これは native source-file smoke の contract/harness evidence であり、current checkoutとsource
-commitが一致する packaged stage0の実 runtime evidenceではない。Mac Apple Silicon / Linux x86_64
-の current-source artifact、native MCP、release identity gate、verified/stale/revoked/invalid の
-target matrix は未完了であり、`EC-M3-05` は `[~]` のまま維持する。
+Mac Apple Silicon の current-source stage0 direct runtime evidenceまで拡張した verified partial sliceで
+ある。ただし fetch後の packaged stage0、Linux x86_64、native MCP、release identity gate、
+verified/stale/revoked/invalid の target matrix は未完了であり、`EC-M3-05` は `[~]` のまま維持する。

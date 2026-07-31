@@ -30,7 +30,10 @@
   source-file smoke、Evidence/manifest projection、current-source と packaged stage0 の provenance は残る。
   2026-07-31 に `tests/fixtures/validation/ec-m3-review-attestation-source.ls` を canonical fixture とし、
   Rust parser/Rust-host selfhost/Mac smoke/Linux stage0 wrapperの同一入力と Linux fake provenance harness の
-  fixture copy 契約を追加した。実 current-source native runtime、Mac/Linux matrix、packaged provenance は残る。
+  fixture copy 契約を追加した。Linux current-source runtime、Mac/Linux matrix、packaged provenance は残る。
+  同日、current `f6a6da30` の Mac Apple Silicon stage0 producer/package と actual App.Cli E2E、source-file
+  smoke を実行し、Mac current-source runtime の named-field/attestation/validation smoke を pass させた。
+  Linux x86_64 current-source runtime、fetch後の packaged provenance と両 target matrixは残る。
 - [~] `EC-M3-05` release / evidence gate — Rust CLI/MCP と manifest の入出力 roundtrip が、明示した
   subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
   として deterministic JSON/text/MCP/manifest へ投影し、競合を fail-closed に拒否する verified partial
@@ -48,8 +51,11 @@
   positional version 1 manifest input の既存 `review_evidence_identity` についても、同値 caller
   identity の再 attach と conflicting identity の `source validation error:14` / exit `1` / no-report・
   no-manifest fail-closed を `ManifestInput` / `App.Cli`、Rust-host actual Wasm、Linux fake provenance
-  harness で verified partial とした。current-source native stage0、native MCP、provider、両 target
+  harness で verified partial とした。Linux current-source native stage0、native MCP、provider、両 target
   runtime は残る。
+  さらに Mac current-source stage0 packageを実際に source-file smokeへ渡し、identity source fixtureの
+  trace (`motivates` / `tested-by`) と explicit identity JSON/text/manifest、同値再 attach、conflict
+  fail-closed を actual runtimeで確認した。Linux runtime、native MCP/provider、fetch後の packaged parityは残る。
   native-only `scripts/release.sh` から snapshot path を verifier へ伝播し、packaging 前の digest mismatch を拒否する wiring も verified partial として追加した。
   stage0 package は `--review-trust-store` / `--review-lifecycle` を同じ verifier へ渡し、release smoke は
   `RELEASE_REVIEW_TRUST_STORE` / `RELEASE_REVIEW_LIFECYCLE` から native-only archive の identity を再検証する
@@ -547,8 +553,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 - [~] `EC-M3-04` source と selfhost/native producer の attestation named-field、canonical bytes、
   state、span、exit code の Rust/selfhost 同一 fixture parity は verified partial。JSON report の
   field order、nullable `expires_at`、canonical bytes、span と native source-file smoke の
-  report/manifest fixture contract を追加検証した。current-source native stage0、packaged
-  artifact provenance、Mac/Linux runtime parityを `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
+  report/manifest fixture contract を追加検証した。Mac current-source stage0 producer/package/source-file
+  smoke は実行済みで、Linux current-source stage0、packaged artifact provenance、Mac/Linux runtime parityを
+  `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
 - [~] `EC-M3-05` keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity
   projection、nullable field order、conflict rejection は verified partial。offline release identity
   verifier、native-only archive / packaged stage0 の optional projection、artifact/source mismatch の

@@ -2,7 +2,7 @@
 
 - Date: 2026-07-31
 - Status: Accepted (verified partial slice)
-- Scope: `M3-05-N9` / `EC-M3-05`
+- Scope: `M3-04-N1` / `M3-05-N9` / `EC-M3-04` / `EC-M3-05`
 
 ## Context
 
@@ -34,13 +34,16 @@ builder が個別に存在していたが、それらを一つの再現可能な
   失敗した。
 - GREEN: 同じ fake producer/package harness が current source commit、Mac transport/materializer、
   stage0 manifest、既存 output の fail-closed を検証して通過した。
+- GREEN: `TMPDIR=/tmp` を明示した current `f6a6da30` の Mac Apple Silicon producer/package が
+  actual App.Cli E2E（542.31秒）を通過し、生成 stage0を
+  `native-selfhost-dev-source-file-smoke.sh` へ渡して `aarch64-apple-darwin native selfhost source-file smoke passed`
+  を確認した。
 - `bash -n scripts/ci/native-macos-aarch64-stage0-release.sh scripts/ci/test-native-macos-aarch64-stage0-release.sh`
   と `git diff --check` を通過した。
 
-これは producer の wiring/validation evidence であり、実 Mac Apple Silicon 上で current source を
-生成して `native-selfhost-dev-source-file-smoke.sh` を完走した証拠ではない。実 Mac runtime、Linux
-x86_64 runtime、provider snapshot digest、packaged App.Cli/rollback/Wasm byte parity は N9 の残件であり、
-`TODO.md` の `[~]` を維持する。
+Mac Apple Silicon の current-source producer/package/source-file smoke は実行済みだが、これは direct
+input の証拠であり、fetch後の公式 archive経路、Linux x86_64 runtime、provider snapshot digest、packaged
+App.Cli/rollback/Wasm byte parity は N9 の残件である。`TODO.md` の `[~]` は維持する。
 
 ## Consequences
 
