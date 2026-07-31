@@ -768,8 +768,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   4096 bytes 超 read の slice は verified。全 fd error semantics、dynamic root/data/heap layout、
   component sidecar、target 別 release artifact を閉じる。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
-  `doc` / component helper の routing contract は verified。実 stage0 と外部 tool の E2E、
-  Rust-only flag/target の明示境界、target 別 release evidence を閉じる。
+  `doc` / component helper の routing contract は verified。`install` は実 installer helper を
+  fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
+  `lsharp` fallback 不使用まで integration test で確認した。実 stage0 と外部 tool の E2E、
+  Rust-only flag/target の明示境界、target 別 release evidence を閉じる。ADR:
+  `docs/adr/decisions-v0.3-native-install-runner-e2e.md`。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
