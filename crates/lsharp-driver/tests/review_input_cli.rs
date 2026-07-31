@@ -126,6 +126,75 @@ fn signed_review_wire() -> (String, String) {
     (trust_wire, lifecycle_wire)
 }
 
+fn signed_delayed_review_wire() -> (String, String) {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let attestation = ReviewAttestation::new(
+        "review:checkout/reviewer-001",
+        "sha256:graph",
+        "commit-1",
+        "sha256:review",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z",
+        Some("2026-09-01T00:00:00Z".to_string()),
+        2,
+        vec![0; 64],
+    )
+    .expect("delayed attestation should be valid");
+    let signature = base64url_no_padding(
+        &signing_key
+            .sign(&attestation.canonical_bytes())
+            .to_bytes(),
+    );
+    let public_key = base64url_no_padding(&signing_key.verifying_key().to_bytes());
+    let trust_wire = r#"{
+          "schema_version": 1,
+          "attestations": [{
+            "review_id": "review:checkout/reviewer-001",
+            "subject_digest": "sha256:graph",
+            "source_commit": "commit-1",
+            "provenance_digest": "sha256:review",
+            "provider": "github",
+            "key_id": "org/reviews-2026",
+            "algorithm": "ed25519",
+            "signature": "__SIGNATURE__",
+            "issued_at": "2026-08-01T00:00:00Z",
+            "expires_at": "2026-09-01T00:00:00Z",
+            "sequence": 2
+          }],
+          "lifecycle": [],
+          "trust_store": [{
+            "provider": "github",
+            "key_id": "org/reviews-2026",
+            "algorithm": "ed25519",
+            "public_key": "__PUBLIC_KEY__"
+          }]
+        }"#
+    .replace("__SIGNATURE__", &signature)
+    .replace("__PUBLIC_KEY__", &public_key);
+    let lifecycle_wire = r#"{
+      "schema_version": 1,
+      "attestations": [],
+      "lifecycle": [
+        {
+          "review_id": "review:checkout/reviewer-001",
+          "sequence": 1,
+          "state": "proposed",
+          "effective_at": "2026-08-01T00:00:00Z"
+        },
+        {
+          "review_id": "review:checkout/reviewer-001",
+          "sequence": 2,
+          "state": "active",
+          "effective_at": "2026-08-02T00:00:00Z"
+        }
+      ]
+    }"#
+    .to_string();
+    (trust_wire, lifecycle_wire)
+}
+
 fn lifecycle_wire_with_events(events: &str) -> String {
     format!(
         r#"{{
@@ -710,6 +779,70 @@ fn validate_projects_expiry_and_identity_context_to_state() {
         )
         .expect("projected manifest should be JSON");
         assert_eq!(manifest["reviews"][0]["verification_state"], expected_state);
+    }
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn validate_does_not_apply_future_lifecycle_transition_before_review_now() {
+    let project = project_dir("future-lifecycle");
+    fs::write(
+        project.join("manifest.json"),
+        r#"{
+          "schema_version": 1,
+          "nodes": [],
+          "reviews": [{
+            "namespace": "checkout",
+            "key": "reviewer-001",
+            "provenance_digest": "sha256:review",
+            "visibility": "public"
+          }],
+          "evidence": [],
+          "edges": []
+        }"#,
+    )
+    .expect("manifest should be writable");
+    let (trust_wire, lifecycle_wire) = signed_delayed_review_wire();
+    fs::write(project.join("trust.json"), trust_wire).expect("trust wire should be writable");
+    fs::write(project.join("lifecycle.json"), lifecycle_wire)
+        .expect("lifecycle wire should be writable");
+
+    for (now, expected_state) in [
+        ("2026-08-01T12:00:00Z", "unverified"),
+        ("2026-08-02T00:00:00Z", "verified"),
+    ] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+        command.current_dir(&project).args([
+            "validate",
+            "manifest.json",
+            "--format",
+            "json",
+            "--trust-store",
+            "trust.json",
+            "--review-lifecycle",
+            "lifecycle.json",
+            "--review-subject-digest",
+            "sha256:graph",
+            "--review-source-commit",
+            "commit-1",
+            "--review-now",
+            now,
+        ]);
+        let output = command.output().expect("lsharp validate should run");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+        assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+        let report: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("report should be JSON");
+        assert_eq!(
+            report["review_verifications"],
+            serde_json::json!([{
+                "review_id": "review:checkout/reviewer-001",
+                "state": expected_state
+            }]),
+            "lifecycle state must be evaluated at now={now}"
+        );
     }
 
     fs::remove_dir_all(project).ok();
