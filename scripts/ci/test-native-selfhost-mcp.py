@@ -121,6 +121,26 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 {
                     "trust_store": ["review_lifecycle"],
                     "review_lifecycle": ["trust_store"],
+                    "review_subject_digest": [
+                        "review_source_commit",
+                        "review_artifact_digest",
+                        "review_now",
+                    ],
+                    "review_source_commit": [
+                        "review_subject_digest",
+                        "review_artifact_digest",
+                        "review_now",
+                    ],
+                    "review_artifact_digest": [
+                        "review_subject_digest",
+                        "review_source_commit",
+                        "review_now",
+                    ],
+                    "review_now": [
+                        "review_subject_digest",
+                        "review_source_commit",
+                        "review_artifact_digest",
+                    ],
                 },
             )
             self.assertEqual(responses[2]["result"]["structuredContent"]["ok"], True)
@@ -166,6 +186,30 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertIn("--review-lifecycle-digest", calls[0])
             self.assertIn("--emit-manifest", calls[0])
             self.assertEqual(self.responses(result.stdout)[0]["result"]["isError"], False)
+
+    def test_partial_review_identity_is_rejected_before_native_execution(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_subject_digest": "sha256:subject",
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]
+            self.assertTrue(response["result"]["isError"])
+            self.assertIn("review identity requires", response["result"]["content"][0]["text"])
+            self.assertFalse((root / "native.log").exists())
 
     def test_provider_paths_are_hashed_and_forwarded_to_native(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

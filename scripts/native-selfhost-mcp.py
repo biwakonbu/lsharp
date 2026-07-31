@@ -131,6 +131,26 @@ TOOLS = [
             "dependentRequired": {
                 "trust_store": ["review_lifecycle"],
                 "review_lifecycle": ["trust_store"],
+                "review_subject_digest": [
+                    "review_source_commit",
+                    "review_artifact_digest",
+                    "review_now",
+                ],
+                "review_source_commit": [
+                    "review_subject_digest",
+                    "review_artifact_digest",
+                    "review_now",
+                ],
+                "review_artifact_digest": [
+                    "review_subject_digest",
+                    "review_source_commit",
+                    "review_now",
+                ],
+                "review_now": [
+                    "review_subject_digest",
+                    "review_source_commit",
+                    "review_artifact_digest",
+                ],
             }
         },
     ),
@@ -278,6 +298,18 @@ def provider_snapshot_arguments(arguments):
 
 
 def identity_arguments(arguments, excluded=()):
+    identity_names = (
+        "review_subject_digest",
+        "review_source_commit",
+        "review_artifact_digest",
+        "review_now",
+    )
+    present = [name for name in identity_names if name in arguments]
+    if present and len(present) != len(identity_names):
+        raise ToolError(
+            "review identity requires --review-subject-digest --review-source-commit "
+            "--review-artifact-digest --review-now"
+        )
     flags = (
         ("review_subject_digest", "--review-subject-digest"),
         ("review_source_commit", "--review-source-commit"),
