@@ -20,6 +20,8 @@ MACOS_STAGE0_DIR="${MACOS_STAGE0_DIR:-}"
 LINUX_STAGE0_DIR="${LINUX_STAGE0_DIR:-}"
 MACOS_ROLLBACK_ARCHIVE="${MACOS_ROLLBACK_ARCHIVE:-}"
 LINUX_ROLLBACK_ARCHIVE="${LINUX_ROLLBACK_ARCHIVE:-}"
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE="${NATIVE_OFFICIAL_REVIEW_TRUST_STORE:-}"
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE="${NATIVE_OFFICIAL_REVIEW_LIFECYCLE:-}"
 SMOKE_ROOT="${LSHARP_NATIVE_RELEASE_SMOKE_ROOT:-/tmp/lsharp-native-official-release-smoke}"
 MAX_DIST_KIB="${LSHARP_NATIVE_RELEASE_MAX_DIST_KIB:-1048576}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
@@ -54,12 +56,46 @@ require_file() {
   fi
 }
 
+validate_review_snapshots() {
+  if [[ -z "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" && -z "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" ]]; then
+    return 0
+  fi
+  if [[ -z "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" || -z "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" ]]; then
+    echo "ERROR: NATIVE_OFFICIAL_REVIEW_TRUST_STORE and NATIVE_OFFICIAL_REVIEW_LIFECYCLE must be supplied together" >&2
+    exit 1
+  fi
+  if [[ ! -f "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" || ! -s "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
+    echo "ERROR: native official review trust-store snapshot is not a non-empty file: ${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" >&2
+    exit 1
+  fi
+  if [[ ! -f "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" || ! -s "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" ]]; then
+    echo "ERROR: native official review lifecycle snapshot is not a non-empty file: ${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" >&2
+    exit 1
+  fi
+}
+
+NATIVE_OFFICIAL_REVIEW_ENV=()
+validate_review_snapshots
+if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
+  NATIVE_OFFICIAL_REVIEW_ENV=(
+    "NATIVE_ONLY_REVIEW_TRUST_STORE=${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}"
+    "NATIVE_ONLY_REVIEW_LIFECYCLE=${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}"
+  )
+fi
+
 smoke_archive() {
   local target="$1"
   local archive_path="$2"
   local rollback_archive="$3"
   if [[ "${target}" != "x86_64-unknown-linux-gnu" ]]; then
-    WORK_DIR="${SMOKE_ROOT}/${target}" \
+    local smoke_env=("WORK_DIR=${SMOKE_ROOT}/${target}")
+    if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
+      smoke_env+=(
+        "RELEASE_REVIEW_TRUST_STORE=${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}"
+        "RELEASE_REVIEW_LIFECYCLE=${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}"
+      )
+    fi
+    env "${smoke_env[@]}" \
       bash scripts/ci/release-smoke.sh "${archive_path}" "${rollback_archive}"
     return
   fi
@@ -82,10 +118,24 @@ smoke_archive() {
   limactl copy scripts/ci/release-smoke.sh "${VM_NAME}:${vm_work_dir}/release-smoke.sh"
   limactl copy scripts/ci/verify-native-release-identity.py \
     "${VM_NAME}:${vm_work_dir}/verify-native-release-identity.py"
+  limactl copy scripts/ci/review_identity_timestamp.py \
+    "${VM_NAME}:${vm_work_dir}/review_identity_timestamp.py"
+  local linux_smoke_env=(
+    "WORK_DIR=${vm_work_dir}/work"
+    "RELEASE_IDENTITY_VERIFIER=${vm_work_dir}/verify-native-release-identity.py"
+  )
+  if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
+    limactl copy "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" \
+      "${VM_NAME}:${vm_work_dir}/review-trust-store.snapshot"
+    limactl copy "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" \
+      "${VM_NAME}:${vm_work_dir}/review-lifecycle.snapshot"
+    linux_smoke_env+=(
+      "RELEASE_REVIEW_TRUST_STORE=${vm_work_dir}/review-trust-store.snapshot"
+      "RELEASE_REVIEW_LIFECYCLE=${vm_work_dir}/review-lifecycle.snapshot"
+    )
+  fi
   set +e
-  limactl shell "${VM_NAME}" -- env \
-    WORK_DIR="${vm_work_dir}/work" \
-    RELEASE_IDENTITY_VERIFIER="${vm_work_dir}/verify-native-release-identity.py" \
+  limactl shell "${VM_NAME}" -- env "${linux_smoke_env[@]}" \
     bash "${vm_work_dir}/release-smoke.sh" \
       "${vm_work_dir}/${archive_name}" \
       "${vm_work_dir}/${rollback_name}"
@@ -115,7 +165,8 @@ package_target() {
 
   rm -rf "${DIST_DIR:?}/${archive_base}" "${archive_path}"
   if [[ -s "${identity_path}" ]]; then
-    NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY="${identity_path}" \
+    env "${NATIVE_OFFICIAL_REVIEW_ENV[@]}" \
+      NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY="${identity_path}" \
       TARGET="${target}" \
       VERSION="${VERSION}" \
       SOURCE_COMMIT="${SOURCE_COMMIT}" \
@@ -126,7 +177,8 @@ package_target() {
       ROLLBACK_COMPATIBILITY_ASSET_PATH="${rollback_archive}" \
       bash scripts/release.sh
   else
-    TARGET="${target}" \
+    env "${NATIVE_OFFICIAL_REVIEW_ENV[@]}" \
+      TARGET="${target}" \
       VERSION="${VERSION}" \
       SOURCE_COMMIT="${SOURCE_COMMIT}" \
       DIST_DIR="${DIST_DIR}" \
@@ -152,6 +204,12 @@ package_stage0_target() {
     || { echo "ERROR: ${target} native stage0 directory is required: ${stage0_dir}" >&2; exit 1; }
   if [[ -s "${identity_path}" ]]; then
     identity_args+=(--review-evidence-identity "${identity_path}")
+  fi
+  if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
+    identity_args+=(
+      --review-trust-store "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}"
+      --review-lifecycle "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}"
+    )
   fi
   rm -f "${archive_path}"
   bash scripts/ci/package-native-stage0-release.sh \

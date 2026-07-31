@@ -25,8 +25,10 @@ release smoke へ渡らなければ、同じ archive identity を後段で再検
 - native-only archive の rollback compatibility archive を再帰的に smoke するときは、provider snapshot
   env を明示的に空にして rollback 側へ誤適用しない。rollback archive は native-only identity gate の
   対象外である。
-- `native-official-release-local.sh` の multi-target orchestrator、provider API/authentication、current
-  source の Mac Apple Silicon / Linux x86_64 runtime はこの slice の外に残す。
+- `native-official-release-local.sh` の multi-target offline propagation は
+  [`decisions-v0.3-native-official-multitarget-snapshot-wiring.md`](decisions-v0.3-native-official-multitarget-snapshot-wiring.md)
+  へ分離して verified partial とした。provider API/authentication、current source の Mac Apple Silicon /
+  Linux x86_64 runtime はこの sliceの外に残す。
 
 ## Evidence
 
@@ -41,6 +43,7 @@ release smoke へ渡らなければ、同じ archive identity を後段で再検
 
 ## Boundary and follow-up
 
-stage0 package と release-smoke の offline propagation は verified partial slice である。実 provider
-取得・認証、multi-target orchestrator からの snapshot propagation、current-source stage0 の provenance、
-Mac Apple Silicon / Linux x86_64 の packaged runtime evidence は未完了であり、`EC-M3-05` は `[~]` のまま残す。
+stage0 package と release-smoke の offline propagation は verified partial slice である。multi-target
+orchestrator の propagation は別 ADR で verified partial とした。実 provider取得・認証、current-source
+stage0 の provenance、Mac Apple Silicon / Linux x86_64 の packaged runtime evidence は未完了であり、
+`EC-M3-05` は `[~]` のまま残す。

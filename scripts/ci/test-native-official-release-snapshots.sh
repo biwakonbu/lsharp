@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-native-official-snapshot.XXXXXX")"
+FAKE_ROOT="$TMP_ROOT/project"
+LOG_PATH="$TMP_ROOT/invocations.log"
+TRUST_STORE="$TMP_ROOT/trust-store.json"
+LIFECYCLE="$TMP_ROOT/review-lifecycle.jsonl"
+SOURCE_COMMIT="0123456789abcdef0123456789abcdef01234567"
+VERSION="v0.0.0-test"
+PATH_PREFIX="$TMP_ROOT/bin"
+SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
+trap 'rm -rf "$TMP_ROOT" "$SMOKE_ROOT"' EXIT
+
+mkdir -p "$FAKE_ROOT/scripts/ci" "$PATH_PREFIX" "$FAKE_ROOT/dist"
+printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
+printf '%s\n' '{"review_id":"review:orchestrator/r1","state":"active"}' >"$LIFECYCLE"
+
+cp "$ROOT/scripts/ci/native-official-release-local.sh" "$FAKE_ROOT/scripts/ci/"
+
+cat >"$FAKE_ROOT/scripts/release.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "release target=$TARGET trust=${NATIVE_ONLY_REVIEW_TRUST_STORE:-} lifecycle=${NATIVE_ONLY_REVIEW_LIFECYCLE:-} identity=${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY:-}" >>"$FAKE_LOG"
+printf '%s\n' 'fake release archive' >"$DIST_DIR/lsharp-${VERSION}-${TARGET}.tar.gz"
+SH
+chmod +x "$FAKE_ROOT/scripts/release.sh"
+
+cat >"$FAKE_ROOT/scripts/ci/package-native-stage0-release.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+target=''
+version=''
+output_dir=''
+args="$*"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --target) target="$2"; shift 2 ;;
+    --version) version="$2"; shift 2 ;;
+    --output-dir) output_dir="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s\n' "stage0 target=$target args=$args" >>"$FAKE_LOG"
+printf '%s\n' 'fake stage0 archive' >"$output_dir/lsharp-stage0-${version}-${target}.tar.gz"
+SH
+chmod +x "$FAKE_ROOT/scripts/ci/package-native-stage0-release.sh"
+
+cat >"$FAKE_ROOT/scripts/ci/release-smoke.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "mac smoke trust=${RELEASE_REVIEW_TRUST_STORE:-} lifecycle=${RELEASE_REVIEW_LIFECYCLE:-} archive=$1 rollback=$2" >>"$FAKE_LOG"
+SH
+chmod +x "$FAKE_ROOT/scripts/ci/release-smoke.sh"
+
+cat >"$FAKE_ROOT/scripts/fetch-stage0.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "$STAGE0_DIR"
+printf '%s\n' "{\"target\":\"$STAGE0_TARGET\"}" >"$STAGE0_DIR/manifest.json"
+printf '%s\n' "fetch target=$STAGE0_TARGET" >>"$FAKE_LOG"
+SH
+chmod +x "$FAKE_ROOT/scripts/fetch-stage0.sh"
+
+cat >"$FAKE_ROOT/scripts/checksum.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' 'checksum fixture'
+SH
+chmod +x "$FAKE_ROOT/scripts/checksum.sh"
+
+cat >"$PATH_PREFIX/limactl" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "limactl $*" >>"$FAKE_LOG"
+case "${1:-}" in
+  list) printf '%s\n' 'Stopped' ;;
+  start|copy|shell) ;;
+  *) exit 1 ;;
+esac
+SH
+chmod +x "$PATH_PREFIX/limactl"
+
+for target in aarch64-apple-darwin x86_64-unknown-linux-gnu; do
+  artifact_dir="$TMP_ROOT/artifact-$target"
+  stage0_dir="$TMP_ROOT/stage0-$target"
+  mkdir -p "$artifact_dir" "$stage0_dir"
+  printf '%s\n' 'fake native program' >"$artifact_dir/program.native"
+  printf '%s\n' '{"status":"pass"}' >"$artifact_dir/manifest.json"
+  printf '%s\n' 'identity' >"$artifact_dir/review-evidence-identity.json"
+  printf '%s\n' 'stage0' >"$stage0_dir/manifest.json"
+  printf '%s\n' 'stage0 identity' >"$stage0_dir/review-evidence-identity.json"
+  printf '%s\n' 'rollback' >"$TMP_ROOT/rollback-$target.tar.gz"
+done
+
+FAKE_LOG="$LOG_PATH" \
+PATH="$PATH_PREFIX:$PATH" \
+VERSION="$VERSION" \
+SOURCE_COMMIT="$SOURCE_COMMIT" \
+DIST_DIR="$FAKE_ROOT/dist" \
+SMOKE_ROOT="$SMOKE_ROOT" \
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+  bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh"
+
+grep -F "release target=aarch64-apple-darwin trust=$TRUST_STORE lifecycle=$LIFECYCLE" "$LOG_PATH" >/dev/null
+grep -F "release target=x86_64-unknown-linux-gnu trust=$TRUST_STORE lifecycle=$LIFECYCLE" "$LOG_PATH" >/dev/null
+grep -F -- "--review-trust-store $TRUST_STORE --review-lifecycle $LIFECYCLE" "$LOG_PATH" >/dev/null
+grep -F "mac smoke trust=$TRUST_STORE lifecycle=$LIFECYCLE" "$LOG_PATH" >/dev/null
+grep -F "review-trust-store.snapshot" "$LOG_PATH" >/dev/null
+grep -F "review-lifecycle.snapshot" "$LOG_PATH" >/dev/null
+grep -F "review_identity_timestamp.py" "$LOG_PATH" >/dev/null
+grep -F "fetch target=aarch64-apple-darwin" "$LOG_PATH" >/dev/null
+grep -F "fetch target=x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
+
+set +e
+partial_output="$(
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/partial-dist" \
+  SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-partial.XXXXXX)" \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+partial_status=$?
+set -e
+[[ "$partial_status" -ne 0 ]] || { echo 'partial snapshot input was accepted' >&2; exit 1; }
+grep -F 'must be supplied together' <<<"$partial_output" >/dev/null
+
+echo 'native official release snapshot tests: OK'

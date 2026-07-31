@@ -34,5 +34,7 @@ digest mismatch の non-zero、preparer/verifier の既存 roundtrip を含む P
 
 この slice は native-only App.Cli の `scripts/release.sh` wiring に限定される。stage0 package と
 release-smoke の offline propagation は [`decisions-v0.3-stage0-release-smoke-snapshot-wiring.md`](decisions-v0.3-stage0-release-smoke-snapshot-wiring.md)
-へ分離して verified partial とした。native-official multi-target orchestrator、provider
-API/authentication、Mac/Linux runtime の snapshot propagation は未完了で、`EC-M3-05` は `[~]` のまま残す。
+へ分離して verified partial とした。native-official multi-target の offline propagation も
+[`decisions-v0.3-native-official-multitarget-snapshot-wiring.md`](decisions-v0.3-native-official-multitarget-snapshot-wiring.md)
+へ分離した。provider API/authentication、Mac/Linux runtime の snapshot propagation は未完了で、
+`EC-M3-05` は `[~]` のまま残す。

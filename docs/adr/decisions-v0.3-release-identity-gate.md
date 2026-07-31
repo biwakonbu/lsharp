@@ -29,7 +29,8 @@ network/helper を release smoke へ暗黙に入れることも、offline な ta
   identity検証を行わない。
 - `package-native-stage0-release.sh` は同じ explicit identity を optional input として stage0
   manifest/packageへ投影する。`native-official-release-local.sh` は artifact/stage0 directoryに
-  `review-evidence-identity.json` がある場合だけこの入力を伝播する。
+  `review-evidence-identity.json` がある場合だけこの入力を伝播し、明示された provider snapshot は
+  下流の release/package/smoke verifierへ渡す。
 
 ## Evidence
 
@@ -43,7 +44,9 @@ network/helper を release smoke へ暗黙に入れることも、offline な ta
 
 ## Boundary and follow-up
 
-これは release identity の producer/packaging/smoke contract の verified partial sliceである。
+これは release identity の producer/packaging/smoke contract の verified partial sliceである。multi-target
+orchestrator の offline snapshot propagation は [`decisions-v0.3-native-official-multitarget-snapshot-wiring.md`](decisions-v0.3-native-official-multitarget-snapshot-wiring.md)
+へ分離して記録した。
 provider adapter の実取得、current-source の Mac Apple Silicon / Linux x86_64 native stage0 replay、
 両 target の packaged runtime、`verified/unverified/stale/revoked/invalid` の実行時 matrix は未完了。
 active Linux native replay と競合しないため、この runでは heavy replayを起動していない。`TODO.md` の

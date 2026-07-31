@@ -86,7 +86,7 @@ git push origin v<version>
 - `aarch64-apple-darwin` は Mac Apple Silicon、`x86_64-unknown-linux-gnu` は Mac + Lima x86_64 VM で実 `App.Cli` を事前生成・実行検証する
 - 各 target の input bundle は archive root に `program.native` と `manifest.json` を置く。manifest は `target` / `entry_module: App.Cli` / `source: src/App/Cli.ls` / `source_commit` / `program_sha256` を持つ。producer は clean worktree で実行し、未コミット bytes を `HEAD` provenance として公開しない
 - review provenance を releaseへ接続する場合は、同じ staging directoryに explicit な `review-evidence-identity.json`（`subject_digest`、`source_commit`、`artifact_digest`、`trust_store_digest`、`lifecycle_digest`、`now`）を置く。`scripts/release.sh`、`package-native-stage0-release.sh`、`release-smoke.sh` は `verify-native-release-identity.py` で source/artifact/provider digest を offline 検証し、provider helperが作らない欠落 digestや mismatchを `verified` として扱わない。旧 inputとの互換が必要な間は `NATIVE_ONLY_REQUIRE_REVIEW_EVIDENCE_IDENTITY=1` を release gateで有効にする。
-- stage0 archiveを直接 package する場合は `--review-evidence-identity <file> --review-trust-store <file> --review-lifecycle <file>` を同時に渡す。展開済み native-only archive の smoke では `RELEASE_REVIEW_TRUST_STORE=<file> RELEASE_REVIEW_LIFECYCLE=<file> bash scripts/ci/release-smoke.sh <stable-archive> <rollback-archive>` とし、snapshot path は片側指定せず、rollback archive へは伝播させない。`native-official-release-local.sh` から両 target へ渡す経路は M3-05-N8 の残タスクである
+- stage0 archiveを直接 package する場合は `--review-evidence-identity <file> --review-trust-store <file> --review-lifecycle <file>` を同時に渡す。展開済み native-only archive の smoke では `RELEASE_REVIEW_TRUST_STORE=<file> RELEASE_REVIEW_LIFECYCLE=<file> bash scripts/ci/release-smoke.sh <stable-archive> <rollback-archive>` とし、snapshot path は片側指定せず、rollback archive へは伝播させない。両 target の local gate では `NATIVE_OFFICIAL_REVIEW_TRUST_STORE=<file> NATIVE_OFFICIAL_REVIEW_LIFECYCLE=<file>` を同時に渡し、同じ bytes を Mac host と Linux VM へ伝播させる
 - `ROLLBACK_VERSION=v<version> bash scripts/ci/native-rollback-compat-local.sh` を Mac + Lima で実行し、両 target の実在する `lsharp-v<version>-<target>-host-launcher.tar.gz` を rollback input にする
 - input bundle と rollback archive は runner から HTTPS download できる場所へ置き、それぞれの SHA-256 を publish 前に固定する
 
@@ -156,6 +156,8 @@ Mac producer は `scripts/ci/native-macos-aarch64-selfhost-release.sh`、Linux p
 
 ```bash
 VERSION=v<version> \
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE=<trust-store-snapshot> \
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE=<review-lifecycle-snapshot> \
 MACOS_APP_CLI_ARTIFACT_DIR=<mac-staging-dir> \
 LINUX_APP_CLI_ARTIFACT_DIR=<linux-staging-dir> \
 MACOS_STAGE0_DIR=<mac-native-stage0-dir> \
@@ -165,7 +167,7 @@ LINUX_ROLLBACK_ARCHIVE=<linux-rollback-archive> \
   bash scripts/ci/native-official-release-local.sh
 ```
 
-この gate は macOS archive を host上、Linux x86_64 archive を Lima VM 上で `scripts/release.sh` / `scripts/ci/release-smoke.sh` に通す。加えて `lsharp-stage0-${VERSION}-${target}.tar.gz` と release-level `checksums.txt` を作り、同じ local release set から `scripts/fetch-stage0.sh` を再実行して stage0 manifest / target / payload checksum を確認する。stable / rollback manifest の `target` / `version` / `source_commit` は recursive smoke で一致を確認する。通常の release では GitHub workflow を dispatch せず、heavy self-regeneration も繰り返さない。
+この gate は macOS archive を host上、Linux x86_64 archive を Lima VM 上で `scripts/release.sh` / `scripts/ci/release-smoke.sh` に通す。provider snapshotを指定した場合は stage0 packageにも同じ pathを渡し、Linux VMへは raw bytes と `review_identity_timestamp.py` を明示コピーする。加えて `lsharp-stage0-${VERSION}-${target}.tar.gz` と release-level `checksums.txt` を作り、同じ local release set から `scripts/fetch-stage0.sh` を再実行して stage0 manifest / target / payload checksum を確認する。stable / rollback manifest の `target` / `version` / `source_commit` は recursive smoke で一致を確認する。通常の release では GitHub workflow を dispatch せず、heavy self-regeneration も繰り返さない。
 
 macOS payload を署名する場合は bundle 固定前に `program.native` を署名・verify し、署名後 bytes の `program_sha256` を manifest に記録する。workflow は immutable manifest/hash を壊す再署名をせず、secret がある場合に署名 verify と notarization submit を行う。
 

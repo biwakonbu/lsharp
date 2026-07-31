@@ -252,6 +252,12 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                 if relative_path == "scripts/ci/release-smoke.sh":
                     self.assertIn("RELEASE_REVIEW_TRUST_STORE", content)
                     self.assertIn("RELEASE_REVIEW_LIFECYCLE", content)
+                if relative_path == "scripts/ci/native-official-release-local.sh":
+                    self.assertIn("NATIVE_OFFICIAL_REVIEW_TRUST_STORE", content)
+                    self.assertIn("NATIVE_OFFICIAL_REVIEW_LIFECYCLE", content)
+                    self.assertIn("--review-trust-store", content)
+                    self.assertIn("--review-lifecycle", content)
+                    self.assertIn("review_identity_timestamp.py", content)
 
     def test_native_release_packages_and_recomputes_provider_identity(self):
         project_root = SCRIPTS_DIR.parent.parent
