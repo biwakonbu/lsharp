@@ -27,8 +27,9 @@ fn tool_input_schema(name: &str) -> Value {
         "lsharp_errors" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
+            "additionalProperties": false,
             "properties": {
-                "error_code": { "type": "string" }
+                "error_code": { "type": "string", "minLength": 1 }
             },
             "required": ["error_code"]
         }),
@@ -212,6 +213,24 @@ fn tool_output_schema(name: &str) -> Value {
                     }
                 },
                 "manifest": intent_graph_manifest_schema()
+            }
+        }),
+        "lsharp_errors" => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "name", "description", "fix", "doc"],
+            "properties": {
+                "code": { "type": "string", "minLength": 1 },
+                "legacy_code": { "type": ["string", "null"], "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "description": { "type": "string", "minLength": 1 },
+                "detail": { "type": "string", "minLength": 1 },
+                "fix": { "type": "string", "minLength": 1 },
+                "doc": {
+                    "type": "string",
+                    "const": error_codes::ERROR_REFERENCE_DOC
+                }
             }
         }),
         _ => json!({

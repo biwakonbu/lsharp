@@ -69,7 +69,10 @@ pub fn handle_jsonrpc_message(request: &Value) -> Value {
                             "description": tool.description,
                             "inputSchema": tool_input_schema(&tool.name),
                         });
-                        if matches!(tool.name.as_str(), "lsharp_check" | "lsharp_validate") {
+                        if matches!(
+                            tool.name.as_str(),
+                            "lsharp_check" | "lsharp_validate" | "lsharp_errors"
+                        ) {
                             descriptor["outputSchema"] = tool_output_schema(&tool.name);
                         }
                         descriptor

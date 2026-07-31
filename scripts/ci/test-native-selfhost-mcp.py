@@ -10,6 +10,11 @@ import tempfile
 import textwrap
 import unittest
 
+from native_selfhost_mcp_error_tests import (
+    assert_errors_lookup,
+    assert_errors_reject_invalid_arguments,
+)
+
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
@@ -150,7 +155,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertEqual(len(responses), 5)
             self.assertEqual(responses[0]["result"]["protocolVersion"], "2025-11-25")
             tool_names = {tool["name"] for tool in responses[1]["result"]["tools"]}
-            self.assertEqual(tool_names, {"lsharp_check", "lsharp_validate", "lsharp_format"})
+            self.assertEqual(
+                tool_names,
+                {"lsharp_check", "lsharp_validate", "lsharp_format", "lsharp_errors"},
+            )
             check_tool = next(
                 tool for tool in responses[1]["result"]["tools"] if tool["name"] == "lsharp_check"
             )
@@ -191,6 +199,20 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertEqual(
                 check_tool["outputSchema"]["$defs"]["position"]["required"],
                 ["line", "character"],
+            )
+            errors_tool = next(
+                tool for tool in responses[1]["result"]["tools"] if tool["name"] == "lsharp_errors"
+            )
+            self.assertEqual(errors_tool["inputSchema"]["oneOf"], [{"required": ["error_code"]}])
+            self.assertFalse(errors_tool["inputSchema"].get("additionalProperties", True))
+            self.assertEqual(errors_tool["inputSchema"]["properties"]["error_code"]["minLength"], 1)
+            self.assertEqual(
+                errors_tool["outputSchema"]["required"],
+                ["code", "name", "description", "fix", "doc"],
+            )
+            self.assertEqual(
+                errors_tool["outputSchema"]["properties"]["doc"]["const"],
+                "docs/guides/error-reference.md",
             )
             validate_tool = next(
                 tool for tool in responses[1]["result"]["tools"] if tool["name"] == "lsharp_validate"
@@ -320,6 +342,12 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertEqual(calls[0][2:4], ["--format", "json"])
             self.assertEqual(calls[1][0:2], ["validate", "--source"])
             self.assertEqual(calls[2][0], "fmt")
+
+    def test_errors_lookup_projects_canonical_table_without_native_execution(self):
+        assert_errors_lookup(self)
+
+    def test_errors_rejects_missing_or_unknown_arguments_before_native_execution(self):
+        assert_errors_reject_invalid_arguments(self)
 
     def test_validate_forwards_explicit_identity_and_manifest_request(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

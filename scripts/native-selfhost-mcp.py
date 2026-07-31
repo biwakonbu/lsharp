@@ -4,9 +4,11 @@
 The native compiler remains the only implementation authority.  This shim only
 translates JSON-RPC requests into the existing ``check``, ``validate`` and
 ``fmt`` CLI contracts; it never calls cargo, rustc, host ``lsharp`` or a
-provider/network helper.  Explicit provider snapshot paths are an offline
-bytes-to-digest adapter; signature and lifecycle semantic verification remain
-an external provider boundary until a native verifier is available.
+provider/network helper.  ``lsharp_errors`` is a read-only documentation
+lookup over the canonical Rust error-code table and never executes a host
+compiler.  Explicit provider snapshot paths are an offline bytes-to-digest
+adapter; signature and lifecycle semantic verification remain an external
+provider boundary until a native verifier is available.
 """
 
 import argparse
@@ -26,6 +28,7 @@ from native_selfhost_mcp_schema import (
     review_evidence_identity_schema,
     review_registry_schema,
 )
+from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
 
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
@@ -334,6 +337,14 @@ TOOLS = [
             "properties": {"formatted": {"type": "string"}},
         },
     ),
+    tool_descriptor(
+        "lsharp_errors",
+        "L# error code reference を返す (canonical Rust table lookup)",
+        {"error_code": {"type": "string", "minLength": 1}},
+        ["error_code"],
+        ERRORS_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
 ]
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
@@ -626,6 +637,11 @@ def call_tool(program, name, arguments):
                 value = call_check(program, arguments, temporary_directory)
             elif name == "lsharp_validate":
                 value = call_validate(program, arguments, temporary_directory)
+            elif name == "lsharp_errors":
+                try:
+                    value = call_errors(arguments)
+                except ErrorLookupError as error:
+                    raise ToolError(str(error)) from error
             else:
                 value = call_format(program, arguments, temporary_directory)
         except ToolError as error:

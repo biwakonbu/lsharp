@@ -19,6 +19,32 @@ mod tests {
         let schema = tool_input_schema("lsharp_errors");
 
         assert_eq!(schema["required"], json!(["error_code"]));
+        assert_eq!(schema["additionalProperties"], json!(false));
+        assert_eq!(schema["properties"]["error_code"]["minLength"], json!(1));
+    }
+
+    #[test]
+    fn test_error_tool_output_schema_is_closed_world() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .and_then(|tools| tools.iter().find(|tool| tool["name"] == "lsharp_errors"))
+            .expect("lsharp_errors が tools/list に必要");
+        let schema = &tool["outputSchema"];
+
+        assert_eq!(
+            schema["required"],
+            json!(["code", "name", "description", "fix", "doc"])
+        );
+        assert_eq!(schema["additionalProperties"], json!(false));
+        assert_eq!(
+            schema["properties"]["doc"]["const"],
+            json!(error_codes::ERROR_REFERENCE_DOC)
+        );
     }
 
     #[test]
@@ -698,6 +724,14 @@ description = "context fixture"
     #[test]
     fn test_errors_tool_requires_error_code() {
         let error = errors_tool(&json!({})).expect_err("error_code なしでは診断を返せない");
+
+        assert_eq!(error, "error_code が必要です");
+    }
+
+    #[test]
+    fn test_errors_tool_rejects_empty_error_code() {
+        let error = errors_tool(&json!({"error_code": ""}))
+            .expect_err("空の error_code では診断を返せない");
 
         assert_eq!(error, "error_code が必要です");
     }

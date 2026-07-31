@@ -63,8 +63,9 @@
   共有し、lexical shapeだけでは通る不正日時を fail-closed にする。verifier は明示 snapshot の raw bytes を任意に再計算し、trust-store/lifecycle digest mismatch と片側指定を fail-closed にする。
   2026-08-01 に `--manifest` の JSON root shape も検証し、配列・null・数値を traceback ではなく
   return code `1` の `review_evidence_identity` 入力エラーへ変換する contract test を追加した。これは
-  manifest runtime validation の verified partial sliceであり、native MCP full-tool/provider semantics、
-  current-source target runtime、packaged bytes parity は残る。
+  manifest runtime validation の verified partial sliceであり、native MCP の
+  LSP/package/compile-run/search/provider semantics、current-source target runtime、
+  packaged bytes parity、manifest runtime validation の残りは未完了である。
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
   current-source/packaged runtime は残る。
@@ -164,6 +165,15 @@ review verification schemaも Rust contractへ揃え、manifest top-level（vers
 `docs/adr/decisions-v0.3-native-mcp-check-output-schema.md`,
 `docs/adr/decisions-v0.3-native-mcp-validate-output-schema.md`,
 `docs/adr/decisions-v0.3-native-mcp-manifest-output-schema.md`。
+
+2026-08-01 に native MCP の lsharp_errors を追加した。canonical
+crates/lsharp-driver/src/error_codes.rs の read-only table projection として LS####、
+E0001-E0005（E0003 は LS1002 へ統合）、未知コード、docs link を返し、Rust/native schema の
+必須・空文字拒否・additionalProperties: false を揃えた。fake native program を実行しないことを
+native MCP 17 tests と Rust schema/error focused tests で確認した verified partial である。
+残る LSP/package/compile-run/search/provider semantics、target runtime、manifest runtime validation
+の全 surface は [~] のまま残す。ADR:
+docs/adr/decisions-v0.3-native-mcp-subset-shim.md。
 
 ## Current priority — v0.2 Milestone 2
 

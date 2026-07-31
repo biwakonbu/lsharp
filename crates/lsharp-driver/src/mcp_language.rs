@@ -159,6 +159,7 @@ fn errors_tool(arguments: &Value) -> Result<Value, String> {
     let code = arguments
         .get("error_code")
         .and_then(Value::as_str)
+        .filter(|code| !code.trim().is_empty())
         .ok_or_else(|| "error_code が必要です".to_string())?;
     let Some(entry) = error_codes::find_error_code(code) else {
         return Ok(json!({
