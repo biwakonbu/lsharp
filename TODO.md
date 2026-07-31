@@ -35,9 +35,11 @@
   JSON/text/manifest parity も Rust-host actual Wasm で verified partial として追加した。offline
   release identity verifier を native-only
   archive / packaged stage0 の optional identity projection と release smoke の再検証へ接続したが、
-  provider helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
+  明示 artifact/trust-store/lifecycle bytes を canonical identity へ変換する offline input preparer の
+  verified partial sliceを追加した。provider helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
   Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。ADR:
-  `docs/adr/decisions-v0.3-release-identity-gate.md`。
+  `docs/adr/decisions-v0.3-release-identity-gate.md`,
+  `docs/adr/decisions-v0.3-provider-input-identity-preparer.md`。
 
 ## Current priority — v0.2 Milestone 2
 
