@@ -4,11 +4,13 @@
 The native compiler remains the only implementation authority.  This shim only
 translates JSON-RPC requests into the existing ``check``, ``validate`` and
 ``fmt`` CLI contracts; it never calls cargo, rustc, host ``lsharp`` or a
-provider/network helper.  Provider snapshot paths intentionally remain an
-external adapter boundary until a native verifier is available.
+provider/network helper.  Explicit provider snapshot paths are an offline
+bytes-to-digest adapter; signature and lifecycle semantic verification remain
+an external provider boundary until a native verifier is available.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -100,7 +102,10 @@ TOOLS = [
     ),
     tool_descriptor(
         "lsharp_validate",
-        "L# source の intent/evidence graph を検証する (native selfhost subset)",
+        (
+            "L# source の intent/evidence graph を検証する (native selfhost subset)。"
+            "明示した provider snapshot は raw bytes の digest に変換する"
+        ),
         {
             **SOURCE_PROPERTIES,
             "manifest": {"oneOf": [{"type": "object"}, {"type": "string"}]},
@@ -223,15 +228,45 @@ def validate_input_file(arguments, temporary_directory):
     return path
 
 
-def reject_provider_paths(arguments):
-    if "trust_store" in arguments or "review_lifecycle" in arguments:
-        raise ToolError(
-            "native MCP の provider snapshot path は未接続です。"
-            " external provider adapter で digest を明示してから呼び出してください"
-        )
+def provider_snapshot_arguments(arguments):
+    path_names = ("trust_store", "review_lifecycle")
+    present = [name for name in path_names if name in arguments]
+    if not present:
+        return [], set()
+    if len(present) != len(path_names):
+        raise ToolError("trust_store と review_lifecycle は同時指定が必要です")
+
+    provider_inputs = (
+        ("trust_store", "review_trust_store_digest", "--review-trust-store-digest"),
+        ("review_lifecycle", "review_lifecycle_digest", "--review-lifecycle-digest"),
+    )
+    flags = []
+    excluded = set()
+    for path_name, digest_name, flag in provider_inputs:
+        path = pathlib.Path(require_string(arguments, path_name))
+        if path.is_symlink() or not path.is_file():
+            raise ToolError(f"native MCP {path_name} snapshot file が見つかりません: {path}")
+        try:
+            snapshot = path.read_bytes()
+        except OSError as error:
+            raise ToolError(
+                f"native MCP {path_name} snapshot file の読み込みに失敗しました: {error}"
+            ) from error
+        if not snapshot:
+            raise ToolError(f"native MCP {path_name} snapshot file は empty にできません: {path}")
+        digest = f"sha256:{hashlib.sha256(snapshot).hexdigest()}"
+        if digest_name in arguments:
+            expected = require_string(arguments, digest_name)
+            if expected != digest:
+                raise ToolError(
+                    f"{digest_name} digest mismatch: expected {expected}, computed {digest}"
+                )
+        flags.extend((flag, digest))
+        excluded.add(digest_name)
+    return flags, excluded
 
 
-def identity_arguments(arguments):
+def identity_arguments(arguments, excluded=()):
     flags = (
         ("review_subject_digest", "--review-subject-digest"),
         ("review_source_commit", "--review-source-commit"),
@@ -242,6 +277,8 @@ def identity_arguments(arguments):
     )
     result = []
     for name, flag in flags:
+        if name in excluded:
+            continue
         if name in arguments:
             result.extend((flag, require_string(arguments, name)))
     return result
@@ -254,13 +291,14 @@ def call_check(program, arguments, temporary_directory):
 
 
 def call_validate(program, arguments, temporary_directory):
-    reject_provider_paths(arguments)
     path = validate_input_file(arguments, temporary_directory)
     include_manifest = arguments.get("include_manifest", False)
     if not isinstance(include_manifest, bool):
         raise ToolError("include_manifest は boolean が必要です")
     command = ["validate", "--source", str(path), "--format", "json"]
-    command.extend(identity_arguments(arguments))
+    provider_flags, provider_digest_names = provider_snapshot_arguments(arguments)
+    command.extend(identity_arguments(arguments, provider_digest_names))
+    command.extend(provider_flags)
     manifest_path = None
     if include_manifest:
         manifest_path = pathlib.Path(temporary_directory) / "emitted-manifest.json"

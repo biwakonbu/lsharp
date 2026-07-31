@@ -136,9 +136,13 @@ MCP と provider API/auth adapter、および Linux runtime は未完了のた�
 
 同日、native selfhost `mcp-server` を JSON-RPC shim経由の `lsharp_check` / `lsharp_validate` /
 `lsharp_format` deterministic subsetへ接続した。native program以外の fallbackは呼ばず、provider
-snapshot pathはexternal adapter未接続として実行前に拒否する。focused runner/protocol testsは通過したが、
-Rust MCP 全tool parity、provider取得/auth、Linux runtimeは未完了のため `[~]` を維持する。ADR:
-`docs/adr/decisions-v0.3-native-mcp-subset-shim.md`。
+snapshot pathは明示した2つのファイルを offline で raw bytes の SHA-256 digestへ変換して native
+validateへ渡す。片側指定、欠損、非 regular、空、明示 digestとの不一致は native 実行前に fail-closed
+とし、ネットワーク・provider helper・署名/lifecycle意味検証は呼ばない。focused runner/protocol
+testsは通過したが、Rust MCP 全tool parity、provider取得/auth、署名/lifecycle検証、Linux runtimeは
+未完了のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.3-native-mcp-subset-shim.md`,
+`docs/adr/decisions-v0.3-native-mcp-provider-snapshot-adapter.md`。
 
 ## Current priority — v0.2 Milestone 2
 

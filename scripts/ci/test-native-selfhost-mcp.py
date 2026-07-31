@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import hashlib
 import json
 import os
 import pathlib
@@ -159,10 +160,16 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertIn("--emit-manifest", calls[0])
             self.assertEqual(self.responses(result.stdout)[0]["result"]["isError"], False)
 
-    def test_provider_paths_are_explicitly_rejected_before_native_execution(self):
+    def test_provider_paths_are_hashed_and_forwarded_to_native(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
             program = self.write_fake_program(root)
+            trust_store = root / "trust.json"
+            lifecycle = root / "lifecycle.json"
+            trust_bytes = b"trust snapshot\n"
+            lifecycle_bytes = b"lifecycle snapshot\n"
+            trust_store.write_bytes(trust_bytes)
+            lifecycle.write_bytes(lifecycle_bytes)
             payload = request(
                 1,
                 "tools/call",
@@ -170,8 +177,47 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     "name": "lsharp_validate",
                     "arguments": {
                         "source": "(defn main [] true)",
-                        "trust_store": "trust.json",
-                        "review_lifecycle": "lifecycle.json",
+                        "trust_store": str(trust_store),
+                        "review_lifecycle": str(lifecycle),
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]
+            self.assertFalse(response["result"]["isError"])
+            calls = [json.loads(line) for line in (root / "native.log").read_text().splitlines()]
+            self.assertEqual(len(calls), 1)
+            command = calls[0]
+            self.assertIn(
+                ["--review-trust-store-digest", f"sha256:{hashlib.sha256(trust_bytes).hexdigest()}"],
+                [command[index : index + 2] for index in range(len(command) - 1)],
+            )
+            self.assertIn(
+                ["--review-lifecycle-digest", f"sha256:{hashlib.sha256(lifecycle_bytes).hexdigest()}"],
+                [command[index : index + 2] for index in range(len(command) - 1)],
+            )
+
+    def test_provider_digest_mismatch_is_rejected_before_native_execution(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            trust_store = root / "trust.json"
+            lifecycle = root / "lifecycle.json"
+            trust_store.write_bytes(b"trust snapshot\n")
+            lifecycle.write_bytes(b"lifecycle snapshot\n")
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "trust_store": str(trust_store),
+                        "review_lifecycle": str(lifecycle),
+                        "review_trust_store_digest": "sha256:" + "0" * 64,
                     },
                 },
             )
@@ -181,8 +227,99 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr.decode())
             response = self.responses(result.stdout)[0]
             self.assertTrue(response["result"]["isError"])
-            self.assertIn("external provider adapter", response["result"]["content"][0]["text"])
+            self.assertIn("digest mismatch", response["result"]["content"][0]["text"])
             self.assertFalse((root / "native.log").exists())
+
+    def test_matching_provider_digests_are_forwarded_once(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            trust_store = root / "trust.json"
+            lifecycle = root / "lifecycle.json"
+            trust_store.write_bytes(b"trust snapshot\n")
+            lifecycle.write_bytes(b"lifecycle snapshot\n")
+            trust_digest = f"sha256:{hashlib.sha256(trust_store.read_bytes()).hexdigest()}"
+            lifecycle_digest = f"sha256:{hashlib.sha256(lifecycle.read_bytes()).hexdigest()}"
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "trust_store": str(trust_store),
+                        "review_lifecycle": str(lifecycle),
+                        "review_trust_store_digest": trust_digest,
+                        "review_lifecycle_digest": lifecycle_digest,
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            self.assertFalse(self.responses(result.stdout)[0]["result"]["isError"])
+            command = json.loads((root / "native.log").read_text().splitlines()[0])
+            self.assertEqual(command.count("--review-trust-store-digest"), 1)
+            self.assertEqual(command.count("--review-lifecycle-digest"), 1)
+            self.assertEqual(command[command.index("--review-trust-store-digest") + 1], trust_digest)
+            self.assertEqual(command[command.index("--review-lifecycle-digest") + 1], lifecycle_digest)
+
+    def test_provider_paths_require_both_existing_non_empty_files(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            trust_store = root / "trust.json"
+            lifecycle = root / "lifecycle.json"
+            trust_store.write_bytes(b"trust snapshot\n")
+            lifecycle.write_bytes(b"lifecycle snapshot\n")
+
+            cases = [
+                (
+                    {"trust_store": str(trust_store)},
+                    "同時指定",
+                ),
+                (
+                    {"trust_store": str(trust_store), "review_lifecycle": str(root / "missing.json")},
+                    "見つかりません",
+                ),
+            ]
+            snapshot_directory = root / "snapshot-directory"
+            snapshot_directory.mkdir()
+            cases.append(
+                (
+                    {"trust_store": str(snapshot_directory), "review_lifecycle": str(lifecycle)},
+                    "見つかりません",
+                )
+            )
+            trust_link = root / "trust-link.json"
+            trust_link.symlink_to(trust_store)
+            cases.append(
+                (
+                    {"trust_store": str(trust_link), "review_lifecycle": str(lifecycle)},
+                    "見つかりません",
+                )
+            )
+            lifecycle.write_bytes(b"")
+            cases.append(
+                (
+                    {"trust_store": str(trust_store), "review_lifecycle": str(lifecycle)},
+                    "empty",
+                )
+            )
+            for provider_arguments, message in cases:
+                arguments = {"source": "(defn main [] true)", **provider_arguments}
+                result = self.run_shim(
+                    program,
+                    request(1, "tools/call", {"name": "lsharp_validate", "arguments": arguments}),
+                    root,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                response = self.responses(result.stdout)[0]
+                self.assertTrue(response["result"]["isError"])
+                self.assertIn(message, response["result"]["content"][0]["text"])
+                self.assertFalse((root / "native.log").exists())
 
     def test_malformed_json_or_missing_program_is_fail_closed(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

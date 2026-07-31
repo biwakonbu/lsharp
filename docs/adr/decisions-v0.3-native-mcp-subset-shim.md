@@ -4,7 +4,9 @@
 
 Verified partial slice (2026-08-01). Native MCP is no longer an unconditional
 `mcp-server` rejection, but full tool parity and provider verification remain
-active work.
+active work. The provider-path rejection described by this initial slice is
+superseded by
+[`decisions-v0.3-native-mcp-provider-snapshot-adapter.md`](decisions-v0.3-native-mcp-provider-snapshot-adapter.md).
 
 ## Context
 
