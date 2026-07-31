@@ -114,6 +114,181 @@ def references_null_output():
     return initialize_output() + frame(references)
 
 
+def completion_output(items, completion_list=False):
+    result = {"isIncomplete": False, "items": items} if completion_list else items
+    completion = json.dumps(
+        {"jsonrpc": "2.0", "id": 2, "result": result},
+        separators=(",", ":"),
+    ).encode()
+    return initialize_output() + frame(completion)
+
+
+def completion_null_output():
+    completion = json.dumps(
+        {"jsonrpc": "2.0", "id": 2, "result": None},
+        separators=(",", ":"),
+    ).encode()
+    return initialize_output() + frame(completion)
+
+
+def assert_completion_projects_native_lsp(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        items = [
+            {"label": "add", "kind": 3, "insertText": "add"},
+            {"label": "if", "kind": 14, "insertText": "if"},
+            {"label": "plain", "kind": None, "insertText": None},
+        ]
+        program = write_fake_lsp_program(root, completion_output(items))
+        payload = b"".join(
+            [
+                request(1, "tools/list"),
+                request(
+                    2,
+                    "tools/call",
+                    {
+                        "name": "lsharp_completion",
+                        "arguments": {
+                            "source": "(defn add [x y] (+ x y))\n",
+                            "line": 0,
+                            "character": 8,
+                        },
+                    },
+                ),
+            ]
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        tool = next(tool for tool in responses[0]["result"]["tools"] if tool["name"] == "lsharp_completion")
+        test.assertEqual(tool["inputSchema"]["oneOf"], [{"required": ["line", "character"]}])
+        test.assertFalse(tool["inputSchema"]["additionalProperties"])
+        test.assertEqual(tool["outputSchema"]["required"], ["items"])
+        test.assertEqual(
+            responses[1]["result"]["structuredContent"],
+            {
+                "items": [
+                    {"label": "add", "kind": "FUNCTION", "insertText": "add"},
+                    {"label": "if", "kind": "KEYWORD", "insertText": "if"},
+                    {"label": "plain", "kind": None, "insertText": None},
+                ]
+            },
+        )
+        messages = [json.loads(body) for body in _parse_frames((root / "lsp-input.bin").read_bytes())]
+        test.assertEqual(
+            [message["method"] for message in messages],
+            ["initialize", "initialized", "textDocument/didOpen", "textDocument/completion"],
+        )
+        test.assertEqual(messages[-1]["params"]["position"], {"line": 0, "character": 8})
+
+
+def assert_completion_supports_file_and_col_alias(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        source = root / "input.ls"
+        source.write_text("(defn id [x] x)\n", encoding="utf-8")
+        program = write_fake_lsp_program(
+            root,
+            completion_output(
+                [{"label": "id", "kind": 3, "insertText": "id"}], completion_list=True
+            ),
+        )
+        payload = request(
+            1,
+            "tools/call",
+            {
+                "name": "lsharp_completion",
+                "arguments": {"file": str(source), "line": 0, "col": 7},
+            },
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertEqual(response["result"]["structuredContent"]["items"][0]["kind"], "FUNCTION")
+        messages = [json.loads(body) for body in _parse_frames((root / "lsp-input.bin").read_bytes())]
+        test.assertEqual(messages[2]["params"]["textDocument"]["uri"], source.resolve().as_uri())
+        test.assertEqual(messages[-1]["params"]["position"], {"line": 0, "character": 7})
+
+
+def assert_completion_projects_empty_native_result(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = write_fake_lsp_program(root, completion_null_output())
+        payload = request(
+            1,
+            "tools/call",
+            {
+                "name": "lsharp_completion",
+                "arguments": {"source": "x", "line": 0, "character": 0},
+            },
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertEqual(response["result"]["structuredContent"], {"items": []})
+
+
+def assert_completion_rejects_invalid_arguments_before_native(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = write_fake_lsp_program(root, completion_output([]))
+        cases = [
+            {"unknown": True, "line": 0, "character": 0},
+            {"source": "x", "character": 0},
+            {"source": "x", "line": -1, "character": 0},
+            {"source": "x", "line": 0, "character": True},
+            {"source": "x", "file": "other.ls", "line": 0, "character": 0},
+        ]
+        payload = b"".join(
+            request(index, "tools/call", {"name": "lsharp_completion", "arguments": arguments})
+            for index, arguments in enumerate(cases, 1)
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        test.assertEqual(len(responses), len(cases))
+        for response in responses:
+            test.assertTrue(response["result"]["isError"])
+        test.assertIn("未知", responses[0]["result"]["content"][0]["text"])
+        test.assertIn("line", responses[1]["result"]["content"][0]["text"])
+        test.assertFalse((root / "lsp-input.bin").exists())
+
+
+def assert_completion_rejects_native_failures(test):
+    invalid_item = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": [{"label": "bad", "kind": 99, "insertText": "bad"}],
+        },
+        separators=(",", ":"),
+    ).encode()
+    cases = (
+        ("stderr", completion_output([]), "diagnostic"),
+        ("nonzero", completion_output([]), "failure"),
+        ("malformed", completion_output([]), "malformed"),
+        ("success", initialize_output(), "response がありません"),
+        ("success", initialize_output() + frame(invalid_item), "kind"),
+    )
+    for mode, output, message in cases:
+        with test.subTest(mode=mode, message=message), tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = write_fake_lsp_program(root, output, mode=mode)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_completion",
+                    "arguments": {"source": "x", "line": 0, "character": 0},
+                },
+            )
+            result = test.run_shim(program, payload, root)
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn(message, response["result"]["content"][0]["text"])
+
+
 def assert_references_projects_native_lsp(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

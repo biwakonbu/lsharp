@@ -40,12 +40,15 @@ from native_selfhost_mcp_schema import (
 )
 from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
 from native_selfhost_mcp_lsp import (
+    COMPLETION_OUTPUT_SCHEMA,
     DEFINITION_OUTPUT_SCHEMA,
     HOVER_OUTPUT_SCHEMA,
     REFERENCES_OUTPUT_SCHEMA,
+    CompletionLookupError,
     DefinitionLookupError,
     HoverLookupError,
     ReferencesLookupError,
+    call_completion,
     call_definition,
     call_hover,
     call_references,
@@ -317,6 +320,19 @@ TOOLS = [
         },
         ["line", "character"],
         REFERENCES_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
+    tool_descriptor(
+        "lsharp_completion",
+        "native LSP からカーソル位置の補完候補を返す",
+        {
+            **SOURCE_PROPERTIES,
+            "line": {"type": "integer", "minimum": 0},
+            "character": {"type": "integer", "minimum": 0},
+            "col": {"type": "integer", "minimum": 0},
+        },
+        ["line", "character"],
+        COMPLETION_OUTPUT_SCHEMA,
         {"additionalProperties": False},
     ),
     tool_descriptor(
@@ -740,6 +756,11 @@ def call_tool(program, name, arguments):
                 try:
                     value = call_references(program, arguments, temporary_directory)
                 except ReferencesLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_completion":
+                try:
+                    value = call_completion(program, arguments, temporary_directory)
+                except CompletionLookupError as error:
                     raise ToolError(str(error)) from error
             elif name == "lsharp_check":
                 value = call_check(program, arguments, temporary_directory)

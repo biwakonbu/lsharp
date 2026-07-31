@@ -23,7 +23,7 @@ VM or regenerating stage0.
   native `program.native`; it never invokes `cargo`, `rustc`, host `lsharp`,
   network access, or a provider helper.
 - Advertise only the deterministic subset currently implemented by the native
-  `App.Cli` boundary: `lsharp_hover`, `lsharp_definition`, `lsharp_references`, `lsharp_check`, `lsharp_validate`, `lsharp_format`,
+  `App.Cli` boundary: `lsharp_hover`, `lsharp_definition`, `lsharp_references`, `lsharp_completion`, `lsharp_check`, `lsharp_validate`, `lsharp_format`,
   `lsharp_errors`, the offline local-package `lsharp_search` projection, the
   offline `lsharp_project_context` projection, and the offline
   `lsharp_package_api` and `lsharp_stdlib_api` projections. The docs
@@ -46,6 +46,12 @@ VM or regenerating stage0.
   `null` result is the empty reference set; malformed frames, child diagnostics,
   missing responses, and invalid location ranges fail closed without a host LSP
   fallback.
+- `lsharp_completion` sends the same source/file and position contract to the
+  native `lsp --stdio` boundary and projects LSP arrays or completion lists to
+  the closed MCP `{items}` shape. Numeric LSP completion kinds are mapped to
+  the Rust MCP names; a native `null` result is the empty candidate set, while
+  malformed results, invalid items, child diagnostics, and missing responses
+  fail closed without a host LSP fallback.
 - `lsharp_package_api` resolves a deterministic installed-package directory.
   When `docs/api.json` exists it is read without invoking the native program and
   validated against the full closed-world API shape. When the artifact is absent,
@@ -73,8 +79,8 @@ VM or regenerating stage0.
 
 ## Evidence
 
-- `scripts/ci/test-native-selfhost-mcp.py`: 42 focused tests cover protocol
-  discovery, native LSP hover/definition/references, native-only check/validate/format calls, canonical error lookup
+- `scripts/ci/test-native-selfhost-mcp.py`: 47 focused tests cover protocol
+  discovery, native LSP hover/definition/references/completion, native-only check/validate/format calls, canonical error lookup
   (LS codes, E0001-E0005 aliases, unknown codes, and no native execution),
   offline installed-package search, project context (TOML project/dependency
   projection), package API (existing `docs/api.json` projection and missing-file
@@ -88,7 +94,7 @@ VM or regenerating stage0.
   limit.
 - `scripts/ci/test-native-selfhost-lsp-stdio.py`: 5 frame-relay tests remain
   green, including child stderr/nonzero, malformed/truncated frame, and replay
-  prefix rejection cases used by the MCP hover, definition, and references adapters.
+  prefix rejection cases used by the MCP hover, definition, references, and completion adapters.
 - `crates/lsharp-driver` schema and unit tests require the same closed-world
   `lsharp_errors`, `lsharp_search`, `lsharp_project_context`, `lsharp_package_api`,
   and `lsharp_stdlib_api` boundaries; `cargo test -p lsharp-driver
@@ -114,8 +120,8 @@ offline TOML/package projection; `lsharp_package_api` is a verified existing
 `docs/api.json` projection plus a no-mutation native `doc --json` source
 projection with closed-world shape validation, and `lsharp_stdlib_api` is only a verified
 generated-artifact or missing-artifact native `doc --json` source projection; `lsharp_hover`,
-`lsharp_definition`, and `lsharp_references` are verified native LSP stdio projections, while
-completion and full native compiler/package-install semantics remain outside this slice. N9 / `EC-M3-05`
+`lsharp_definition`, `lsharp_references`, and `lsharp_completion` are verified native LSP stdio
+projections, while full native compiler/package-install semantics remain outside this slice. N9 / `EC-M3-05`
 therefore remains `[~]`; the next RED should select one additional LSP tool,
 compile/run boundary, or the explicit provider adapter contract and compare Rust/native
 output with the same fixture.

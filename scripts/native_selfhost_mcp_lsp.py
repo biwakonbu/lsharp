@@ -17,6 +17,10 @@ class ReferencesLookupError(Exception):
     """A native LSP references request failed or returned an invalid result."""
 
 
+class CompletionLookupError(Exception):
+    """A native LSP completion request failed or returned an invalid result."""
+
+
 HOVER_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -91,6 +95,28 @@ REFERENCES_OUTPUT_SCHEMA = {
                 },
             },
         },
+    },
+}
+
+COMPLETION_OUTPUT_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["items"],
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["label", "kind", "insertText"],
+                "properties": {
+                    "label": {"type": "string", "minLength": 1},
+                    "kind": {"type": ["string", "null"], "minLength": 1},
+                    "insertText": {"type": ["string", "null"]},
+                },
+            },
+        }
     },
 }
 
@@ -393,3 +419,91 @@ def call_references(program, arguments, temporary_directory):
         allow_none=True,
     )
     return _project_references(result)
+
+
+_COMPLETION_KIND_NAMES = {
+    1: "TEXT",
+    2: "METHOD",
+    3: "FUNCTION",
+    4: "CONSTRUCTOR",
+    5: "FIELD",
+    6: "VARIABLE",
+    7: "CLASS",
+    8: "INTERFACE",
+    9: "MODULE",
+    10: "PROPERTY",
+    11: "UNIT",
+    12: "VALUE",
+    13: "ENUM",
+    14: "KEYWORD",
+    15: "SNIPPET",
+    16: "COLOR",
+    17: "FILE",
+    18: "REFERENCE",
+    19: "FOLDER",
+    20: "ENUM_MEMBER",
+    21: "CONSTANT",
+    22: "STRUCT",
+    23: "EVENT",
+    24: "OPERATOR",
+    25: "TYPE_PARAMETER",
+}
+_COMPLETION_KIND_NAMES_BY_NAME = frozenset(_COMPLETION_KIND_NAMES.values())
+
+
+def _project_completion_kind(value):
+    if value is None:
+        return None
+    if type(value) is int and value in _COMPLETION_KIND_NAMES:
+        return _COMPLETION_KIND_NAMES[value]
+    if isinstance(value, str) and value in _COMPLETION_KIND_NAMES_BY_NAME:
+        return value
+    raise CompletionLookupError("native LSP completion item kind が不正です")
+
+
+def _project_completion(result):
+    if result is None:
+        items = []
+    elif isinstance(result, list):
+        items = result
+    elif isinstance(result, dict) and isinstance(result.get("items"), list):
+        items = result["items"]
+    else:
+        raise CompletionLookupError("native LSP completion result が配列ではありません")
+    projected = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise CompletionLookupError(f"native LSP completion[{index}] item が不正です")
+        label = item.get("label")
+        if not isinstance(label, str) or not label:
+            raise CompletionLookupError(f"native LSP completion[{index}] label が不正です")
+        insert_text = item.get("insertText")
+        if insert_text is not None and not isinstance(insert_text, str):
+            raise CompletionLookupError(
+                f"native LSP completion[{index}] insertText が不正です"
+            )
+        projected.append(
+            {
+                "label": label,
+                "kind": _project_completion_kind(item.get("kind")),
+                "insertText": insert_text,
+            }
+        )
+    return {"items": projected}
+
+
+def call_completion(program, arguments, temporary_directory):
+    allowed = {"source", "file", "line", "character", "col"}
+    unknown = sorted(set(arguments).difference(allowed))
+    if unknown:
+        raise CompletionLookupError(f"lsharp_completion の未知の引数: {', '.join(unknown)}")
+    result = _run_lsp_request(
+        program,
+        arguments,
+        temporary_directory,
+        "textDocument/completion",
+        "completion",
+        CompletionLookupError,
+        allow_none=True,
+    )
+    return _project_completion(result)

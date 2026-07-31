@@ -179,7 +179,7 @@ native MCP 21 tests と Rust MCP focused 59 tests で確認した。lsharp_packa
 installed package の既存 `docs/api.json` projection に加え、artifact が無い場合の sorted `src/**/*.ls`
 ごとの native `doc --json` in-memory projection を追加した。full closed-world schema、nested malformed
 field と malformed native doc の fail-closed、引数 fail-closed、既存 artifact route の fake native program
-非実行、生成 route の `docs/api.json` 非作成を native MCP 42 tests と native LSP relay 5 tests、Rust `mcp_server::tests` 87 tests
+非実行、生成 route の `docs/api.json` 非作成を native MCP 47 tests と native LSP relay 5 tests、Rust `mcp_server::tests` 87 tests
 （package API filter 6 tests、driver unit 214 tests）で確認した。lsharp_stdlib_api は Rust canonical `doc --json` から生成した
 `stdlib/api.json` を読む offline projectionに加え、artifact が無い場合の sorted direct `stdlib/*.ls`
 ごとの native `doc --json` in-memory projection を追加した。module 絞り込み、閉世界 schema、引数
@@ -191,7 +191,9 @@ response の fail-closed を確認した verified partial である。
 projection、invalid range/ambiguous location の fail-closed を native MCP 37 tests で確認した verified partial である。
 さらに native `lsharp_references` の `includeDeclaration: true` relay、複数 location の closed `{count,ranges}`
 projection、native `null` の空集合化、invalid range の fail-closed を native MCP 42 tests で確認した verified partial である。
-completion、package-install semantics、残る compile-run/provider semantics、target runtime、manifest runtime validation
+さらに native `lsharp_completion` の array/CompletionList relay、numeric completion kind の Rust 名称投影、
+native `null` の空候補化、invalid item の fail-closed を native MCP 47 tests で確認した verified partial である。
+package-install semantics、残る compile-run/provider semantics、target runtime、manifest runtime validation
 の全 surface は [~] のまま残す。ADR:
 docs/adr/decisions-v0.3-native-mcp-subset-shim.md。
 
