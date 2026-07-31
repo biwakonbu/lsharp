@@ -27,14 +27,96 @@
   (if (= (vector-get decl 0) (ast-private))
     (typeinfer-record-decl-unprivate (vector-get decl 1))
     decl))
-(defn typeinfer-record-remove-accessors-loop [raw-fields idx len env]
+(defn typeinfer-record-remove-accessors-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-record-remove-accessors-step-v3
+  [raw-fields idx len env]
   (if (>= idx len)
-    env
-    (typeinfer-record-remove-accessors-loop
-      raw-fields
-      (+ idx 3)
-      len
-      (type-env-remove env (vector-get raw-fields (+ idx 1))))))
+    (typeinfer-record-remove-accessors-state 1 idx env)
+    (do
+      (root_push raw-fields)
+      (root_push env)
+      (let [next-env
+              (type-env-remove env (vector-get raw-fields (+ idx 1)))]
+        (do
+          (root_push next-env)
+          (let [state
+                  (typeinfer-record-remove-accessors-state
+                    0
+                    (+ idx 3)
+                    next-env)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn typeinfer-record-remove-accessors-step-64-loop-bounded
+  [raw-fields idx len env remaining]
+  (do
+    (root_push raw-fields)
+    (root_push env)
+    (let [step
+            (typeinfer-record-remove-accessors-step-v3
+              raw-fields idx len env)
+          done (vector-get step 0)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-record-remove-accessors-step-64-loop-bounded
+                      raw-fields
+                      (vector-get step 1)
+                      len
+                      next-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-record-remove-accessors-step-64
+  [raw-fields idx len env]
+  (typeinfer-record-remove-accessors-step-64-loop-bounded
+    raw-fields idx len env 64))
+
+(defn typeinfer-record-remove-accessors-rooted-v3
+  [raw-fields idx len env]
+  (let [step
+          (typeinfer-record-remove-accessors-step-64
+            raw-fields idx len env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push raw-fields)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-record-remove-accessors-rooted-v3
+                      raw-fields
+                      (vector-get step 1)
+                      len
+                      next-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-record-remove-accessors-loop
+  [raw-fields idx len env]
+  (typeinfer-record-remove-accessors-rooted-v3
+    raw-fields idx len env))
 (defn typeinfer-remove-record-def [decl env]
   (let [raw-fields (typeinfer-record-decl-field-exprs decl)
     constructor-env (type-env-remove env (vector-get decl 1))]
@@ -45,22 +127,111 @@
         0
         (vector-length raw-fields)
         constructor-env))))
-(defn typeinfer-remove-record-defs-before-module-loop [program env idx limit]
+(defn typeinfer-remove-record-defs-before-module-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-remove-record-defs-before-module-step-v3
+  [program idx limit env]
   (if (>= idx limit)
-    env
-    (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
-      tag (vector-get decl 0)]
-      (if (= tag (ast-recorddef))
-        (typeinfer-remove-record-defs-before-module-loop
-          program
-          (typeinfer-remove-record-def decl env)
-          (+ idx 1)
-          limit)
-        (typeinfer-remove-record-defs-before-module-loop
-          program
-          env
-          (+ idx 1)
-          limit)))))
+    (typeinfer-remove-record-defs-before-module-state 1 idx env)
+    (do
+      (root_push program)
+      (root_push env)
+      (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)]
+            (if (= tag (ast-recorddef))
+              (let [next-env (typeinfer-remove-record-def decl env)]
+                (do
+                  (root_push next-env)
+                  (let [state
+                          (typeinfer-remove-record-defs-before-module-state
+                            0
+                            (+ idx 1)
+                            next-env)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state))))
+              (let [state
+                      (typeinfer-remove-record-defs-before-module-state
+                        0
+                        (+ idx 1)
+                        env)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-remove-record-defs-before-module-step-64-loop-bounded
+  [program idx limit env remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (let [step
+            (typeinfer-remove-record-defs-before-module-step-v3
+              program idx limit env)
+          done (vector-get step 0)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-remove-record-defs-before-module-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      limit
+                      next-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-remove-record-defs-before-module-step-64
+  [program idx limit env]
+  (typeinfer-remove-record-defs-before-module-step-64-loop-bounded
+    program idx limit env 64))
+
+(defn typeinfer-remove-record-defs-before-module-rooted-v3
+  [program idx limit env]
+  (let [step
+          (typeinfer-remove-record-defs-before-module-step-64
+            program idx limit env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-remove-record-defs-before-module-rooted-v3
+                      program
+                      (vector-get step 1)
+                      limit
+                      next-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-remove-record-defs-before-module-loop
+  [program env idx limit]
+  (typeinfer-remove-record-defs-before-module-rooted-v3
+    program idx limit env))
 (defn typeinfer-remove-record-defs-before-module [program env limit]
   (typeinfer-remove-record-defs-before-module-loop program env 0 limit))
 (defn typeinfer-record-only-contains-loop [only-hashes idx len name-hash]

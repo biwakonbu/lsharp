@@ -511,14 +511,90 @@
     (infer-defn-predeclared node body-env env counter (subst-new) placeholder (map-new) alias-env)))
 
 ;; 型変数ベクタを一般化除外用の Set へ移す。
-(defn typeinfer-free-vars-to-set [vars idx len env-vars]
+(defn typeinfer-free-vars-to-set-state [done next-idx env-vars]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env-vars))
+
+(defn typeinfer-free-vars-to-set-step-v3 [vars idx len env-vars]
   (if (>= idx len)
-    env-vars
-    (typeinfer-free-vars-to-set
-      vars
-      (+ idx 1)
-      len
-      (map-insert-int-safe env-vars (vector-get vars idx) 1))))
+    (typeinfer-free-vars-to-set-state 1 idx env-vars)
+    (do
+      (root_push vars)
+      (root_push env-vars)
+      (let [next-env-vars
+              (map-insert-int-safe env-vars (vector-get vars idx) 1)]
+        (do
+          (root_push next-env-vars)
+          (let [state
+                  (typeinfer-free-vars-to-set-state
+                    0
+                    (+ idx 1)
+                    next-env-vars)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn typeinfer-free-vars-to-set-step-64-loop-bounded
+  [vars idx len env-vars remaining]
+  (do
+    (root_push vars)
+    (root_push env-vars)
+    (let [step
+            (typeinfer-free-vars-to-set-step-v3
+              vars idx len env-vars)
+          done (vector-get step 0)
+          next-env-vars (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env-vars)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-free-vars-to-set-step-64-loop-bounded
+                      vars
+                      (vector-get step 1)
+                      len
+                      next-env-vars
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-free-vars-to-set-step-64 [vars idx len env-vars]
+  (typeinfer-free-vars-to-set-step-64-loop-bounded
+    vars idx len env-vars 64))
+
+(defn typeinfer-free-vars-to-set-rooted-v3 [vars idx len env-vars]
+  (let [step
+          (typeinfer-free-vars-to-set-step-64 vars idx len env-vars)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push vars)
+        (root_push step)
+        (let [next-env-vars (vector-get step 2)]
+          (do
+            (root_push next-env-vars)
+            (let [resolved
+                    (typeinfer-free-vars-to-set-rooted-v3
+                      vars
+                      (vector-get step 1)
+                      len
+                      next-env-vars)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-free-vars-to-set [vars idx len env-vars]
+  (typeinfer-free-vars-to-set-rooted-v3 vars idx len env-vars))
 
 ;; private wrapper は同一 module 内の型推論では内側の宣言を使う。
 (defn typeinfer-unprivate-defn [decl]
@@ -527,18 +603,111 @@
     decl))
 
 ;; 次の module に進む前に、先行 module の unqualified defn を型環境から隠す。
-(defn typeinfer-remove-defns-before-module-loop [program env idx limit]
+(defn typeinfer-remove-defns-before-module-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-remove-defns-before-module-step-v3
+  [program idx limit env]
   (if (>= idx limit)
-    env
-    (let [decl (typeinfer-unprivate-defn (vector-get program idx))
-      tag (vector-get decl 0)]
-      (if (= tag (ast-defn))
-        (typeinfer-remove-defns-before-module-loop
-          program
-          (type-env-remove env (vector-get decl 1))
-          (+ idx 1)
-          limit)
-        (typeinfer-remove-defns-before-module-loop program env (+ idx 1) limit)))))
+    (typeinfer-remove-defns-before-module-state 1 idx env)
+    (do
+      (root_push program)
+      (root_push env)
+      (let [decl (typeinfer-unprivate-defn (vector-get program idx))]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)]
+            (if (= tag (ast-defn))
+              (let [next-env
+                      (type-env-remove env (vector-get decl 1))]
+                (do
+                  (root_push next-env)
+                  (let [state
+                          (typeinfer-remove-defns-before-module-state
+                            0
+                            (+ idx 1)
+                            next-env)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state))))
+              (let [state
+                      (typeinfer-remove-defns-before-module-state
+                        0
+                        (+ idx 1)
+                        env)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-remove-defns-before-module-step-64-loop-bounded
+  [program idx limit env remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (let [step
+            (typeinfer-remove-defns-before-module-step-v3
+              program idx limit env)
+          done (vector-get step 0)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-remove-defns-before-module-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      limit
+                      next-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-remove-defns-before-module-step-64
+  [program idx limit env]
+  (typeinfer-remove-defns-before-module-step-64-loop-bounded
+    program idx limit env 64))
+
+(defn typeinfer-remove-defns-before-module-rooted-v3
+  [program idx limit env]
+  (let [step
+          (typeinfer-remove-defns-before-module-step-64
+            program idx limit env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-remove-defns-before-module-rooted-v3
+                      program
+                      (vector-get step 1)
+                      limit
+                      next-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-remove-defns-before-module-loop [program env idx limit]
+  (typeinfer-remove-defns-before-module-rooted-v3
+    program idx limit env))
 
 (defn typeinfer-remove-defns-before-module [program env limit]
   (typeinfer-remove-record-defs-before-module
@@ -1209,12 +1378,69 @@
     1
     record-env))
 
-(defn typeinfer-next-module-index [program idx len]
+(defn typeinfer-next-module-index-state [done next-idx]
+  (vector-push-pair-rooted (vector-new 2) done next-idx))
+
+(defn typeinfer-next-module-index-step-v3 [program idx len]
   (if (>= idx len)
-    len
-    (if (= (vector-get (vector-get program idx) 0) (ast-module-decl))
-      idx
-      (typeinfer-next-module-index program (+ idx 1) len))))
+    (typeinfer-next-module-index-state 1 idx)
+    (do
+      (root_push program)
+      (let [tag (vector-get (vector-get program idx) 0)]
+        (do
+          (root_pop)
+          (if (= tag (ast-module-decl))
+            (typeinfer-next-module-index-state 1 idx)
+            (typeinfer-next-module-index-state 0 (+ idx 1))))))))
+
+(defn typeinfer-next-module-index-step-64-loop-bounded
+  [program idx len remaining]
+  (do
+    (root_push program)
+    (let [step
+            (typeinfer-next-module-index-step-v3 program idx len)
+          done (vector-get step 0)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-next-module-index-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      len
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-next-module-index-step-64 [program idx len]
+  (typeinfer-next-module-index-step-64-loop-bounded
+    program idx len 64))
+
+(defn typeinfer-next-module-index-rooted-v3 [program idx len]
+  (let [step
+          (typeinfer-next-module-index-step-64 program idx len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push program)
+        (root_push step)
+        (let [resolved
+                (typeinfer-next-module-index-rooted-v3
+                  program
+                  (vector-get step 1)
+                  len)]
+          (do
+            (root_pop)
+            (root_pop)
+            resolved))))))
+
+(defn typeinfer-next-module-index [program idx len]
+  (typeinfer-next-module-index-rooted-v3 program idx len))
 
 (defn typeinfer-open-import-source [program import-idx decl env record-env]
   (if (= (typeinfer-import-open? decl) 1)
@@ -1762,20 +1988,145 @@
 
 ;; parametric alias の source parameter を fresh 型変数へ対応付ける。
 ;; 戻り値 = [param-name-to-type, param-types-in-source-order]
-(defn typeinfer-build-parametric-alias-param-state-loop [params idx len counter param-env param-types]
+(defn typeinfer-build-parametric-alias-param-state-state
+  [done next-idx param-env param-types]
+  (do
+    (root_push param-env)
+    (root_push param-types)
+    (let [result
+            (push-object-vector-local
+              (push-object-vector-local (vector-new 2) param-env)
+              param-types)]
+      (do
+        (root_push result)
+        (let [state
+                (vector-push-triple-rooted
+                  (vector-new 3)
+                  done
+                  next-idx
+                  result)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            state))))))
+
+(defn typeinfer-build-parametric-alias-param-state-step-v3
+  [params idx len counter param-env param-types]
   (if (>= idx len)
-    (push-object-vector-local (push-object-vector-local (vector-new 2) param-env) param-types)
-    (let [param-hash (vector-get params idx)
-      param-type (fresh-type-var counter)
-      next-param-env (map-insert-object-safe param-env param-hash param-type)
-      next-param-types (push-object-vector-local param-types param-type)]
-      (typeinfer-build-parametric-alias-param-state-loop
-        params
-        (+ idx 1)
-        len
-        counter
-        next-param-env
-        next-param-types))))
+    (typeinfer-build-parametric-alias-param-state-state
+      1 idx param-env param-types)
+    (do
+      (root_push params)
+      (root_push counter)
+      (root_push param-env)
+      (root_push param-types)
+      (let [param-hash (vector-get params idx)
+        param-type (fresh-type-var counter)]
+        (do
+          (root_push param-type)
+          (let [next-param-env
+                  (map-insert-object-safe
+                    param-env
+                    param-hash
+                    param-type)]
+            (do
+              (root_push next-param-env)
+              (let [next-param-types
+                      (push-object-vector-local param-types param-type)]
+                (do
+                  (root_push next-param-types)
+                  (let [state
+                          (typeinfer-build-parametric-alias-param-state-state
+                            0
+                            (+ idx 1)
+                            next-param-env
+                            next-param-types)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state)))))))))))
+
+(defn typeinfer-build-parametric-alias-param-state-step-64-loop-bounded
+  [params idx len counter param-env param-types remaining]
+  (do
+    (root_push params)
+    (root_push counter)
+    (root_push param-env)
+    (root_push param-types)
+    (let [step
+            (typeinfer-build-parametric-alias-param-state-step-v3
+              params idx len counter param-env param-types)
+          done (vector-get step 0)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-build-parametric-alias-param-state-step-64-loop-bounded
+                      params
+                      (vector-get step 1)
+                      len
+                      counter
+                      (vector-get next-result 0)
+                      (vector-get next-result 1)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-build-parametric-alias-param-state-step-64
+  [params idx len counter param-env param-types]
+  (typeinfer-build-parametric-alias-param-state-step-64-loop-bounded
+    params idx len counter param-env param-types 64))
+
+(defn typeinfer-build-parametric-alias-param-state-rooted-v3
+  [params idx len counter param-env param-types]
+  (let [step
+          (typeinfer-build-parametric-alias-param-state-step-64
+            params idx len counter param-env param-types)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push params)
+        (root_push counter)
+        (root_push step)
+        (let [next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (typeinfer-build-parametric-alias-param-state-rooted-v3
+                      params
+                      (vector-get step 1)
+                      len
+                      counter
+                      (vector-get next-result 0)
+                      (vector-get next-result 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-build-parametric-alias-param-state-loop
+  [params idx len counter param-env param-types]
+  (typeinfer-build-parametric-alias-param-state-rooted-v3
+    params idx len counter param-env param-types))
 
 (defn typeinfer-build-parametric-alias-param-state [params counter]
   (typeinfer-build-parametric-alias-param-state-loop
@@ -1943,28 +2294,144 @@
 
 ;; 先行する defn の failure kind を name hash から探す。
 ;; failure-kinds は defn の処理順に [0=success, 1=direct, 2=dependency] を保持する。
-(defn typeinfer-prior-definition-failed-loop [program scan-idx defn-idx current-idx failure-kinds target-hash]
+(defn typeinfer-prior-definition-failed-state
+  [done next-scan-idx next-defn-idx found]
+  (vector-push-quad-rooted
+    (vector-new 4)
+    done
+    next-scan-idx
+    next-defn-idx
+    found))
+
+(defn typeinfer-prior-definition-failed-step-v3
+  [program scan-idx defn-idx current-idx failure-kinds target-hash]
   (if (>= scan-idx current-idx)
-    0
-    (let [decl (typeinfer-unprivate-defn (vector-get program scan-idx))
-      tag (vector-get decl 0)]
-      (if (= tag 20)
-        (if (= (vector-get decl 1) target-hash)
-          (if (> (vector-get failure-kinds defn-idx) 0) 1 0)
-          (typeinfer-prior-definition-failed-loop
+    (typeinfer-prior-definition-failed-state 1 scan-idx defn-idx 0)
+    (do
+      (root_push program)
+      (root_push failure-kinds)
+      (let [decl (typeinfer-unprivate-defn (vector-get program scan-idx))]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)]
+            (if (= tag 20)
+              (if (= (vector-get decl 1) target-hash)
+                (let [found
+                        (if (> (vector-get failure-kinds defn-idx) 0) 1 0)
+                      state
+                        (typeinfer-prior-definition-failed-state
+                          1
+                          scan-idx
+                          defn-idx
+                          found)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))
+                (let [state
+                        (typeinfer-prior-definition-failed-state
+                          0
+                          (+ scan-idx 1)
+                          (+ defn-idx 1)
+                          0)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state)))
+              (let [state
+                      (typeinfer-prior-definition-failed-state
+                        0
+                        (+ scan-idx 1)
+                        defn-idx
+                        0)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-prior-definition-failed-step-64-loop-bounded
+  [program scan-idx defn-idx current-idx failure-kinds target-hash remaining]
+  (do
+    (root_push program)
+    (root_push failure-kinds)
+    (let [step
+            (typeinfer-prior-definition-failed-step-v3
+              program
+              scan-idx
+              defn-idx
+              current-idx
+              failure-kinds
+              target-hash)
+          done (vector-get step 0)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-prior-definition-failed-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      (vector-get step 2)
+                      current-idx
+                      failure-kinds
+                      target-hash
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-prior-definition-failed-step-64
+  [program scan-idx defn-idx current-idx failure-kinds target-hash]
+  (typeinfer-prior-definition-failed-step-64-loop-bounded
+    program
+    scan-idx
+    defn-idx
+    current-idx
+    failure-kinds
+    target-hash
+    64))
+
+(defn typeinfer-prior-definition-failed-rooted-v3
+  [program scan-idx defn-idx current-idx failure-kinds target-hash]
+  (let [step
+          (typeinfer-prior-definition-failed-step-64
             program
-            (+ scan-idx 1)
-            (+ defn-idx 1)
+            scan-idx
+            defn-idx
             current-idx
             failure-kinds
-            target-hash))
-        (typeinfer-prior-definition-failed-loop
-          program
-          (+ scan-idx 1)
-          defn-idx
-          current-idx
-          failure-kinds
-          target-hash)))))
+            target-hash)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 3)
+      (do
+        (root_push program)
+        (root_push failure-kinds)
+        (root_push step)
+        (let [resolved
+                (typeinfer-prior-definition-failed-rooted-v3
+                  program
+                  (vector-get step 1)
+                  (vector-get step 2)
+                  current-idx
+                  failure-kinds
+                  target-hash)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            resolved))))))
+
+(defn typeinfer-prior-definition-failed-loop
+  [program scan-idx defn-idx current-idx failure-kinds target-hash]
+  (typeinfer-prior-definition-failed-rooted-v3
+    program scan-idx defn-idx current-idx failure-kinds target-hash))
 
 (defn typeinfer-definition-failure-kind [program failure-kinds idx out]
   (if (= (result-error-code out) (error-code-undefined))

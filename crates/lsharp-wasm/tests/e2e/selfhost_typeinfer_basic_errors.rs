@@ -3609,3 +3609,174 @@ fn test_e2e_selfhost_typeinfer_large_prepass_loops_preserve_results() {
         "65要素の TypeInfer prepass は chunk 境界を越えて env/placeholder/alias の結果を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_declaration_scans_use_bounded_chunks() {
+    let type_infer = selfhost_module("TypeInfer.ls");
+    let record_decl = selfhost_module("TypeInferRecordDecl.ls");
+
+    assert!(
+        type_infer.contains("typeinfer-free-vars-to-set-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-build-parametric-alias-param-state-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-remove-defns-before-module-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-next-module-index-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-prior-definition-failed-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-free-vars-to-set-rooted-v3")
+            && type_infer.contains("typeinfer-build-parametric-alias-param-state-rooted-v3")
+            && type_infer.contains("typeinfer-remove-defns-before-module-rooted-v3")
+            && type_infer.contains("typeinfer-next-module-index-rooted-v3")
+            && type_infer.contains("typeinfer-prior-definition-failed-rooted-v3")
+            && record_decl.contains("typeinfer-record-remove-accessors-step-64-loop-bounded")
+            && record_decl.contains("typeinfer-remove-record-defs-before-module-step-64-loop-bounded")
+            && record_decl.contains("typeinfer-record-remove-accessors-rooted-v3")
+            && record_decl.contains("typeinfer-remove-record-defs-before-module-rooted-v3"),
+        "TypeInfer の宣言前処理走査は bounded helper と rooted continuation へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_declaration_scans_preserve_results() {
+    let mut vars_expr = "(vector-new 0)".to_string();
+    let mut params_expr = "(vector-new 0)".to_string();
+    let mut program_expr = "(vector-new 0)".to_string();
+    let mut module_program_expr = "(vector-new 0)".to_string();
+    let mut failure_kinds_expr = "(vector-new 0)".to_string();
+    let mut raw_fields_expr = "(vector-new 0)".to_string();
+    let mut record_program_expr = "(vector-new 0)".to_string();
+    let mut defn_env_expr = "(type-env-insert (type-env-new) 999 (mono (mk-int)))".to_string();
+    let mut record_env_expr = "(type-env-insert (type-env-new) 999 (mono (mk-int)))".to_string();
+
+    for idx in 0..65 {
+        let defn_name = 50000 + idx;
+        let param_name = 81000 + idx;
+        let field_name = 83000 + idx;
+        let accessor_name = 84000 + idx;
+        let record_name = 85000 + idx;
+        let defn_expr = format!(
+            "(vector-push (vector-push (vector-new 2) 20) {})",
+            defn_name
+        );
+        let record_fields_expr = format!(
+            "(vector-push (vector-push (vector-push (vector-new 0) {}) {}) 0)",
+            field_name, accessor_name
+        );
+
+        vars_expr = format!("(vector-push {} {})", vars_expr, 80000 + idx);
+        params_expr = format!("(vector-push {} {})", params_expr, param_name);
+        program_expr = format!("(vector-push {} {})", program_expr, defn_expr);
+        if idx < 64 {
+            module_program_expr = format!(
+                "(vector-push {} {})",
+                module_program_expr, defn_expr
+            );
+        } else {
+            module_program_expr = format!(
+                "(vector-push {} (make-module-decl 82000))",
+                module_program_expr
+            );
+        }
+        failure_kinds_expr = format!(
+            "(vector-push {} {})",
+            failure_kinds_expr,
+            if idx == 64 { 1 } else { 0 }
+        );
+        raw_fields_expr = format!(
+            "(vector-push (vector-push (vector-push {} {}) {}) 0)",
+            raw_fields_expr, field_name, accessor_name
+        );
+        record_program_expr = format!(
+            "(vector-push {} (make-record-def-with-fields {} {}))",
+            record_program_expr, record_name, record_fields_expr
+        );
+        defn_env_expr = format!(
+            "(type-env-insert {} {} (mono (mk-int)))",
+            defn_env_expr, defn_name
+        );
+        record_env_expr = format!(
+            "(type-env-insert (type-env-insert {} {} (mono (mk-int))) {} (mono (mk-int)))",
+            record_env_expr, record_name, accessor_name
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [vars {vars_expr}
+        params {params_expr}
+        program {program_expr}
+        module-program {module_program_expr}
+        failure-kinds {failure_kinds_expr}
+        raw-fields {raw_fields_expr}
+        record-program {record_program_expr}
+        free-set (typeinfer-free-vars-to-set vars 0 65 (map-new))
+        alias-state
+          (typeinfer-build-parametric-alias-param-state
+            params (make-var-counter))
+        alias-env (vector-get alias-state 0)
+        alias-types (vector-get alias-state 1)
+        removed-defs
+          (typeinfer-remove-defns-before-module
+            program {defn_env_expr} 65)
+        module-index (typeinfer-next-module-index module-program 0 65)
+        missing-module-index (typeinfer-next-module-index program 0 65)
+        prior-failed
+          (typeinfer-prior-definition-failed-loop
+            program 0 0 65 failure-kinds 50064)
+        prior-success
+          (typeinfer-prior-definition-failed-loop
+            program 0 0 65 failure-kinds 50000)
+        record-env {record_env_expr}
+        removed-accessors
+          (typeinfer-record-remove-accessors-loop
+            raw-fields 0 195 record-env)
+        removed-records
+          (typeinfer-remove-record-defs-before-module
+            record-program record-env 65)]
+    (do
+      (print (map-get-safe free-set 80000))
+      (print (map-get-safe free-set 80064))
+      (print (map-get-safe free-set 79999))
+      (print (ty-name (map-get-safe alias-env 81000)))
+      (print (ty-name (vector-get alias-types 64)))
+      (print (if (= (type-env-lookup removed-defs 50000) 0) 0 1))
+      (print (if (= (type-env-lookup removed-defs 50064) 0) 0 1))
+      (print (if (= (type-env-lookup removed-defs 999) 0) 0 1))
+      (print module-index)
+      (print missing-module-index)
+      (print prior-failed)
+      (print prior-success)
+      (print (if (= (type-env-lookup removed-accessors 84000) 0) 0 1))
+      (print (if (= (type-env-lookup removed-accessors 84064) 0) 0 1))
+      (print (if (= (type-env-lookup removed-accessors 999) 0) 0 1))
+      (print (if (= (type-env-lookup removed-records 85000) 0) 0 1))
+      (print (if (= (type-env-lookup removed-records 85064) 0) 0 1))
+      (print (if (= (type-env-lookup removed-records 84000) 0) 0 1))
+      (print (if (= (type-env-lookup removed-records 84064) 0) 0 1))
+      (print (if (= (type-env-lookup removed-records 999) 0) 0 1))
+      0)))
+"#,
+        vars_expr = vars_expr,
+        params_expr = params_expr,
+        program_expr = program_expr,
+        module_program_expr = module_program_expr,
+        failure_kinds_expr = failure_kinds_expr,
+        raw_fields_expr = raw_fields_expr,
+        record_program_expr = record_program_expr,
+        defn_env_expr = defn_env_expr,
+        record_env_expr = record_env_expr,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1", "1", "0", "1000", "1064", "0", "0", "1", "64", "65", "1", "0",
+            "0", "0", "1", "0", "0", "0", "0", "1"
+        ],
+        "65要素の宣言前処理走査は chunk 境界を越えて env/map/state の結果を保持するべき"
+    );
+}
