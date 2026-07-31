@@ -2580,3 +2580,33 @@ selfhost_cli_manifest_output::test_e2e_selfhost_embedded_cli_validate_source_rej
 これは Rust-host actual Wasm の write-error boundaryだけを閉じる verified sliceであり、native
 stage0 の atomic/durable replacement、source/release provenance、MCP parity、Mac Apple Silicon /
 Linux x86_64 artifact/runtime matrix、EC-M3 aggregateの完了を意味しない。
+
+### LEGACY-LANG-01 selfhost bounded record field inference slice (2026-07-31)
+
+Linux x86_64 native self-hostingで大きな recordを処理するとき、`TypeInferRecord.ls` に残っていた
+record field/value inference、record literal field lookup、declared record literal/update inferenceの
+直接再帰 scanを、64要素の bounded loopとchunk境界の rooted continuationへまとめて移行した。一要素の
+stepとchunk単位の再帰を分離し、既存の result/substitution semanticsとroot lifetimeを維持する。
+`TypeInferRecord.ls` は移行後も731行で、500〜800行のファイルサイズ境界内に収まる。
+
+Evidence: `test_e2e_selfhost_typeinfer_record_inference_uses_bounded_chunks` と
+`test_e2e_selfhost_typeinfer_large_record_inference_preserves_results` の2 tests、既存
+`selfhost_typeinfer_records_computation` の10 tests、`git diff --check`、Rust test fixtureの
+`rustfmt --edition 2021 --check` が passした。既存の
+`test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type` は変更前の baseline と同じく
+`left "1" right "0"` で失敗するため、今回の bounded scanが record schema pattern parityを解決したとは扱わない。
+
+source commit `a2e609f4` に対して、`NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=a2e609f4-typeinfer-record-inference`
+の local Lima `lsharp-linux-x86` gateを一度だけ実行した。host-generated stage1 x86 payloadがLinux
+x86_64 VM内でstage2/stage3 native self-regenerationを完走し、summaryは `status=pass`、stage2/stage3
+code lengthは双方 `11168596`、stdout SHA256は双方
+`dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。証跡は
+`ci-artifacts/native-linux-x86-hostgen-vm/a2e609f4-typeinfer-record-inference/actual-selfregen-summary.json`
+へ summaryだけを残し、11 MiB級 stdout、stage debug、stage1中間物は回収後に削除した。VMはgate後に停止し、
+root空き容量は約7.1 GiBを維持した。
+
+これは record field/value inferenceのbounded scanとLinux x86_64 stage2/stage3 fixed-pointだけを閉じる
+verified sliceである。一般Map API、record schema pattern semantic parity、full record pattern/import
+target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後current-source gate、全公開
+surface、`LEGACY-LANG-01` aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle /
+bootstrap / host integration 境界を維持する。
