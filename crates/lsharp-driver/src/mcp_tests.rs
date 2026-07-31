@@ -92,6 +92,10 @@ mod tests {
 
         assert_eq!(tool["inputSchema"]["type"], "object");
         assert_eq!(
+            tool["inputSchema"]["additionalProperties"], false,
+            "lsharp_validate input schema must reject unknown top-level fields"
+        );
+        assert_eq!(
             tool["inputSchema"]["oneOf"],
             json!([
                 { "required": ["source"] },

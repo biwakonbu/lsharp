@@ -200,6 +200,12 @@ mod review_registry_tests {
             input_validator.is_valid(&valid_input),
             "canonical fixture は MCP input schema に適合するべき"
         );
+        let mut unknown_input = valid_input.clone();
+        unknown_input["unexpected"] = json!(true);
+        assert!(
+            !input_validator.is_valid(&unknown_input),
+            "MCP input schema は未知の top-level field を拒否するべき"
+        );
         assert!(
             output_validator.is_valid(&valid_output),
             "canonical fixture は MCP output schema に適合するべき"

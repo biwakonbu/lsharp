@@ -240,6 +240,7 @@ fn validate_input_schema() -> Value {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
+        "additionalProperties": false,
         "properties": {
             "source": { "type": "string" },
             "file": { "type": "string" },

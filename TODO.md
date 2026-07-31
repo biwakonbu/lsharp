@@ -167,7 +167,8 @@
   no-output contract、
   positional manifest と `--source` の読み込み失敗を driver I/O code `LS5001`、空 stdout、
   no-report として返す Rust CLI boundary、
-  Rust MCP `lsharp_validate` の `reviews` input/output schema と `include_manifest` projection、
+  Rust MCP `lsharp_validate` の `reviews` input/output schema、input top-level unknown field の
+  `additionalProperties: false` boundary と `include_manifest` projection、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
   `EmbeddedCli` の source/report/pass-fail-unknown/exit、EmbeddedCli の
   `--emit-manifest` による report と version 1 manifest file の分離出力は Rust-host

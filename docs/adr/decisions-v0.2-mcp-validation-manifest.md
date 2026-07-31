@@ -150,6 +150,24 @@ diagnostic が CLI と乖離する。
   verified partial sliceであり、selfhost/native MCP producer、current-source stage0 artifact/runtime、
   対応2 target、EC-M3 全体の完了証拠ではない。
 
+### Input envelope closure follow-up (2026-07-31)
+
+`lsharp_validate` の MCP `tools/list` input schema は、runtime の manifest parser が unknown
+top-level field を fail-closed に拒否する一方、schema object 自体に `additionalProperties: false`
+を宣言していなかった。consumer が static schema を正本として入力を検証する場合に、runtime と
+schema の boundary がずれるため、input envelope を strict object として固定する。
+
+- `validate_input_schema()` の top-level object に `additionalProperties: false` を追加する。
+- `source` / `file` / `manifest` / `manifest_file` の `oneOf`、optional review context、manifest
+  内部の version 1 schema は変更しない。
+- RED: `test_validate_tool_declares_source_input_and_report_output_schema` が missing field を
+  `null` として検出して失敗した。
+- GREEN: 同 test と `test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures`
+  で unknown top-level input を reject することを確認した。`mcp_server::tests` は69件 pass。
+
+これは Rust-host MCP の静的 input envelope に限定した verified partial sliceであり、selfhost/native
+MCP producer、current-source stage0 artifact/runtime、対応2 target、EC-M2-03 aggregate は未完了である。
+
 ## Boundary and follow-up
 
 これは Rust MCP の manifest input/report wiring に限定した verified slice である。EmbeddedCli の

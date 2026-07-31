@@ -689,6 +689,22 @@ Evidence: `cargo test -p lsharp-driver mcp_server::tests -- --nocapture`（40 pa
 provider/署名 authentication、review lifecycle、Mac Apple Silicon / Linux x86_64 current-source
 artifact/runtime parity、EC-M2-02/03 aggregate は未完了である。
 
+### EC-M2-03 Rust MCP validation input envelope closure (2026-07-31)
+
+`lsharp_validate` の `tools/list` input schema の top-level object に
+`additionalProperties: false` を追加し、runtime parser が拒否する未知 field を MCP consumer の
+静的 schema でも拒否するようにした。manifest object 内の strict schema は既存のまま維持し、
+`source` / `file` / `manifest` / `manifest_file` の `oneOf` と review context option は変更していない。
+
+RED は `test_validate_tool_declares_source_input_and_report_output_schema` で input schema に
+`additionalProperties` がなく `null` になっていることを確認した。GREEN は同じ assertion と
+`test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures` の未知 top-level
+field reject で固定し、`mcp_server::tests` 全69件を通過した。
+
+これは Rust-host MCP の静的 input envelope／Draft 2020-12 validator boundary に限定した verified
+partial sliceであり、selfhost/native MCP producer、current-source stage0 artifact/runtime、対応2 target、
+EC-M2-03 aggregate は残件である。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
