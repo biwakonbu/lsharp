@@ -1,16 +1,12 @@
 (module Types.TypeScheme)
 (import Types.Type)
-
 ;; TypeScheme.ls - L# セルフホスティング: 型スキーム (let 多相)
 ;;
 ;; let 多相で必要な型スキーム (∀α.τ) の表現。
 ;; 型変数の一般化 (generalize) と具体化 (instantiate) を提供。
-
 ;; === 型スキーム ===
-
 ;; TypeScheme = [type, bound-vars-vector]
 ;; bound-vars-vector: 束縛された型変数 ID のベクタ (空なら単相型)
-
 (defn push-int-vector-local [dst value]
   (do
     (root_push dst)
@@ -18,17 +14,14 @@
       (do
         (root_pop)
         next-dst))))
-
 (defn push-object-vector-local [dst value]
   (do
     (root_push dst)
     (root_push value)
     (let [next-dst (vector-push dst value)]
       (do
-        (root_pop)
-        (root_pop)
+        (root_pop) (root_pop)
         next-dst))))
-
 (defn map-get-safe [m key]
   (do
     (root_push m)
@@ -36,48 +29,38 @@
       (do
         (root_pop)
         value))))
-
 (defn map-insert-object-safe [m key value]
   (do
     (root_push m)
     (root_push value)
     (let [next-map (map-insert m key value)]
       (do
-        (root_pop)
-        (root_pop)
+        (root_pop) (root_pop)
         next-map))))
-
 ;; 単相型スキーム: 束縛変数なし
 (defn mono [ty]
   (push-object-vector-local (push-object-vector-local (vector-new 2) ty) (vector-new 0)))
-
 ;; 多相型スキーム: 束縛変数あり
 (defn poly [ty bound-vars]
   (push-object-vector-local (push-object-vector-local (vector-new 2) ty) bound-vars))
-
 ;; GADT constructor 用の多相型スキーム。末尾 marker は pattern inference の
 ;; branch-local refinement 判定だけに使い、型と bound-vars の既存 slot は変えない。
 (defn poly-gadt [ty bound-vars]
   (push-int-vector-local
     (push-object-vector-local (push-object-vector-local (vector-new 3) ty) bound-vars)
     1))
-
 ;; 型スキームの型を取得
 (defn scheme-type [scheme]
   (vector-get scheme 0))
-
 ;; 型スキームの束縛変数を取得
 (defn scheme-vars [scheme]
   (vector-get scheme 1))
-
 (defn scheme-gadt [scheme]
   (if (> (vector-length scheme) 2)
     (vector-get scheme 2)
     0))
-
 ;; === 型変数カウンタ ===
 ;; 新しい型変数を生成するためのグローバルカウンタ
-
 ;; 型別名環境 = [closed-aliases, parametric-aliases]
 (defn make-type-alias-env [closed-aliases parametric-aliases]
   (do
@@ -88,17 +71,12 @@
         (root_push with-closed)
         (let [result (push-object-vector-local with-closed parametric-aliases)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
+            (root_pop) (root_pop) (root_pop)
             result))))))
-
 (defn type-alias-env-closed [alias-env]
   (vector-get alias-env 0))
-
 (defn type-alias-env-parametric [alias-env]
   (vector-get alias-env 1))
-
 ;; 型推論 context = [next-id-ref, alias-env]。型変数 ID の API を保ったまま宣言環境を共有する。
 (defn make-var-counter-with-alias-env [alias-env]
   (do
@@ -111,20 +89,14 @@
             (root_push with-id-ref)
             (let [result (push-object-vector-local with-id-ref alias-env)]
               (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
+                (root_pop) (root_pop) (root_pop)
                 result))))))))
-
 (defn make-var-counter []
   (make-var-counter-with-alias-env (make-type-alias-env (map-new) (map-new))))
-
 (defn var-counter-id-ref [counter]
   (vector-get counter 0))
-
 (defn var-counter-alias-env [counter]
   (vector-get counter 1))
-
 ;; record 宣言環境を追加した推論 context を構築する。
 ;; 既存の [next-id-ref, alias-env] 読み取りは index 0/1 のまま互換に保つ。
 (defn var-counter-with-alias-env-and-record-env [counter alias-env record-env]
@@ -141,19 +113,13 @@
               (root_push with-alias-env)
               (let [result (push-object-vector-local with-alias-env record-env)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
+                  (root_pop) (root_pop) (root_pop) (root_pop) (root_pop)
                   result)))))))))
-
 ;; 旧形式の counter にも空の record 環境を返す。
 (defn var-counter-record-env [counter]
   (if (> (vector-length counter) 2)
     (vector-get counter 2)
     (map-new)))
-
 ;; 既存の型変数 ID 供給を保ったまま、宣言 prepass 後の alias 環境へ差し替える。
 (defn var-counter-with-alias-env [counter alias-env]
   (let [id-ref (var-counter-id-ref counter)]
@@ -165,11 +131,8 @@
           (root_push with-id-ref)
           (let [result (push-object-vector-local with-id-ref alias-env)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
+              (root_pop) (root_pop) (root_pop)
               result)))))))
-
 ;; 次の型変数 ID を生成
 (defn next-var [counter]
   (let [id-ref (var-counter-id-ref counter)
@@ -177,49 +140,239 @@
     (do
       (ref-set id-ref (+ id 1))
       id)))
-
+(defn typescheme-state [done next-idx result]
+  (push-object-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    result))
 ;; 束縛変数ベクタを左から順に fresh な型変数へ写す
+(defn instantiate-build-subst-step-v3 [vars idx len counter subst]
+  (if (>= idx len)
+    (typescheme-state 1 idx subst)
+    (do
+      (root_push vars)
+      (root_push counter)
+      (root_push subst)
+      (let [old-var (vector-get vars idx)
+            new-ty (make-type-var (next-var counter))
+            next-subst (map-insert-object-safe subst old-var new-ty)]
+        (do
+          (root_push next-subst)
+          (let [state (typescheme-state 0 (+ idx 1) next-subst)]
+            (do
+              (root_pop) (root_pop) (root_pop) (root_pop)
+              state)))))))
+(defn instantiate-build-subst-step-64-loop-bounded
+  [vars idx len counter subst remaining]
+  (do
+    (root_push vars)
+    (root_push counter)
+    (root_push subst)
+    (let [step
+            (instantiate-build-subst-step-v3 vars idx len counter subst)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-subst (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-subst)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (instantiate-build-subst-step-64-loop-bounded
+                      vars next-idx len counter next-subst (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn instantiate-build-subst-step-64 [vars idx len counter subst]
+  (instantiate-build-subst-step-64-loop-bounded
+    vars idx len counter subst 64))
+(defn instantiate-build-subst-rooted-v3 [vars idx len counter subst]
+  (let [step
+          (instantiate-build-subst-step-64 vars idx len counter subst)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-subst (vector-get step 2)]
+          (do
+            (root_push next-subst)
+            (let [resolved
+                    (instantiate-build-subst-rooted-v3
+                      vars next-idx len counter next-subst)]
+              (do
+                (root_pop) (root_pop)
+                resolved))))))))
 (defn instantiate-build-subst [vars idx len counter subst]
-  (if (>= idx len)
-    subst
-    (let [old-var (vector-get vars idx)
-      new-ty (make-type-var (next-var counter))]
-      (instantiate-build-subst
-        vars
-        (+ idx 1)
-        len
-        counter
-        (map-insert-object-safe subst old-var new-ty)))))
-
+  (do
+    (root_push vars)
+    (root_push counter)
+    (root_push subst)
+    (let [result
+            (instantiate-build-subst-rooted-v3 vars idx len counter subst)]
+      (do
+        (root_pop) (root_pop) (root_pop)
+        result))))
 ;; record 型の field type に置換を適用する
+(defn instantiate-apply-record-fields-step-v3
+  [subst ty idx len out]
+  (if (>= idx len)
+    (typescheme-state 1 idx out)
+    (do
+      (root_push subst)
+      (root_push ty)
+      (root_push out)
+      (let [field-hash (vector-get ty idx)
+            field-ty (vector-get ty (+ idx 1))]
+        (do
+          (root_push field-ty)
+          (let [field-result (instantiate-apply subst field-ty)]
+            (do
+              (root_push field-result)
+              (let [next-out
+                      (type-record-add-field out field-hash field-result)]
+                (do
+                  (root_push next-out)
+                  (let [state
+                          (typescheme-state 0 (+ idx 2) next-out)]
+                    (do
+                      (root_pop) (root_pop) (root_pop) (root_pop) (root_pop) (root_pop)
+                      state)))))))))))
+(defn instantiate-apply-record-fields-step-64-loop-bounded
+  [subst ty idx len out remaining]
+  (do
+    (root_push subst)
+    (root_push ty)
+    (root_push out)
+    (let [step
+            (instantiate-apply-record-fields-step-v3 subst ty idx len out)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-out (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-out)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (instantiate-apply-record-fields-step-64-loop-bounded
+                      subst ty next-idx len next-out (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn instantiate-apply-record-fields-step-64
+  [subst ty idx len out]
+  (instantiate-apply-record-fields-step-64-loop-bounded
+    subst ty idx len out 64))
+(defn instantiate-apply-record-fields-rooted-v3
+  [subst ty idx len out]
+  (let [step
+          (instantiate-apply-record-fields-step-64 subst ty idx len out)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-out (vector-get step 2)]
+          (do
+            (root_push next-out)
+            (let [resolved
+                    (instantiate-apply-record-fields-rooted-v3
+                      subst ty next-idx len next-out)]
+              (do
+                (root_pop) (root_pop)
+                resolved))))))))
 (defn instantiate-apply-record-fields [subst ty idx len out]
-  (if (>= idx len)
-    out
-    (let [field-hash (vector-get ty idx)
-      field-ty (vector-get ty (+ idx 1))]
-      (instantiate-apply-record-fields
-        subst
-        ty
-        (+ idx 2)
-        len
-        (type-record-add-field out field-hash (instantiate-apply subst field-ty))))))
-
+  (do
+    (root_push subst)
+    (root_push ty)
+    (root_push out)
+    (let [result
+            (instantiate-apply-record-fields-rooted-v3 subst ty idx len out)]
+      (do
+        (root_pop) (root_pop) (root_pop)
+        result))))
 ;; 型適用の型引数へ具体化用置換を適用する。
-(defn instantiate-apply-app-args [subst ty idx len out]
+(defn instantiate-apply-app-args-step-v3
+  [subst ty idx len out]
   (if (>= idx len)
-    out
-    (instantiate-apply-app-args
-      subst
-      ty
-      (+ idx 1)
-      len
-      (push-object-vector-local out (instantiate-apply subst (type-app-arg ty idx))))))
-
-;; === instantiate ===
-
+    (typescheme-state 1 idx out)
+    (do
+      (root_push subst)
+      (root_push ty)
+      (root_push out)
+      (let [arg-ty (type-app-arg ty idx)
+            arg-result (instantiate-apply subst arg-ty)
+            next-out (push-object-vector-local out arg-result)]
+        (do
+          (root_push next-out)
+          (let [state (typescheme-state 0 (+ idx 1) next-out)]
+            (do
+              (root_pop) (root_pop) (root_pop) (root_pop)
+              state)))))))
+(defn instantiate-apply-app-args-step-64-loop-bounded
+  [subst ty idx len out remaining]
+  (do
+    (root_push subst)
+    (root_push ty)
+    (root_push out)
+    (let [step
+            (instantiate-apply-app-args-step-v3 subst ty idx len out)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-out (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-out)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (instantiate-apply-app-args-step-64-loop-bounded
+                      subst ty next-idx len next-out (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn instantiate-apply-app-args-step-64
+  [subst ty idx len out]
+  (instantiate-apply-app-args-step-64-loop-bounded
+    subst ty idx len out 64))
+(defn instantiate-apply-app-args-rooted-v3
+  [subst ty idx len out]
+  (let [step
+          (instantiate-apply-app-args-step-64 subst ty idx len out)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-out (vector-get step 2)]
+          (do
+            (root_push next-out)
+            (let [resolved
+                    (instantiate-apply-app-args-rooted-v3
+                      subst ty next-idx len next-out)]
+              (do
+                (root_pop) (root_pop)
+                resolved))))))))
+(defn instantiate-apply-app-args [subst ty idx len out]
+  (do
+    (root_push subst)
+    (root_push ty)
+    (root_push out)
+    (let [result
+            (instantiate-apply-app-args-rooted-v3 subst ty idx len out)]
+      (do
+        (root_pop) (root_pop) (root_pop)
+        result))))
 ;; 型スキームを具体化: 束縛変数を新しい型変数で置換
-;; counter: 変数カウンタ (ref-cell)
-;; 戻り値: 具体化された型
 (defn instantiate [scheme counter]
   (let [ty (scheme-type scheme)
     vars (scheme-vars scheme)
@@ -231,7 +384,6 @@
       (instantiate-apply
         (instantiate-build-subst vars 0 n counter (map-new))
         ty))))
-
 ;; 置換を型に適用 (instantiate 用)
 (defn instantiate-apply [subst ty]
   (let [tag (vector-get ty 0)]
@@ -262,66 +414,331 @@
                 subst ty 0 (type-app-arg-count ty) (vector-new (type-app-arg-count ty))))
             ;; Con: そのまま
             ty))))))
-
-;; === generalize ===
-
 ;; vars に target が含まれるか
-(defn free-vars-contains [vars idx len target]
+(defn free-vars-contains-step-v3 [vars idx len target]
   (if (>= idx len)
-    0
+    (typescheme-state 1 idx 0)
     (if (= (vector-get vars idx) target)
-      1
-      (free-vars-contains vars (+ idx 1) len target))))
-
+      (typescheme-state 1 idx 1)
+      (typescheme-state 0 (+ idx 1) 0))))
+(defn free-vars-contains-step-64-loop-bounded
+  [vars idx len target remaining]
+  (do
+    (root_push vars)
+    (let [step (free-vars-contains-step-v3 vars idx len target)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (free-vars-contains-step-64-loop-bounded
+                      vars next-idx len target (- remaining 1))))]
+          (do
+            (root_pop) (root_pop)
+            parsed))))))
+(defn free-vars-contains-step-64 [vars idx len target]
+  (free-vars-contains-step-64-loop-bounded vars idx len target 64))
+(defn free-vars-contains-rooted-v3 [vars idx len target]
+  (let [step (free-vars-contains-step-64 vars idx len target)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)]
+          (let [result
+                  (free-vars-contains-rooted-v3 vars next-idx len target)]
+            (do
+              (root_pop)
+              result)))))))
+(defn free-vars-contains [vars idx len target]
+  (do
+    (root_push vars)
+    (let [result (free-vars-contains-rooted-v3 vars idx len target)]
+      (do
+        (root_pop)
+        result))))
 ;; source order を維持しつつ、未出現の型変数だけを追加
 (defn free-vars-push-unique [vars target]
   (if (= (free-vars-contains vars 0 (vector-length vars) target) 1)
     vars
     (push-int-vector-local vars target)))
-
 ;; src を左から順に dst へマージし、自由変数順を安定化する
+(defn free-vars-append-unique-step-v3 [dst src idx len]
+  (if (>= idx len)
+    (typescheme-state 1 idx dst)
+    (do
+      (root_push dst)
+      (root_push src)
+      (let [next-dst (free-vars-push-unique dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [state (typescheme-state 0 (+ idx 1) next-dst)]
+            (do
+              (root_pop) (root_pop) (root_pop)
+              state)))))))
+(defn free-vars-append-unique-step-64-loop-bounded
+  [dst src idx len remaining]
+  (do
+    (root_push dst)
+    (root_push src)
+    (let [step (free-vars-append-unique-step-v3 dst src idx len)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-dst (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-dst)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (free-vars-append-unique-step-64-loop-bounded
+                      next-dst src next-idx len (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn free-vars-append-unique-step-64 [dst src idx len]
+  (free-vars-append-unique-step-64-loop-bounded dst src idx len 64))
+(defn free-vars-append-unique-rooted-v3 [dst src idx len]
+  (let [step (free-vars-append-unique-step-64 dst src idx len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-dst (vector-get step 2)]
+          (do
+            (root_push next-dst)
+            (let [result
+                    (free-vars-append-unique-rooted-v3
+                      next-dst src next-idx len)]
+              (do
+                (root_pop) (root_pop)
+                result))))))))
 (defn free-vars-append-unique [dst src idx len]
-  (if (>= idx len)
-    dst
-    (free-vars-append-unique
-      (free-vars-push-unique dst (vector-get src idx))
-      src
-      (+ idx 1)
-      len)))
-
+  (do
+    (root_push dst)
+    (root_push src)
+    (let [result (free-vars-append-unique-rooted-v3 dst src idx len)]
+      (do
+        (root_pop) (root_pop)
+        result))))
 ;; record 型の field type を左から走査し、自由変数順を安定化する
+(defn free-vars-record-fields-step-v3 [ty idx len acc]
+  (if (>= idx len)
+    (typescheme-state 1 idx acc)
+    (do
+      (root_push ty)
+      (root_push acc)
+      (let [field-vars (free-vars (vector-get ty (+ idx 1)))]
+        (do
+          (root_push field-vars)
+          (let [next-acc
+                  (free-vars-append-unique
+                    acc field-vars 0 (vector-length field-vars))]
+            (do
+              (root_push next-acc)
+              (let [state (typescheme-state 0 (+ idx 2) next-acc)]
+                (do
+                  (root_pop) (root_pop) (root_pop) (root_pop)
+                  state)))))))))
+(defn free-vars-record-fields-step-64-loop-bounded
+  [ty idx len acc remaining]
+  (do
+    (root_push ty)
+    (root_push acc)
+    (let [step (free-vars-record-fields-step-v3 ty idx len acc)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-acc (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-acc)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (free-vars-record-fields-step-64-loop-bounded
+                      ty next-idx len next-acc (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn free-vars-record-fields-step-64 [ty idx len acc]
+  (free-vars-record-fields-step-64-loop-bounded ty idx len acc 64))
+(defn free-vars-record-fields-rooted-v3 [ty idx len acc]
+  (let [step (free-vars-record-fields-step-64 ty idx len acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-acc (vector-get step 2)]
+          (do
+            (root_push next-acc)
+            (let [result
+                    (free-vars-record-fields-rooted-v3
+                      ty next-idx len next-acc)]
+              (do
+                (root_pop) (root_pop)
+                result))))))))
 (defn free-vars-record-fields [ty idx len acc]
-  (if (>= idx len)
-    acc
-    (let [field-vars (free-vars (vector-get ty (+ idx 1)))]
-      (free-vars-record-fields
-        ty
-        (+ idx 2)
-        len
-        (free-vars-append-unique acc field-vars 0 (vector-length field-vars))))))
-
+  (do
+    (root_push ty)
+    (root_push acc)
+    (let [result (free-vars-record-fields-rooted-v3 ty idx len acc)]
+      (do
+        (root_pop) (root_pop)
+        result))))
 ;; 型適用の型引数を左から走査し、自由変数順を安定化する。
+(defn free-vars-app-args-step-v3 [ty idx len acc]
+  (if (>= idx len)
+    (typescheme-state 1 idx acc)
+    (do
+      (root_push ty)
+      (root_push acc)
+      (let [arg-vars (free-vars (type-app-arg ty idx))]
+        (do
+          (root_push arg-vars)
+          (let [next-acc
+                  (free-vars-append-unique
+                    acc arg-vars 0 (vector-length arg-vars))]
+            (do
+              (root_push next-acc)
+              (let [state (typescheme-state 0 (+ idx 1) next-acc)]
+                (do
+                  (root_pop) (root_pop) (root_pop) (root_pop)
+                  state)))))))))
+(defn free-vars-app-args-step-64-loop-bounded
+  [ty idx len acc remaining]
+  (do
+    (root_push ty)
+    (root_push acc)
+    (let [step (free-vars-app-args-step-v3 ty idx len acc)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-acc (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-acc)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (free-vars-app-args-step-64-loop-bounded
+                      ty next-idx len next-acc (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn free-vars-app-args-step-64 [ty idx len acc]
+  (free-vars-app-args-step-64-loop-bounded ty idx len acc 64))
+(defn free-vars-app-args-rooted-v3 [ty idx len acc]
+  (let [step (free-vars-app-args-step-64 ty idx len acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-acc (vector-get step 2)]
+          (do
+            (root_push next-acc)
+            (let [result
+                    (free-vars-app-args-rooted-v3
+                      ty next-idx len next-acc)]
+              (do
+                (root_pop) (root_pop)
+                result))))))))
 (defn free-vars-app-args [ty idx len acc]
-  (if (>= idx len)
-    acc
-    (let [arg-vars (free-vars (type-app-arg ty idx))]
-      (free-vars-app-args
-        ty
-        (+ idx 1)
-        len
-        (free-vars-append-unique acc arg-vars 0 (vector-length arg-vars))))))
-
+  (do
+    (root_push ty)
+    (root_push acc)
+    (let [result (free-vars-app-args-rooted-v3 ty idx len acc)]
+      (do
+        (root_pop) (root_pop)
+        result))))
 ;; 環境にない自由変数だけを source order のまま束縛変数へ積む
-(defn generalize-collect-bound [free idx len env-vars bound]
+(defn generalize-collect-bound-step-v3
+  [free idx len env-vars bound]
   (if (>= idx len)
-    bound
-    (let [v (vector-get free idx)
-      next-bound
-      (if (= (map-get-safe env-vars v) 0)
-        (push-int-vector-local bound v)
-        bound)]
-      (generalize-collect-bound free (+ idx 1) len env-vars next-bound))))
-
+    (typescheme-state 1 idx bound)
+    (do
+      (root_push free)
+      (root_push env-vars)
+      (root_push bound)
+      (let [v (vector-get free idx)
+            next-bound
+              (if (= (map-get-safe env-vars v) 0)
+                (push-int-vector-local bound v)
+                bound)]
+        (do
+          (root_push next-bound)
+          (let [state (typescheme-state 0 (+ idx 1) next-bound)]
+            (do
+              (root_pop) (root_pop) (root_pop) (root_pop)
+              state)))))))
+(defn generalize-collect-bound-step-64-loop-bounded
+  [free idx len env-vars bound remaining]
+  (do
+    (root_push free)
+    (root_push env-vars)
+    (root_push bound)
+    (let [step
+            (generalize-collect-bound-step-v3 free idx len env-vars bound)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-bound (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-bound)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (generalize-collect-bound-step-64-loop-bounded
+                      free next-idx len env-vars next-bound (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn generalize-collect-bound-step-64
+  [free idx len env-vars bound]
+  (generalize-collect-bound-step-64-loop-bounded
+    free idx len env-vars bound 64))
+(defn generalize-collect-bound-rooted-v3
+  [free idx len env-vars bound]
+  (let [step
+          (generalize-collect-bound-step-64 free idx len env-vars bound)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-bound (vector-get step 2)]
+          (do
+            (root_push next-bound)
+            (let [result
+                    (generalize-collect-bound-rooted-v3
+                      free next-idx len env-vars next-bound)]
+              (do
+                (root_pop) (root_pop)
+                result))))))))
+(defn generalize-collect-bound [free idx len env-vars bound]
+  (do
+    (root_push free)
+    (root_push env-vars)
+    (root_push bound)
+    (let [result
+            (generalize-collect-bound-rooted-v3
+              free idx len env-vars bound)]
+      (do
+        (root_pop) (root_pop) (root_pop)
+        result))))
 ;; 型を一般化: 環境に出現しない自由変数を束縛
 ;; env-vars: 環境内の自由変数 ID の Set (map で代用)
 ;; 戻り値: TypeScheme
@@ -331,7 +748,6 @@
     (generalize-collect-bound
       free 0 (vector-length free) env-vars (vector-new (vector-length free)))]
     (poly ty bound)))
-
 ;; 型の自由変数を収集
 (defn free-vars [ty]
   (let [tag (vector-get ty 0)]
@@ -351,20 +767,16 @@
             (free-vars-app-args ty 0 (type-app-arg-count ty) (vector-new (type-app-arg-count ty)))
             ;; Con: 自由変数なし
             (vector-new 0)))))))
-
 ;; === エントリポイント (テスト用) ===
-
 (defn main []
   (let [;; 単相型スキーム
     int-ty (vector-push (vector-push (vector-new 2) 1) 100)
     int-scheme (mono int-ty)
-
     ;; 多相型スキーム: ∀a. a -> a
     var-a (vector-push (vector-push (vector-new 2) 2) 1)
     fun-ty (vector-push (vector-push (vector-push (vector-new 3) 3) var-a) var-a)
     bound (vector-push (vector-new 1) 1)
     id-scheme (poly fun-ty bound)
-
     ;; instantiate テスト
     counter (make-var-counter)
     inst1 (instantiate int-scheme counter)
@@ -373,7 +785,6 @@
       ;; 単相の instantiate: そのまま返る
       (print (vector-get inst1 0)) ;; 1 (Con)
       (print (vector-get inst1 1)) ;; 100 (Int hash)
-
       ;; 多相の instantiate: 型変数が新しい ID に
       (print (vector-get inst2 0)) ;; 3 (Fun)
       ;; パラメータと戻り値は新しい型変数 (ID=1000)
@@ -381,10 +792,8 @@
         (do
           (print (vector-get param 0)) ;; 2 (Var)
           (print (vector-get param 1)))) ;; 1000
-
       ;; free-vars テスト
       (print (vector-length (free-vars int-ty))) ;; 0
       (print (vector-length (free-vars var-a))) ;; 1
       (print (vector-get (free-vars var-a) 0)) ;; 1
-
       0)))

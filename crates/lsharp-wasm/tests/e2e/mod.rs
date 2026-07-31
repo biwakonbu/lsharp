@@ -57,6 +57,7 @@ mod selfhost_typeinfer_record_filtering;
 mod selfhost_typeinfer_record_inference;
 mod selfhost_type_record_ops;
 mod selfhost_type_record_checks;
+mod selfhost_typescheme_loops;
 mod selfhost_typeinfer_records_computation;
 mod selfhost_typeinfer_recursive_defns;
 mod stdlib_modules_selfhost_lexer;
