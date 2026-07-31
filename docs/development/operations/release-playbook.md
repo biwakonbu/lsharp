@@ -85,6 +85,7 @@ git push origin v<version>
 - tag push だけでは stable workflow を起動しない。通常の release では `workflow_dispatch` も実行せず、入力 URL / SHA-256 は手元の manual release gate と手動 GitHub Release 公開のために固定する。legacy Actions fallback を使う例外時だけ次節の `workflow_dispatch` を明示実行する
 - `aarch64-apple-darwin` は Mac Apple Silicon、`x86_64-unknown-linux-gnu` は Mac + Lima x86_64 VM で実 `App.Cli` を事前生成・実行検証する
 - 各 target の input bundle は archive root に `program.native` と `manifest.json` を置く。manifest は `target` / `entry_module: App.Cli` / `source: src/App/Cli.ls` / `source_commit` / `program_sha256` を持つ。producer は clean worktree で実行し、未コミット bytes を `HEAD` provenance として公開しない
+- review provenance を releaseへ接続する場合は、同じ staging directoryに explicit な `review-evidence-identity.json`（`subject_digest`、`source_commit`、`artifact_digest`、`trust_store_digest`、`lifecycle_digest`、`now`）を置く。`scripts/release.sh`、`package-native-stage0-release.sh`、`release-smoke.sh` は `verify-native-release-identity.py` で source/artifact/provider digest を offline 検証し、provider helperが作らない欠落 digestや mismatchを `verified` として扱わない。旧 inputとの互換が必要な間は `NATIVE_ONLY_REQUIRE_REVIEW_EVIDENCE_IDENTITY=1` を release gateで有効にする。
 - `ROLLBACK_VERSION=v<version> bash scripts/ci/native-rollback-compat-local.sh` を Mac + Lima で実行し、両 target の実在する `lsharp-v<version>-<target>-host-launcher.tar.gz` を rollback input にする
 - input bundle と rollback archive は runner から HTTPS download できる場所へ置き、それぞれの SHA-256 を publish 前に固定する
 

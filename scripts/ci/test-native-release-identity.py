@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+
+import hashlib
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
+VERIFIER = SCRIPTS_DIR / "verify-native-release-identity.py"
+SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+IDENTITY_KEYS = (
+    "subject_digest",
+    "source_commit",
+    "artifact_digest",
+    "trust_store_digest",
+    "lifecycle_digest",
+    "now",
+)
+
+
+def identity_for(artifact_digest, trust="sha256:" + "a" * 64, lifecycle="sha256:" + "b" * 64):
+    return {
+        "subject_digest": "sha256:" + "c" * 64,
+        "source_commit": SOURCE_COMMIT,
+        "artifact_digest": artifact_digest,
+        "trust_store_digest": trust,
+        "lifecycle_digest": lifecycle,
+        "now": "2026-08-15T00:00:00Z",
+    }
+
+
+class NativeReleaseIdentityTest(unittest.TestCase):
+    def run_verifier(self, *arguments):
+        return subprocess.run(
+            [sys.executable, str(VERIFIER), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def write_identity(self, path, identity):
+        path.write_text(json.dumps(identity, separators=(",", ":")) + "\n", encoding="utf-8")
+
+    def test_projects_and_verifies_packaged_manifest_identity(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+            identity = identity_for(artifact_digest)
+            manifest = root / "manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "review_evidence_identity": identity,
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_verifier(
+                "--manifest",
+                str(manifest),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--require-provider-input",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            projected = json.loads(result.stdout)
+            self.assertEqual(list(projected), list(IDENTITY_KEYS))
+            self.assertEqual(projected, identity)
+
+    def test_rejects_artifact_digest_mismatch_and_provider_absence(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+            identity_path = root / "identity.json"
+            identity = identity_for(artifact_digest)
+            self.write_identity(identity_path, identity)
+
+            identity["artifact_digest"] = "sha256:" + "d" * 64
+            self.write_identity(identity_path, identity)
+            mismatch = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--require-provider-input",
+            )
+            self.assertNotEqual(mismatch.returncode, 0)
+            self.assertIn("artifact_digest", mismatch.stderr)
+
+            identity = identity_for(artifact_digest, trust=None, lifecycle=None)
+            self.write_identity(identity_path, identity)
+            missing_provider = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--require-provider-input",
+            )
+            self.assertEqual(missing_provider.returncode, 2)
+            self.assertIn("provider", missing_provider.stderr)
+
+    def test_rejects_field_order_and_identity_conflict(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            identity_path = root / "identity.json"
+            identity = identity_for("sha256:" + "e" * 64)
+            reordered = {key: identity[key] for key in reversed(IDENTITY_KEYS)}
+            self.write_identity(identity_path, reordered)
+
+            result = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--source-commit",
+                SOURCE_COMMIT,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("field order", result.stderr)
+
+    def test_release_surfaces_use_the_same_offline_identity_gate(self):
+        project_root = SCRIPTS_DIR.parent.parent
+        for relative_path in (
+            "scripts/release.sh",
+            "scripts/ci/release-smoke.sh",
+            "scripts/ci/package-native-stage0-release.sh",
+            "scripts/ci/native-official-release-local.sh",
+        ):
+            with self.subTest(relative_path=relative_path):
+                content = (project_root / relative_path).read_text(encoding="utf-8")
+                self.assertIn("verify-native-release-identity.py", content)
+                self.assertIn("review_evidence_identity", content)
+
+    def test_native_release_packages_verified_identity_without_recomputing_it(self):
+        project_root = SCRIPTS_DIR.parent.parent
+        release_script = project_root / "scripts" / "release.sh"
+        source_commit = SOURCE_COMMIT
+        target = "aarch64-apple-darwin"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = root / "program.native"
+            program.write_bytes(b"native program fixture\n")
+            program.chmod(0o755)
+            program_digest = "sha256:" + hashlib.sha256(program.read_bytes()).hexdigest()
+            input_manifest = root / "input-manifest.json"
+            input_manifest.write_text(
+                json.dumps(
+                    {
+                        "status": "pass",
+                        "artifact_kind": "native App.Cli release program",
+                        "target": target,
+                        "entry_module": "App.Cli",
+                        "source": "src/App/Cli.ls",
+                        "source_commit": source_commit,
+                        "selfhost_fixed_point": True,
+                        "program_sha256": hashlib.sha256(program.read_bytes()).hexdigest(),
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            identity_path = root / "identity.json"
+            self.write_identity(identity_path, identity_for(program_digest))
+            rollback = root / "rollback.tar.gz"
+            rollback.write_bytes(b"rollback fixture\n")
+            dist = root / "dist"
+
+            result = subprocess.run(
+                ["bash", str(release_script)],
+                cwd=project_root,
+                env={
+                    **os.environ,
+                    "VERSION": "v0.0.0-identity-test",
+                    "TARGET": target,
+                    "SOURCE_COMMIT": source_commit,
+                    "DIST_DIR": str(dist),
+                    "NATIVE_ONLY_RELEASE": "1",
+                    "NATIVE_ONLY_PROGRAM": str(program),
+                    "NATIVE_ONLY_PROGRAM_MANIFEST": str(input_manifest),
+                    "NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY": str(identity_path),
+                    "ROLLBACK_COMPATIBILITY_ASSET_PATH": str(rollback),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            archive_root = dist / "lsharp-v0.0.0-identity-test-aarch64-apple-darwin"
+            packaged_manifest = json.loads(
+                (archive_root / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                packaged_manifest["review_evidence_identity"],
+                identity_for(program_digest),
+            )
+            self.assertEqual(
+                json.loads(
+                    (archive_root / "review-evidence-identity.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+                identity_for(program_digest),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -80,9 +80,12 @@ smoke_archive() {
   limactl copy "${archive_path}" "${VM_NAME}:${vm_work_dir}/${archive_name}"
   limactl copy "${rollback_archive}" "${VM_NAME}:${vm_work_dir}/${rollback_name}"
   limactl copy scripts/ci/release-smoke.sh "${VM_NAME}:${vm_work_dir}/release-smoke.sh"
+  limactl copy scripts/ci/verify-native-release-identity.py \
+    "${VM_NAME}:${vm_work_dir}/verify-native-release-identity.py"
   set +e
   limactl shell "${VM_NAME}" -- env \
     WORK_DIR="${vm_work_dir}/work" \
+    RELEASE_IDENTITY_VERIFIER="${vm_work_dir}/verify-native-release-identity.py" \
     bash "${vm_work_dir}/release-smoke.sh" \
       "${vm_work_dir}/${archive_name}" \
       "${vm_work_dir}/${rollback_name}"
@@ -101,6 +104,8 @@ package_target() {
   local rollback_archive="$3"
   local program_path="${artifact_dir}/program.native"
   local manifest_path="${artifact_dir}/manifest.json"
+  # review_evidence_identity は producer の explicit input がある場合だけ伝播する。
+  local identity_path="${artifact_dir}/review-evidence-identity.json"
   local archive_base="lsharp-${VERSION}-${target}"
   local archive_path="${DIST_DIR}/${archive_base}.tar.gz"
 
@@ -109,15 +114,28 @@ package_target() {
   require_file "${rollback_archive}" "${target} rollback compatibility archive"
 
   rm -rf "${DIST_DIR:?}/${archive_base}" "${archive_path}"
-  TARGET="${target}" \
-    VERSION="${VERSION}" \
-    SOURCE_COMMIT="${SOURCE_COMMIT}" \
-    DIST_DIR="${DIST_DIR}" \
-    NATIVE_ONLY_RELEASE=1 \
-    NATIVE_ONLY_PROGRAM="${program_path}" \
-    NATIVE_ONLY_PROGRAM_MANIFEST="${manifest_path}" \
-    ROLLBACK_COMPATIBILITY_ASSET_PATH="${rollback_archive}" \
-    bash scripts/release.sh
+  if [[ -s "${identity_path}" ]]; then
+    NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY="${identity_path}" \
+      TARGET="${target}" \
+      VERSION="${VERSION}" \
+      SOURCE_COMMIT="${SOURCE_COMMIT}" \
+      DIST_DIR="${DIST_DIR}" \
+      NATIVE_ONLY_RELEASE=1 \
+      NATIVE_ONLY_PROGRAM="${program_path}" \
+      NATIVE_ONLY_PROGRAM_MANIFEST="${manifest_path}" \
+      ROLLBACK_COMPATIBILITY_ASSET_PATH="${rollback_archive}" \
+      bash scripts/release.sh
+  else
+    TARGET="${target}" \
+      VERSION="${VERSION}" \
+      SOURCE_COMMIT="${SOURCE_COMMIT}" \
+      DIST_DIR="${DIST_DIR}" \
+      NATIVE_ONLY_RELEASE=1 \
+      NATIVE_ONLY_PROGRAM="${program_path}" \
+      NATIVE_ONLY_PROGRAM_MANIFEST="${manifest_path}" \
+      ROLLBACK_COMPATIBILITY_ASSET_PATH="${rollback_archive}" \
+      bash scripts/release.sh
+  fi
 
   require_file "${archive_path}" "${target} native-only archive"
   smoke_archive "${target}" "${archive_path}" "${rollback_archive}"
@@ -127,16 +145,22 @@ package_stage0_target() {
   local target="$1"
   local stage0_dir="$2"
   local archive_path="${DIST_DIR}/lsharp-stage0-${VERSION}-${target}.tar.gz"
+  local identity_path="${stage0_dir}/review-evidence-identity.json"
+  local identity_args=()
 
   [[ -d "${stage0_dir}" ]] \
     || { echo "ERROR: ${target} native stage0 directory is required: ${stage0_dir}" >&2; exit 1; }
+  if [[ -s "${identity_path}" ]]; then
+    identity_args+=(--review-evidence-identity "${identity_path}")
+  fi
   rm -f "${archive_path}"
   bash scripts/ci/package-native-stage0-release.sh \
     --target "${target}" \
     --version "${VERSION}" \
     --stage0-dir "${stage0_dir}" \
     --source-commit "${SOURCE_COMMIT}" \
-    --output-dir "${DIST_DIR}"
+    --output-dir "${DIST_DIR}" \
+    "${identity_args[@]}"
   require_file "${archive_path}" "${target} native stage0 archive"
 }
 

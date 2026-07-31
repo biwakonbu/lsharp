@@ -31,6 +31,7 @@ VERSION="v0.0.0-test"
 SOURCE_COMMIT="0000000000000000000000000000000000000000"
 ARCHIVE_NAME="lsharp-stage0-${VERSION}-${TARGET}"
 ARCHIVE_PATH="$DIST_DIR/${ARCHIVE_NAME}.tar.gz"
+IDENTITY_PATH="$INPUT_DIR/review-evidence-identity.json"
 
 mkdir -p "$INPUT_DIR" "$HOST_BIN"
 : >"$HOST_TOOL_LOG"
@@ -52,6 +53,10 @@ chmod +x "$INPUT_DIR/transport-driver"
 cat >"$INPUT_DIR/materializer.py" <<'PY'
 raise SystemExit(0)
 PY
+
+cat >"$IDENTITY_PATH" <<EOF
+{"subject_digest":"sha256:$(printf 'c%.0s' {1..64})","source_commit":"$SOURCE_COMMIT","artifact_digest":"sha256:$(printf 'd%.0s' {1..64})","trust_store_digest":"sha256:$(printf 'e%.0s' {1..64})","lifecycle_digest":"sha256:$(printf 'f%.0s' {1..64})","now":"2026-08-15T00:00:00Z"}
+EOF
 
 for host_tool in cargo rustc lsharp; do
   cat >"$HOST_BIN/$host_tool" <<'SH'
@@ -77,6 +82,7 @@ NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
     --version "$VERSION" \
     --stage0-dir "$STAGE0_DIR" \
     --source-commit "$SOURCE_COMMIT" \
+    --review-evidence-identity "$IDENTITY_PATH" \
     --output-dir "$DIST_DIR"
 
 assert_eq "" "$(cat "$HOST_TOOL_LOG")"
@@ -89,6 +95,7 @@ for required in \
   "$ARCHIVE_NAME/bin/transport-driver" \
   "$ARCHIVE_NAME/bin/materializer" \
   "$ARCHIVE_NAME/bin/materializer.py" \
+  "$ARCHIVE_NAME/review-evidence-identity.json" \
   "$ARCHIVE_NAME/checksums.txt"; do
   grep -Fx "$required" <<<"$archive_listing" >/dev/null \
     || fail "archive payload is missing: $required"
@@ -116,6 +123,19 @@ if manifest.get("target") != target:
     raise SystemExit(f"unexpected manifest target: {manifest.get('target')!r}")
 if manifest.get("source_commit") != "0000000000000000000000000000000000000000":
     raise SystemExit(f"unexpected manifest source commit: {manifest.get('source_commit')!r}")
+identity = manifest.get("review_evidence_identity")
+identity_path = manifest_path.parent / "review-evidence-identity.json"
+if identity is None or identity != json.loads(identity_path.read_text(encoding="utf-8")):
+    raise SystemExit("native stage0 release review evidence identity is missing or mismatched")
+if list(identity) != [
+    "subject_digest",
+    "source_commit",
+    "artifact_digest",
+    "trust_store_digest",
+    "lifecycle_digest",
+    "now",
+]:
+    raise SystemExit("native stage0 release review evidence identity field order is not canonical")
 for field in ("compiler", "transport_driver", "materializer"):
     value = manifest.get(field)
     path = pathlib.PurePosixPath(value or "")

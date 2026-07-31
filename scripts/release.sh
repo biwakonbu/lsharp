@@ -26,6 +26,7 @@ BUILD_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 NATIVE_ONLY_RELEASE="${NATIVE_ONLY_RELEASE:-1}"
 NATIVE_ONLY_PROGRAM="${NATIVE_ONLY_PROGRAM:-}"
 NATIVE_ONLY_PROGRAM_MANIFEST="${NATIVE_ONLY_PROGRAM_MANIFEST:-}"
+NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY="${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY:-}"
 ROLLBACK_COMPATIBILITY_ASSET_PATH="${ROLLBACK_COMPATIBILITY_ASSET_PATH:-}"
 SOURCE_COMMIT="${SOURCE_COMMIT:-$(git rev-parse --verify HEAD 2>/dev/null || echo "unknown")}"
 BASE_ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}"
@@ -37,6 +38,8 @@ fi
 ROLLBACK_COMPATIBILITY_ASSET=""
 ROLLBACK_COMPATIBILITY_SHA256=""
 NATIVE_ONLY_PROGRAM_INPUT_SHA256=""
+NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY_JSON=""
+REVIEW_IDENTITY_VERIFIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci/verify-native-release-identity.py"
 
 case "$TARGET" in
   aarch64-apple-darwin|x86_64-unknown-linux-gnu) ;;
@@ -141,6 +144,18 @@ if manifest.get("program_sha256") != program_sha256:
     raise SystemExit("native program sha256 mismatch")
 PY
 
+  if [[ -n "${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY}" ]]; then
+    if [[ ! -s "${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY}" ]]; then
+      echo "ERROR: native review_evidence_identity input is not a non-empty file" >&2
+      exit 1
+    fi
+    NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY_JSON="$(python3 "${REVIEW_IDENTITY_VERIFIER}" \
+      --identity "${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY}" \
+      --artifact "${NATIVE_ONLY_PROGRAM}" \
+      --source-commit "${SOURCE_COMMIT}" \
+      --require-provider-input)"
+  fi
+
   ROLLBACK_COMPATIBILITY_ASSET="$(basename "${ROLLBACK_COMPATIBILITY_ASSET_PATH}")"
   ROLLBACK_COMPATIBILITY_SHA256="$(hash_file "${ROLLBACK_COMPATIBILITY_ASSET_PATH}")"
 }
@@ -170,6 +185,20 @@ generate_native_manifest() {
   }
 }
 EOF
+  if [[ -n "${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY}" ]]; then
+    python3 - "${manifest_path}" "${DIST_DIR}/${ARCHIVE_NAME}/review-evidence-identity.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+identity_path = pathlib.Path(sys.argv[2])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+identity = json.loads(identity_path.read_text(encoding="utf-8"))
+manifest["review_evidence_identity"] = identity
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
+  fi
 }
 
 generate_rollback_manifest() {
@@ -215,6 +244,10 @@ assemble_native_only_release() {
   copy_required_file "README.md"
   copy_required_file "LICENSE"
   cp -f "${NATIVE_ONLY_PROGRAM_MANIFEST}" "${DIST_DIR}/${ARCHIVE_NAME}/native-program-manifest.json"
+  if [[ -n "${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY}" ]]; then
+    printf '%s\n' "${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY_JSON}" \
+      >"${DIST_DIR}/${ARCHIVE_NAME}/review-evidence-identity.json"
+  fi
   generate_native_manifest
 }
 

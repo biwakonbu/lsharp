@@ -31,8 +31,11 @@
   subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
   として deterministic JSON/text/MCP/manifest へ投影し、競合を fail-closed に拒否する verified partial
   slice。native source-file smoke の explicit identity JSON/text/manifest、nullable digest、all-or-none
-  input boundaryも verified partial として追加した。selfhost/native MCP parity、current-source と packaged stage0 の provenance、Mac Apple Silicon /
-  Linux x86_64 の release artifact/runtime gate は残る。
+  input boundaryも verified partial として追加した。offline release identity verifier を native-only
+  archive / packaged stage0 の optional identity projection と release smoke の再検証へ接続したが、
+  provider helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
+  Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。ADR:
+  `docs/adr/decisions-v0.3-release-identity-gate.md`。
 
 ## Current priority — v0.2 Milestone 2
 
@@ -449,8 +452,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   smoke の fixture contract、current-source native stage0、packaged artifact provenance、Mac/Linux
   runtime parityを `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
 - [~] `EC-M3-05` keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity
-  projection、nullable field order、conflict rejection は verified partial。native text/JSON/MCP と
-  release gate の `verified/unverified/stale/revoked/invalid` orderingを M3-05-N1/N2 で閉じる。
+  projection、nullable field order、conflict rejection は verified partial。offline release identity
+  verifier、native-only archive / packaged stage0 の optional projection、artifact/source mismatch の
+  release smoke rejectionを追加した。native text/JSON/MCP と release gate の
+  `verified/unverified/stale/revoked/invalid` ordering、provider adapter、両 target runtimeを
+  M3-05-N1/N2 で閉じる。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は

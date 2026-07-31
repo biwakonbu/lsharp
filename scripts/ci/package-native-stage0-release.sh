@@ -6,10 +6,13 @@ VERSION=""
 STAGE0_DIR=""
 OUTPUT_DIR=""
 SOURCE_COMMIT=""
+REVIEW_EVIDENCE_IDENTITY=""
+REVIEW_EVIDENCE_IDENTITY_JSON=""
+REVIEW_IDENTITY_VERIFIER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/ci/verify-native-release-identity.py"
 
 usage() {
   cat <<'EOF'
-usage: scripts/ci/package-native-stage0-release.sh --target TARGET --version VERSION --stage0-dir DIR --output-dir DIR --source-commit COMMIT
+usage: scripts/ci/package-native-stage0-release.sh --target TARGET --version VERSION --stage0-dir DIR --output-dir DIR --source-commit COMMIT [--review-evidence-identity FILE]
 
 options:
   --target TARGET      x86_64-unknown-linux-gnu or aarch64-apple-darwin
@@ -17,6 +20,8 @@ options:
   --stage0-dir DIR     verified native stage0 package directory
   --output-dir DIR     directory that receives the release archive
   --source-commit COMMIT  40-hex source commit used to build the stage0 package
+  --review-evidence-identity FILE
+                       optional explicit review evidence identity JSON
   --help               show this help
 EOF
 }
@@ -117,6 +122,11 @@ while [[ $# -gt 0 ]]; do
       SOURCE_COMMIT="$2"
       shift 2
       ;;
+    --review-evidence-identity)
+      require_option_value "$@"
+      REVIEW_EVIDENCE_IDENTITY="$2"
+      shift 2
+      ;;
     --help)
       usage
       exit 0
@@ -147,6 +157,15 @@ esac
 
 validate_native_stage0_package "$STAGE0_DIR" "$TARGET"
 
+if [[ -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then
+  [[ -s "$REVIEW_EVIDENCE_IDENTITY" ]] \
+    || die "review evidence identity is not a non-empty file: $REVIEW_EVIDENCE_IDENTITY"
+  REVIEW_EVIDENCE_IDENTITY_JSON="$(python3 "$REVIEW_IDENTITY_VERIFIER" \
+    --identity "$REVIEW_EVIDENCE_IDENTITY" \
+    --source-commit "$SOURCE_COMMIT" \
+    --require-provider-input)"
+fi
+
 ARCHIVE_ROOT_NAME="lsharp-stage0-${VERSION}-${TARGET}"
 ARCHIVE_NAME="${ARCHIVE_ROOT_NAME}.tar.gz"
 mkdir -p "$OUTPUT_DIR"
@@ -158,6 +177,9 @@ ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
 
 cp -pR "$STAGE0_DIR/." "$PACKAGE_DIR"
 rm -f "$PACKAGE_DIR/checksums.txt"
+if [[ -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then
+  printf '%s\n' "$REVIEW_EVIDENCE_IDENTITY_JSON" >"$PACKAGE_DIR/review-evidence-identity.json"
+fi
 python3 - "$PACKAGE_DIR/manifest.json" "$SOURCE_COMMIT" <<'PY'
 import json
 import pathlib
@@ -173,6 +195,11 @@ if existing is not None and existing != source_commit:
         f"expected={source_commit} actual={existing}"
     )
 manifest["source_commit"] = source_commit
+identity_path = manifest_path.parent / "review-evidence-identity.json"
+if identity_path.is_file():
+    manifest["review_evidence_identity"] = json.loads(
+        identity_path.read_text(encoding="utf-8")
+    )
 manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 PY
 validate_native_stage0_package "$PACKAGE_DIR" "$TARGET" "$SOURCE_COMMIT"

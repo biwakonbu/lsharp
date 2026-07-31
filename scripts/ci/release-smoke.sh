@@ -9,6 +9,7 @@ WORK_DIR="${WORK_DIR:-$ROOT/target/ci/release-smoke}"
 EXTRACT_DIR="$WORK_DIR/extract"
 SMOKE_DIR="$WORK_DIR/smoke"
 MAX_ARCHIVE_BYTES="${LSHARP_RELEASE_SMOKE_MAX_ARCHIVE_BYTES:-536870912}"
+RELEASE_IDENTITY_VERIFIER="${RELEASE_IDENTITY_VERIFIER:-$ROOT/scripts/ci/verify-native-release-identity.py}"
 
 cleanup() {
   local exit_code=$?
@@ -176,6 +177,30 @@ if [[ -f "$PROGRAM_NATIVE" ]]; then
   fi
   if ! grep -q 'rollback' "$ARCHIVE_ROOT/manifest.json"; then
     echo "ERROR: native-only manifest.json missing rollback anchor" >&2
+    exit 1
+  fi
+  identity_path="$ARCHIVE_ROOT/review-evidence-identity.json"
+  if [[ -f "$identity_path" ]]; then
+    native_source_commit="$(python3 - "$ARCHIVE_ROOT/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(manifest.get("source_commit", ""))
+PY
+    )"
+    python3 "$RELEASE_IDENTITY_VERIFIER" \
+      --manifest "$ARCHIVE_ROOT/manifest.json" \
+      --expected-identity "$identity_path" \
+      --artifact "$PROGRAM_NATIVE" \
+      --source-commit "$native_source_commit" \
+      --require-provider-input >/dev/null
+  elif grep -q 'review_evidence_identity' "$ARCHIVE_ROOT/manifest.json"; then
+    echo "ERROR: native-only manifest declares review_evidence_identity without its payload" >&2
+    exit 1
+  elif [[ "${NATIVE_ONLY_REQUIRE_REVIEW_EVIDENCE_IDENTITY:-0}" == "1" ]]; then
+    echo "ERROR: native-only release identity is required but missing" >&2
     exit 1
   fi
 else
