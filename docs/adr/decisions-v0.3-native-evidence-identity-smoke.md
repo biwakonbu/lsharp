@@ -1,0 +1,42 @@
+# ADR: v0.3 native source-file smoke の evidence identity projection
+
+- Status: Accepted (verified partial slice)
+- Date: 2026-07-31
+- Scope: `scripts/ci/native-selfhost-dev-source-file-smoke.sh` の `validate` identity contract
+- Related: [`decisions-v0.3-review-evidence-identity.md`](decisions-v0.3-review-evidence-identity.md)、
+  [`v0.3-milestone-01.md`](../development/planning/v0.3-milestone-01.md)、`EC-M3-05`
+
+## Context
+
+Rust CLI/MCP と selfhost EmbeddedCli には、明示した subject、source commit、artifact、clock と
+任意の trust/lifecycle digest を `review_evidence_identity` へ投影する契約がある。しかし native
+source-file smoke がこの境界を確認しなければ、native producer が identity を落としたり、暗黙の
+digestを補ったりしても検知できない。
+
+## Decision
+
+- 既存の `:review-attestation` fixtureへ explicit review identity options を渡し、JSON report と
+  manifest が同じ field order/value を返すことを要求する。
+- trust-store/lifecycle digest を省略した場合は `null` を JSON/manifest へ投影し、text では `-`
+  と表示する。system clock、environment、current checkout、manifestからの推測は行わない。
+- subject/source/artifact/now の一部だけを指定した場合は、stable な all-or-none diagnostic で
+  exit `1`、stdout 空、manifestなしに fail-closed する。
+- review 自体に verification input がない fixtureは identity を付けても `unverified` のまま
+  `unknown` (exit `2`) とし、identity を `verified` shortcut として扱わない。
+
+## Evidence
+
+- RED: `scripts/ci/test-native-linux-x86-native-stage0-source-file-smoke.sh` が identity markerを
+  先に要求し、実装前に `VALIDATION_IDENTITY_MANIFEST` 欠落で失敗した。
+- GREEN: native source smokeへ full/optional identity の JSON+manifest、text projection、partial
+  identity rejection を追加し、fake Lima/provenance harness が
+  `Linux native stage0 source-file provenance tests: OK` で通過した。
+- `bash -n scripts/ci/native-selfhost-dev-source-file-smoke.sh scripts/ci/test-native-linux-x86-native-stage0-source-file-smoke.sh`
+  と `git diff --check` が通過した。
+
+## Boundary
+
+これは native source-file smoke の contract/harness evidence であり、current checkoutとsource
+commitが一致する packaged stage0の実 runtime evidenceではない。Mac Apple Silicon / Linux x86_64
+の current-source artifact、native MCP、release identity gate、verified/stale/revoked/invalid の
+target matrix は未完了であり、`EC-M3-05` は `[~]` のまま維持する。

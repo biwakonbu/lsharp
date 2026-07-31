@@ -88,6 +88,15 @@ for required in \
   'run_expected_failure validation-attestation-text' \
   'validation-attestation-no-expiry-text' \
   'review-verification: review:checkout/reviewer-001=unverified' \
+  'VALIDATION_IDENTITY_MANIFEST' \
+  'validation-identity-json' \
+  'VALIDATION_IDENTITY_OPTIONAL_MANIFEST' \
+  'validation-identity-optional-json' \
+  'validation-identity-text' \
+  'review_evidence_identity' \
+  'review-evidence-identity: subject=sha256:graph source=commit-1 artifact=sha256:artifact trust-store=- lifecycle=- now=2026-08-15T00:00:00Z' \
+  'validation-identity-partial' \
+  'review identity requires --review-subject-digest --review-source-commit --review-artifact-digest --review-now' \
   'VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE' \
   'VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE' \
   'VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE' \

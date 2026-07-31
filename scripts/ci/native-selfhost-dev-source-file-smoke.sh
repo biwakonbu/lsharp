@@ -164,6 +164,9 @@ VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalidation-edg
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_ATTESTATION_MANIFEST="$WORK_DIR/ec-m3-review-attestation-manifest.json"
 VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST="$WORK_DIR/ec-m3-review-attestation-no-expiry-manifest.json"
+VALIDATION_IDENTITY_MANIFEST="$WORK_DIR/ec-m3-review-identity-manifest.json"
+VALIDATION_IDENTITY_OPTIONAL_MANIFEST="$WORK_DIR/ec-m3-review-identity-optional-manifest.json"
+VALIDATION_IDENTITY_PARTIAL_MANIFEST="$WORK_DIR/ec-m3-review-identity-partial-manifest.json"
 VALIDATION_INVALID_ATTESTATION_ALGORITHM_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-algorithm-manifest.json"
 VALIDATION_INVALID_ATTESTATION_SIGNATURE_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-signature-manifest.json"
 VALIDATION_INVALID_ATTESTATION_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-timestamp-manifest.json"
@@ -1696,6 +1699,93 @@ run_expected_failure validation-attestation-no-expiry-text 0 validate \
   --source "$VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE" \
   --format text
 require_exact_output validation-attestation-no-expiry-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\nreview-verification: review:checkout/reviewer-001=unverified\n'
+
+run_expected_failure validation-identity-json 0 validate \
+  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_IDENTITY_MANIFEST" \
+  --review-subject-digest "sha256:graph" \
+  --review-source-commit "commit-1" \
+  --review-artifact-digest "sha256:artifact" \
+  --review-trust-store-digest "sha256:trust" \
+  --review-lifecycle-digest "sha256:lifecycle" \
+  --review-now "2026-08-15T00:00:00Z"
+python3 - "$WORK_DIR/validation-identity-json.stdout" "$VALIDATION_IDENTITY_MANIFEST" <<'PY'
+import json
+import pathlib
+import sys
+
+expected = {
+    "subject_digest": "sha256:graph",
+    "source_commit": "commit-1",
+    "artifact_digest": "sha256:artifact",
+    "trust_store_digest": "sha256:trust",
+    "lifecycle_digest": "sha256:lifecycle",
+    "now": "2026-08-15T00:00:00Z",
+}
+report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+identity = report.get("review_evidence_identity")
+if identity != expected or list(identity) != list(expected):
+    raise SystemExit(f"native review evidence identity report is invalid: {identity!r}")
+manifest = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+manifest_identity = manifest.get("review_evidence_identity")
+if manifest_identity != expected or list(manifest_identity) != list(expected):
+    raise SystemExit(f"native review evidence identity manifest is invalid: {manifest_identity!r}")
+if manifest_identity != identity:
+    raise SystemExit("native report and manifest review evidence identity differ")
+PY
+
+run_expected_failure validation-identity-optional-json 0 validate \
+  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_IDENTITY_OPTIONAL_MANIFEST" \
+  --review-subject-digest "sha256:graph" \
+  --review-source-commit "commit-1" \
+  --review-artifact-digest "sha256:artifact" \
+  --review-now "2026-08-15T00:00:00Z"
+python3 - "$WORK_DIR/validation-identity-optional-json.stdout" "$VALIDATION_IDENTITY_OPTIONAL_MANIFEST" <<'PY'
+import json
+import pathlib
+import sys
+
+expected = {
+    "subject_digest": "sha256:graph",
+    "source_commit": "commit-1",
+    "artifact_digest": "sha256:artifact",
+    "trust_store_digest": None,
+    "lifecycle_digest": None,
+    "now": "2026-08-15T00:00:00Z",
+}
+report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+identity = report.get("review_evidence_identity")
+if identity != expected or list(identity) != list(expected):
+    raise SystemExit(f"native optional review identity report is invalid: {identity!r}")
+manifest = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+manifest_identity = manifest.get("review_evidence_identity")
+if manifest_identity != expected or list(manifest_identity) != list(expected):
+    raise SystemExit(f"native optional review identity manifest is invalid: {manifest_identity!r}")
+PY
+
+run_expected_failure validation-identity-text 0 validate \
+  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --format text \
+  --review-subject-digest "sha256:graph" \
+  --review-source-commit "commit-1" \
+  --review-artifact-digest "sha256:artifact" \
+  --review-now "2026-08-15T00:00:00Z"
+require_exact_output validation-identity-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\nreview-verification: review:checkout/reviewer-001=unverified\nreview-evidence-identity: subject=sha256:graph source=commit-1 artifact=sha256:artifact trust-store=- lifecycle=- now=2026-08-15T00:00:00Z\n'
+
+run_expected_validation_error validation-identity-partial \
+  validate \
+  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_IDENTITY_PARTIAL_MANIFEST" \
+  --review-subject-digest "sha256:graph"
+grep -F "review identity requires --review-subject-digest --review-source-commit --review-artifact-digest --review-now" \
+  "$WORK_DIR/validation-identity-partial.stderr" >/dev/null \
+  || die "validation-identity-partial must expose the all-or-none identity boundary"
+[[ ! -e "$VALIDATION_IDENTITY_PARTIAL_MANIFEST" ]] \
+  || die "validation-identity-partial must not produce a manifest"
 
 run_invalid_attestation() {
   local label="$1"
