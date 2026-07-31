@@ -11,6 +11,7 @@ SOURCE_COMMIT=""
 VERSION="v0.0.0-test"
 PATH_PREFIX="$TMP_ROOT/bin"
 SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
+SOURCE_SMOKE_EVIDENCE_ROOT="$TMP_ROOT/source-smoke-evidence"
 PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
@@ -35,14 +36,24 @@ cp "$ROOT/scripts/ci/native-official-release-local.sh" "$FAKE_ROOT/scripts/ci/"
 cat >"$FAKE_ROOT/scripts/ci/native-selfhost-dev-source-file-smoke.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "runtime mac stage0=${NATIVE_STAGE0_DIR:-} source=${NATIVE_SELFHOST_SOURCE_ROOT:-}" >>"$FAKE_LOG"
+evidence="${NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR:-}"
+if [[ -n "$evidence" ]]; then
+  mkdir -p "$evidence"
+  printf '%s\n' 'mac evidence' >"$evidence/manifest.json"
+fi
+printf '%s\n' "runtime mac stage0=${NATIVE_STAGE0_DIR:-} source=${NATIVE_SELFHOST_SOURCE_ROOT:-} evidence=$evidence" >>"$FAKE_LOG"
 SH
 chmod +x "$FAKE_ROOT/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
 
 cat >"$FAKE_ROOT/scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "runtime linux stage0=${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-}" >>"$FAKE_LOG"
+evidence="${LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR:-}"
+if [[ -n "$evidence" ]]; then
+  mkdir -p "$evidence"
+  printf '%s\n' 'linux evidence' >"$evidence/manifest.json"
+fi
+printf '%s\n' "runtime linux stage0=${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-} evidence=$evidence" >>"$FAKE_LOG"
 SH
 chmod +x "$FAKE_ROOT/scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh"
 
@@ -147,6 +158,7 @@ SOURCE_COMMIT="$SOURCE_COMMIT" \
 DIST_DIR="$FAKE_ROOT/dist" \
 SMOKE_ROOT="$SMOKE_ROOT" \
 LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$SMOKE_ROOT" \
+NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$SOURCE_SMOKE_EVIDENCE_ROOT" \
 NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
 NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
 MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
@@ -166,8 +178,12 @@ grep -F "review-lifecycle.snapshot" "$LOG_PATH" >/dev/null
 grep -F "review_identity_timestamp.py" "$LOG_PATH" >/dev/null
 grep -F "fetch target=aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "fetch target=x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
-grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin" "$LOG_PATH" >/dev/null
-grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
+grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin source=$FAKE_ROOT/selfhost evidence=$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin" "$LOG_PATH" >/dev/null
+grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu evidence=$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
+[[ -s "$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin/manifest.json" ]] \
+  || { echo 'Mac source smoke evidence was not retained' >&2; exit 1; }
+[[ -s "$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" ]] \
+  || { echo 'Linux source smoke evidence was not retained' >&2; exit 1; }
 grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
 
 RUNNING_VM_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-running-vm.XXXXXX)"

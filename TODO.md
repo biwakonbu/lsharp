@@ -90,7 +90,13 @@
   stdout/stderr、Wasm bytes、exit code の保存と digest/size manifest を contract test で固定した。
   これは実 target gate の operator evidence を保持する verified partial sliceであり、実 Mac/Linux
   runtime、provider取得、packaged bytes parity は残る。ADR:
-  `docs/adr/decisions-v0.3-native-source-smoke-evidence.md`。さらに native manifest の
+  `docs/adr/decisions-v0.3-native-source-smoke-evidence.md`。さらに official stage0 runtime gateへ
+  `NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT` を接続し、Mac hostと Linux/Limaの target別 source-file
+  smoke evidenceを別 leafへ保持する wiringを追加した。Linux側は evidence writerをVMへコピーし、source
+  smoke終了後に stdout/stderr、Wasm digest/size、exit code、stage0 manifestをhostへ再帰コピーする。
+  これは証跡伝播の verified partial sliceであり、実 Mac/Linux current-source runtime、provider取得、
+  packaged bytes/rollback parityは残る。ADR:
+  `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`。さらに native manifest の
   node/evidence/subject ID fields を一つの serializer helper へ統合し、EC-M3-01 canonical
   manifest bytes の working-tree preflight parity を確認した。これは serializer の verified
   sliceであり、fresh producer と両 target runtime の証拠は残る。ADR:

@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 STAGE0_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-}"
+SOURCE_SMOKE_EVIDENCE_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR:-}"
 KEEP_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR:-0}"
 VM_MIN_FREE_BYTES="${LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES:-4294967296}"
 TRANSPORT_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE:-64}"
@@ -11,6 +12,8 @@ TRANSPORT_TIMEOUT_SECONDS="${LSHARP_NATIVE_LINUX_X86_TRANSPORT_TIMEOUT_SECONDS:-
 VM_WORK_DIR="/tmp/lsharp-native-stage0-source-file-smoke-$$"
 VM_WORK_DIR_CREATED=0
 VM_STARTED_BY_SMOKE=0
+SOURCE_SMOKE_EVIDENCE_DIR=""
+VM_SOURCE_SMOKE_EVIDENCE_DIR=""
 
 cleanup() {
   local exit_status=$?
@@ -98,6 +101,15 @@ require_file "${ROOT_DIR}/selfhost/src/App/Cli.ls" "native selfhost App.Cli sour
 require_file "${ROOT_DIR}/scripts/native-selfhost-dev.sh" "native selfhost runner"
 require_file "${ROOT_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh" "native source-file smoke"
 require_file "${ROOT_DIR}/scripts/ci/decode-native-selfhost-transport.py" "native transport decoder"
+if [[ -n "${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}" ]]; then
+  [[ "${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}" = /* && "${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}" != "/" ]] \
+    || die "LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR must be an absolute non-root path"
+  [[ ! -e "${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}" && ! -L "${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}" ]] \
+    || die "Linux native source-file smoke evidence directory already exists: ${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}"
+  require_file "${ROOT_DIR}/scripts/ci/write-native-source-smoke-evidence.py" \
+    "native source-file smoke evidence writer"
+  SOURCE_SMOKE_EVIDENCE_DIR="${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}"
+fi
 require_file "${ROOT_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls" \
   "EC-M3-04 review attestation source fixture"
 
@@ -148,6 +160,11 @@ limactl copy "${ROOT_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh" \
   "${VM_NAME}:${VM_WORK_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
 limactl copy "${ROOT_DIR}/scripts/ci/decode-native-selfhost-transport.py" \
   "${VM_NAME}:${VM_WORK_DIR}/scripts/ci/decode-native-selfhost-transport.py"
+if [[ -n "${SOURCE_SMOKE_EVIDENCE_DIR}" ]]; then
+  limactl copy "${ROOT_DIR}/scripts/ci/write-native-source-smoke-evidence.py" \
+    "${VM_NAME}:${VM_WORK_DIR}/scripts/ci/write-native-source-smoke-evidence.py"
+  VM_SOURCE_SMOKE_EVIDENCE_DIR="${VM_WORK_DIR}/source-smoke-evidence"
+fi
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls"
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json" \
@@ -157,6 +174,7 @@ limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-duplicate-node-source.
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls"
 
+set +e
 limactl shell "${VM_NAME}" -- env \
   NATIVE_STAGE0_DIR="${VM_WORK_DIR}/stage0" \
   NATIVE_SELFHOST_SOURCE_ROOT="${VM_WORK_DIR}/selfhost" \
@@ -164,6 +182,23 @@ limactl shell "${VM_NAME}" -- env \
   NATIVE_STAGE0_TRANSPORT_CHUNK_SIZE="${TRANSPORT_CHUNK_SIZE}" \
   NATIVE_STAGE0_TRANSPORT_TIMEOUT_SECONDS="${TRANSPORT_TIMEOUT_SECONDS}" \
   NATIVE_SELFHOST_KEEP_STAGE_DIR=1 \
+  NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR="${VM_SOURCE_SMOKE_EVIDENCE_DIR}" \
   bash "${VM_WORK_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
+smoke_status=$?
+set -e
+
+if [[ -n "${SOURCE_SMOKE_EVIDENCE_DIR}" ]]; then
+  mkdir -p "${SOURCE_SMOKE_EVIDENCE_DIR}"
+  if ! limactl copy --recursive \
+    "${VM_NAME}:${VM_SOURCE_SMOKE_EVIDENCE_DIR}/." \
+    "${SOURCE_SMOKE_EVIDENCE_DIR}"; then
+    echo "ERROR: source smoke evidence copy failed" >&2
+    [[ "${smoke_status}" -ne 0 ]] || smoke_status=1
+  fi
+fi
+
+if [[ "${smoke_status}" -ne 0 ]]; then
+  exit "${smoke_status}"
+fi
 
 printf 'Linux x86_64 native stage0 source-file smoke passed\n'

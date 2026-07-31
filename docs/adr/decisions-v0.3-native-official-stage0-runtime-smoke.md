@@ -32,13 +32,23 @@ provider snapshot の取得・認証や release archive の identity 検証は�
   失敗した。
 - GREEN: 同じ fake two-target harness が Mac/Lima wrapper の両方へ fetch 済み stage0 path が渡ること、
   既存の snapshot propagation と片側入力拒否を確認して通過した。
+- RED: official gate の source-file runtime wrapperには source smoke evidence directoryの入力がなく、
+  fetch後の stdout/stderr、Wasm digest/size、exit codeを release gateの外部証跡へ残せなかった。
+- GREEN: `NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT` を指定した場合、target別の fresh leafへ
+  `NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR` または
+  `LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR` を渡すようにした。Linux wrapperは evidence writerを
+  VMへコピーし、成功・失敗の source smoke後に evidence directoryをhostへ再帰コピーする。rootの
+  absolute/non-root、cleaned smoke root外、既存 leaf、symlinkを fail-closed に検査する。
+- GREEN: `bash scripts/ci/test-native-official-release-snapshots.sh` の fake two-target harnessで両 targetの
+  target別 path伝播と evidence保持を確認し、`bash scripts/ci/test-native-linux-x86-native-stage0-source-file-smoke.sh`
+  の Linux writer/copy contract、stage0 package/provider snapshot tests、shell syntax、diff checkを通過した。
 - Direct Mac evidence: current `f6a6da30` の producer/package outputを Mac source-file smokeへ渡す経路は
   actual App.Cli E2E と `aarch64-apple-darwin native selfhost source-file smoke passed` まで通過した。
   これは `fetch-stage0.sh` を含む公式 orchestrator の証拠ではなく、Linux x86_64 runtimeも未検証である。
 - `bash -n scripts/ci/native-official-release-local.sh scripts/ci/test-native-official-release-snapshots.sh`
   と `git diff --check` を通過した。
 
-この証拠は orchestrator の wiring と fake target boundaryに加え、direct Mac source-file smokeの実行を
+この証拠は orchestrator の wiring、target別 evidence propagation、fake target boundaryに加え、direct Mac source-file smokeの実行を
 含む。current checkoutと一致する Linux x86_64 stage0、fetch後の provider snapshot digest bytes比較、
 packaged App.Cli の `--version` / `--help` と rollback/Wasm parity は未取得であり、N9 と EC-M3-05 は
 `[~]` のまま残す。
@@ -46,5 +56,6 @@ packaged App.Cli の `--version` / `--help` と rollback/Wasm parity は未取�
 ## Consequences
 
 公式 local gate は manifest の存在確認で止まらず、fetch した stage0 を target runtime smoke へ
-接続できる。実 target gate は重い処理なので、既存の Lima lock/artifact を再利用して target ごとに
-一つだけ実行し、完了後に smoke script の cleanup 契約を適用する。
+接続できる。`NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT` を指定すれば、smoke root cleanupとは別に
+target別の stdout/stderr、Wasm digest/size、exit code evidenceを保持できる。実 target gate は重い処理なので、
+既存の Lima lock/artifact を再利用して target ごとに一つだけ実行し、完了後に smoke script の cleanup 契約を適用する。

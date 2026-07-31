@@ -36,6 +36,15 @@ expect_reject() {
 [[ -x "$SOURCE_SMOKE" ]] || fail "native selfhost source-file smoke is missing: $SOURCE_SMOKE"
 
 for required in \
+  'LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR' \
+  'NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR' \
+  'write-native-source-smoke-evidence.py' \
+  'limactl copy --recursive' \
+  'source smoke evidence copy failed'; do
+  assert_script_contains "$SMOKE" "$required"
+done
+
+for required in \
   'run_expected_failure validation-text-unknown' \
   '--source "$VALIDATION_SOURCE"' \
   '--format text' \

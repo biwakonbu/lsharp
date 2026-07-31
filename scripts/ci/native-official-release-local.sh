@@ -35,6 +35,7 @@ MACOS_ROLLBACK_ARCHIVE="${MACOS_ROLLBACK_ARCHIVE:-}"
 LINUX_ROLLBACK_ARCHIVE="${LINUX_ROLLBACK_ARCHIVE:-}"
 NATIVE_OFFICIAL_REVIEW_TRUST_STORE="${NATIVE_OFFICIAL_REVIEW_TRUST_STORE:-}"
 NATIVE_OFFICIAL_REVIEW_LIFECYCLE="${NATIVE_OFFICIAL_REVIEW_LIFECYCLE:-}"
+NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT:-}"
 SMOKE_ROOT="${LSHARP_NATIVE_RELEASE_SMOKE_ROOT:-/tmp/lsharp-native-official-release-smoke}"
 MAX_DIST_KIB="${LSHARP_NATIVE_RELEASE_MAX_DIST_KIB:-1048576}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
@@ -105,9 +106,24 @@ validate_review_identity_inputs() {
   done
 }
 
+validate_source_smoke_evidence_root() {
+  [[ -z "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]] && return 0
+  [[ "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" = /* && "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" != "/" ]] \
+    || { echo "ERROR: NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT must be an absolute non-root path" >&2; exit 1; }
+  [[ "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" != "${SMOKE_ROOT}" && "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" != "${SMOKE_ROOT}"/* ]] \
+    || { echo "ERROR: source smoke evidence root must not be inside the cleaned release smoke root" >&2; exit 1; }
+  if [[ -e "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" && ! -d "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]]; then
+    echo "ERROR: source smoke evidence root is not a directory: ${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" >&2
+    exit 1
+  fi
+  [[ ! -L "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]] \
+    || { echo "ERROR: source smoke evidence root must not be a symlink: ${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" >&2; exit 1; }
+}
+
 NATIVE_OFFICIAL_REVIEW_ENV=()
 validate_review_snapshots
 validate_review_identity_inputs
+validate_source_smoke_evidence_root
 if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
   NATIVE_OFFICIAL_REVIEW_ENV=(
     "NATIVE_ONLY_REVIEW_TRUST_STORE=${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}"
@@ -315,15 +331,31 @@ smoke_stage0_fetch() {
 smoke_stage0_runtime() {
   local target="$1"
   local stage0_dir="${SMOKE_ROOT}/stage0-${target}"
+  local evidence_dir=""
+  if [[ -n "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]]; then
+    evidence_dir="${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}/${target}"
+    [[ ! -e "${evidence_dir}" && ! -L "${evidence_dir}" ]] \
+      || { echo "ERROR: source smoke evidence directory already exists: ${evidence_dir}" >&2; exit 1; }
+  fi
 
   case "${target}" in
     aarch64-apple-darwin)
-      NATIVE_STAGE0_DIR="${stage0_dir}" \
+      local mac_smoke_env=()
+      if [[ -n "${evidence_dir}" ]]; then
+        mac_smoke_env+=("NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR=${evidence_dir}")
+      fi
+      env "${mac_smoke_env[@]}" \
+        NATIVE_STAGE0_DIR="${stage0_dir}" \
         NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
         bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
       ;;
     x86_64-unknown-linux-gnu)
-      LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="${stage0_dir}" \
+      local linux_smoke_env=()
+      if [[ -n "${evidence_dir}" ]]; then
+        linux_smoke_env+=("LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR=${evidence_dir}")
+      fi
+      env "${linux_smoke_env[@]}" \
+        LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="${stage0_dir}" \
         bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
       ;;
     *)
