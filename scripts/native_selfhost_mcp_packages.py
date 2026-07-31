@@ -346,9 +346,82 @@ def call_package_api(arguments):
         value = json.loads(api_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
-    if not isinstance(value, dict):
-        raise PackageLookupError(f"{api_path}: api.json の root は object が必要です")
+    _validate_package_api(value, api_path)
     return value
+
+
+def _validate_package_api(value, api_path):
+    """Validate the closed-world shape returned by ``lsharp_package_api``."""
+
+    def fail(path, message):
+        raise PackageLookupError(f"{api_path}: api.json の {path} {message}")
+
+    def object_at(item, path, fields):
+        if not isinstance(item, dict):
+            fail(path, "は object が必要です")
+        unknown = sorted(set(item).difference(fields))
+        if unknown:
+            fail(f"{path}.{unknown[0]}", "は未知のフィールドです")
+        missing = [field for field in fields if field not in item]
+        if missing:
+            fail(f"{path}.{missing[0]}", "は必須です")
+        return item
+
+    def non_empty_string(item, path):
+        if not isinstance(item, str) or not item.strip():
+            fail(path, "は空でない文字列が必要です")
+
+    def nullable_string(item, path):
+        if item is not None and not isinstance(item, str):
+            fail(path, "は文字列または null が必要です")
+
+    if not isinstance(value, dict):
+        fail("root", "は object が必要です")
+    root = object_at(value, "root", {"package", "version", "modules"})
+    non_empty_string(root["package"], "package")
+    non_empty_string(root["version"], "version")
+    if not isinstance(root["modules"], list):
+        fail("modules", "は配列が必要です")
+
+    for module_index, raw_module in enumerate(root["modules"]):
+        module_path = f"modules[{module_index}]"
+        module = object_at(raw_module, module_path, {"name", "doc", "functions", "types"})
+        non_empty_string(module["name"], f"{module_path}.name")
+        nullable_string(module["doc"], f"{module_path}.doc")
+        for collection in ("functions", "types"):
+            if not isinstance(module[collection], list):
+                fail(f"{module_path}.{collection}", "は配列が必要です")
+
+        for function_index, raw_function in enumerate(module["functions"]):
+            function_path = f"{module_path}.functions[{function_index}]"
+            function = object_at(
+                raw_function,
+                function_path,
+                {"name", "signature", "params", "returns", "doc", "example"},
+            )
+            non_empty_string(function["name"], f"{function_path}.name")
+            non_empty_string(function["signature"], f"{function_path}.signature")
+            nullable_string(function["doc"], f"{function_path}.doc")
+            nullable_string(function["example"], f"{function_path}.example")
+            if not isinstance(function["params"], list):
+                fail(f"{function_path}.params", "は配列が必要です")
+            returns_path = f"{function_path}.returns"
+            returns = object_at(function["returns"], returns_path, {"type", "doc"})
+            non_empty_string(returns["type"], f"{returns_path}.type")
+            nullable_string(returns["doc"], f"{returns_path}.doc")
+
+            for param_index, raw_param in enumerate(function["params"]):
+                param_path = f"{function_path}.params[{param_index}]"
+                param = object_at(raw_param, param_path, {"name", "type", "doc"})
+                non_empty_string(param["name"], f"{param_path}.name")
+                non_empty_string(param["type"], f"{param_path}.type")
+                nullable_string(param["doc"], f"{param_path}.doc")
+
+        for type_index, raw_type in enumerate(module["types"]):
+            type_path = f"{module_path}.types[{type_index}]"
+            type_info = object_at(raw_type, type_path, {"name", "kind"})
+            non_empty_string(type_info["name"], f"{type_path}.name")
+            non_empty_string(type_info["kind"], f"{type_path}.kind")
 
 
 def _stdlib_api_path():

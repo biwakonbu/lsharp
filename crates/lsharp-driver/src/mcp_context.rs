@@ -229,6 +229,7 @@ fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
                 api_path.display()
             ));
         }
+        validate_package_api_value(&value, &api_path)?;
         return Ok(value);
     }
 
@@ -249,7 +250,188 @@ fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
     };
     let api = api_doc::build_api_doc_for_package(package_dir, &package, &version)
         .map_err(|e| e.to_string())?;
-    serde_json::to_value(api).map_err(|e| e.to_string())
+    let value = serde_json::to_value(api).map_err(|e| e.to_string())?;
+    validate_package_api_value(&value, &api_path)?;
+    Ok(value)
+}
+
+fn validate_package_api_value(value: &Value, api_path: &Path) -> Result<(), String> {
+    let root = package_api_object(value, api_path, "root", &["package", "version", "modules"])?;
+    package_api_non_empty_string(&root["package"], api_path, "package")?;
+    package_api_non_empty_string(&root["version"], api_path, "version")?;
+    let modules = package_api_array(&root["modules"], api_path, "modules")?;
+
+    for (module_index, module_value) in modules.iter().enumerate() {
+        let module_path = format!("modules[{module_index}]");
+        let module = package_api_object(
+            module_value,
+            api_path,
+            &module_path,
+            &["name", "doc", "functions", "types"],
+        )?;
+        package_api_non_empty_string(&module["name"], api_path, &format!("{module_path}.name"))?;
+        package_api_nullable_string(&module["doc"], api_path, &format!("{module_path}.doc"))?;
+        let functions = package_api_array(
+            &module["functions"],
+            api_path,
+            &format!("{module_path}.functions"),
+        )?;
+        let types = package_api_array(&module["types"], api_path, &format!("{module_path}.types"))?;
+
+        for (function_index, function_value) in functions.iter().enumerate() {
+            let function_path = format!("{module_path}.functions[{function_index}]");
+            let function = package_api_object(
+                function_value,
+                api_path,
+                &function_path,
+                &["name", "signature", "params", "returns", "doc", "example"],
+            )?;
+            package_api_non_empty_string(
+                &function["name"],
+                api_path,
+                &format!("{function_path}.name"),
+            )?;
+            package_api_non_empty_string(
+                &function["signature"],
+                api_path,
+                &format!("{function_path}.signature"),
+            )?;
+            package_api_nullable_string(
+                &function["doc"],
+                api_path,
+                &format!("{function_path}.doc"),
+            )?;
+            package_api_nullable_string(
+                &function["example"],
+                api_path,
+                &format!("{function_path}.example"),
+            )?;
+            let params = package_api_array(
+                &function["params"],
+                api_path,
+                &format!("{function_path}.params"),
+            )?;
+            let returns_path = format!("{function_path}.returns");
+            let returns = package_api_object(
+                &function["returns"],
+                api_path,
+                &returns_path,
+                &["type", "doc"],
+            )?;
+            package_api_non_empty_string(
+                &returns["type"],
+                api_path,
+                &format!("{returns_path}.type"),
+            )?;
+            package_api_nullable_string(&returns["doc"], api_path, &format!("{returns_path}.doc"))?;
+
+            for (param_index, param_value) in params.iter().enumerate() {
+                let param_path = format!("{function_path}.params[{param_index}]");
+                let param = package_api_object(
+                    param_value,
+                    api_path,
+                    &param_path,
+                    &["name", "type", "doc"],
+                )?;
+                package_api_non_empty_string(
+                    &param["name"],
+                    api_path,
+                    &format!("{param_path}.name"),
+                )?;
+                package_api_non_empty_string(
+                    &param["type"],
+                    api_path,
+                    &format!("{param_path}.type"),
+                )?;
+                package_api_nullable_string(&param["doc"], api_path, &format!("{param_path}.doc"))?;
+            }
+        }
+
+        for (type_index, type_value) in types.iter().enumerate() {
+            let type_path = format!("{module_path}.types[{type_index}]");
+            let type_info =
+                package_api_object(type_value, api_path, &type_path, &["name", "kind"])?;
+            package_api_non_empty_string(
+                &type_info["name"],
+                api_path,
+                &format!("{type_path}.name"),
+            )?;
+            package_api_non_empty_string(
+                &type_info["kind"],
+                api_path,
+                &format!("{type_path}.kind"),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn package_api_object<'a>(
+    value: &'a Value,
+    api_path: &Path,
+    path: &str,
+    fields: &[&str],
+) -> Result<&'a serde_json::Map<String, Value>, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| package_api_error(api_path, path, "は object が必要です"))?;
+    if let Some(unknown) = object
+        .keys()
+        .filter(|key| !fields.contains(&key.as_str()))
+        .min()
+    {
+        return Err(package_api_error(
+            api_path,
+            &format!("{path}.{unknown}"),
+            "は未知のフィールドです",
+        ));
+    }
+    if let Some(missing) = fields.iter().find(|field| !object.contains_key(**field)) {
+        return Err(package_api_error(
+            api_path,
+            &format!("{path}.{missing}"),
+            "は必須です",
+        ));
+    }
+    Ok(object)
+}
+
+fn package_api_array<'a>(
+    value: &'a Value,
+    api_path: &Path,
+    path: &str,
+) -> Result<&'a Vec<Value>, String> {
+    value
+        .as_array()
+        .ok_or_else(|| package_api_error(api_path, path, "は配列が必要です"))
+}
+
+fn package_api_non_empty_string(value: &Value, api_path: &Path, path: &str) -> Result<(), String> {
+    if value.as_str().is_some_and(|value| !value.trim().is_empty()) {
+        Ok(())
+    } else {
+        Err(package_api_error(
+            api_path,
+            path,
+            "は空でない文字列が必要です",
+        ))
+    }
+}
+
+fn package_api_nullable_string(value: &Value, api_path: &Path, path: &str) -> Result<(), String> {
+    if value.is_null() || value.is_string() {
+        Ok(())
+    } else {
+        Err(package_api_error(
+            api_path,
+            path,
+            "は文字列または null が必要です",
+        ))
+    }
+}
+
+fn package_api_error(api_path: &Path, path: &str, message: &str) -> String {
+    format!("{}: api.json の {path} {message}", api_path.display())
 }
 
 fn stdlib_root() -> Option<PathBuf> {

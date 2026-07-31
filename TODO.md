@@ -176,11 +176,12 @@ schema、fake native program 非実行を native MCP 19 tests と Rust MCP focus
 lsharp_project_context は `lsharp.toml` の project/exports/dependencies と `.lsharp/packages` を offline
 projection し、依存名の決定的順序、closed-world schema、引数 fail-closed、fake native program 非実行を
 native MCP 21 tests と Rust MCP focused 59 tests で確認した。lsharp_package_api は deterministic な
-installed package の既存 `docs/api.json` projection として、closed-world schema、引数 fail-closed、fake
-native program 非実行を native MCP 23 tests と Rust MCP focused 62 tests で確認した。lsharp_stdlib_api は
-Rust canonical `doc --json` から生成した `stdlib/api.json` を読む offline projection として、module 絞り込み、
-閉世界 schema、引数 fail-closed、artifact と Rust canonical output の一致、native program 非実行を native MCP 25 tests
-と Rust MCP focused 64 tests で確認した verified partial である。API generation/validation、残る LSP/compile-run/provider semantics、target runtime、manifest runtime validation
+installed package の既存 `docs/api.json` projection として、full closed-world schema、nested malformed
+field の fail-closed、引数 fail-closed、fake native program 非実行を native MCP 25 tests と Rust MCP
+focused 65 tests で確認した。lsharp_stdlib_api は Rust canonical `doc --json` から生成した
+`stdlib/api.json` を読む offline projection として、module 絞り込み、閉世界 schema、引数 fail-closed、
+artifact と Rust canonical output の一致、native program 非実行を確認した verified partial である。
+API generation/package-install semantics、残る LSP/compile-run/provider semantics、target runtime、manifest runtime validation
 の全 surface は [~] のまま残す。ADR:
 docs/adr/decisions-v0.3-native-mcp-subset-shim.md。
 

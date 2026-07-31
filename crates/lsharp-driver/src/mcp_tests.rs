@@ -859,6 +859,43 @@ branch = "main"
     }
 
     #[test]
+    fn test_package_api_tool_rejects_malformed_api_shape() {
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_api_malformed_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let api_dir = root.join(".lsharp/packages/malformed-1.0.0/docs");
+        std::fs::create_dir_all(&api_dir).unwrap();
+        std::fs::write(
+            api_dir.join("api.json"),
+            r#"{
+  "package": "malformed",
+  "version": "0.1.0",
+  "modules": [{
+    "name": "Geometry",
+    "doc": null,
+    "functions": [],
+    "types": [],
+    "extra": true
+  }]
+}"#,
+        )
+        .unwrap();
+
+        let error = call_tool(
+            "lsharp_package_api",
+            &json!({
+                "project_dir": root.display().to_string(),
+                "name": "malformed"
+            }),
+        )
+        .expect_err("malformed api.json の unknown field は reject するべき");
+        assert!(error.contains("modules[0].extra"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn test_package_api_tool_reads_installed_api_json() {
         let dir = std::env::temp_dir().join("lsharp_mcp_package_api");
         let _ = std::fs::remove_dir_all(&dir);
@@ -873,8 +910,15 @@ branch = "main"
     {
       "name": "Geometry",
       "doc": null,
-      "functions": [],
-      "types": []
+      "functions": [{
+        "name": "distance",
+        "signature": "distance : Point -> Point -> Float",
+        "params": [{"name": "left", "type": "Point", "doc": null}],
+        "returns": {"type": "Float", "doc": null},
+        "doc": "距離",
+        "example": null
+      }],
+      "types": [{"name": "Point", "kind": "record"}]
     }
   ]
 }"#,

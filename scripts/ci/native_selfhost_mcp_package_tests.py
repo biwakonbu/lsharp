@@ -128,6 +128,22 @@ def assert_package_api_rejects_invalid_arguments(test):
         invalid = root / ".lsharp" / "packages" / "invalid-1.0.0" / "docs"
         invalid.mkdir(parents=True)
         (invalid / "api.json").write_text("[]", encoding="utf-8")
+        malformed = root / ".lsharp" / "packages" / "malformed-1.0.0" / "docs"
+        malformed.mkdir(parents=True)
+        (malformed / "api.json").write_text(
+            json.dumps({
+                "package": "malformed",
+                "version": "0.1.0",
+                "modules": [{
+                    "name": "Geometry",
+                    "doc": None,
+                    "functions": [],
+                    "types": [],
+                    "extra": True,
+                }],
+            }),
+            encoding="utf-8",
+        )
         cases = [
             {"unknown": True},
             {"name": ""},
@@ -135,6 +151,7 @@ def assert_package_api_rejects_invalid_arguments(test):
             {"name": "demo", "project_dir": 42},
             {"name": "missing", "project_dir": str(root)},
             {"name": "invalid", "project_dir": str(root)},
+            {"name": "malformed", "project_dir": str(root)},
         ]
         payload = b"".join(request(index, "tools/call", {"name": "lsharp_package_api", "arguments": arguments}) for index, arguments in enumerate(cases, 1))
         result = test.run_shim(program, payload, root)
@@ -150,4 +167,5 @@ def assert_package_api_rejects_invalid_arguments(test):
         test.assertIn("api.json", responses[4]["result"]["content"][0]["text"])
         test.assertFalse((missing / "docs" / "api.json").exists())
         test.assertIn("root", responses[5]["result"]["content"][0]["text"])
+        test.assertIn("modules[0].extra", responses[6]["result"]["content"][0]["text"])
         test.assertFalse((root / "native.log").exists())
