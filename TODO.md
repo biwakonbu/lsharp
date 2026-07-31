@@ -57,7 +57,12 @@
   `docs/adr/decisions-v0.3-stage0-release-smoke-snapshot-wiring.md`,
   `docs/adr/decisions-v0.3-native-official-multitarget-snapshot-wiring.md`,
   `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`,
-  `docs/adr/decisions-v0.3-native-macos-stage0-producer.md`。
+  `docs/adr/decisions-v0.3-native-macos-stage0-producer.md`。さらに
+  `NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR` による source-file smoke の一時 work directory、
+  stdout/stderr、Wasm bytes、exit code の保存と digest/size manifest を contract test で固定した。
+  これは実 target gate の operator evidence を保持する verified partial sliceであり、実 Mac/Linux
+  runtime、provider取得、packaged bytes parity は残る。ADR:
+  `docs/adr/decisions-v0.3-native-source-smoke-evidence.md`。
 
 ## Current priority — v0.2 Milestone 2
 

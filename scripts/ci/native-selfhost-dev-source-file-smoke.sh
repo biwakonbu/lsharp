@@ -10,14 +10,30 @@ STAGE0_DIR="${NATIVE_STAGE0_DIR:-}"
 SOURCE_ROOT="${NATIVE_SELFHOST_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_SELFHOST_STAGE_DIR:-}"
 KEEP_STAGE_DIR="${NATIVE_SELFHOST_KEEP_STAGE_DIR:-0}"
+SOURCE_SMOKE_EVIDENCE_DIR="${NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR:-}"
+SOURCE_SMOKE_EVIDENCE_WRITER="$ROOT/scripts/ci/write-native-source-smoke-evidence.py"
 WORK_DIR=""
 STAGE_DIR_CREATED=0
+SMOKE_TARGET=""
 
 cleanup() {
+  local status=$?
+  if [[ -n "$SOURCE_SMOKE_EVIDENCE_DIR" && -d "$WORK_DIR" ]]; then
+    if ! python3 "$SOURCE_SMOKE_EVIDENCE_WRITER" \
+      --evidence-dir "$SOURCE_SMOKE_EVIDENCE_DIR" \
+      --work-dir "$WORK_DIR" \
+      --stage0-manifest "$STAGE0_DIR/manifest.json" \
+      --target "$SMOKE_TARGET" \
+      --exit-code "$status"; then
+      echo "ERROR: failed to persist native source-file smoke evidence" >&2
+      [[ "$status" -ne 0 ]] || status=1
+    fi
+  fi
   [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
   if [[ "$STAGE_DIR_CREATED" -eq 1 && "$KEEP_STAGE_DIR" != "1" ]]; then
     rm -rf "$STAGE_DIR"
   fi
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -41,6 +57,14 @@ require_file "$SOURCE_ROOT/src/App/Cli.ls" "native selfhost App.Cli source"
 require_file "$VALIDATION_SOURCE" "EC-M3-01 validation source fixture"
 require_file "$EXPECTED_VALIDATION_MANIFEST" "EC-M3-01 canonical manifest fixture"
 require_file "$VALIDATION_INVALID_SOURCE" "EC-M3-01 duplicate node source fixture"
+
+if [[ -n "$SOURCE_SMOKE_EVIDENCE_DIR" ]]; then
+  [[ "$SOURCE_SMOKE_EVIDENCE_DIR" = /* && "$SOURCE_SMOKE_EVIDENCE_DIR" != "/" ]] \
+    || die "NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR must be an absolute non-root path"
+  [[ ! -e "$SOURCE_SMOKE_EVIDENCE_DIR" && ! -L "$SOURCE_SMOKE_EVIDENCE_DIR" ]] \
+    || die "native source-file smoke evidence directory already exists: $SOURCE_SMOKE_EVIDENCE_DIR"
+  require_file "$SOURCE_SMOKE_EVIDENCE_WRITER" "native source-file smoke evidence writer"
+fi
 
 stage0_target="$(python3 - "$STAGE0_DIR/manifest.json" <<'PY'
 import json
@@ -74,6 +98,7 @@ case "$(uname -s)/$(uname -m)" in
     die "native selfhost source-file smoke requires macOS arm64 or Linux x86_64"
     ;;
 esac
+SMOKE_TARGET="$expected_target"
 [[ "$stage0_target" == "$expected_target" ]] || die "stage0 target mismatch: expected $expected_target, got $stage0_target"
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-native-selfhost-source-smoke.XXXXXX")"

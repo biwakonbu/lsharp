@@ -163,6 +163,20 @@ LSHARP_NATIVE_MACOS_AARCH64_STAGE0_DIR=<mac-native-stage0-dir> \
 
 この producer の fake wiring/manifest validation は ADR [`decisions-v0.3-native-macos-stage0-producer.md`](../../adr/decisions-v0.3-native-macos-stage0-producer.md) に記録する。実 target runtime の成功を意味しない。
 
+実 target source-file smoke の bytes/stdout/stderr/exit code を保存して再監査する場合は、未使用の絶対パスを
+指定する。既存の evidence directory は上書きされない。
+
+```bash
+NATIVE_STAGE0_DIR=<fetched-mac-stage0-dir> \
+NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR=<fresh-absolute-evidence-dir> \
+  bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
+```
+
+保存される `manifest.json` は stage0 source commit / manifest digest、exit code、compile/build Wasm の
+size/digest、各 stdout/stderr の相対パスを含む。これは evidence export の contractであり、実 target gate の
+完走や provider/rollback parity の代替ではない（ADR:
+[`decisions-v0.3-native-source-smoke-evidence.md`](../../adr/decisions-v0.3-native-source-smoke-evidence.md)）。
+
 両 target の program / manifest / stage0 directory / rollback archive が揃ったら、手動 GitHub Release に添付する前に同じ入力を local gateへ渡す。
 
 ```bash
