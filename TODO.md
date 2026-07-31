@@ -596,7 +596,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   verifier、native-only archive / packaged stage0 の optional projection、artifact/source mismatch の
   release smoke rejectionを追加した。native text/JSON/MCP と release gate の
   `verified/unverified/stale/revoked/invalid` ordering、provider adapter、両 target runtimeを
-  M3-05-N1/N2 で閉じる。
+  M3-05-N1/N2 で閉じる。official gate の task-owned cleanup path traversal (`.` / `..`) 拒否は
+  verified partial として追加したが、actual provider/auth、current-source/packaged runtime、
+  rollback/Wasm parity は残る。ADR:
+  `docs/adr/decisions-v0.3-native-official-cleanup-path.md`。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は

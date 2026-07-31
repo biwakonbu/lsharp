@@ -17,6 +17,8 @@ MISSING_IDENTITY_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
 RUNNING_VM_SMOKE_ROOT=""
 CLEANUP_FAILURE_SMOKE_ROOT=""
+TRAVERSAL_ROOT=""
+TRAVERSAL_BASE=""
 HOSTGEN_REPLAY_LOCK_PATH="/tmp/lsharp-native-official-snapshot-hostgen-lock.$$"
 cleanup() {
   rm -rf "$TMP_ROOT" "$SMOKE_ROOT"
@@ -26,6 +28,8 @@ cleanup() {
   [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
   [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
   [[ -z "$CLEANUP_FAILURE_SMOKE_ROOT" ]] || rm -rf "$CLEANUP_FAILURE_SMOKE_ROOT"
+  [[ -z "$TRAVERSAL_ROOT" ]] || rm -rf "$TRAVERSAL_ROOT"
+  [[ -z "$TRAVERSAL_BASE" ]] || rm -rf "$TRAVERSAL_BASE"
 }
 trap cleanup EXIT
 
@@ -364,5 +368,37 @@ partial_status=$?
 set -e
 [[ "$partial_status" -ne 0 ]] || { echo 'partial snapshot input was accepted' >&2; exit 1; }
 grep -F 'must be supplied together' <<<"$partial_output" >/dev/null
+
+TRAVERSAL_BASE="$(mktemp -d /tmp/lsharp-native-official-snapshot-parent.XXXXXX)"
+TRAVERSAL_ROOT="$(mktemp -d /tmp/outside-lsharp-native-official-snapshot.XXXXXX)"
+printf '%s\n' 'sentinel' >"$TRAVERSAL_ROOT/sentinel"
+set +e
+traversal_output="$(
+  FAKE_LOG="$LOG_PATH" \
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/traversal-dist" \
+  SMOKE_ROOT="$TRAVERSAL_BASE/../${TRAVERSAL_ROOT##*/}" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$TRAVERSAL_BASE/../${TRAVERSAL_ROOT##*/}" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+traversal_status=$?
+set -e
+[[ "$traversal_status" -ne 0 ]] \
+  || { echo 'cleanup path traversal was accepted' >&2; exit 1; }
+grep -F 'unsafe cleanup path' <<<"$traversal_output" >/dev/null \
+  || { echo 'cleanup path traversal did not expose a stable diagnostic' >&2; exit 1; }
+[[ -s "$TRAVERSAL_ROOT/sentinel" ]] \
+  || { echo 'cleanup path traversal removed an outside sentinel' >&2; exit 1; }
 
 echo 'native official release snapshot tests: OK'

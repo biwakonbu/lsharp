@@ -51,6 +51,12 @@ require_safe_cleanup_path() {
       exit 1
       ;;
   esac
+  case "${path}" in
+    */../*|*/..|*/./*|*/.)
+      echo "ERROR: refusing unsafe cleanup path with traversal component for ${label}: ${path}" >&2
+      exit 1
+      ;;
+  esac
 }
 
 require_safe_cleanup_path "${SMOKE_ROOT}" "release smoke root"
