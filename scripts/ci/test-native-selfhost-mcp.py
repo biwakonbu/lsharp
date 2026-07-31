@@ -139,9 +139,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 check_tool["outputSchema"]["$defs"]["position"]["required"],
                 ["line", "character"],
             )
-            validate_schema = next(
+            validate_tool = next(
                 tool for tool in responses[1]["result"]["tools"] if tool["name"] == "lsharp_validate"
-            )["inputSchema"]
+            )
+            validate_schema = validate_tool["inputSchema"]
             self.assertEqual(
                 validate_schema["oneOf"],
                 [
@@ -179,6 +180,37 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 },
             )
             self.assertFalse(validate_schema["additionalProperties"])
+            validate_output_schema = validate_tool["outputSchema"]
+            self.assertFalse(validate_output_schema["additionalProperties"])
+            trace_gap_schema = validate_output_schema["properties"]["trace_gaps"]["items"]
+            self.assertEqual(trace_gap_schema["required"], ["code", "subject_id"])
+            self.assertEqual(
+                trace_gap_schema["properties"]["code"]["enum"],
+                ["trace-gap.intent-without-claim", "trace-gap.claim-without-test"],
+            )
+            identity_schema = validate_output_schema["properties"]["review_evidence_identity"]
+            self.assertEqual(
+                identity_schema["required"],
+                [
+                    "subject_digest",
+                    "source_commit",
+                    "artifact_digest",
+                    "trust_store_digest",
+                    "lifecycle_digest",
+                    "now",
+                ],
+            )
+            self.assertEqual(
+                identity_schema["properties"]["trust_store_digest"]["type"],
+                ["string", "null"],
+            )
+            verification_schema = validate_output_schema["properties"]["review_verifications"]["items"]
+            self.assertEqual(verification_schema["required"], ["review_id", "state"])
+            self.assertEqual(
+                verification_schema["properties"]["state"]["enum"],
+                ["verified", "unverified", "stale", "revoked"],
+            )
+            self.assertEqual(validate_output_schema["properties"]["manifest"]["type"], "object")
             self.assertEqual(responses[2]["result"]["structuredContent"]["ok"], True)
             self.assertEqual(responses[3]["result"]["structuredContent"]["status"], "unknown")
             self.assertEqual(responses[4]["result"]["structuredContent"], {"formatted": "(formatted)\n"})

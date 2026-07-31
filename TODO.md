@@ -144,12 +144,14 @@ tools/list の JSON Schema に provider path と review identity 4-field の all
 native 実行前に揃えた。focused
 testsは通過したが、Rust MCP 全tool parity、provider取得/auth、署名/lifecycle検証、Linux runtimeは
 未完了のため `[~]` を維持する。`lsharp_check` の migrationDiagnostics output schema（code/owner/
-semantics/disposition/range）も Rust contractへ揃えた。ADR:
+semantics/disposition/range）と `lsharp_validate` report の trace gap/review identity/
+review verification schemaも Rust contractへ揃えた。ADR:
 `docs/adr/decisions-v0.3-native-mcp-subset-shim.md`,
 `docs/adr/decisions-v0.3-native-mcp-provider-snapshot-adapter.md`,
 `docs/adr/decisions-v0.3-native-mcp-review-identity-contract.md`,
 `docs/adr/decisions-v0.3-native-mcp-validate-input-closed-world.md`,
-`docs/adr/decisions-v0.3-native-mcp-check-output-schema.md`。
+`docs/adr/decisions-v0.3-native-mcp-check-output-schema.md`,
+`docs/adr/decisions-v0.3-native-mcp-validate-output-schema.md`。
 
 ## Current priority — v0.2 Milestone 2
 

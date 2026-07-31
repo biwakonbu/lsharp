@@ -118,6 +118,7 @@ CHECK_OUTPUT_SCHEMA = {
 VALIDATE_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
+    "additionalProperties": False,
     "required": [
         "status",
         "trace_gaps",
@@ -129,12 +130,76 @@ VALIDATE_OUTPUT_SCHEMA = {
     ],
     "properties": {
         "status": {"type": "string", "enum": ["pass", "fail", "unknown"]},
-        "trace_gaps": {"type": "array"},
-        "open_questions": {"type": "integer", "minimum": 0},
-        "independent_reviews": {"type": "integer", "minimum": 0},
-        "contradicting_observations": {"type": "integer", "minimum": 0},
-        "stale_reviews": {"type": "integer", "minimum": 0},
-        "stale_evidence": {"type": "integer", "minimum": 0},
+        "trace_gaps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["code", "subject_id"],
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "enum": [
+                            "trace-gap.intent-without-claim",
+                            "trace-gap.claim-without-test",
+                        ],
+                    },
+                    "subject_id": {"type": "string", "minLength": 1},
+                },
+            },
+        },
+        "open_questions": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+        "independent_reviews": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 18446744073709551615,
+        },
+        "contradicting_observations": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 18446744073709551615,
+        },
+        "stale_reviews": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+        "stale_evidence": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+        "review_evidence_identity": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "subject_digest",
+                "source_commit",
+                "artifact_digest",
+                "trust_store_digest",
+                "lifecycle_digest",
+                "now",
+            ],
+            "properties": {
+                "subject_digest": {"type": "string", "minLength": 1},
+                "source_commit": {"type": "string", "minLength": 1},
+                "artifact_digest": {"type": "string", "minLength": 1},
+                "trust_store_digest": {"type": ["string", "null"], "minLength": 1},
+                "lifecycle_digest": {"type": ["string", "null"], "minLength": 1},
+                "now": {"type": "string", "minLength": 1},
+            },
+        },
+        "review_verifications": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["review_id", "state"],
+                "properties": {
+                    "review_id": {
+                        "type": "string",
+                        "pattern": r"^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": ["verified", "unverified", "stale", "revoked"],
+                    },
+                },
+            },
+        },
+        "manifest": {"type": "object"},
     },
 }
 
