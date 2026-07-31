@@ -115,6 +115,18 @@ CHECK_OUTPUT_SCHEMA = {
     },
 }
 
+MANIFEST_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": ["schema_version", "nodes", "evidence", "edges"],
+    "properties": {
+        "schema_version": {"type": "integer", "const": 1},
+        "nodes": {"type": "array"},
+        "evidence": {"type": "array"},
+        "edges": {"type": "array"},
+    },
+}
+
+
 VALIDATE_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -199,7 +211,7 @@ VALIDATE_OUTPUT_SCHEMA = {
                 },
             },
         },
-        "manifest": {"type": "object"},
+        "manifest": MANIFEST_OUTPUT_SCHEMA,
     },
 }
 

@@ -210,7 +210,15 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 verification_schema["properties"]["state"]["enum"],
                 ["verified", "unverified", "stale", "revoked"],
             )
-            self.assertEqual(validate_output_schema["properties"]["manifest"]["type"], "object")
+            manifest_schema = validate_output_schema["properties"]["manifest"]
+            self.assertEqual(manifest_schema["type"], "object")
+            self.assertEqual(
+                manifest_schema["required"],
+                ["schema_version", "nodes", "evidence", "edges"],
+            )
+            self.assertEqual(manifest_schema["properties"]["schema_version"]["const"], 1)
+            for field in ("nodes", "evidence", "edges"):
+                self.assertEqual(manifest_schema["properties"][field]["type"], "array")
             self.assertEqual(responses[2]["result"]["structuredContent"]["ok"], True)
             self.assertEqual(responses[3]["result"]["structuredContent"]["status"], "unknown")
             self.assertEqual(responses[4]["result"]["structuredContent"], {"formatted": "(formatted)\n"})
