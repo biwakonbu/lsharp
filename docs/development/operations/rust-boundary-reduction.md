@@ -972,6 +972,27 @@ Evidence: `test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_non_bo
 
 これは Rust-hosted Wasm による `EmbeddedCli` の単一 legacy invariant failure fixtureと、その diagnostic span の Rust/selfhost differential に限定した verified sliceであり、current-source Mac Apple Silicon / Linux x86_64 native stage0 artifact/runtime、EmbeddedCli の全 form parity、全 report field の differential、provenance 注入、EC-M1-06 aggregate は残件である。対応済み経路は Rust なしで L# 開発に使えるが、未検証の公開 surface を Rust fallback で完了扱いにせず、bootstrap / oracle / host integration 境界は維持する。
 
+### EC-M1-06 Rust driver `test --format json` boundary (2026-07-31)
+
+Rust driver の公開 `test` command に `--format text|json` を追加し、JSON を選んだ場合は
+`implementation_conformance` と `intent_validation` を分離した単一行 report を返すようにした。
+canonical `:case` / `:assert` の runtime pass/fail は conformance の `method`、`cases`、
+`coverage`、`status` へ投影し、metadata preflight error は diagnostics として同じ report shapeへ
+投影する。pass は exit `0`、conformance/preflight failure は exit `2` とし、top-level
+`verified` は生成しない。既存の text 出力と `LSHARP_PATH`/EmbeddedCli delegation は維持し、
+`test --format json` だけを Rust driver の明示的な JSON boundaryへ送る。
+
+Evidence: `crates/lsharp-driver/tests/metadata_test_cli.rs` の canonical case/assert pass、assert
+runtime failure、non-Bool invariant preflight failure の 3 actual binary tests が passし、stdout
+1行、二軸 schema、runner `rust`、exit `0/2`、diagnostic code `1002` を固定した。
+`test_json_metadata_test_stays_on_rust_driver_boundary` は JSON test が embedded componentへ
+誤 delegate されないことを確認し、既存 text metadata unit testも passした。
+
+これは Rust driver の canonical case/assert と preflight JSON boundaryに限定した verified partial
+sliceである。property の sample-level executed count、全 formの Rust/selfhost field differential、
+EmbeddedCli native runtime、source/artifact provenance、Mac Apple Silicon / Linux x86_64 current-source
+artifact/runtime、EC-M1-06 aggregate は残件であり、TODO の `[~]` を維持する。
+
 ### Current-source Mac Apple Silicon native boundary (2026-07-19)
 
 現行 `main` (`abe1e5d7e8f01248f622c15756e26f343f215a9c`) の `selfhost/src` から Mac Apple Silicon native fixed-point を再生成した。`test_e2e_native_macos_aarch64_actual_app_cli_release_program` は `864.77s` で passし、`App.Cli` の `program.native --version` は `lsharp 0.1.0`、manifest は `selfhost_fixed_point=true`、`source_commit` は現行 HEAD、`program_sha256=d1b5db348d8b793dea869597e8859131824d4b0ec9df831091734754d371cca1` となった。

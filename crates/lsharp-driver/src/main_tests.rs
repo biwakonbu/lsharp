@@ -367,8 +367,8 @@ fn test_guest_compile_success_does_not_request_host_fallback() {
 }
 
 #[test]
-fn test_test_command_is_selfhost_shadow_command() {
-    assert!(is_selfhost_shadow_command("test"));
+fn test_test_command_is_rust_native_metadata_command() {
+    assert!(!is_selfhost_shadow_command("test"));
     assert!(!is_selfhost_shadow_command("compile"));
 }
 
@@ -811,6 +811,25 @@ fn test_should_delegate_to_embedded_component_args_accepts_compile_build_compone
 }
 
 #[test]
+fn test_json_metadata_test_stays_on_rust_driver_boundary() {
+    assert!(should_delegate_to_embedded_component_args(&os_args(&[
+        "test",
+        "examples/fib.ls",
+    ])));
+    assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+        "test",
+        "examples/fib.ls",
+        "--format",
+        "json",
+    ])));
+    assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+        "test",
+        "examples/fib.ls",
+        "--format=json",
+    ])));
+}
+
+#[test]
 fn test_embedded_component_delegation_rejects_environment_cache_root() {
     let args = os_args(&["compile", "examples/fib.ls"]);
     let cache_env = std::ffi::OsString::from("tmp/lsharp-cache");
@@ -1152,7 +1171,7 @@ fn test_cmd_test_succeeds_for_metadata_fixture() {
     )
     .unwrap();
 
-    let result = cmd_test(&file);
+    let result = cmd_test_with_format(&file, CliTestFormat::Text);
     assert!(
         result.is_ok(),
         "metadata test command should succeed: {result:?}"

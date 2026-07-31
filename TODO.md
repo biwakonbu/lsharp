@@ -522,8 +522,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 - [~] `EC-M1-05` reproducible type-directed sampling — Int/Bool/String の deterministic prefix は
   verified。一般 `TypeExpr`、constraint generator、seed/shrink/coverage、2 target evidence を閉じる。
 - [~] `EC-M1-06` structured assurance report — implementation conformance と intent validation を
-  混同しない text/JSON report の slice は verified。全 form、EmbeddedCli、Rust/selfhost differential、
-  provenance、2 target evidence を閉じる。
+  混同しない text/JSON report の slice は verified。Rust driver の `test --format json` にも
+  canonical `:case`/`:assert` の pass/fail と preflight failure、exit `0/2` を接続した。全 form、
+  EmbeddedCli、Rust/selfhost report field differential、provenance、2 target evidence を閉じる。
 - [~] `EC-M1-07` native parity and migration closure — current-source native fixed-point と
   source-file smoke は両 target の verified slice を持つ。Rust oracle、standalone Wasm、
   full public surface、guide/schema/MCP/migration docs を同じ observable contract へ揃える。

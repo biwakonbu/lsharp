@@ -81,6 +81,12 @@ enum CliValidationFormat {
     Json,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum CliTestFormat {
+    Text,
+    Json,
+}
+
 impl From<CliCompileTarget> for commands::compile::CompileTarget {
     fn from(value: CliCompileTarget) -> Self {
         match value {
@@ -189,6 +195,10 @@ enum Command {
     Test {
         /// 入力ファイル
         file: PathBuf,
+
+        /// 出力形式
+        #[arg(long, value_enum, default_value = "text")]
+        format: CliTestFormat,
     },
 
     /// intent/evidence graph manifest を検証
@@ -409,8 +419,11 @@ fn main() -> miette::Result<()> {
             }
         }
 
-        Command::Test { file } => {
-            cmd_test(&file)?;
+        Command::Test { file, format } => {
+            let exit_code = cmd_test_with_format(&file, format)?;
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
         }
 
         Command::Validate {
@@ -743,7 +756,7 @@ fn should_fallback_to_host_compile(guest_exit_code: Option<i32>) -> bool {
 }
 
 fn is_selfhost_shadow_command(command: &str) -> bool {
-    matches!(command, "parse" | "check" | "test" | "fmt")
+    matches!(command, "parse" | "check" | "fmt")
 }
 
 fn maybe_bridge_compile_build_artifact_with_component(
@@ -1011,12 +1024,20 @@ fn should_delegate_to_embedded_component_args_with_cache_env(
     }
 
     match args.first().and_then(|arg| arg.to_str()) {
-        Some("parse" | "check" | "test" | "fmt") => true,
+        Some("parse" | "check" | "fmt") => true,
+        Some("test") => should_delegate_test_to_embedded_component_args(args),
         Some("review") => should_delegate_review_command_args(args),
         Some("doc-ack" | "doc-check") => should_delegate_doc_command_args(args),
         Some("compile" | "build") => should_delegate_compile_build_to_embedded_component_args(args),
         _ => false,
     }
+}
+
+fn should_delegate_test_to_embedded_component_args(args: &[std::ffi::OsString]) -> bool {
+    !args
+        .windows(2)
+        .any(|pair| pair[0].to_str() == Some("--format") && pair[1].to_str() == Some("json"))
+        && !args.iter().any(|arg| arg.to_str() == Some("--format=json"))
 }
 
 fn should_delegate_doc_command_args(args: &[std::ffi::OsString]) -> bool {
@@ -1328,16 +1349,141 @@ fn resolve_external_lsharp_path(
     Ok(ExternalLsharpPath::Executable(candidate))
 }
 
+fn metadata_test_method(results: &[lsharp_tooling::metadata_test::TestResult]) -> &'static str {
+    use lsharp_types::metadata_check::TestKind;
+
+    if results
+        .iter()
+        .any(|result| matches!(&result.kind, TestKind::Property))
+    {
+        "sampled-property"
+    } else if results
+        .iter()
+        .any(|result| matches!(&result.kind, TestKind::Case))
+    {
+        "explicit-case"
+    } else if results
+        .iter()
+        .any(|result| matches!(&result.kind, TestKind::Assertion))
+    {
+        "assert"
+    } else if results
+        .iter()
+        .any(|result| matches!(&result.kind, TestKind::Example | TestKind::Invariant))
+    {
+        "legacy-deterministic-smoke"
+    } else {
+        "none"
+    }
+}
+
+fn metadata_test_report_json(
+    status: &str,
+    method: &str,
+    cases: usize,
+    executed: usize,
+    failed: usize,
+    diagnostic_count: usize,
+    diagnostic_code: i64,
+    diagnostic_start: i64,
+    diagnostic_end: i64,
+    diagnostic_message: &str,
+) -> miette::Result<String> {
+    let report = serde_json::json!({
+        "implementation_conformance": {
+            "status": status,
+            "method": method,
+            "cases": cases,
+            "seed": 0,
+            "generator": if method == "sampled-property" {
+                "legacy-deterministic-smoke"
+            } else {
+                "direct-evaluation"
+            },
+            "shrinks": [],
+            "coverage": {
+                "executed": executed,
+                "failed": failed,
+            },
+            "diagnostics": {
+                "count": diagnostic_count,
+                "firstErrorCode": diagnostic_code,
+                "firstErrorSpan": {
+                    "start": diagnostic_start,
+                    "end": diagnostic_end,
+                },
+                "message": diagnostic_message,
+            },
+            "target": "unknown",
+            "provenance": {
+                "runner": "rust",
+                "source_commit": "unknown",
+                "artifact_digest": "unknown",
+            },
+        },
+        "intent_validation": {
+            "status": "unknown",
+            "open_questions": 0,
+            "independent_reviews": 0,
+            "contradicting_observations": 0,
+        },
+    });
+    serde_json::to_string(&report)
+        .map_err(|error| miette::miette!("metadata test JSON report の生成に失敗しました: {error}"))
+}
+
+fn metadata_test_run_report_json(
+    run: &lsharp_tooling::metadata_test::MetadataTestRun,
+) -> miette::Result<String> {
+    let failed = run.failed();
+    metadata_test_report_json(
+        if failed == 0 { "pass" } else { "fail" },
+        metadata_test_method(&run.results),
+        run.total(),
+        run.total(),
+        failed,
+        0,
+        0,
+        0,
+        0,
+        "",
+    )
+}
+
+fn metadata_test_diagnostic_report_json(message: &str) -> miette::Result<String> {
+    let diagnostic_code = message
+        .split_once("[LS")
+        .and_then(|(_, rest)| rest.split_once(']'))
+        .and_then(|(code, _)| code.parse::<i64>().ok())
+        .unwrap_or(1);
+    metadata_test_report_json("fail", "none", 0, 0, 1, 1, diagnostic_code, 0, 0, message)
+}
+
 /// P3-3: メタデータテスト実行 (:example, :invariant の自動検証)
-fn cmd_test(file: &Path) -> miette::Result<()> {
-    let run = lsharp_tooling::metadata_test::run_metadata_tests(file)?;
+fn cmd_test_with_format(file: &Path, format: CliTestFormat) -> miette::Result<i32> {
+    let run = match lsharp_tooling::metadata_test::run_metadata_tests(file) {
+        Ok(run) => run,
+        Err(error) if matches!(format, CliTestFormat::Json) => {
+            println!(
+                "{}",
+                metadata_test_diagnostic_report_json(&error.to_string())?
+            );
+            return Ok(2);
+        }
+        Err(error) => return Err(error),
+    };
+
+    if matches!(format, CliTestFormat::Json) {
+        println!("{}", metadata_test_run_report_json(&run)?);
+        return Ok(if run.failed() > 0 { 2 } else { 0 });
+    }
 
     if !run.has_tests() {
         println!(
             "テストなし: {} にはテスト対象のメタデータがありません",
             file.display()
         );
-        return Ok(());
+        return Ok(0);
     }
 
     println!("テスト実行: {} ({} テスト)", file.display(), run.total());
@@ -1371,7 +1517,7 @@ fn cmd_test(file: &Path) -> miette::Result<()> {
         return Err(miette::miette!("{failed} 個のテストが失敗しました"));
     }
 
-    Ok(())
+    Ok(0)
 }
 
 fn resolve_validate_manifest(file: Option<PathBuf>) -> miette::Result<PathBuf> {
