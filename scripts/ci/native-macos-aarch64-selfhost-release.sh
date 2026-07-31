@@ -7,6 +7,7 @@ cd "${ROOT_DIR}"
 
 TARGET="aarch64-apple-darwin"
 ARTIFACT_DIR="${LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR:-${ROOT_DIR}/ci-artifacts/native-release/${TARGET}}"
+STAGE0_COMPILER_ARTIFACT_DIR="${LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR:-}"
 NATIVE_RELEASE_CARGO_TARGET_DIR="${LSHARP_NATIVE_MACOS_AARCH64_CARGO_TARGET_DIR:-/tmp/lsharp-native-macos-aarch64-release-cargo-target}"
 KEEP_CARGO_TARGET="${LSHARP_NATIVE_MACOS_AARCH64_KEEP_CARGO_TARGET:-0}"
 MAX_ARTIFACT_KIB="${LSHARP_NATIVE_RELEASE_MAX_ARTIFACT_KIB:-524288}"
@@ -33,6 +34,9 @@ require_safe_cleanup_path() {
 }
 
 require_safe_cleanup_path "${ARTIFACT_DIR}" "Mac release artifact"
+if [[ -n "${STAGE0_COMPILER_ARTIFACT_DIR}" ]]; then
+  require_safe_cleanup_path "${STAGE0_COMPILER_ARTIFACT_DIR}" "Mac stage0 compiler artifact"
+fi
 require_safe_cleanup_path "${NATIVE_RELEASE_CARGO_TARGET_DIR}" "Mac release Cargo target"
 
 cleanup_native_release_target() {
@@ -65,6 +69,7 @@ rm -rf "${NATIVE_RELEASE_CARGO_TARGET_DIR}"
 mkdir -p "${ARTIFACT_DIR}"
 
 LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR="${ARTIFACT_DIR}" \
+  LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR="${STAGE0_COMPILER_ARTIFACT_DIR}" \
   CARGO_TARGET_DIR="${NATIVE_RELEASE_CARGO_TARGET_DIR}" cargo test \
     -p lsharp-wasm --test e2e \
     e2e::selfhost_native_stage_chain::test_e2e_native_macos_aarch64_actual_app_cli_release_program \
@@ -75,6 +80,13 @@ MANIFEST_PATH="${ARTIFACT_DIR}/manifest.json"
 if [[ ! -x "${PROGRAM_PATH}" || ! -s "${MANIFEST_PATH}" ]]; then
   echo "ERROR: actual App.Cli producer did not create program.native and manifest.json" >&2
   exit 1
+fi
+
+if [[ -n "${STAGE0_COMPILER_ARTIFACT_DIR}" ]]; then
+  if [[ ! -x "${STAGE0_COMPILER_ARTIFACT_DIR}/compiler.native" || ! -s "${STAGE0_COMPILER_ARTIFACT_DIR}/manifest.json" ]]; then
+    echo "ERROR: actual stage0 compiler producer did not create compiler.native and manifest.json" >&2
+    exit 1
+  fi
 fi
 
 version_output="$(cd selfhost && "${PROGRAM_PATH}" --version)"

@@ -45,10 +45,12 @@ require_safe_output_path "$STAGE0_DIR"
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-native-macos-aarch64-stage0.XXXXXX")"
 APP_ARTIFACT_DIR="$WORK_DIR/app-cli"
+STAGE0_COMPILER_ARTIFACT_DIR="$WORK_DIR/stage0-compiler"
 CARGO_TARGET_DIR="$WORK_DIR/cargo-target"
 mkdir -p "$APP_ARTIFACT_DIR" "$(dirname "$STAGE0_DIR")"
 
 LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR="$APP_ARTIFACT_DIR" \
+LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR="$STAGE0_COMPILER_ARTIFACT_DIR" \
 LSHARP_NATIVE_MACOS_AARCH64_CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
   bash "$ROOT_DIR/scripts/ci/native-macos-aarch64-selfhost-release.sh"
 
@@ -56,6 +58,10 @@ PROGRAM_PATH="$APP_ARTIFACT_DIR/program.native"
 MANIFEST_PATH="$APP_ARTIFACT_DIR/manifest.json"
 require_file "$PROGRAM_PATH" "current-source Mac App.Cli program"
 require_file "$MANIFEST_PATH" "current-source Mac App.Cli manifest"
+STAGE0_COMPILER_PATH="$STAGE0_COMPILER_ARTIFACT_DIR/compiler.native"
+STAGE0_COMPILER_MANIFEST_PATH="$STAGE0_COMPILER_ARTIFACT_DIR/manifest.json"
+require_file "$STAGE0_COMPILER_PATH" "current-source Mac stage0 compiler"
+require_file "$STAGE0_COMPILER_MANIFEST_PATH" "current-source Mac stage0 compiler manifest"
 
 python3 - "$MANIFEST_PATH" "$PROGRAM_PATH" "$SOURCE_COMMIT" <<'PY'
 import hashlib
@@ -80,10 +86,32 @@ for key, value in expected.items():
         raise SystemExit(f"current-source Mac App.Cli manifest mismatch: {key}")
 PY
 
+python3 - "$STAGE0_COMPILER_MANIFEST_PATH" "$STAGE0_COMPILER_PATH" "$SOURCE_COMMIT" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+manifest_path, compiler_path, expected_source_commit = map(pathlib.Path, sys.argv[1:])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+expected = {
+    "status": "pass",
+    "artifact_kind": "native stage0 compiler",
+    "target": "aarch64-apple-darwin",
+    "entry_module": "App.Cli",
+    "source": "src/App/Cli.ls",
+    "source_commit": str(expected_source_commit),
+    "compiler_sha256": hashlib.sha256(compiler_path.read_bytes()).hexdigest(),
+}
+for key, value in expected.items():
+    if manifest.get(key) != value:
+        raise SystemExit(f"current-source Mac stage0 compiler manifest mismatch: {key}")
+PY
+
 bash "$ROOT_DIR/scripts/ci/package-native-stage0.sh" \
   --target "$TARGET" \
   --source-commit "$SOURCE_COMMIT" \
-  --compiler "$PROGRAM_PATH" \
+  --compiler "$STAGE0_COMPILER_PATH" \
   --transport-driver "$ROOT_DIR/scripts/ci/native-stage0-transport-macos-aarch64.sh" \
   --materializer "$ROOT_DIR/scripts/ci/materialize-native-macos-aarch64-bundle.py" \
   --output-dir "$STAGE0_DIR"

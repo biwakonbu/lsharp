@@ -20,6 +20,15 @@ assert_file_contains() {
 [[ -f "$WRITER" ]] || fail "source smoke evidence writer is missing: $WRITER"
 assert_file_contains "$SOURCE_SMOKE" 'NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR'
 assert_file_contains "$SOURCE_SMOKE" 'write-native-source-smoke-evidence.py'
+python3 - "$SOURCE_SMOKE" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+broken = 'python3 \\\n  "$VALIDATION_ATTESTATION_SOURCE"'
+if broken in source:
+    raise SystemExit("attestation fixture generator must pass '-' to python3 stdin")
+PY
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-native-source-smoke-evidence.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT

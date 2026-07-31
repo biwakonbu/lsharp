@@ -20,6 +20,11 @@ fail() {
 mkdir -p "$FAKE_ROOT/scripts/ci" "$PATH_PREFIX"
 cp "$PRODUCER" "$FAKE_ROOT/scripts/ci/"
 
+grep -F 'LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR' "$PRODUCER" >/dev/null \
+  || fail "Mac producer must request a dedicated stage0 compiler artifact"
+grep -F 'compiler.native' "$PRODUCER" >/dev/null \
+  || fail "Mac producer must package compiler.native rather than the App.Cli launcher"
+
 cat >"$PATH_PREFIX/uname" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -46,12 +51,17 @@ chmod +x "$PATH_PREFIX/git"
 cat >"$FAKE_ROOT/scripts/ci/native-macos-aarch64-selfhost-release.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "app-cli artifact=${LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR:-} target=${LSHARP_NATIVE_MACOS_AARCH64_CARGO_TARGET_DIR:-}" >>"$FAKE_LOG"
+printf '%s\n' "app-cli artifact=${LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR:-} stage0-compiler=${LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR:-} target=${LSHARP_NATIVE_MACOS_AARCH64_CARGO_TARGET_DIR:-}" >>"$FAKE_LOG"
 mkdir -p "$LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR"
 printf '%s\n' 'fake compiler' >"$LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR/program.native"
 chmod +x "$LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR/program.native"
 program_sha256="$(shasum -a 256 "$LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR/program.native" | awk '{print $1}')"
 printf '%s\n' "{\"status\":\"pass\",\"artifact_kind\":\"native App.Cli release program\",\"target\":\"aarch64-apple-darwin\",\"entry_module\":\"App.Cli\",\"source\":\"src/App/Cli.ls\",\"source_commit\":\"0123456789abcdef0123456789abcdef01234567\",\"selfhost_fixed_point\":true,\"program_sha256\":\"$program_sha256\"}" >"$LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR/manifest.json"
+mkdir -p "$LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR"
+printf '%s\n' 'fake stage0 compiler' >"$LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR/compiler.native"
+chmod +x "$LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR/compiler.native"
+compiler_sha256="$(shasum -a 256 "$LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR/compiler.native" | awk '{print $1}')"
+printf '%s\n' "{\"status\":\"pass\",\"artifact_kind\":\"native stage0 compiler\",\"target\":\"aarch64-apple-darwin\",\"entry_module\":\"App.Cli\",\"source\":\"src/App/Cli.ls\",\"source_commit\":\"0123456789abcdef0123456789abcdef01234567\",\"compiler_sha256\":\"$compiler_sha256\"}" >"$LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR/manifest.json"
 SH
 chmod +x "$FAKE_ROOT/scripts/ci/native-macos-aarch64-selfhost-release.sh"
 
@@ -91,17 +101,22 @@ LSHARP_NATIVE_MACOS_AARCH64_STAGE0_DIR="$OUTPUT_DIR" \
   bash "$FAKE_ROOT/scripts/ci/native-macos-aarch64-stage0-release.sh"
 
 grep -F "app-cli artifact=" "$LOG_PATH" >/dev/null || fail "App.Cli producer was not invoked"
+grep -E 'stage0-compiler=.*/stage0-compiler' "$LOG_PATH" >/dev/null \
+  || fail "dedicated stage0 compiler artifact directory was not forwarded"
 grep -F "package target=aarch64-apple-darwin source=$SOURCE_COMMIT" "$LOG_PATH" >/dev/null \
   || fail "stage0 package provenance was not forwarded"
-grep -E 'compiler=.*/app-cli/program\.native' "$LOG_PATH" >/dev/null \
-  || fail "stage0 package compiler input was not forwarded"
+grep -E 'compiler=.*/stage0-compiler/compiler\.native' "$LOG_PATH" >/dev/null \
+  || fail "stage0 package did not receive the dedicated compiler input"
 grep -E 'transport=.*/project/scripts/ci/native-stage0-transport-macos-aarch64\.sh' "$LOG_PATH" >/dev/null \
   || fail "Mac transport driver was not selected"
 grep -E 'materializer=.*/project/scripts/ci/materialize-native-macos-aarch64-bundle\.py' "$LOG_PATH" >/dev/null \
   || fail "Mac materializer was not selected"
-app_artifact_dir="$(sed -n 's/^app-cli artifact=\([^ ]*\) target=.*/\1/p' "$LOG_PATH")"
+app_artifact_dir="$(sed -n 's/^app-cli artifact=\([^ ]*\) stage0-compiler=.*/\1/p' "$LOG_PATH")"
 [[ -n "$app_artifact_dir" && ! -e "$app_artifact_dir" ]] \
   || fail "producer temporary App.Cli artifact directory was not cleaned up"
+stage0_compiler_artifact_dir="$(sed -n 's/^app-cli artifact=[^ ]* stage0-compiler=\([^ ]*\) target=.*/\1/p' "$LOG_PATH")"
+[[ -n "$stage0_compiler_artifact_dir" && ! -e "$stage0_compiler_artifact_dir" ]] \
+  || fail "producer temporary stage0 compiler artifact directory was not cleaned up"
 
 python3 - "$OUTPUT_DIR/manifest.json" <<'PY'
 import json

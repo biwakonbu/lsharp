@@ -14724,6 +14724,51 @@ fn sha256_file_for_native_release(path: &std::path::Path) -> Result<String, Stri
         .ok_or_else(|| "SHA-256 output が空".to_string())
 }
 
+fn write_actual_macos_aarch64_stage0_compiler_artifact(
+    artifact_dir: &std::path::Path,
+    input: &NativeEntrypointBundle,
+) -> Result<(), String> {
+    let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &input.code_bytes,
+        &input.data_bytes,
+        input.entrypoint_offset,
+    )?;
+    let _ = std::fs::remove_dir_all(artifact_dir);
+    std::fs::create_dir_all(artifact_dir)
+        .map_err(|e| format!("stage0 compiler artifact dir 作成失敗: {e}"))?;
+    let compiler_path = artifact_dir.join("compiler.native");
+    std::fs::write(&compiler_path, &bundle.program_binary)
+        .map_err(|e| format!("stage0 compiler.native 書き込み失敗: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&compiler_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("stage0 compiler.native execute bit 設定失敗: {e}"))?;
+    }
+    let compiler_sha256 = sha256_file_for_native_release(&compiler_path)?;
+    let package_root = selfhost_package_root();
+    let project_root = package_root
+        .parent()
+        .ok_or_else(|| "selfhost package root の parent がない".to_string())?;
+    let commit_output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(project_root)
+        .output()
+        .map_err(|e| format!("stage0 compiler source commit 取得失敗: {e}"))?;
+    if !commit_output.status.success() {
+        return Err("stage0 compiler source commit 取得に失敗".to_string());
+    }
+    let source_commit = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+    let manifest = format!(
+        "{{\"schema_version\":1,\"status\":\"pass\",\"artifact_kind\":\"native stage0 compiler\",\"target\":\"aarch64-apple-darwin\",\"entry_module\":\"App.Cli\",\"source\":\"src/App/Cli.ls\",\"source_commit\":\"{source_commit}\",\"compiler_sha256\":\"{compiler_sha256}\"}}\n"
+    );
+    std::fs::write(artifact_dir.join("manifest.json"), manifest)
+        .map_err(|e| format!("stage0 compiler manifest 書き込み失敗: {e}"))?;
+    Ok(())
+}
+
 fn generate_actual_macos_aarch64_app_cli_release_program(
     artifact_dir: &std::path::Path,
 ) -> Result<NativeHostArtifactBundle, String> {
@@ -14736,6 +14781,16 @@ fn generate_actual_macos_aarch64_app_cli_release_program(
         &stage3_input,
         "src/App/Cli.ls",
     )?;
+    if let Some(stage0_compiler_dir) = std::env::var_os(
+        "LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR",
+    )
+    .filter(|path| !path.is_empty())
+    {
+        write_actual_macos_aarch64_stage0_compiler_artifact(
+            &std::path::PathBuf::from(stage0_compiler_dir),
+            &app_cli_input,
+        )?;
+    }
     let bundle = run_native_macos_aarch64_cli_bundle(&app_cli_input, &["--version"])?;
     let expected_version = format!("lsharp {}", env!("CARGO_PKG_VERSION"));
     if bundle.exit_code != 0
