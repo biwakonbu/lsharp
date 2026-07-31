@@ -651,7 +651,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   text/JSON slice は verified。全 form evaluator、schema、formatter/docs/MCP、2 target evidence を閉じる。
 - [~] `EC-M1-04` strict predicate and non-vacuity — Bool preflight、zero-case、
   static reachability/vacuity の slice は verified。動的・compound predicate、全 diagnostic/span、
-  evaluator/runtime、2 target aggregate を閉じる。
+  evaluator/runtime、2 target aggregate を閉じる。2026-07-31 に selfhost
+  `Types.TypeInferAssertions` の string scanner、assertion/case form、program/module/property
+  aggregation を 64 要素単位の bounded rooted continuationへ揃え、65要素境界を跨ぐ focused E2E と
+  parser diagnostics `0` を確認した。Linux x86_64 fixed point は status `pass`、stage2/stage3
+  code length 各 `11491724`、stdout SHA-256 は両方
+  `bfff156740a634e25a4fc968ca2a83c9ce62227ed3846d70a3d59658fd6d1d76` で一致した。
+  これは TypeInferAssertions の bounded traversal verified sliceであり、全 diagnostic/span、
+  evaluator/runtime、Mac/Linux aggregate parityは残る。
 - [~] `EC-M1-05` reproducible type-directed sampling — Int/Bool/String の deterministic prefix は
   verified。一般 `TypeExpr`、constraint generator、seed/shrink/coverage、2 target evidence を閉じる。
 - [~] `EC-M1-06` structured assurance report — implementation conformance と intent validation を

@@ -567,6 +567,15 @@ ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`Ty
 - repo 内の旧 stage0 artifact に `source_commit` がない場合は、native runner の成功経路へ再利用せず、source commit と fixed-point evidence を付けた package を再生成する。
 - `LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY` は macOS host policy 上、生成済み Mach-O の実行に署名が必要な環境でだけ指定する。成功時の codesign 出力は command stderr に漏らさず、失敗時だけ診断として返す。
 - GitHub Actions の自動 build は使わない。検証と release は Mac と Lima VM の手動 local gate で行う。
+- 2026-07-31 に TypeInferAssertions batch（検証時 source commit `3b5dbef50e478dad0c71c12e6108d9fb2ce2c6fe`）を
+  Mac host から生成し、Lima `lsharp-linux-x86` の actual stage1 -> stage2 -> stage3 self-regenerationを
+  完走した。`actual-selfregen-summary.json` は `status: pass`、stage2/stage3 code length 各
+  `11491724`、stdout SHA-256 は両方
+  `bfff156740a634e25a4fc968ca2a83c9ce62227ed3846d70a3d59658fd6d1d76`、stderr は空だった。
+  TypeInferAssertions の 64 要素 bounded rooted scanner/aggregation と 65 要素 cross-chunk E2E の
+  Linux x86_64 verified sliceであり、artifact/runtime の全 target aggregate、未移行 assertion/property
+  semantics、Rust oracle との全 diagnostic/span parityを完了扱いにはしない。VM workdir、replay lock、
+  約 1.8 GiB の task-owned Cargo target は gate 後に削除し、CI は起動していない。
 
 ### EC-M2-01 selfhost source metadata storage (2026-07-25)
 

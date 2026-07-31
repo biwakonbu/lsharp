@@ -43,6 +43,7 @@ mod selfhost_parser_forms;
 mod selfhost_parser_metadata_forms;
 mod selfhost_private_record_compiler;
 mod selfhost_assertion_spans;
+mod selfhost_typeinfer_assertion_scanners;
 mod selfhost_case_spans;
 mod selfhost_property_spans;
 mod selfhost_rooting_parity;

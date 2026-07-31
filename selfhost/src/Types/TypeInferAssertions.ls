@@ -41,32 +41,32 @@
   (if (or (= ch 32) (= ch 9))
     1
     (if (or (= ch 10) (= ch 13)) 1 0)))
-(defn property-skip-space [src idx len]
+(defn property-skip-space-legacy [src idx len]
   (if (>= idx len)
     idx
     (if (= (property-space? (string-char-at src idx)) 1)
-      (property-skip-space src (+ idx 1) len)
+      (property-skip-space-legacy src (+ idx 1) len)
       idx)))
-(defn property-find-substring-loop [src needle idx len needle-len]
+(defn property-find-substring-loop-legacy [src needle idx len needle-len]
   (if (> (+ idx needle-len) len)
     -1
     (if (string-eq (substring src idx (+ idx needle-len)) needle)
       idx
-      (property-find-substring-loop src needle (+ idx 1) len needle-len))))
-(defn property-find-substring [src needle]
-  (property-find-substring-loop src needle 0 (string-length src) (string-length needle)))
-(defn property-balanced-expression-end [src idx len depth]
+      (property-find-substring-loop-legacy src needle (+ idx 1) len needle-len))))
+(defn property-find-substring-legacy [src needle]
+  (property-find-substring-loop-legacy src needle 0 (string-length src) (string-length needle)))
+(defn property-balanced-expression-end-legacy [src idx len depth]
   (if (>= idx len)
     -1
     (let [ch (string-char-at src idx)]
       (if (= ch 40)
-        (property-balanced-expression-end src (+ idx 1) len (+ depth 1))
+        (property-balanced-expression-end-legacy src (+ idx 1) len (+ depth 1))
         (if (= ch 41)
           (if (= depth 1)
             (+ idx 1)
-            (property-balanced-expression-end src (+ idx 1) len (- depth 1)))
-          (property-balanced-expression-end src (+ idx 1) len depth))))))
-(defn property-atom-expression-end [src idx len]
+            (property-balanced-expression-end-legacy src (+ idx 1) len (- depth 1)))
+          (property-balanced-expression-end-legacy src (+ idx 1) len depth))))))
+ (defn property-atom-expression-end-legacy [src idx len]
   (if (>= idx len)
     idx
     (let [ch (string-char-at src idx)]
@@ -74,7 +74,247 @@
         (= (property-space? ch) 1)
         (or (= ch 41) (= ch 93)))
         idx
-        (property-atom-expression-end src (+ idx 1) len)))))
+        (property-atom-expression-end-legacy src (+ idx 1) len)))))
+
+;; property metadata の文字列 scanner は 64 文字単位で走査し、
+;; rooted continuation で次の chunk へ進む。
+(defn property-skip-space-step-v3 [src idx len]
+  (if (>= idx len)
+    (vector-push-pair-rooted-v3 (vector-new 2) 1 idx)
+    (if (= (property-space? (string-char-at src idx)) 1)
+      (vector-push-pair-rooted-v3 (vector-new 2) 0 (+ idx 1))
+      (vector-push-pair-rooted-v3 (vector-new 2) 1 idx))))
+
+(defn property-skip-space-step-64-loop-bounded [src idx len remaining]
+  (do
+    (root_push src)
+    (let [step (property-skip-space-step-v3 src idx len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-skip-space-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-skip-space-rooted-v3 [src idx len]
+  (let [step (property-skip-space-step-64-loop-bounded src idx len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-skip-space-rooted-v3 src (vector-get step 1) len)]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-skip-space [src idx len]
+  (do
+    (root_push src)
+    (let [result (property-skip-space-rooted-v3 src idx len)]
+      (do
+        (root_pop)
+        result))))
+
+(defn property-find-substring-step-v3 [src needle idx len needle-len]
+  (if (> (+ idx needle-len) len)
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx -1)
+    (if (string-eq (substring src idx (+ idx needle-len)) needle)
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 idx idx)
+      (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) -1))))
+
+(defn property-find-substring-step-64-loop-bounded
+  [src needle idx len needle-len remaining]
+  (do
+    (root_push src)
+    (root_push needle)
+    (let [step
+      (property-find-substring-step-v3 src needle idx len needle-len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-find-substring-step-64-loop-bounded
+                src
+                needle
+                (vector-get step 1)
+                len
+                needle-len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-find-substring-rooted-v3 [src needle idx len needle-len]
+  (let [step
+    (property-find-substring-step-64-loop-bounded
+      src needle idx len needle-len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-find-substring-rooted-v3
+            src needle (vector-get step 1) len needle-len)]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-find-substring [src needle]
+  (do
+    (root_push src)
+    (root_push needle)
+    (let [result
+      (property-find-substring-rooted-v3
+        src needle 0 (string-length src) (string-length needle))]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn property-find-substring-loop [src needle idx len needle-len]
+  (do
+    (root_push src)
+    (root_push needle)
+    (let [result
+      (property-find-substring-rooted-v3 src needle idx len needle-len)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn property-balanced-expression-end-step-v3 [src idx len depth]
+  (if (>= idx len)
+    (vector-push-quad-rooted-v3 (vector-new 4) 1 idx depth -1)
+    (let [ch (string-char-at src idx)]
+      (if (= ch 40)
+        (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (+ depth 1) -1)
+        (if (= ch 41)
+          (if (= depth 1)
+            (vector-push-quad-rooted-v3 (vector-new 4) 1 (+ idx 1) 0 (+ idx 1))
+            (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (- depth 1) -1))
+          (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) depth -1))))))
+
+(defn property-balanced-expression-end-step-64-loop-bounded
+  [src idx len depth remaining]
+  (do
+    (root_push src)
+    (let [step
+      (property-balanced-expression-end-step-v3 src idx len depth)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-balanced-expression-end-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (vector-get step 2)
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-balanced-expression-end-rooted-v3 [src idx len depth]
+  (let [step
+    (property-balanced-expression-end-step-64-loop-bounded
+      src idx len depth 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 3)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-balanced-expression-end-rooted-v3
+            src
+            (vector-get step 1)
+            len
+            (vector-get step 2))]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-balanced-expression-end [src idx len depth]
+  (do
+    (root_push src)
+    (let [result
+      (property-balanced-expression-end-rooted-v3 src idx len depth)]
+      (do
+        (root_pop)
+        result))))
+
+(defn property-atom-expression-end-step-v3 [src idx len]
+  (if (>= idx len)
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx idx)
+    (let [ch (string-char-at src idx)]
+      (if (or
+          (= (property-space? ch) 1)
+          (or (= ch 41) (= ch 93)))
+        (vector-push-triple-rooted-v3 (vector-new 3) 1 idx idx)
+        (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) -1)))))
+
+(defn property-atom-expression-end-step-64-loop-bounded
+  [src idx len remaining]
+  (do
+    (root_push src)
+    (let [step (property-atom-expression-end-step-v3 src idx len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-atom-expression-end-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn property-atom-expression-end-rooted-v3 [src idx len]
+  (let [step
+    (property-atom-expression-end-step-64-loop-bounded src idx len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-atom-expression-end-rooted-v3
+            src (vector-get step 1) len)]
+          (do
+            (root_pop)
+            resolved))))))
+
+(defn property-atom-expression-end [src idx len]
+  (do
+    (root_push src)
+    (let [result (property-atom-expression-end-rooted-v3 src idx len)]
+      (do
+        (root_pop)
+        result))))
+
 (defn property-postcondition-text [payload]
   (let [marker (property-find-substring payload ":postcondition")
     payload-len (string-length payload)]
@@ -89,10 +329,10 @@
             (if (<= expression-end expression-start)
               ""
               (substring payload expression-start expression-end))))))))
-(defn property-binder-source-loop [payload idx close len result]
+(defn property-binder-source-step-v3 [payload idx close len result]
   (let [name-start (property-skip-space payload idx len)]
     (if (>= name-start close)
-      result
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start result)
       (let [name-end (property-atom-expression-end payload name-start len)
         type-start (property-skip-space payload name-end len)
         type-end (if (= (string-char-at payload type-start) 40)
@@ -106,15 +346,65 @@
               (substring payload name-start name-end)
               (string-concat " " (string-concat (substring payload type-start type-end) ")")))))]
         (if (= (string-length binder) 0)
-          result
-          (property-binder-source-loop
+          (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start result)
+          (let [next-result (if (= (string-length result) 0)
+              binder
+              (string-concat result (string-concat " " binder)))]
+            (vector-push-triple-rooted-v3
+              (vector-new 3)
+              0
+              (property-skip-space payload type-end len)
+              next-result)))))))
+(defn property-binder-source-step-64-loop-bounded
+  [payload idx close len result remaining]
+  (do
+    (root_push payload)
+    (root_push result)
+    (let [step (property-binder-source-step-v3 payload idx close len result)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-binder-source-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                (vector-get step 2)
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-binder-source-rooted-v3 [payload idx close len result]
+  (let [step (property-binder-source-step-64-loop-bounded payload idx close len result 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (property-binder-source-rooted-v3
             payload
-            (property-skip-space payload type-end len)
+            (vector-get step 1)
             close
             len
-            (if (= (string-length result) 0)
-              binder
-              (string-concat result (string-concat " " binder)))))))))
+            (vector-get step 2))]
+          (do
+            (root_pop)
+            parsed))))))
+(defn property-binder-source-loop [payload idx close len result]
+  (do
+    (root_push payload)
+    (root_push result)
+    (let [parsed (property-binder-source-rooted-v3 payload idx close len result)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn property-probe-parameter-source [payload]
   (let [for-all-start (property-find-substring payload "(for-all")
     len (string-length payload)]
@@ -129,51 +419,160 @@
             (if (= (string-length binders) 0)
               "[result]"
               (string-concat "[" (string-concat binders " result]")))))))))
+(defn property-binder-name-conflict-rest-step-v3 [payload idx close len name]
+  (let [name-start (property-skip-space payload idx len)]
+    (if (>= name-start close)
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
+      (let [name-end (property-atom-expression-end payload name-start len)
+        type-start (property-skip-space payload name-end len)
+        type-end (if (= (string-char-at payload type-start) 40)
+          (property-balanced-expression-end payload type-start len 0)
+          (property-atom-expression-end payload type-start len))
+        current-name (if (= name-end name-start)
+          ""
+          (substring payload name-start name-end))]
+        (if (or (= name-end name-start) (<= type-end type-start))
+          (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            (if (string-eq current-name name) 1 0)
+            (property-skip-space payload type-end len)
+            (if (string-eq current-name name) 1 0)))))))
+(defn property-binder-name-conflict-rest-step-64-loop-bounded
+  [payload idx close len name remaining]
+  (do
+    (root_push payload)
+    (root_push name)
+    (let [step (property-binder-name-conflict-rest-step-v3 payload idx close len name)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-binder-name-conflict-rest-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                name
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-binder-name-conflict-rest-rooted-v3 [payload idx close len name]
+  (let [step
+    (property-binder-name-conflict-rest-step-64-loop-bounded payload idx close len name 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (property-binder-name-conflict-rest-rooted-v3
+            payload
+            (vector-get step 1)
+            close
+            len
+            name)]
+          (do
+            (root_pop)
+            parsed))))))
 (defn property-binder-name-conflict-rest? [payload idx close len name]
+  (do
+    (root_push payload)
+    (root_push name)
+    (let [parsed (property-binder-name-conflict-rest-rooted-v3 payload idx close len name)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
+(defn property-binder-name-conflict-step-v3 [payload idx close len]
   (let [name-start (property-skip-space payload idx len)]
     (if (>= name-start close)
-      0
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
       (let [name-end (property-atom-expression-end payload name-start len)
         type-start (property-skip-space payload name-end len)
         type-end (if (= (string-char-at payload type-start) 40)
           (property-balanced-expression-end payload type-start len 0)
           (property-atom-expression-end payload type-start len))]
         (if (or (= name-end name-start) (<= type-end type-start))
-          0
-          (if (string-eq (substring payload name-start name-end) name)
-            1
-            (property-binder-name-conflict-rest?
-              payload
-              (property-skip-space payload type-end len)
-              close
-              len
-              name)))))))
-(defn property-binder-name-conflict-loop [payload idx close len]
-  (let [name-start (property-skip-space payload idx len)]
-    (if (>= name-start close)
-      0
-      (let [name-end (property-atom-expression-end payload name-start len)
-        type-start (property-skip-space payload name-end len)
-        type-end (if (= (string-char-at payload type-start) 40)
-          (property-balanced-expression-end payload type-start len 0)
-          (property-atom-expression-end payload type-start len))]
-        (if (or (= name-end name-start) (<= type-end type-start))
-          0
+          (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 0)
           (let [name (substring payload name-start name-end)]
-            (if (string-eq name "result")
-              1
-              (if (= (property-binder-name-conflict-rest?
-                  payload
-                  (property-skip-space payload type-end len)
-                  close
-                  len
-                  name) 1)
-                1
-                (property-binder-name-conflict-loop
-                  payload
-                  (property-skip-space payload type-end len)
-                  close
-                  len)))))))))
+            (do
+              (root_push name)
+              (if (string-eq name "result")
+                (let [state (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 1)]
+                  (do
+                    (root_pop)
+                    state))
+                (let [rest-result
+                  (property-binder-name-conflict-rest?
+                    payload
+                    (property-skip-space payload type-end len)
+                    close
+                    len
+                    name)]
+                  (if (= rest-result 1)
+                    (let [state (vector-push-triple-rooted-v3 (vector-new 3) 1 name-start 1)]
+                      (do
+                        (root_pop)
+                        state))
+                    (let [state
+                      (vector-push-triple-rooted-v3
+                        (vector-new 3)
+                        0
+                        (property-skip-space payload type-end len)
+                        0)]
+                      (do
+                        (root_pop)
+                        state))))))))))))
+(defn property-binder-name-conflict-step-64-loop-bounded
+  [payload idx close len remaining]
+  (do
+    (root_push payload)
+    (let [step (property-binder-name-conflict-step-v3 payload idx close len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-binder-name-conflict-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-binder-name-conflict-rooted-v3 [payload idx close len]
+  (let [step (property-binder-name-conflict-step-64-loop-bounded payload idx close len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (property-binder-name-conflict-rooted-v3
+            payload
+            (vector-get step 1)
+            close
+            len)]
+          (do
+            (root_pop)
+            parsed))))))
+(defn property-binder-name-conflict-loop [payload idx close len]
+  (do
+    (root_push payload)
+    (let [parsed (property-binder-name-conflict-rooted-v3 payload idx close len)]
+      (do
+        (root_pop)
+        parsed))))
 (defn property-binder-name-conflict? [payload]
   (let [open (property-find-substring payload "[")
     len (string-length payload)
@@ -259,37 +658,83 @@
                           (root_pop)
                           result))))))))))))))
 (defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 1 0)))))
-(defn check-property-preconditions-loop [payload idx close len]
+(defn check-property-preconditions-step-v3 [payload idx close len]
   (let [expression-start (property-skip-space payload idx len)]
     (if (>= expression-start close)
-      0
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 expression-start 0)
       (do
         (root_push payload)
         (let [expression-end (if (= (string-char-at payload expression-start) 40)
             (property-balanced-expression-end payload expression-start len 0)
             (property-atom-expression-end payload expression-start len))]
           (if (<= expression-end expression-start)
-            (do
-              (root_pop)
-              (canonical-property-type-error-code))
+            (let [state
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                1
+                expression-start
+                (canonical-property-type-error-code))]
+              (do
+                (root_pop)
+                state))
             (let [expression (substring payload expression-start expression-end)]
               (do
                 (root_push expression)
-                (let [code (if (string-eq expression "false") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 0 1))]
-                  (if (> code 0)
+                (let [code (if (string-eq expression "false")
+                    (canonical-assertion-vacuous-code)
+                    (check-property-predicate payload expression 0 1))]
+                  (let [state
+                    (if (> code 0)
+                      (vector-push-triple-rooted-v3 (vector-new 3) 1 expression-end code)
+                      (vector-push-triple-rooted-v3 (vector-new 3) 0 expression-end 0))]
                     (do
                       (root_pop)
                       (root_pop)
-                      code)
-                    (let [result (check-property-preconditions-loop
-                        payload
-                        expression-end
-                        close
-                        len)]
-                      (do
-                        (root_pop)
-                        (root_pop)
-                        result))))))))))))
+                      state)))))))))))
+(defn check-property-preconditions-step-64-loop-bounded
+  [payload idx close len remaining]
+  (do
+    (root_push payload)
+    (let [step (check-property-preconditions-step-v3 payload idx close len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (check-property-preconditions-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                close
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-property-preconditions-rooted-v3 [payload idx close len]
+  (let [step (check-property-preconditions-step-64-loop-bounded payload idx close len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (check-property-preconditions-rooted-v3
+            payload
+            (vector-get step 1)
+            close
+            len)]
+          (do
+            (root_pop)
+            parsed))))))
+(defn check-property-preconditions-loop [payload idx close len]
+  (do
+    (root_push payload)
+    (let [parsed (check-property-preconditions-rooted-v3 payload idx close len)]
+      (do
+        (root_pop)
+        parsed))))
 (defn check-property-precondition [payload]
   (let [marker (property-find-substring payload ":precondition")
     len (string-length payload)]
@@ -329,18 +774,79 @@
     (canonical-unprivate-decl (vector-get decl 1))
     decl))
 ;; module の flattened body を infer-program-analysis が受け取れる vector に戻す。
-(defn canonical-module-program-loop [module-node idx count result]
+(defn canonical-module-program-step-v3 [module-node idx count result]
   (if (>= idx count)
-    result
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx result)
     (let [raw-decl (vector-get module-node (+ 3 idx))
-      decl (canonical-unprivate-decl raw-decl)
-      next-result (vector-push-single-rooted result decl)]
+      decl (canonical-unprivate-decl raw-decl)]
       (do
-        (root_push next-result)
-        (let [parsed (canonical-module-program-loop module-node (+ idx 1) count next-result)]
+        (root_push decl)
+        (root_push result)
+        (let [next-result (vector-push-single-rooted-v3 result decl)]
+          (do
+            (root_pop)
+            (root_pop)
+            (vector-push-triple-rooted-v3
+              (vector-new 3)
+              0
+              (+ idx 1)
+              next-result)))))))
+(defn canonical-module-program-step-64-loop-bounded
+  [module-node idx count result remaining]
+  (do
+    (root_push module-node)
+    (root_push result)
+    (let [step (canonical-module-program-step-v3 module-node idx count result)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [next-result (vector-get step 2)]
+                (do
+                  (root_push next-result)
+                  (let [next
+                    (canonical-module-program-step-64-loop-bounded
+                      module-node
+                      (vector-get step 1)
+                      count
+                      next-result
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn canonical-module-program-rooted-v3 [module-node idx count result]
+  (let [step
+    (canonical-module-program-step-64-loop-bounded module-node idx count result 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (canonical-module-program-rooted-v3
+            module-node
+            (vector-get step 1)
+            count
+            (vector-get step 2))]
           (do
             (root_pop)
             parsed))))))
+(defn canonical-module-program-loop [module-node idx count result]
+  (do
+    (root_push module-node)
+    (root_push result)
+    (let [parsed (canonical-module-program-rooted-v3 module-node idx count result)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn canonical-module-program [module-node]
   (let [count (if (> (vector-length module-node) 2) (vector-get module-node 2) 0)
     result (vector-new 0)]
@@ -352,12 +858,61 @@
           (root_pop)
           (root_pop)
           parsed)))))
-(defn assertion-contains-param-loop [predicate decl idx count]
+;; assertion/case の implicit scope 検査は 64 要素ごとの rooted chunk に分ける。
+(defn assertion-contains-param-step-v3 [predicate decl idx count]
   (if (>= idx count)
-    0
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 0)
     (if (= (ast-contains-var predicate (vector-get decl (+ 3 idx))) 1)
-      1
-      (assertion-contains-param-loop predicate decl (+ idx 1) count))))
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 1)
+      (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) 0))))
+(defn assertion-contains-param-step-64-loop-bounded
+  [predicate decl idx count remaining]
+  (do
+    (root_push predicate)
+    (root_push decl)
+    (let [step (assertion-contains-param-step-v3 predicate decl idx count)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (assertion-contains-param-step-64-loop-bounded
+                predicate
+                decl
+                (vector-get step 1)
+                count
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn assertion-contains-param-rooted-v3 [predicate decl idx count]
+  (let [step (assertion-contains-param-step-64-loop-bounded predicate decl idx count 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (assertion-contains-param-rooted-v3
+            predicate
+            decl
+            (vector-get step 1)
+            count)]
+          (do
+            (root_pop)
+            parsed))))))
+(defn assertion-contains-param-loop [predicate decl idx count]
+  (do
+    (root_push predicate)
+    (root_push decl)
+    (let [parsed (assertion-contains-param-rooted-v3 predicate decl idx count)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
 ;; operator の name-hash は Parser の 31-fold hash と一致させる。
 (defn static-comparison-operator? [operator]
   (if (= operator 61) 1
@@ -553,14 +1108,18 @@
                 0
                 (canonical-assertion-non-bool-code))
               (canonical-assertion-non-bool-code))))))))
-(defn check-assertion-predicates-loop
+(defn check-assertion-predicates-step-v3
   [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state-with-span
-      diagnostic-count
-      first-error-code
-      first-error-start
-      first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state-with-span
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end))
     (let [span-count (if (= spans 0) 0 (vector-length spans))
       span-index (* idx 2)
       predicate-start
@@ -581,18 +1140,139 @@
         (if (= first-error-code 0) predicate-start first-error-start)
       next-first-error-end
         (if (= first-error-code 0) predicate-end first-error-end)]
-      (check-assertion-predicates-loop
+      (vector-push-triple-rooted-v3
+        (vector-new 3)
+        0
+        (+ idx 1)
+        (assertion-check-state-with-span
+          next-count
+          next-first-error-code
+          next-first-error-start
+          next-first-error-end)))))
+(defn check-assertion-predicates-step-64-loop-bounded
+  [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push predicates)
+    (root_push spans)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-assertion-predicates-step-v3
         predicates
         spans
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        next-count
-        next-first-error-code
-        next-first-error-start
-        next-first-error-end))))
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-assertion-predicates-step-64-loop-bounded
+                      predicates
+                      spans
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-assertion-predicates-rooted-v3
+  [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-assertion-predicates-step-64-loop-bounded
+      predicates
+      spans
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-assertion-predicates-rooted-v3
+                predicates
+                spans
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-assertion-predicates-loop
+  [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push predicates)
+    (root_push spans)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-assertion-predicates-rooted-v3
+        predicates
+        spans
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-assertion-form
   [form decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (= (vector-get form 0) 3)
@@ -625,14 +1305,18 @@
       first-error-code
       first-error-start
       first-error-end)))
-(defn check-assertion-forms-loop
+(defn check-assertion-forms-step-v3
   [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state-with-span
-      diagnostic-count
-      first-error-code
-      first-error-start
-      first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state-with-span
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end))
     (let [state (check-assertion-form
         (vector-get forms idx)
         decl
@@ -642,17 +1326,136 @@
         first-error-code
         first-error-start
         first-error-end)]
-      (check-assertion-forms-loop
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (assertion-check-state-with-span
+              (vector-get state 0)
+              (vector-get state 1)
+              (vector-get state 2)
+              (vector-get state 3)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-assertion-forms-step-64-loop-bounded
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-assertion-forms-step-v3
         forms
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        (vector-get state 0)
-        (vector-get state 1)
-        (vector-get state 2)
-        (vector-get state 3)))))
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-assertion-forms-step-64-loop-bounded
+                      forms
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-assertion-forms-rooted-v3
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-assertion-forms-step-64-loop-bounded
+      forms
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-assertion-forms-rooted-v3
+                forms
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-assertion-forms-loop
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-assertion-forms-rooted-v3
+        forms
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-defn-assertions [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -730,40 +1533,159 @@
                           (canonical-case-value-error-code)
                           expected-start
                           expected-end)))))))))))))
-(defn check-case-expectations-loop
+(defn check-case-expectations-step-v3
   [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (case-check-state diagnostic-count first-error-code first-error-start first-error-end))
     (let [check-result (check-case-expectation
         (vector-get expectations idx)
         decl
         env
-        counter)
-      check-result-root-slot (root_push check-result)
-      code (vector-get check-result 0)
-      error-start (vector-get check-result 1)
-      error-end (vector-get check-result 2)
-      next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
-      next-first-error-code
-        (if (= first-error-code 0) code first-error-code)
-      next-first-error-start
-        (if (= first-error-code 0) error-start first-error-start)
-      next-first-error-end
-        (if (= first-error-code 0) error-end first-error-end)
-      result (check-case-expectations-loop
+        counter)]
+      (do
+        (root_push check-result)
+        (let [code (vector-get check-result 0)
+          error-start (vector-get check-result 1)
+          error-end (vector-get check-result 2)
+          next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
+          next-first-error-code
+            (if (= first-error-code 0) code first-error-code)
+          next-first-error-start
+            (if (= first-error-code 0) error-start first-error-start)
+          next-first-error-end
+            (if (= first-error-code 0) error-end first-error-end)]
+          (let [step
+            (vector-push-triple-rooted-v3
+              (vector-new 3)
+              0
+              (+ idx 1)
+              (case-check-state
+                next-count
+                next-first-error-code
+                next-first-error-start
+                next-first-error-end))]
+            (do
+              (root_pop)
+              step)))))))
+(defn check-case-expectations-step-64-loop-bounded
+  [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push expectations)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-case-expectations-step-v3
         expectations
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        next-count
-        next-first-error-code
-        next-first-error-start
-        next-first-error-end)]
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-case-expectations-step-64-loop-bounded
+                      expectations
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-case-expectations-rooted-v3
+  [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-case-expectations-step-64-loop-bounded
+      expectations
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-case-expectations-rooted-v3
+                expectations
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-case-expectations-loop
+  [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push expectations)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-case-expectations-rooted-v3
+        expectations
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
       (do
         (root_pop)
-        result))))
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-case-form [form decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (= (vector-get form 0) (contract-form-case))
     (let [expectations (vector-get form 1)]
@@ -787,10 +1709,14 @@
           first-error-start
           first-error-end)))
     (case-check-state diagnostic-count first-error-code first-error-start first-error-end)))
-(defn check-case-forms-loop
+(defn check-case-forms-step-v3
   [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (case-check-state diagnostic-count first-error-code first-error-start first-error-end))
     (let [state (check-case-form
         (vector-get forms idx)
         decl
@@ -800,17 +1726,136 @@
         first-error-code
         first-error-start
         first-error-end)]
-      (check-case-forms-loop
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (case-check-state
+              (vector-get state 0)
+              (vector-get state 1)
+              (vector-get state 2)
+              (vector-get state 3)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-case-forms-step-64-loop-bounded
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-case-forms-step-v3
         forms
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        (vector-get state 0)
-        (vector-get state 1)
-        (vector-get state 2)
-        (vector-get state 3)))))
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-case-forms-step-64-loop-bounded
+                      forms
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-case-forms-rooted-v3
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-case-forms-step-64-loop-bounded
+      forms
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-case-forms-rooted-v3
+                forms
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-case-forms-loop
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-case-forms-rooted-v3
+        forms
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-defn-cases [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -826,14 +1871,18 @@
         0
         0
         0))))
-(defn check-module-program-loop
+(defn check-module-program-step-v3
   [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state-with-span
-      diagnostic-count
-      first-error-code
-      first-error-start
-      first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state-with-span
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end))
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -845,28 +1894,126 @@
               (assertion-check-state-with-span 0 0 0 0)))]
           (do
             (root_push state)
-            (let [next-count (+ diagnostic-count (vector-get state 0))
-              state-first-code (vector-get state 1)
-              next-first-code
-                (if (= first-error-code 0) state-first-code first-error-code)
-              next-first-error-start
-                (if (= first-error-code 0) (vector-get state 2) first-error-start)
-              next-first-error-end
-                (if (= first-error-code 0) (vector-get state 3) first-error-end)
-              result (check-module-program-loop
-                program
+            (let [step
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                0
                 (+ idx 1)
-                count
-                env
-                counter
-                next-count
-                next-first-code
-                next-first-error-start
-                next-first-error-end)]
+                (assertion-check-state-with-span
+                  (+ diagnostic-count (vector-get state 0))
+                  (if (= first-error-code 0) (vector-get state 1) first-error-code)
+                  (if (= first-error-code 0) (vector-get state 2) first-error-start)
+                  (if (= first-error-code 0) (vector-get state 3) first-error-end)))]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                step))))))))
+(defn check-module-program-step-64-loop-bounded
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-module-program-step-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-module-program-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-module-program-rooted-v3
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-module-program-step-64-loop-bounded
+      program
+      idx
+      count
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-module-program-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-module-program-loop
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-module-program-rooted-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-module-assertions [module-node]
   (let [module-program (canonical-module-program module-node)]
     (let [analysis (infer-program-analysis module-program)
@@ -882,14 +2029,18 @@
         0
         0
         0))))
-(defn check-program-assertions-loop
+(defn check-program-assertions-step-v3
   [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state-with-span
-      diagnostic-count
-      first-error-code
-      first-error-start
-      first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state-with-span
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end))
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -909,28 +2060,126 @@
                 (assertion-check-state-with-span 0 0 0 0))))]
           (do
             (root_push state)
-            (let [next-count (+ diagnostic-count (vector-get state 0))
-              state-first-code (vector-get state 1)
-              next-first-code
-                (if (= first-error-code 0) state-first-code first-error-code)
-              next-first-error-start
-                (if (= first-error-code 0) (vector-get state 2) first-error-start)
-              next-first-error-end
-                (if (= first-error-code 0) (vector-get state 3) first-error-end)
-              result (check-program-assertions-loop
-                program
+            (let [step
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                0
                 (+ idx 1)
-                count
-                env
-                counter
-                next-count
-                next-first-code
-                next-first-error-start
-                next-first-error-end)]
+                (assertion-check-state-with-span
+                  (+ diagnostic-count (vector-get state 0))
+                  (if (= first-error-code 0) (vector-get state 1) first-error-code)
+                  (if (= first-error-code 0) (vector-get state 2) first-error-start)
+                  (if (= first-error-code 0) (vector-get state 3) first-error-end)))]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                step))))))))
+(defn check-program-assertions-step-64-loop-bounded
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-program-assertions-step-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-program-assertions-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-program-assertions-rooted-v3
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-program-assertions-step-64-loop-bounded
+      program
+      idx
+      count
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-program-assertions-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-program-assertions-loop
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-program-assertions-rooted-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-canonical-assertions-with-analysis [program analysis]
   (let [counter (typeinfer-make-alias-aware-counter program)
     env (infer-program-analysis-env analysis)]
@@ -947,10 +2196,14 @@
 (defn check-canonical-assertions [program]
   (let [analysis (infer-program-analysis program)]
     (check-canonical-assertions-with-analysis program analysis)))
-(defn check-case-module-program-loop
+(defn check-case-module-program-step-v3
   [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (case-check-state diagnostic-count first-error-code first-error-start first-error-end))
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -962,30 +2215,126 @@
               (case-check-state 0 0 0 0)))]
           (do
             (root_push state)
-            (let [next-count (+ diagnostic-count (vector-get state 0))
-              state-first-code (vector-get state 1)
-              state-first-start (vector-get state 2)
-              state-first-end (vector-get state 3)
-              next-first-code
-                (if (= first-error-code 0) state-first-code first-error-code)
-              next-first-start
-                (if (= first-error-code 0) state-first-start first-error-start)
-              next-first-end
-                (if (= first-error-code 0) state-first-end first-error-end)
-              result (check-case-module-program-loop
-                program
+            (let [step
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                0
                 (+ idx 1)
-                count
-                env
-                counter
-                next-count
-                next-first-code
-                next-first-start
-                next-first-end)]
+                (case-check-state
+                  (+ diagnostic-count (vector-get state 0))
+                  (if (= first-error-code 0) (vector-get state 1) first-error-code)
+                  (if (= first-error-code 0) (vector-get state 2) first-error-start)
+                  (if (= first-error-code 0) (vector-get state 3) first-error-end)))]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                step))))))))
+(defn check-case-module-program-step-64-loop-bounded
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-case-module-program-step-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-case-module-program-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-case-module-program-rooted-v3
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-case-module-program-step-64-loop-bounded
+      program
+      idx
+      count
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-case-module-program-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-case-module-program-loop
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-case-module-program-rooted-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-case-module [module-node]
   (let [module-program (canonical-module-program module-node)]
     (let [analysis (infer-program-analysis module-program)
@@ -1001,10 +2350,14 @@
         0
         0
         0))))
-(defn check-case-program-loop
+(defn check-case-program-step-v3
   [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (case-check-state diagnostic-count first-error-code first-error-start first-error-end))
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -1024,30 +2377,126 @@
                 (case-check-state 0 0 0 0))))]
           (do
             (root_push state)
-            (let [next-count (+ diagnostic-count (vector-get state 0))
-              state-first-code (vector-get state 1)
-              state-first-start (vector-get state 2)
-              state-first-end (vector-get state 3)
-              next-first-code
-                (if (= first-error-code 0) state-first-code first-error-code)
-              next-first-start
-                (if (= first-error-code 0) state-first-start first-error-start)
-              next-first-end
-                (if (= first-error-code 0) state-first-end first-error-end)
-              result (check-case-program-loop
-                program
+            (let [step
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                0
                 (+ idx 1)
-                count
-                env
-                counter
-                next-count
-                next-first-code
-                next-first-start
-                next-first-end)]
+                (case-check-state
+                  (+ diagnostic-count (vector-get state 0))
+                  (if (= first-error-code 0) (vector-get state 1) first-error-code)
+                  (if (= first-error-code 0) (vector-get state 2) first-error-start)
+                  (if (= first-error-code 0) (vector-get state 3) first-error-end)))]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                step))))))))
+(defn check-case-program-step-64-loop-bounded
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-case-program-step-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-case-program-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-case-program-rooted-v3
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-case-program-step-64-loop-bounded
+      program
+      idx
+      count
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-case-program-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-case-program-loop
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-case-program-rooted-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-canonical-cases-with-analysis [program analysis]
   (let [counter (typeinfer-make-alias-aware-counter program)
     env (infer-program-analysis-env analysis)]
@@ -1120,17 +2569,61 @@
         (if (or (= ch 41) (= ch 93))
           1
           (if (= ch 58) 1 0))))))
-(defn property-balanced-bracket-end [src idx len depth]
+(defn property-balanced-bracket-end-step-v3 [src idx len depth]
   (if (>= idx len)
-    -1
+    (vector-push-quad-rooted-v3 (vector-new 4) 1 idx depth -1)
     (let [ch (string-char-at src idx)]
       (if (= ch 91)
-        (property-balanced-bracket-end src (+ idx 1) len (+ depth 1))
+        (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (+ depth 1) -1)
         (if (= ch 93)
           (if (= depth 1)
-            (+ idx 1)
-            (property-balanced-bracket-end src (+ idx 1) len (- depth 1)))
-          (property-balanced-bracket-end src (+ idx 1) len depth))))))
+            (vector-push-quad-rooted-v3 (vector-new 4) 1 (+ idx 1) 0 (+ idx 1))
+            (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) (- depth 1) -1))
+          (vector-push-quad-rooted-v3 (vector-new 4) 0 (+ idx 1) depth -1))))))
+(defn property-balanced-bracket-end-step-64-loop-bounded
+  [src idx len depth remaining]
+  (do
+    (root_push src)
+    (let [step (property-balanced-bracket-end-step-v3 src idx len depth)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-balanced-bracket-end-step-64-loop-bounded
+                src
+                (vector-get step 1)
+                len
+                (vector-get step 2)
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-balanced-bracket-end-rooted-v3 [src idx len depth]
+  (let [step (property-balanced-bracket-end-step-64-loop-bounded src idx len depth 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 3)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-balanced-bracket-end-rooted-v3
+            src
+            (vector-get step 1)
+            len
+            (vector-get step 2))]
+          (do
+            (root_pop)
+            resolved))))))
+(defn property-balanced-bracket-end [src idx len depth]
+  (do
+    (root_push src)
+    (let [result (property-balanced-bracket-end-rooted-v3 src idx len depth)]
+      (do
+        (root_pop)
+        result))))
 (defn property-option-value-end [payload option-start len]
   (let [precondition? (= (property-option-prefix? payload option-start ":precondition") 1)
     postcondition? (= (property-option-prefix? payload option-start ":postcondition") 1)
@@ -1144,25 +2637,68 @@
         (if (and postcondition? (= (string-char-at payload value-start) 40))
           (property-balanced-expression-end payload value-start len 0)
           (property-atom-expression-end payload value-start len))))))
-(defn property-unknown-option-loop [payload idx len]
+(defn property-unknown-option-step-v3 [payload idx len]
   (if (< idx 0)
-    0
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 0)
     (let [current (property-skip-space payload idx len)]
       (if (>= current len)
-        0
+        (vector-push-triple-rooted-v3 (vector-new 3) 1 current 0)
         (let [ch (string-char-at payload current)]
           (if (= ch 41)
-            0
-          (if (= ch 58)
-            (if (= (property-unknown-option-at? payload current) 1)
-              1
-              (if (= (property-option-value-missing? payload current len) 1)
-                1
-                (property-unknown-option-loop
-                  payload
-                  (property-option-value-end payload current len)
-                  len)))
-            0)))))))
+            (vector-push-triple-rooted-v3 (vector-new 3) 1 current 0)
+            (if (= ch 58)
+              (if (= (property-unknown-option-at? payload current) 1)
+                (vector-push-triple-rooted-v3 (vector-new 3) 1 current 1)
+                (if (= (property-option-value-missing? payload current len) 1)
+                  (vector-push-triple-rooted-v3 (vector-new 3) 1 current 1)
+                  (vector-push-triple-rooted-v3
+                    (vector-new 3)
+                    0
+                    (property-option-value-end payload current len)
+                    0)))
+              (vector-push-triple-rooted-v3 (vector-new 3) 1 current 0))))))))
+(defn property-unknown-option-step-64-loop-bounded
+  [payload idx len remaining]
+  (do
+    (root_push payload)
+    (let [step (property-unknown-option-step-v3 payload idx len)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (property-unknown-option-step-64-loop-bounded
+                payload
+                (vector-get step 1)
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn property-unknown-option-rooted-v3 [payload idx len]
+  (let [step (property-unknown-option-step-64-loop-bounded payload idx len 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [resolved
+          (property-unknown-option-rooted-v3
+            payload
+            (vector-get step 1)
+            len)]
+          (do
+            (root_pop)
+            resolved))))))
+(defn property-unknown-option-loop [payload idx len]
+  (do
+    (root_push payload)
+    (let [result (property-unknown-option-rooted-v3 payload idx len)]
+      (do
+        (root_pop)
+        result))))
 (defn property-unknown-option? [payload]
   (let [len (string-length payload)
     open (property-find-substring payload "[")
@@ -1185,32 +2721,107 @@
           (root_pop)
           state)))
     (assertion-check-state diagnostic-count first-error-code)))
-(defn check-property-forms-loop
+(defn check-property-forms-step-v3
   [forms idx count diagnostic-count first-error-code]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
-    (do
-      (root_push forms)
-      (let [form (vector-get forms idx)]
-        (do
-          (root_push form)
-          (let [state (check-property-form
-              form
-              diagnostic-count
-              first-error-code)]
-            (do
-              (root_push state)
-              (let [result (check-property-forms-loop
-                  forms
-                  (+ idx 1)
-                  count
-                  (vector-get state 0)
-                  (vector-get state 1))]
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state diagnostic-count first-error-code))
+    (let [form (vector-get forms idx)
+      state (check-property-form form diagnostic-count first-error-code)]
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (assertion-check-state
+              (vector-get state 0)
+              (vector-get state 1)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-property-forms-step-64-loop-bounded
+  [forms idx count diagnostic-count first-error-code remaining]
+  (do
+    (root_push forms)
+    (let [step
+      (check-property-forms-step-v3
+        forms
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+                  (root_push state)
+                  (let [next
+                    (check-property-forms-step-64-loop-bounded
+                      forms
+                      (vector-get step 1)
+                      count
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-property-forms-rooted-v3
+  [forms idx count diagnostic-count first-error-code]
+  (let [step
+    (check-property-forms-step-64-loop-bounded
+      forms
+      idx
+      count
+      diagnostic-count
+      first-error-code
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-property-forms-rooted-v3
+                forms
+                (vector-get step 1)
+                count
+                (vector-get state 0)
+                (vector-get state 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-property-forms-loop
+  [forms idx count diagnostic-count first-error-code]
+  (do
+    (root_push forms)
+    (let [parsed
+      (check-property-forms-rooted-v3
+        forms
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_pop)
+        parsed))))
 (defn check-defn-properties [decl]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -1244,31 +2855,109 @@
           (check-property-module decl)
           (assertion-check-state 0 0))))))
 
-(defn check-property-program-loop
+(defn check-property-program-step-v3
   [program idx count diagnostic-count first-error-code]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
-    (do
-      (root_push program)
-      (let [decl (vector-get program idx)]
-        (do
-          (root_push decl)
-          (let [state (check-property-decl decl)]
-            (do
-              (root_push state)
-              (let [result (check-property-program-loop
-                  program
-                  (+ idx 1)
-                  count
-                  (+ diagnostic-count (vector-get state 0))
-                  (if (= first-error-code 0)
-                    (vector-get state 1)
-                    first-error-code))]
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state diagnostic-count first-error-code))
+    (let [decl (vector-get program idx)
+      state (check-property-decl decl)]
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (assertion-check-state
+              (+ diagnostic-count (vector-get state 0))
+              (if (= first-error-code 0)
+                (vector-get state 1)
+                first-error-code)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-property-program-step-64-loop-bounded
+  [program idx count diagnostic-count first-error-code remaining]
+  (do
+    (root_push program)
+    (let [step
+      (check-property-program-step-v3
+        program
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+                  (root_push state)
+                  (let [next
+                    (check-property-program-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-property-program-rooted-v3
+  [program idx count diagnostic-count first-error-code]
+  (let [step
+    (check-property-program-step-64-loop-bounded
+      program
+      idx
+      count
+      diagnostic-count
+      first-error-code
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-property-program-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                (vector-get state 0)
+                (vector-get state 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-property-program-loop
+  [program idx count diagnostic-count first-error-code]
+  (do
+    (root_push program)
+    (let [parsed
+      (check-property-program-rooted-v3
+        program
+        idx
+        count
+        diagnostic-count
+        first-error-code)]
+      (do
+        (root_pop)
+        parsed))))
 (defn check-canonical-properties-with-analysis [program analysis]
   (check-property-program-loop
     program
