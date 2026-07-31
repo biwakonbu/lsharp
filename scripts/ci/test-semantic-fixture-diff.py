@@ -52,15 +52,14 @@ def report_for(producer):
 
 
 class SemanticFixtureDiffTest(unittest.TestCase):
-    def run_diff(self, oracle, native):
+    def run_diff(self, oracle, native, fixture_ids=None):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             oracle_path = root / "oracle.json"
             native_path = root / "native.json"
             oracle_path.write_text(json.dumps(oracle), encoding="utf-8")
             native_path.write_text(json.dumps(native), encoding="utf-8")
-            return subprocess.run(
-                [
+            command = [
                     sys.executable,
                     str(DIFF),
                     "--manifest",
@@ -71,7 +70,11 @@ class SemanticFixtureDiffTest(unittest.TestCase):
                     str(oracle_path),
                     "--native",
                     str(native_path),
-                ],
+                ]
+            for fixture_id in fixture_ids or []:
+                command.extend(["--fixture-id", fixture_id])
+            return subprocess.run(
+                command,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -160,6 +163,25 @@ class SemanticFixtureDiffTest(unittest.TestCase):
                 result = self.run_diff(oracle, changed)
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(label, result.stderr.lower())
+
+    def test_selected_fixture_can_close_one_boundary_without_false_pending(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        for report in (oracle, native):
+            report["fixtures"] = [report["fixtures"][-1]]
+            fixture = report["fixtures"][-1]
+            fixture["artifact"] = {"status": "observed", "sha256": "sha256:" + "b" * 64, "size": 1}
+            fixture["runtime"] = {
+                "status": "observed",
+                "exit_code": 0,
+                "stdout": "42\n",
+                "stderr": "",
+            }
+        result = self.run_diff(oracle, native, ["valid/syntax-basic"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        self.assertEqual(projected["fixture_count"], 1)
+        self.assertEqual(projected["status"], "pass")
 
 
 if __name__ == "__main__":

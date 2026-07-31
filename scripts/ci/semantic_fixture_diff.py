@@ -110,7 +110,12 @@ def validate_runtime(value: Any, kind: str, label: str) -> Dict[str, Any]:
     return dict(runtime)
 
 
-def validate_report(value: Any, label: str, manifest_fixtures: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:
+def validate_report(
+    value: Any,
+    label: str,
+    manifest_fixtures: Mapping[str, Mapping[str, Any]],
+    required_ids: List[str] = None,
+) -> Dict[str, Any]:
     report = require_object(value, label)
     expect_keys(report, ("schema_version", "suite", "producer", "target", "source_commit", "fixtures"), label)
     if report["schema_version"] != 1 or report["suite"] != "v4-m1-01":
@@ -152,9 +157,9 @@ def validate_report(value: Any, label: str, manifest_fixtures: Mapping[str, Mapp
         )
     if len(set(ids)) != len(ids) or ids != sorted(ids):
         raise ObservationError(f"{label}.fixtures ids must be unique and lexicographically sorted")
-    expected_ids = sorted(manifest_fixtures)
+    expected_ids = sorted(required_ids if required_ids is not None else manifest_fixtures)
     if ids != expected_ids:
-        raise ObservationError(f"{label}.fixtures must contain exactly the fixture matrix ids")
+        raise ObservationError(f"{label}.fixtures must contain exactly the selected fixture matrix ids")
     return {
         "producer": producer,
         "target": target,
@@ -247,6 +252,12 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--root", type=pathlib.Path, required=True)
     parser.add_argument("--oracle", type=pathlib.Path, required=True)
     parser.add_argument("--native", type=pathlib.Path, required=True)
+    parser.add_argument(
+        "--fixture-id",
+        action="append",
+        dest="fixture_ids",
+        help="compare only this fixture (repeat for a selected subset)",
+    )
     return parser.parse_args()
 
 
@@ -256,9 +267,30 @@ def main() -> int:
         raw_manifest = load_json(arguments.manifest, "fixture matrix")
         projected_manifest = project_manifest(require_object(raw_manifest, "manifest"), arguments.root.resolve())
         manifest_fixtures = {fixture["id"]: fixture for fixture in projected_manifest["fixtures"]}
-        oracle = validate_report(load_json(arguments.oracle, "oracle report"), "oracle report", manifest_fixtures)
-        native = validate_report(load_json(arguments.native, "native report"), "native report", manifest_fixtures)
-        result = compare_reports(projected_manifest, oracle, native)
+        selected_ids = arguments.fixture_ids or sorted(manifest_fixtures)
+        if len(set(selected_ids)) != len(selected_ids):
+            raise ObservationError("--fixture-id values must be unique")
+        unknown_ids = sorted(set(selected_ids) - set(manifest_fixtures))
+        if unknown_ids:
+            raise ObservationError("unknown --fixture-id: " + ", ".join(unknown_ids))
+        oracle = validate_report(
+            load_json(arguments.oracle, "oracle report"),
+            "oracle report",
+            manifest_fixtures,
+            selected_ids,
+        )
+        native = validate_report(
+            load_json(arguments.native, "native report"),
+            "native report",
+            manifest_fixtures,
+            selected_ids,
+        )
+        selected_manifest = dict(projected_manifest)
+        selected_manifest["fixtures"] = [
+            fixture for fixture in projected_manifest["fixtures"] if fixture["id"] in set(selected_ids)
+        ]
+        selected_manifest["fixture_count"] = len(selected_manifest["fixtures"])
+        result = compare_reports(selected_manifest, oracle, native)
     except (OSError, json.JSONDecodeError, ManifestError, ObservationError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
