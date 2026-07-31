@@ -49,6 +49,17 @@ Evidence:
 
 これは Linux x86_64 TypeInfer の record field/value inference verified sliceであり、V2-16 全体の Rust-free 完了を意味しない。record pattern schema children、current-source stage0 package、Mac Apple Silicon current-source gate、全 source-file/public command parity、残りの V2-16 type-inference loops と aggregateは別の残件として維持する。
 
+### Linux x86_64 Type record substitution/occurs/unify evidence (2026-07-31)
+
+`Type.ls` の record field substitution、occurs-check、record unify に残っていた入力長比例 recursion を、一要素 step、64 field bounded chunk、rooted continuationへまとめて移行した。record field substitution、occurs-check の first/miss、同型 record unify と late field mismatch の意味論と root ownership は維持している。
+
+Evidence:
+
+- RED/GREEN: `test_e2e_selfhost_type_record_checks_use_bounded_chunks` と `test_e2e_selfhost_large_record_type_checks_preserve_results` は、65 field record の substitution/occurs/unify を native selfhost runtimeで走査し、出力 `1/300/2/1064/1/0/0/1` を確認した。`Type.ls` parser check は `decls:74` / `diagnostics:0`、record lookup/equality、TypeScheme record field generalize/instantiate、record inference regressionも passした。
+- Linux native fixed point for `fbbb6db7`: `ci-artifacts/native-linux-x86-hostgen-vm/fbbb6db7-type-record-checks/actual-selfregen-summary.json` は `status:pass`、stage2/stage3 code length は各 `11421747`、stdout は各 `12190991` bytesで SHA-256 `2f6eeb64020c472c7ebfce4a6a208b1ed34eeb83e0b954e005cb545593dffa29`、byte-for-byteで一致し、stderrは各0 bytesだった。actual-stage1 manifest の `source_commit` は `fbbb6db72ed9db3a67015881391d426741b4af1f`、`code_len` は `4380935`、`data_len` は `2325`、`entrypoint_offset` は `4378475`、`function_start_len` は `3438`、`main_func_idx` は `3447`。`ACTUAL_CHUNK_SIZE=128` / retry=1 / heap=4GiB / fail-fast OOMで stage1 -> stage2 -> stage3 を完走した。検証後は debug bundle、VM workdir/lock、idle VMを回収・停止し、summary、actual-stage1 metadata/seed/code/data、stage2/stage3 stdout/stderrだけを約 `28M` artifactへ保持した。
+
+これは Linux x86_64 Type の record substitution/occurs/unify verified sliceであり、V2-16 全体の Rust-free 完了を意味しない。record pattern schema children、current-source stage0 package、Mac Apple Silicon current-source gate、全 source-file/public command parity、残りの V2-16 type-inference loops と aggregateは別の残件として維持する。
+
 ### Linux x86_64 TypeInfer program analysis scan evidence (2026-07-31)
 
 TypeInfer の top-level program analysis に残っていた module / import / defn declaration 単位の入力長比例 recursion を、一要素 step、64 declaration bounded chunk、rooted continuationへ分離した。module visibility、`:open` import、defn inference、failure-kind state の更新順序と公開 `typeinfer-program-analysis-loop` の契約は維持している。
