@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PRODUCER="$ROOT/scripts/ci/native-macos-aarch64-stage0-release.sh"
+CHAIN_SOURCE="$ROOT/crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-native-macos-stage0-release.XXXXXX")"
 FAKE_ROOT="$TMP_ROOT/project"
 PATH_PREFIX="$TMP_ROOT/bin"
@@ -19,6 +20,21 @@ fail() {
 
 mkdir -p "$FAKE_ROOT/scripts/ci" "$PATH_PREFIX"
 cp "$PRODUCER" "$FAKE_ROOT/scripts/ci/"
+
+python3 - "$CHAIN_SOURCE" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+marker = "write_actual_macos_aarch64_stage0_compiler_artifact("
+start = source.rindex(marker)
+call_end = source.index(")?;", start) + 3
+call = source[start:call_end]
+if "&stage3_input" not in call:
+    raise SystemExit("stage0 compiler artifact must use the fixed-point stage3 compiler input")
+if "&app_cli_input" in call:
+    raise SystemExit("stage0 compiler artifact must not use the App.Cli launcher input")
+PY
 
 grep -F 'LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR' "$PRODUCER" >/dev/null \
   || fail "Mac producer must request a dedicated stage0 compiler artifact"

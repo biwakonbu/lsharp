@@ -14788,7 +14788,7 @@ fn generate_actual_macos_aarch64_app_cli_release_program(
     {
         write_actual_macos_aarch64_stage0_compiler_artifact(
             &std::path::PathBuf::from(stage0_compiler_dir),
-            &app_cli_input,
+            &stage3_input,
         )?;
     }
     let bundle = run_native_macos_aarch64_cli_bundle(&app_cli_input, &["--version"])?;
