@@ -50,7 +50,9 @@
   subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
   として deterministic JSON/text/MCP/manifest へ投影し、競合を fail-closed に拒否する verified partial
   slice。native source-file smoke の explicit identity JSON/text/manifest、nullable digest、all-or-none
-  input boundaryも verified partial として追加した。selfhost `App.Cli` の explicit identity
+  input boundaryも verified partial として追加した。native MCP subset の provider/output/input と
+  manifest nested schema parity、canonical `review_now` lexical preflight も verified partial として追加した。
+  selfhost `App.Cli` の explicit identity
   JSON/text/manifest parity も Rust-host actual Wasm で verified partial として追加した。offline
   release identity verifier を native-only
   archive / packaged stage0 の optional identity projection と release smoke の再検証へ接続したが、

@@ -223,6 +223,42 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertEqual(manifest_schema["properties"]["schema_version"]["const"], 1)
             for field in ("nodes", "evidence", "edges"):
                 self.assertEqual(manifest_schema["properties"][field]["type"], "array")
+            self.assertFalse(manifest_schema["additionalProperties"])
+            node_schema = manifest_schema["properties"]["nodes"]["items"]
+            self.assertEqual(node_schema["required"], ["kind", "namespace", "key", "text"])
+            self.assertEqual(
+                node_schema["properties"]["kind"]["enum"],
+                ["intent", "claim", "assumption", "open-question"],
+            )
+            self.assertEqual(
+                node_schema["properties"]["namespace"]["pattern"],
+                r"^[A-Za-z0-9_.-]+$",
+            )
+            evidence_schema = manifest_schema["properties"]["evidence"]["items"]
+            self.assertEqual(
+                evidence_schema["required"],
+                [
+                    "namespace",
+                    "key",
+                    "method",
+                    "subject",
+                    "outcome",
+                    "execution",
+                    "provenance",
+                    "independence",
+                ],
+            )
+            self.assertEqual(
+                evidence_schema["properties"]["method"]["enum"],
+                ["example", "case", "assert", "property", "production", "reference", "proof", "review"],
+            )
+            self.assertEqual(len(manifest_schema["properties"]["edges"]["items"]["oneOf"]), 6)
+            manifest_input_schema = validate_schema["properties"]["manifest"]["oneOf"][0]
+            self.assertFalse(manifest_input_schema["additionalProperties"])
+            self.assertEqual(
+                manifest_input_schema["properties"]["nodes"]["items"]["required"],
+                ["kind", "namespace", "key", "text"],
+            )
             self.assertEqual(responses[2]["result"]["structuredContent"]["ok"], True)
             self.assertEqual(responses[3]["result"]["structuredContent"]["status"], "unknown")
             self.assertEqual(responses[4]["result"]["structuredContent"], {"formatted": "(formatted)\n"})

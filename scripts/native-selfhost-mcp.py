@@ -19,6 +19,14 @@ import subprocess
 import sys
 import tempfile
 
+from native_selfhost_mcp_schema import (
+    edge_schema,
+    evidence_schema,
+    node_schema,
+    review_evidence_identity_schema,
+    review_registry_schema,
+)
+
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 CANONICAL_UTC_TIMESTAMP_PATTERN = (
@@ -120,14 +128,19 @@ CHECK_OUTPUT_SCHEMA = {
     },
 }
 
+
+
 MANIFEST_OUTPUT_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "required": ["schema_version", "nodes", "evidence", "edges"],
     "properties": {
         "schema_version": {"type": "integer", "const": 1},
-        "nodes": {"type": "array"},
-        "evidence": {"type": "array"},
-        "edges": {"type": "array"},
+        "nodes": {"type": "array", "items": node_schema()},
+        "reviews": review_registry_schema(),
+        "review_evidence_identity": review_evidence_identity_schema(),
+        "evidence": {"type": "array", "items": evidence_schema()},
+        "edges": {"type": "array", "items": edge_schema()},
     },
 }
 
@@ -261,7 +274,9 @@ TOOLS = [
         ),
         {
             **SOURCE_PROPERTIES,
-            "manifest": {"oneOf": [{"type": "object"}, {"type": "string"}]},
+            "manifest": {
+                "oneOf": [MANIFEST_OUTPUT_SCHEMA, {"type": "string", "minLength": 1}]
+            },
             "manifest_file": {"type": "string", "minLength": 1},
             "include_manifest": {"type": "boolean"},
             "trust_store": {"type": "string", "minLength": 1},

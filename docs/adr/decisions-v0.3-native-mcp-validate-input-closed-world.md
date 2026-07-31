@@ -29,6 +29,6 @@ review or validation option had been applied when it had not.
 
 ## Remaining boundary
 
-Full Rust MCP tool parity, richer output schema parity, provider
-authentication/signature/lifecycle semantics, and current-source Linux runtime
-evidence remain `[~]` under `EC-M3-05` / M3-05-N9.
+Full Rust MCP tool parity, runtime validation of nested manifest input/output,
+provider authentication/signature/lifecycle semantics, and current-source Linux
+runtime evidence remain `[~]` under `EC-M3-05` / M3-05-N9.

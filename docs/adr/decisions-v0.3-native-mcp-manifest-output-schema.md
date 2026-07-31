@@ -3,23 +3,28 @@
 ## Status
 
 Verified partial slice (2026-08-01). Native MCP now declares the required
-top-level shape of an emitted validation manifest.
+top-level and nested shape of validation manifests on both input and output
+schema surfaces.
 
 ## Decision
 
 - Require `schema_version`, `nodes`, `evidence`, and `edges` in the projected
   manifest and pin `schema_version` to integer `1`.
-- Keep the nested node/evidence/edge schemas as the next parity boundary rather
-  than silently treating arbitrary manifest objects as valid output.
+- Close the manifest object, node, evidence, review, identity, and edge
+  variants with the same identifier, enum, provenance, execution, sampling,
+  and relation constraints as the Rust MCP schema.
+- Reuse the same closed manifest schema for the object variant of the native
+  MCP input, while retaining the non-empty JSON string variant for compatibility.
 
 ## Evidence
 
 `scripts/ci/test-native-selfhost-mcp.py` asserts the manifest required fields,
-version const, and array types in `tools/list`. Native MCP/runner tests, Python
-compilation, shell syntax checks, docs audit, and `git diff --check` pass.
+version const, nested node/evidence/edge shapes, and closed input/output object
+boundaries in `tools/list`. Native MCP/runner tests, Python compilation, shell
+syntax checks, docs audit, and `git diff --check` pass.
 
 ## Remaining boundary
 
-Nested intent-graph manifest validation, all Rust MCP tools, provider
-authentication/signature/lifecycle semantics, and current-source Linux runtime
-evidence remain `[~]` under `EC-M3-05` / M3-05-N9.
+Runtime validation of every manifest field before invoking a native stage0,
+all Rust MCP tools, provider authentication/signature/lifecycle semantics, and
+current-source Linux runtime evidence remain `[~]` under `EC-M3-05` / M3-05-N9.
