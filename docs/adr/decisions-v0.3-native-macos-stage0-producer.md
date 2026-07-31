@@ -42,10 +42,16 @@ builder が個別に存在していたが、それらを一つの再現可能な
   `native-macos-aarch64-selfhost-release.sh` が task-owned temporary artifact pathを安全でないと拒否した。
 - GREEN: safe cleanup boundaryを正規化した `TMPDIR_ROOT` の直下 `lsharp-*` に限定して許可し、root/
   traversal/任意 path は拒否する focused contract test と shell syntax を通過した。
+- RED: 末尾 `/` を含む既定 `TMPDIR` では、外側 stage0 wrapperの未正規化連結によって
+  `T//lsharp-native-macos-aarch64-stage0.../app-cli` が生成され、内側の安全検査に到達した。
+- GREEN: stage0 wrapperでも `TMPDIR_ROOT="${TMPDIR_ROOT%/}"` を共通化し、既定
+  `TMPDIR=/var/folders/.../T/` の actual producer/package を 484.89秒で完走した。
+  `2abe8196c1cff06ae68265325b114e3c636e646` の source commit、Mac stage0 manifest、
+  `aarch64-apple-darwin` target、および source-file smoke の一致を確認した。
 - `bash -n scripts/ci/native-macos-aarch64-stage0-release.sh scripts/ci/test-native-macos-aarch64-stage0-release.sh`
   と `git diff --check` を通過した。
 
-Mac Apple Silicon の current-source producer/package/source-file smoke は実行済みで、既定 TMPDIR の
+Mac Apple Silicon の current-source producer/package/source-file smoke は、既定 TMPDIR を含めて実行済みで、
 task-owned path boundaryも fail-closed に固定した。ただし fetch後の公式 archive経路、Linux x86_64
 runtime、provider snapshot digest、packaged App.Cli/rollback/Wasm byte parity は N9 の残件である。
 `TODO.md` の `[~]` は維持する。

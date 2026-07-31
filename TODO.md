@@ -34,7 +34,8 @@
   同日、current `f6a6da30` の Mac Apple Silicon stage0 producer/package と actual App.Cli E2E、source-file
   smoke を実行し、Mac current-source runtime の named-field/attestation/validation smoke を pass させた。
   既定 macOS `TMPDIR` の task-owned producer artifact path拒否も再現し、`TMPDIR_ROOT/lsharp-*` のみを
-  許可する safe cleanup boundaryを追加した。
+  許可する safe cleanup boundaryを追加した。末尾 `/` を含む既定 `TMPDIR` の `T//lsharp-*` 連結も
+  stage0 wrapperで正規化し、actual producer/package（484.89秒）と生成 stage0の source-file smokeを通過した。
   Linux x86_64 current-source runtime、fetch後の packaged provenance と両 target matrixは残る。
 - [~] `EC-M3-05` release / evidence gate — Rust CLI/MCP と manifest の入出力 roundtrip が、明示した
   subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
