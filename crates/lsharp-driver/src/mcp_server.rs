@@ -69,11 +69,27 @@ pub fn call_tool(name: &str, arguments: &Value) -> Result<Value, String> {
 }
 
 fn search_tool(arguments: &Value) -> Result<Value, String> {
-    let project_dir = project_dir_argument(arguments);
-    let query = arguments
-        .get("query")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| "lsharp_search の arguments は object が必要です".to_string())?;
+    if let Some(unknown) = object
+        .keys()
+        .find(|key| !matches!(key.as_str(), "project_dir" | "query"))
+    {
+        return Err(format!("lsharp_search の未知の引数: {unknown}"));
+    }
+    let project_dir = match arguments.get("project_dir") {
+        None => project_dir_argument(arguments),
+        Some(Value::String(project_dir)) if !project_dir.trim().is_empty() => {
+            PathBuf::from(project_dir)
+        }
+        Some(_) => return Err("lsharp_search の project_dir は文字列が必要です".to_string()),
+    };
+    let query = match arguments.get("query") {
+        None => "",
+        Some(Value::String(query)) => query.as_str(),
+        Some(_) => return Err("lsharp_search の query は文字列が必要です".to_string()),
+    };
 
     let packages = installed_packages(&project_dir)
         .into_iter()

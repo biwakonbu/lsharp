@@ -71,7 +71,10 @@ pub fn handle_jsonrpc_message(request: &Value) -> Value {
                         });
                         if matches!(
                             tool.name.as_str(),
-                            "lsharp_check" | "lsharp_validate" | "lsharp_errors"
+                            "lsharp_check"
+                                | "lsharp_validate"
+                                | "lsharp_errors"
+                                | "lsharp_search"
                         ) {
                             descriptor["outputSchema"] = tool_output_schema(&tool.name);
                         }

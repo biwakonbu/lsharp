@@ -14,6 +14,7 @@ from native_selfhost_mcp_error_tests import (
     assert_errors_lookup,
     assert_errors_reject_invalid_arguments,
 )
+from native_selfhost_mcp_package_tests import assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
 
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -157,7 +158,13 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             tool_names = {tool["name"] for tool in responses[1]["result"]["tools"]}
             self.assertEqual(
                 tool_names,
-                {"lsharp_check", "lsharp_validate", "lsharp_format", "lsharp_errors"},
+                {
+                    "lsharp_check",
+                    "lsharp_validate",
+                    "lsharp_format",
+                    "lsharp_errors",
+                    "lsharp_search",
+                },
             )
             check_tool = next(
                 tool for tool in responses[1]["result"]["tools"] if tool["name"] == "lsharp_check"
@@ -348,6 +355,12 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_errors_rejects_missing_or_unknown_arguments_before_native_execution(self):
         assert_errors_reject_invalid_arguments(self)
+
+    def test_search_projects_local_packages_without_native_execution(self):
+        assert_search_projects_local_packages(self)
+
+    def test_search_rejects_invalid_arguments_before_native_execution(self):
+        assert_search_rejects_invalid_arguments(self)
 
     def test_validate_forwards_explicit_identity_and_manifest_request(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

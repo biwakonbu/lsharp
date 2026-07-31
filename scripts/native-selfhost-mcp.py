@@ -6,9 +6,11 @@ translates JSON-RPC requests into the existing ``check``, ``validate`` and
 ``fmt`` CLI contracts; it never calls cargo, rustc, host ``lsharp`` or a
 provider/network helper.  ``lsharp_errors`` is a read-only documentation
 lookup over the canonical Rust error-code table and never executes a host
-compiler.  Explicit provider snapshot paths are an offline bytes-to-digest
-adapter; signature and lifecycle semantic verification remain an external
-provider boundary until a native verifier is available.
+compiler.  ``lsharp_search`` is an offline projection of local
+``.lsharp/packages`` metadata and never accesses a registry.  Explicit provider
+snapshot paths are an offline bytes-to-digest adapter; signature and lifecycle
+semantic verification remain an external provider boundary until a native
+verifier is available.
 """
 
 import argparse
@@ -29,6 +31,7 @@ from native_selfhost_mcp_schema import (
     review_registry_schema,
 )
 from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
+from native_selfhost_mcp_packages import PackageLookupError, SEARCH_OUTPUT_SCHEMA, call_search
 
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
@@ -345,6 +348,17 @@ TOOLS = [
         ERRORS_OUTPUT_SCHEMA,
         {"additionalProperties": False},
     ),
+    tool_descriptor(
+        "lsharp_search",
+        "ローカルにインストール済みの L# package を検索する (native offline subset)",
+        {
+            "project_dir": {"type": "string", "minLength": 1},
+            "query": {"type": "string"},
+        },
+        [[]],
+        SEARCH_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
 ]
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
@@ -641,6 +655,11 @@ def call_tool(program, name, arguments):
                 try:
                     value = call_errors(arguments)
                 except ErrorLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_search":
+                try:
+                    value = call_search(arguments)
+                except PackageLookupError as error:
                     raise ToolError(str(error)) from error
             else:
                 value = call_format(program, arguments, temporary_directory)

@@ -48,6 +48,24 @@ mod tests {
     }
 
     #[test]
+    fn test_search_tool_schema_is_closed_world() {
+        let input = tool_input_schema("lsharp_search");
+        assert_eq!(input["additionalProperties"], json!(false));
+
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .and_then(|tools| tools.iter().find(|tool| tool["name"] == "lsharp_search"))
+            .expect("lsharp_search が tools/list に必要");
+        assert_eq!(tool["outputSchema"]["required"], json!(["packages"]));
+        assert_eq!(tool["outputSchema"]["additionalProperties"], json!(false));
+    }
+
+    #[test]
     fn test_initialize_response_advertises_mcp_protocol_and_tools_capability() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",
@@ -638,6 +656,50 @@ description = "context fixture"
         assert!(result["installedPackages"].is_array());
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_search_tool_projects_sorted_installed_packages() {
+        let root = std::env::temp_dir().join(format!("lsharp_mcp_search_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let alpha = root.join(".lsharp/packages/alpha-0.2.0");
+        let zeta = root.join(".lsharp/packages/zeta-2.0.0");
+        std::fs::create_dir_all(&alpha).unwrap();
+        std::fs::create_dir_all(&zeta).unwrap();
+        std::fs::write(
+            alpha.join("lsharp.toml"),
+            "[project]\nname = \"alpha\"\nversion = \"0.2.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            zeta.join("lsharp.toml"),
+            "[project]\nname = \"zeta\"\nversion = \"2.0.0\"\n",
+        )
+        .unwrap();
+
+        let result = call_tool("lsharp_search", &json!({"project_dir": root, "query": "a"}))
+            .expect("lsharp_search は installed package を返すべき");
+        let packages = result["packages"].as_array().unwrap();
+        assert_eq!(packages.len(), 2);
+        assert_eq!(packages[0]["name"], "alpha");
+        assert_eq!(packages[1]["name"], "zeta");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_search_tool_rejects_unknown_or_non_string_arguments() {
+        let unknown = call_tool("lsharp_search", &json!({"unknown": true}))
+            .expect_err("未知引数は reject するべき");
+        assert!(unknown.contains("未知の引数"));
+
+        let non_string = call_tool("lsharp_search", &json!({"query": 42}))
+            .expect_err("query の数値は reject するべき");
+        assert!(non_string.contains("query"));
+
+        let invalid_project = call_tool("lsharp_search", &json!({"project_dir": 42}))
+            .expect_err("project_dir の数値は reject するべき");
+        assert!(invalid_project.contains("project_dir"));
     }
 
     #[test]

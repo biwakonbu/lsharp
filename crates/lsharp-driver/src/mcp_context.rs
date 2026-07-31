@@ -119,7 +119,12 @@ fn installed_packages(project_dir: &Path) -> Vec<Value> {
             "path": path.display().to_string()
         }));
     }
-    packages.sort_by(|left, right| left["name"].as_str().cmp(&right["name"].as_str()));
+    packages.sort_by(|left, right| {
+        left["name"]
+            .as_str()
+            .cmp(&right["name"].as_str())
+            .then_with(|| left["path"].as_str().cmp(&right["path"].as_str()))
+    });
     packages
 }
 

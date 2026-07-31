@@ -49,11 +49,20 @@ fn tool_input_schema(name: &str) -> Value {
                 "module": { "type": "string" }
             }
         }),
-        "lsharp_project_context" | "lsharp_search" => json!({
+        "lsharp_project_context" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
             "properties": {
                 "project_dir": { "type": "string" },
+                "query": { "type": "string" }
+            }
+        }),
+        "lsharp_search" => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "project_dir": { "type": "string", "minLength": 1 },
                 "query": { "type": "string" }
             }
         }),
@@ -230,6 +239,27 @@ fn tool_output_schema(name: &str) -> Value {
                 "doc": {
                     "type": "string",
                     "const": error_codes::ERROR_REFERENCE_DOC
+                }
+            }
+        }),
+        "lsharp_search" => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["packages"],
+            "properties": {
+                "packages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["name", "version", "path"],
+                        "properties": {
+                            "name": { "type": "string", "minLength": 1 },
+                            "version": { "type": "string" },
+                            "path": { "type": "string", "minLength": 1 }
+                        }
+                    }
                 }
             }
         }),

@@ -23,9 +23,10 @@ VM or regenerating stage0.
   native `program.native`; it never invokes `cargo`, `rustc`, host `lsharp`,
   network access, or a provider helper.
 - Advertise only the deterministic subset currently implemented by the native
-  `App.Cli` boundary: `lsharp_check`, `lsharp_validate`, `lsharp_format`, and
-  `lsharp_errors`. The last tool is a read-only projection of the canonical
-  Rust error-code table; it never executes a Rust or host compiler.
+  `App.Cli` boundary: `lsharp_check`, `lsharp_validate`, `lsharp_format`,
+  `lsharp_errors`, and the offline local-package `lsharp_search` projection.
+  The docs lookup and package search never execute a Rust or host compiler and
+  never access a registry or network.
 - Preserve MCP JSON-RPC `initialize`, `ping`, `tools/list`, and `tools/call`
   envelopes. Child exit codes `1`/`2` with valid JSON reports remain structured
   tool results, while empty/malformed output is an `isError` result.
@@ -38,15 +39,17 @@ VM or regenerating stage0.
 
 ## Evidence
 
-- `scripts/ci/test-native-selfhost-mcp.py`: 17 focused tests cover protocol
+- `scripts/ci/test-native-selfhost-mcp.py`: 19 focused tests cover protocol
   discovery, native-only check/validate/format calls, canonical error lookup
   (LS codes, E0001-E0005 aliases, unknown codes, and no native execution),
-  identity forwarding, malformed input, missing executable, and provider-path
-  fail-closed behavior. Error-specific assertions live in
-  `scripts/ci/native_selfhost_mcp_error_tests.py` to keep the main test module
+  offline installed-package search (query, deterministic ordering, schema, and
+  no native execution), identity forwarding, malformed input, missing
+  executable, and provider-path fail-closed behavior. Error and package
+  assertions live in separate helper modules to keep the main test module
   within the repository file-size limit.
 - `crates/lsharp-driver` schema and unit tests require the same closed-world
-  `lsharp_errors` input and non-empty `error_code` boundary.
+  `lsharp_errors` and `lsharp_search` boundaries; the Rust MCP focused
+  suite passes 56 tests.
 - `scripts/ci/test-native-selfhost-dev.sh`: runner wiring test confirms
   `mcp-server` delegates to the shim and does not execute `program.native`
   directly or a host command.
@@ -56,9 +59,10 @@ VM or regenerating stage0.
 ## Remaining boundary
 
 The subset does not yet implement the Rust MCP tools for LSP intelligence,
-package APIs, compile/run, search, or external provider snapshot acquisition
+package APIs, compile/run, or external provider snapshot acquisition
 and signature/lifecycle verification. `lsharp_errors` is only a verified
-documentation-table projection, not native compiler semantics. N9 / `EC-M3-05`
+documentation-table projection and `lsharp_search` is only a verified offline
+installed-package projection, not native compiler semantics. N9 / `EC-M3-05`
 therefore remains `[~]`; the next RED should select one additional tool or the
 explicit provider adapter contract and compare Rust/native output with the same
 fixture.
