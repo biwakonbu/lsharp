@@ -5,7 +5,9 @@
 //! provider からの lifecycle 取得や暗黙の clock 取得は外部 boundary の責務だが、明示された
 //! lifecycle snapshot、clock、署名の canonical gate はこの model で共有する。
 
-use super::review_lifecycle::{ReviewLifecycleRegistry, ReviewLifecycleState};
+use super::review_lifecycle::{
+    ReviewLifecycleEvent, ReviewLifecycleRegistry, ReviewLifecycleState,
+};
 use super::review_trust_store::ReviewTrustStore;
 use super::{ReviewId, StableIdError};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -323,6 +325,7 @@ impl ReviewAttestation {
         if signature_state != ReviewVerificationState::Verified {
             return Ok(signature_state);
         }
+        let now_value = now;
         let now = parse_timestamp_value("now", now).map_err(|error| {
             AttestationVerificationError::InvalidTimestamp {
                 field: error.field,
@@ -355,11 +358,28 @@ impl ReviewAttestation {
         {
             return Ok(ReviewVerificationState::Stale);
         }
-        Ok(self.lifecycle_state(lifecycle))
+        Ok(self.lifecycle_state_at(lifecycle, now_value))
     }
 
     fn lifecycle_state(&self, lifecycle: &ReviewLifecycleRegistry) -> ReviewVerificationState {
-        let Some(event) = lifecycle.current_event_for(self.review_id().as_str()) else {
+        self.lifecycle_state_from_event(
+            lifecycle.current_event_for(self.review_id().as_str()),
+        )
+    }
+
+    fn lifecycle_state_at(
+        &self,
+        lifecycle: &ReviewLifecycleRegistry,
+        at: &str,
+    ) -> ReviewVerificationState {
+        self.lifecycle_state_from_event(lifecycle.event_at(self.review_id().as_str(), at))
+    }
+
+    fn lifecycle_state_from_event(
+        &self,
+        event: Option<&ReviewLifecycleEvent>,
+    ) -> ReviewVerificationState {
+        let Some(event) = event else {
             return ReviewVerificationState::Unverified;
         };
         match event.state() {

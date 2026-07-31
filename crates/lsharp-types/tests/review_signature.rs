@@ -303,6 +303,76 @@ fn explicit_clock_enforces_issue_and_expiry_window() {
 }
 
 #[test]
+fn lifecycle_transition_is_not_effective_before_its_clock() {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let mut attestation = ReviewAttestation::new(
+        "review:orders/reviewer-001",
+        "sha256:graph-001",
+        "0123456789abcdef0123456789abcdef01234567",
+        "sha256:review-001",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z",
+        Some("2026-09-01T00:00:00Z".to_string()),
+        2,
+        vec![0; 64],
+    )
+    .expect("valid delayed attestation");
+    let signature = signing_key.sign(&attestation.canonical_bytes());
+    attestation
+        .set_signature(signature.to_bytes().to_vec())
+        .expect("signature is non-empty");
+
+    let mut lifecycle = ReviewLifecycleRegistry::default();
+    lifecycle
+        .add_event(
+            ReviewLifecycleEvent::new(
+                "review:orders/reviewer-001",
+                1,
+                ReviewLifecycleState::Proposed,
+                "2026-08-01T00:00:00Z",
+                None,
+            )
+            .expect("valid proposed event"),
+        )
+        .expect("proposed event should be accepted");
+    lifecycle
+        .add_event(
+            ReviewLifecycleEvent::new(
+                "review:orders/reviewer-001",
+                2,
+                ReviewLifecycleState::Active,
+                "2026-08-02T00:00:00Z",
+                None,
+            )
+            .expect("valid future active event"),
+        )
+        .expect("future active event should be accepted");
+
+    let store = trust_store(&signing_key);
+    let verify = |now| {
+        attestation.verify_against_at(
+            &store,
+            &lifecycle,
+            "sha256:graph-001",
+            "0123456789abcdef0123456789abcdef01234567",
+            "sha256:review-001",
+            now,
+        )
+    };
+
+    assert_eq!(
+        verify("2026-08-01T12:00:00Z"),
+        Ok(ReviewVerificationState::Unverified)
+    );
+    assert_eq!(
+        verify("2026-08-02T00:00:00Z"),
+        Ok(ReviewVerificationState::Verified)
+    );
+}
+
+#[test]
 fn malformed_timestamp_and_invalid_window_fail_at_input_boundary() {
     let invalid_format = ReviewAttestation::new(
         "review:orders/reviewer-001",

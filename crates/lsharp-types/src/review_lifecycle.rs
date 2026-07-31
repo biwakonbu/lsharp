@@ -237,6 +237,20 @@ impl ReviewLifecycleRegistry {
         self.events.get(review_id).and_then(|events| events.last())
     }
 
+    /// 指定した canonical UTC 時刻で有効な最新 event を返す。
+    ///
+    /// `add_event` が review ID ごとの `effective_at` 単調性を保証するため、sequence
+    /// の逆順から最初に時刻へ到達した event を選べば、future event を現在の state として
+    /// 適用せずに済む。caller は event と同じ strict timestamp parser を通した値を渡す。
+    pub fn event_at(&self, review_id: &str, at: &str) -> Option<&ReviewLifecycleEvent> {
+        self.events.get(review_id).and_then(|events| {
+            events
+                .iter()
+                .rev()
+                .find(|event| event.effective_at() <= at)
+        })
+    }
+
     /// review ID、sequence の順に flatten した deterministic view を返す。
     pub fn events(&self) -> Vec<&ReviewLifecycleEvent> {
         self.events
