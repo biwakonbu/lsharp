@@ -2,8 +2,8 @@
 """Expose the deterministic native selfhost subset over MCP stdio.
 
 The native compiler remains the only implementation authority.  This shim only
-translates JSON-RPC requests into the existing ``check``, ``validate`` and
-``fmt`` CLI contracts; it never calls cargo, rustc, host ``lsharp`` or a
+translates JSON-RPC requests into the existing ``check``, ``validate``, ``fmt``
+and ``lsp --stdio`` CLI contracts; it never calls cargo, rustc, host ``lsharp`` or a
 provider/network helper.  ``lsharp_errors`` is a read-only documentation
 lookup over the canonical Rust error-code table and never executes a host
 compiler.  ``lsharp_search`` is an offline projection of local
@@ -39,6 +39,7 @@ from native_selfhost_mcp_schema import (
     review_registry_schema,
 )
 from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
+from native_selfhost_mcp_lsp import HOVER_OUTPUT_SCHEMA, HoverLookupError, call_hover
 from native_selfhost_mcp_packages import (
     PackageLookupError,
     PACKAGE_API_OUTPUT_SCHEMA,
@@ -269,6 +270,19 @@ VALIDATE_ARGUMENT_NAMES = frozenset(
     }
 )
 TOOLS = [
+    tool_descriptor(
+        "lsharp_hover",
+        "native LSP からカーソル位置の型と :doc を返す",
+        {
+            **SOURCE_PROPERTIES,
+            "line": {"type": "integer", "minimum": 0},
+            "character": {"type": "integer", "minimum": 0},
+            "col": {"type": "integer", "minimum": 0},
+        },
+        ["line", "character"],
+        HOVER_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
     tool_descriptor(
         "lsharp_check",
         "L# source を型チェックする (native selfhost subset)",
@@ -676,7 +690,12 @@ def call_tool(program, name, arguments):
         return {"content": [{"type": "text", "text": "arguments は object が必要です"}], "isError": True}
     with tempfile.TemporaryDirectory(prefix="lsharp-native-mcp-") as temporary_directory:
         try:
-            if name == "lsharp_check":
+            if name == "lsharp_hover":
+                try:
+                    value = call_hover(program, arguments, temporary_directory)
+                except HoverLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_check":
                 value = call_check(program, arguments, temporary_directory)
             elif name == "lsharp_validate":
                 value = call_validate(program, arguments, temporary_directory)

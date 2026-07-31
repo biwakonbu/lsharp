@@ -12,6 +12,7 @@ from native_selfhost_mcp_error_tests import assert_errors_lookup, assert_errors_
 from native_selfhost_mcp_package_tests import assert_package_api_generates_from_native_doc, assert_package_api_projects_local_api_json, assert_package_api_rejects_invalid_arguments, assert_package_api_rejects_malformed_native_doc, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
 from native_selfhost_mcp_context_tests import assert_project_context_projects_local_metadata, assert_project_context_rejects_invalid_arguments
 from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_native_doc, assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments, assert_stdlib_api_rejects_malformed_native_doc
+from native_selfhost_mcp_lsp_tests import assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
 def request(request_id, method, params=None):
@@ -144,6 +145,14 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         assert_stdlib_api_generates_from_native_doc(self)
     def test_stdlib_api_rejects_malformed_native_doc(self):
         assert_stdlib_api_rejects_malformed_native_doc(self)
+    def test_hover_projects_native_lsp(self):
+        assert_hover_projects_native_lsp(self)
+    def test_hover_supports_file_and_col_alias(self):
+        assert_hover_supports_file_and_col_alias(self)
+    def test_hover_rejects_invalid_arguments_before_native(self):
+        assert_hover_rejects_invalid_arguments_before_native(self)
+    def test_hover_rejects_native_failures(self):
+        assert_hover_rejects_native_failures(self)
     def test_package_api_generates_from_native_doc(self):
         assert_package_api_generates_from_native_doc(self)
     def test_package_api_rejects_malformed_native_doc(self):
@@ -173,6 +182,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 tool_names,
                 {
                     "lsharp_check",
+                    "lsharp_hover",
                     "lsharp_validate",
                     "lsharp_format",
                     "lsharp_errors",
