@@ -19,6 +19,9 @@ be started for it.
 
 - Require `trust_store` and `review_lifecycle` together when either path is
   supplied.
+- Publish the same all-or-none rule in the MCP `tools/list` JSON Schema via
+  `dependentRequired`, so clients can reject an incomplete request before
+  invoking the native program.
 - Read the explicit regular, non-symlink, non-empty files locally and compute
   `sha256:<lowercase-hex>` over their raw bytes. No JSON normalization or
   provider fetch is performed.
@@ -35,8 +38,8 @@ be started for it.
 ## Evidence
 
 - `scripts/ci/test-native-selfhost-mcp.py` covers digest forwarding, mismatch
-  rejection, partial/missing/empty fail-closed behavior, and native no-fallback
-  execution.
+  rejection, partial/missing/empty fail-closed behavior, native no-fallback
+  execution, and the `tools/list` dependency contract.
 - `scripts/ci/test-native-selfhost-dev.sh` continues to verify that
   `mcp-server` delegates only to the native MCP shim.
 - `python3 scripts/ci/test-native-selfhost-mcp.py`, Python compilation, shell

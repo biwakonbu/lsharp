@@ -116,6 +116,13 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     {"required": ["manifest_file"]},
                 ],
             )
+            self.assertEqual(
+                validate_schema["dependentRequired"],
+                {
+                    "trust_store": ["review_lifecycle"],
+                    "review_lifecycle": ["trust_store"],
+                },
+            )
             self.assertEqual(responses[2]["result"]["structuredContent"]["ok"], True)
             self.assertEqual(responses[3]["result"]["structuredContent"]["status"], "unknown")
             self.assertEqual(responses[4]["result"]["structuredContent"], {"formatted": "(formatted)\n"})

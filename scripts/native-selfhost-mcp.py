@@ -30,21 +30,26 @@ class ToolError(Exception):
     pass
 
 
-def tool_descriptor(name, description, properties, required, output_schema=None):
+def tool_descriptor(
+    name, description, properties, required, output_schema=None, input_schema_extra=None
+):
     alternatives = (
         [{"required": required}]
         if required and isinstance(required[0], str)
         else [{"required": alternative} for alternative in required]
     )
+    input_schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": properties,
+        "oneOf": alternatives,
+    }
+    if input_schema_extra:
+        input_schema.update(input_schema_extra)
     descriptor = {
         "name": name,
         "description": description,
-        "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "object",
-            "properties": properties,
-            "oneOf": alternatives,
-        },
+        "inputSchema": input_schema,
     }
     if output_schema is not None:
         descriptor["outputSchema"] = output_schema
@@ -122,6 +127,12 @@ TOOLS = [
         },
         [["source"], ["file"], ["manifest"], ["manifest_file"]],
         VALIDATE_OUTPUT_SCHEMA,
+        {
+            "dependentRequired": {
+                "trust_store": ["review_lifecycle"],
+                "review_lifecycle": ["trust_store"],
+            }
+        },
     ),
     tool_descriptor(
         "lsharp_format",
