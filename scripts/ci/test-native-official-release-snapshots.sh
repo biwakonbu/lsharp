@@ -12,9 +12,11 @@ VERSION="v0.0.0-test"
 PATH_PREFIX="$TMP_ROOT/bin"
 SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
 PARTIAL_SMOKE_ROOT=""
+MISSING_IDENTITY_SMOKE_ROOT=""
 cleanup() {
   rm -rf "$TMP_ROOT" "$SMOKE_ROOT"
   [[ -z "$PARTIAL_SMOKE_ROOT" ]] || rm -rf "$PARTIAL_SMOKE_ROOT"
+  [[ -z "$MISSING_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$MISSING_IDENTITY_SMOKE_ROOT"
 }
 trap cleanup EXIT
 
@@ -176,6 +178,41 @@ grep -F 'SOURCE_COMMIT must match current checkout HEAD' <<<"$stale_output" >/de
 after_stale_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 [[ "$after_stale_log_lines" == "$before_stale_log_lines" ]] \
   || { echo 'stale source commit reached a release or smoke boundary' >&2; exit 1; }
+
+missing_identity_path="$TMP_ROOT/artifact-aarch64-apple-darwin/review-evidence-identity.json"
+missing_identity_backup="$TMP_ROOT/missing-review-evidence-identity.json"
+MISSING_IDENTITY_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-missing-identity.XXXXXX)"
+mv "$missing_identity_path" "$missing_identity_backup"
+before_missing_identity_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+set +e
+missing_identity_output="$(
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/missing-identity-dist" \
+  SMOKE_ROOT="$MISSING_IDENTITY_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$MISSING_IDENTITY_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+missing_identity_status=$?
+set -e
+mv "$missing_identity_backup" "$missing_identity_path"
+[[ "$missing_identity_status" -ne 0 ]] \
+  || { echo 'provider snapshots without target identity were accepted' >&2; exit 1; }
+grep -F 'review evidence identity is required when provider snapshots are supplied' \
+  <<<"$missing_identity_output" >/dev/null
+after_missing_identity_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+[[ "$after_missing_identity_log_lines" == "$before_missing_identity_log_lines" ]] \
+  || { echo 'missing provider identity reached a release or smoke boundary' >&2; exit 1; }
 
 set +e
 PARTIAL_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-partial.XXXXXX)"

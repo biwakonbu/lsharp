@@ -87,8 +87,27 @@ validate_review_snapshots() {
   fi
 }
 
+validate_review_identity_inputs() {
+  if [[ -z "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" && -z "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" ]]; then
+    return 0
+  fi
+
+  local identity_path
+  for identity_path in \
+    "${MACOS_APP_CLI_ARTIFACT_DIR}/review-evidence-identity.json" \
+    "${LINUX_APP_CLI_ARTIFACT_DIR}/review-evidence-identity.json" \
+    "${MACOS_STAGE0_DIR}/review-evidence-identity.json" \
+    "${LINUX_STAGE0_DIR}/review-evidence-identity.json"; do
+    if [[ ! -f "${identity_path}" || ! -s "${identity_path}" ]]; then
+      echo "ERROR: review evidence identity is required when provider snapshots are supplied: ${identity_path}" >&2
+      exit 1
+    fi
+  done
+}
+
 NATIVE_OFFICIAL_REVIEW_ENV=()
 validate_review_snapshots
+validate_review_identity_inputs
 if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
   NATIVE_OFFICIAL_REVIEW_ENV=(
     "NATIVE_ONLY_REVIEW_TRUST_STORE=${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}"
