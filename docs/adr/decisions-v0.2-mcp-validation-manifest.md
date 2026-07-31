@@ -168,6 +168,25 @@ schema の boundary がずれるため、input envelope を strict object とし
 これは Rust-host MCP の静的 input envelope に限定した verified partial sliceであり、selfhost/native
 MCP producer、current-source stage0 artifact/runtime、対応2 target、EC-M2-03 aggregate は未完了である。
 
+### Non-empty route strings follow-up (2026-07-31)
+
+`lsharp_validate` の runtime は、空の `manifest` JSON string を parser error、空の `file` / `manifest_file`
+を I/O error、空の `trust_store` / `review_lifecycle` を path argument error として拒否している。一方、
+MCP `tools/list` の input schema はこれらを単なる `string` として公開していたため、schema consumer と
+runtime の入力契約がずれていた。
+
+- `manifest` の string variant、`file`、`manifest_file`、`trust_store`、`review_lifecycle` に
+  `minLength: 1` を追加する。
+- 空 `source` は既存の空 program semanticsを保つため、同じ制約を追加しない。
+- RED: `test_validate_tool_input_schema_rejects_empty_manifest_and_path_strings` が `file` などの
+  `minLength` 欠落と、Draft 2020-12 validator が空 routeを受理することを検出した。
+- GREEN: schemaの各 `minLength: 1` と、manifest/file/path の5つの空入力 rejectを同じテストで固定し、
+  `mcp_server::tests` 70件を通過した。
+
+これは Rust-host MCP input schema の static/runtime parity に限定した verified partial sliceであり、
+selfhost/native MCP producer、current-source stage0 artifact/runtime、対応2 target、EC-M2-03 aggregate の
+完了証拠ではない。
+
 ## Boundary and follow-up
 
 これは Rust MCP の manifest input/report wiring に限定した verified slice である。EmbeddedCli の

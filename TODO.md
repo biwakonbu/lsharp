@@ -168,7 +168,8 @@
   positional manifest と `--source` の読み込み失敗を driver I/O code `LS5001`、空 stdout、
   no-report として返す Rust CLI boundary、
   Rust MCP `lsharp_validate` の `reviews` input/output schema、input top-level unknown field の
-  `additionalProperties: false` boundary と `include_manifest` projection、
+  `additionalProperties: false` boundary、空の manifest/path string を schema で拒否する
+  `minLength: 1` boundary と `include_manifest` projection、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
   `EmbeddedCli` の source/report/pass-fail-unknown/exit、EmbeddedCli の
   `--emit-manifest` による report と version 1 manifest file の分離出力は Rust-host
@@ -467,6 +468,14 @@ version 1 JSON manifest input でも whitespace-only coverage bucket を canonic
 verified partial sliceである。manifest の native source/runtime parity、report/atomic writer、
 coverage count/cases、Unicode whitespace、Mac/Linux matrix、EC-M2-03 aggregate は残件。ADR:
 `docs/adr/decisions-v0.2-native-validation-manifest-coverage-whitespace.md`。
+
+2026-07-31 に Rust MCP `lsharp_validate` の input schema を runtime の empty-string boundary と同期した。
+`manifest` の JSON string variant、`file`、`manifest_file`、`trust_store`、`review_lifecycle` に
+`minLength: 1` を追加し、runtime が空文字を parse/path error として拒否する routeを static schemaでも
+fail-closed にした。空 `source` は既存 semantics（空 programを受理し得る）を保つため変更していない。
+`test_validate_tool_input_schema_rejects_empty_manifest_and_path_strings` の Draft 2020-12 validator matrix
+と `mcp_server::tests` 70件を通過した。selfhost/native MCP、current-source artifact/runtime、対応2 target、
+EC-M2-03 aggregate は残件。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

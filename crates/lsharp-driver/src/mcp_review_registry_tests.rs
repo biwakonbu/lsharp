@@ -149,6 +149,55 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_input_schema_rejects_empty_manifest_and_path_strings() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let input_schema = &tool["inputSchema"];
+
+        for field in ["file", "manifest_file", "trust_store", "review_lifecycle"] {
+            assert_eq!(
+                input_schema["properties"][field]["minLength"], 1,
+                "{field} は空文字を受理しない schema を公開するべき"
+            );
+        }
+        assert_eq!(
+            input_schema["properties"]["manifest"]["oneOf"][1]["minLength"], 1,
+            "manifest JSON string は空文字を受理しない schema を公開するべき"
+        );
+
+        let validator = jsonschema::draft202012::new(input_schema)
+            .expect("MCP validation input schema は Draft 2020-12 validator を構築できるべき");
+        assert!(
+            validator.is_valid(&json!({ "source": "" })),
+            "空 source は既存の source input semantics として schema で受理するべき"
+        );
+        for (label, arguments) in [
+            ("manifest", json!({ "manifest": "" })),
+            ("file", json!({ "file": "" })),
+            ("manifest_file", json!({ "manifest_file": "" })),
+            ("trust_store", json!({ "source": "", "trust_store": "" })),
+            (
+                "review_lifecycle",
+                json!({ "source": "", "review_lifecycle": "" }),
+            ),
+        ] {
+            assert!(
+                !validator.is_valid(&arguments),
+                "{label} の空文字は MCP input schema で拒否するべき"
+            );
+        }
+    }
+
+    #[test]
     fn test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",

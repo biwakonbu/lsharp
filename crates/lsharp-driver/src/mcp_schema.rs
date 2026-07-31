@@ -243,17 +243,17 @@ fn validate_input_schema() -> Value {
         "additionalProperties": false,
         "properties": {
             "source": { "type": "string" },
-            "file": { "type": "string" },
+            "file": { "type": "string", "minLength": 1 },
             "manifest": {
                 "oneOf": [
                     intent_graph_manifest_schema(),
-                    { "type": "string" }
+                    { "type": "string", "minLength": 1 }
                 ]
             },
-            "manifest_file": { "type": "string" },
+            "manifest_file": { "type": "string", "minLength": 1 },
             "include_manifest": { "type": "boolean" },
-            "trust_store": { "type": "string" },
-            "review_lifecycle": { "type": "string" },
+            "trust_store": { "type": "string", "minLength": 1 },
+            "review_lifecycle": { "type": "string", "minLength": 1 },
             "review_subject_digest": { "type": "string", "minLength": 1 },
             "review_source_commit": { "type": "string", "minLength": 1 },
             "review_artifact_digest": { "type": "string", "minLength": 1 },

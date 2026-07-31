@@ -705,6 +705,23 @@ field reject で固定し、`mcp_server::tests` 全69件を通過した。
 partial sliceであり、selfhost/native MCP producer、current-source stage0 artifact/runtime、対応2 target、
 EC-M2-03 aggregate は残件である。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
+### EC-M2-03 Rust MCP validation route string closure (2026-07-31)
+
+`lsharp_validate` の runtime は空の `manifest` JSON string、`file` / `manifest_file` path、
+`trust_store` / `review_lifecycle` pathをそれぞれ parse/I/O/path errorとして拒否するが、MCP input
+schemaは空文字を `string` として受理していた。`manifest` の string variantと5つの route/context
+文字列へ `minLength: 1` を追加し、schema consumerがruntimeより弱い入力を送らないようにした。空の
+`source`は空programの既存 semanticsを保つため対象外とした。
+
+REDは `test_validate_tool_input_schema_rejects_empty_manifest_and_path_strings` で、各 propertyの
+`minLength`欠落とDraft 2020-12 validatorの空入力受理を検出した。GREENでは同じ validatorが
+`manifest` / `file` / `manifest_file` / `trust_store` / `review_lifecycle` の空入力をすべて拒否し、
+`mcp_server::tests` 70件が通過した。
+
+これは Rust-host MCP schema/runtime boundary の verified partial sliceであり、selfhost/native MCP、
+current-source stage0 artifact/runtime、Mac Apple Silicon / Linux x86_64、EC-M2-03 aggregate の完了証拠
+ではない。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
