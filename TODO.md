@@ -487,6 +487,15 @@ validator matrixを `test_manifest_schemas_use_draft202012_validator_for_valid_a
 verified partial sliceであり、selfhost/native manifest parser、current-source artifact/runtime、対応2 target、
 EC-M2-02/03 aggregate は残件。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
+2026-07-31 に review provenance wire schema の `lifecycle.effective_at` を、Rust
+`ReviewLifecycleEvent` が要求する canonical UTC timestamp 定義へ接続した。これまで schema は
+`non_empty_string` のみを参照していたため、offset付き・非canonicalな時刻を schema consumer が受理できた。
+`review_provenance_schema_requires_canonical_timestamp_for_lifecycle_effective_at` の RED→GREEN と、既存の
+`wire_rejects_noncanonical_lifecycle_effective_timestamp` を含む `validation_schema` 8件 / `review_wire` 5件で
+lexical schema/parser boundary を固定した。Rust-host schema verified partial sliceであり、暦日の実在性を含む
+validator matrix、provider/authentication、selfhost/native producer、対応2 target、EC-M3 aggregate は残件。
+ADR: `docs/adr/decisions-v0.3-review-wire-schema-timestamp.md`。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 

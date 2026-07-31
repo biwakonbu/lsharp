@@ -118,7 +118,7 @@
           "enum": ["proposed", "active", "superseded", "revoked"]
         },
         "effective_at": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/canonical_utc_timestamp"
         },
         "reason_digest": {
           "type": ["string", "null"],

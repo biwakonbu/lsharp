@@ -8,6 +8,10 @@ const INTENT_VALIDATION_SCHEMA: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../docs/schemas/intent-validation.schema.json"
 ));
+const REVIEW_PROVENANCE_SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/review-provenance-v1.schema.json"
+));
 
 #[test]
 fn intent_graph_schema_requires_non_empty_execution_and_provenance_strings() {
@@ -34,6 +38,21 @@ fn intent_graph_schema_requires_non_empty_execution_and_provenance_strings() {
             "{pointer} は空文字を許可してはいけない"
         );
     }
+}
+
+#[test]
+fn review_provenance_schema_requires_canonical_timestamp_for_lifecycle_effective_at() {
+    let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
+        .expect("review provenance schema は JSON であるべき");
+    let effective_at = schema
+        .pointer("/$defs/lifecycle/properties/effective_at")
+        .expect("lifecycle.effective_at schema が必要");
+
+    assert_eq!(
+        effective_at["$ref"],
+        "#/$defs/canonical_utc_timestamp",
+        "lifecycle.effective_at は non-empty string ではなく canonical UTC timestamp を要求するべき"
+    );
 }
 
 #[test]
