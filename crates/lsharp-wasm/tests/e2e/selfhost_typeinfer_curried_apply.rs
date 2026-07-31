@@ -1,5 +1,65 @@
 use super::support::*;
 
+#[test]
+fn test_e2e_selfhost_typeinfer_apply_high_arities_use_bounded_rooted_scan() {
+    let source = selfhost_module("TypeInferApply.ls");
+
+    assert!(
+        source.contains("infer-apply-args-step-64-loop-bounded")
+            && source.contains("infer-apply-args-rooted-v3")
+            && source.contains("infer-apply-many-final")
+            && source.contains("infer-apply-legacy-raw")
+            && source.contains("(infer-apply-many-rooted node env subst counter argc)")
+            && !source.contains("(if (= argc 7)")
+            && !source.contains("(if (= argc 6)")
+            && !source.contains("(if (= argc 5)")
+            && !source.contains("(if (= argc 4)"),
+        "3-7 引数 apply は共通の bounded rooted scan へ集約するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_apply_high_arity_argument_failure_propagates() {
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        int-ty (mk-int)
+        f-hash 135
+        f-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty int-ty)))
+        env (type-env-insert env0 f-hash (mono f-ty))
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 6) 5)
+                    (make-var f-hash))
+                  3)
+                (make-lit-int 1))
+              (make-var 99999))
+            (make-lit-int 3))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1"],
+        "3 引数 apply の引数 failure を伝播するべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: 2 引数 lambda はカリー化された関数型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
