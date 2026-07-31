@@ -487,27 +487,126 @@
                             (root_pop)
                             result))))))))))))))
 
-;; type declaration を source order で走査し、constructor を通常の値環境へ登録する。
-(defn typeinfer-register-adt-defs-loop [program idx len env counter alias-env]
+;; type declaration を source order で bounded scan し、constructor を値環境へ登録する。
+(defn typeinfer-register-adt-defs-step-state [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-register-adt-defs-step-v3
+  [program idx len env counter alias-env]
   (if (>= idx len)
-    env
-    (let [decl (vector-get program idx)]
-      (if (= (vector-get decl 0) (ast-type-decl))
-        (let [next-env (typeinfer-register-adt-decl decl env counter alias-env)]
-          (typeinfer-register-adt-defs-loop
-            program
-            (+ idx 1)
-            len
-            next-env
-            counter
-            alias-env))
-        (typeinfer-register-adt-defs-loop
-          program
-          (+ idx 1)
-          len
-          env
-          counter
-          alias-env)))))
+    (typeinfer-register-adt-defs-step-state 1 idx env)
+    (do
+      (root_push program)
+      (root_push env)
+      (root_push counter)
+      (root_push alias-env)
+      (let [decl (vector-get program idx)]
+        (do
+          (root_push decl)
+          (if (= (vector-get decl 0) (ast-type-decl))
+            (let [next-env
+                    (typeinfer-register-adt-decl decl env counter alias-env)]
+              (do
+                (root_push next-env)
+                (let [state
+                        (typeinfer-register-adt-defs-step-state
+                          0 (+ idx 1) next-env)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))
+            (let [state
+                    (typeinfer-register-adt-defs-step-state
+                      0 (+ idx 1) env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn typeinfer-register-adt-defs-step-64-loop-bounded
+  [program idx len env counter alias-env remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (root_push alias-env)
+    (let [step
+            (typeinfer-register-adt-defs-step-v3
+              program idx len env counter alias-env)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-register-adt-defs-step-64-loop-bounded
+                      program
+                      next-idx
+                      len
+                      next-env
+                      counter
+                      alias-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-register-adt-defs-step-64
+  [program idx len env counter alias-env]
+  (typeinfer-register-adt-defs-step-64-loop-bounded
+    program idx len env counter alias-env 64))
+
+(defn typeinfer-register-adt-defs-rooted-v3
+  [program idx len env counter alias-env]
+  (let [step
+          (typeinfer-register-adt-defs-step-64
+            program idx len env counter alias-env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push counter)
+        (root_push alias-env)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-register-adt-defs-rooted-v3
+                      program
+                      (vector-get step 1)
+                      len
+                      next-env
+                      counter
+                      alias-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-register-adt-defs-loop [program idx len env counter alias-env]
+  (typeinfer-register-adt-defs-rooted-v3
+    program idx len env counter alias-env))
 
 (defn typeinfer-register-adt-defs [program env counter]
   (let [alias-env (var-counter-alias-env counter)]

@@ -234,16 +234,71 @@
     program idx limit env))
 (defn typeinfer-remove-record-defs-before-module [program env limit]
   (typeinfer-remove-record-defs-before-module-loop program env 0 limit))
-(defn typeinfer-record-only-contains-loop [only-hashes idx len name-hash]
+(defn typeinfer-record-only-contains-state [done next-idx found]
+  (vector-push-triple-rooted (vector-new 3) done next-idx found))
+
+(defn typeinfer-record-only-contains-step-v3 [only-hashes idx len name-hash]
   (if (>= idx len)
-    0
+    (typeinfer-record-only-contains-state 1 idx 0)
     (if (= (vector-get only-hashes idx) name-hash)
-      1
-      (typeinfer-record-only-contains-loop
-        only-hashes
-        (+ idx 1)
-        len
-        name-hash))))
+      (typeinfer-record-only-contains-state 1 idx 1)
+      (typeinfer-record-only-contains-state 0 (+ idx 1) 0))))
+
+(defn typeinfer-record-only-contains-step-64-loop-bounded
+  [only-hashes idx len name-hash remaining]
+  (do
+    (root_push only-hashes)
+    (let [step
+            (typeinfer-record-only-contains-step-v3
+              only-hashes idx len name-hash)
+          done (vector-get step 0)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-record-only-contains-step-64-loop-bounded
+                      only-hashes
+                      (vector-get step 1)
+                      len
+                      name-hash
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-record-only-contains-step-64
+  [only-hashes idx len name-hash]
+  (typeinfer-record-only-contains-step-64-loop-bounded
+    only-hashes idx len name-hash 64))
+
+(defn typeinfer-record-only-contains-rooted-v3
+  [only-hashes idx len name-hash]
+  (let [step
+          (typeinfer-record-only-contains-step-64
+            only-hashes idx len name-hash)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push only-hashes)
+        (root_push step)
+        (let [resolved
+                (typeinfer-record-only-contains-rooted-v3
+                  only-hashes
+                  (vector-get step 1)
+                  len
+                  name-hash)]
+          (do
+            (root_pop)
+            (root_pop)
+            resolved))))))
+
+(defn typeinfer-record-only-contains-loop [only-hashes idx len name-hash]
+  (typeinfer-record-only-contains-rooted-v3
+    only-hashes idx len name-hash))
 (defn typeinfer-record-export-allowed? [only-hashes name-hash]
   (if (= only-hashes 0)
     1
@@ -251,21 +306,107 @@
       (if (= only-count 0)
         1
         (typeinfer-record-only-contains-loop only-hashes 0 only-count name-hash)))))
-(defn typeinfer-record-remove-unallowed-accessors-loop
+(defn typeinfer-record-remove-unallowed-accessors-state
+  [done next-idx env]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env))
+
+(defn typeinfer-record-remove-unallowed-accessors-step-v3
   [raw-fields idx len only-hashes env]
   (if (>= idx len)
-    env
-    (let [accessor-hash (vector-get raw-fields (+ idx 1))
-      next-env
-        (if (= (typeinfer-record-export-allowed? only-hashes accessor-hash) 1)
-          env
-          (type-env-remove env accessor-hash))]
-      (typeinfer-record-remove-unallowed-accessors-loop
-        raw-fields
-        (+ idx 3)
-        len
-        only-hashes
-        next-env))))
+    (typeinfer-record-remove-unallowed-accessors-state 1 idx env)
+    (do
+      (root_push raw-fields)
+      (root_push only-hashes)
+      (root_push env)
+      (let [accessor-hash (vector-get raw-fields (+ idx 1))
+        next-env
+          (if (= (typeinfer-record-export-allowed? only-hashes accessor-hash) 1)
+            env
+            (type-env-remove env accessor-hash))]
+        (do
+          (root_push next-env)
+          (let [state
+                  (typeinfer-record-remove-unallowed-accessors-state
+                    0 (+ idx 3) next-env)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn typeinfer-record-remove-unallowed-accessors-step-64-loop-bounded
+  [raw-fields idx len only-hashes env remaining]
+  (do
+    (root_push raw-fields)
+    (root_push only-hashes)
+    (root_push env)
+    (let [step
+            (typeinfer-record-remove-unallowed-accessors-step-v3
+              raw-fields idx len only-hashes env)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-record-remove-unallowed-accessors-step-64-loop-bounded
+                      raw-fields
+                      next-idx
+                      len
+                      only-hashes
+                      next-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-record-remove-unallowed-accessors-step-64
+  [raw-fields idx len only-hashes env]
+  (typeinfer-record-remove-unallowed-accessors-step-64-loop-bounded
+    raw-fields idx len only-hashes env 64))
+
+(defn typeinfer-record-remove-unallowed-accessors-rooted-v3
+  [raw-fields idx len only-hashes env]
+  (let [step
+          (typeinfer-record-remove-unallowed-accessors-step-64
+            raw-fields idx len only-hashes env)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push raw-fields)
+        (root_push only-hashes)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-record-remove-unallowed-accessors-rooted-v3
+                      raw-fields
+                      (vector-get step 1)
+                      len
+                      only-hashes
+                      next-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-record-remove-unallowed-accessors-loop
+  [raw-fields idx len only-hashes env]
+  (typeinfer-record-remove-unallowed-accessors-rooted-v3
+    raw-fields idx len only-hashes env))
 (defn typeinfer-clean-record-import-export [decl only-hashes open-flag env]
   (if (= open-flag 1)
     (let [raw-fields (typeinfer-record-decl-field-exprs decl)
