@@ -74,6 +74,10 @@
   required field欠落、未知 top-level field、nodes/evidence/edges の非配列を wrapper 側で fail-closed にした。
   native MCP 55件で traceback なしの出力境界を確認した verified partial sliceである。
   ADR: `docs/adr/decisions-v0.3-native-mcp-manifest-output-root.md`。
+  さらに native `lsharp_validate` report の root、required fields、status、count、collection、optional field
+  境界を wrapper 側で検証し、array/null/malformed/missing/unknown/invalid status/boolean count を traceback
+  なしで拒否した。native MCP 56件で確認した verified partial sliceである。
+  ADR: `docs/adr/decisions-v0.3-native-mcp-validate-report-root.md`。
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
   current-source/packaged runtime は残る。

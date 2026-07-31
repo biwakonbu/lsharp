@@ -709,6 +709,45 @@ def validate_manifest_output(value):
             raise ToolError(f"native emitted manifest {name} must be an array")
 
 
+def validate_report_output(value):
+    if not isinstance(value, dict):
+        raise ToolError("native validate report root must be a JSON object")
+    required = (
+        "status",
+        "trace_gaps",
+        "open_questions",
+        "independent_reviews",
+        "contradicting_observations",
+        "stale_reviews",
+        "stale_evidence",
+    )
+    allowed = set(required) | {"review_evidence_identity", "review_verifications", "manifest"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"native validate report has unknown field: {unknown[0]}")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"native validate report is missing field: {missing[0]}")
+    if value["status"] not in {"pass", "fail", "unknown"}:
+        raise ToolError("native validate report status is invalid")
+    for name in ("trace_gaps", "review_verifications"):
+        if name in value and not isinstance(value[name], list):
+            raise ToolError(f"native validate report {name} must be an array")
+    for name in (
+        "open_questions",
+        "independent_reviews",
+        "contradicting_observations",
+        "stale_reviews",
+        "stale_evidence",
+    ):
+        if isinstance(value[name], bool) or not isinstance(value[name], int) or value[name] < 0:
+            raise ToolError(f"native validate report {name} must be a non-negative integer")
+    if "review_evidence_identity" in value and not isinstance(value["review_evidence_identity"], dict):
+        raise ToolError("native validate report review_evidence_identity must be an object")
+    if "manifest" in value:
+        validate_manifest_output(value["manifest"])
+
+
 def verify_identity_projection(
     report, expected_identity, include_manifest, allow_existing_manifest_identity
 ):
@@ -763,6 +802,7 @@ def call_validate(program, arguments, temporary_directory):
         command.extend(("--emit-manifest", str(manifest_path)))
     completed = run_native(program, command)
     report = parse_json_output(completed)
+    validate_report_output(report)
     if include_manifest:
         if manifest_path is None or not manifest_path.is_file():
             raise ToolError("native validate が manifest を生成しませんでした")
@@ -772,6 +812,7 @@ def call_validate(program, arguments, temporary_directory):
             raise ToolError(f"native emitted manifest が不正です: {error}") from error
         validate_manifest_output(manifest)
         report["manifest"] = manifest
+        validate_report_output(report)
     verify_identity_projection(
         report,
         expected_review_identity(arguments, provider_digests),

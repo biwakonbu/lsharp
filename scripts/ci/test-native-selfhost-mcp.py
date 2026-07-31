@@ -15,6 +15,7 @@ from native_selfhost_mcp_compile_tests import assert_compile_run_fails_closed_an
 from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_native_doc, assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments, assert_stdlib_api_rejects_malformed_native_doc
 from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_native_result, assert_completion_projects_native_lsp, assert_completion_rejects_invalid_arguments_before_native, assert_completion_rejects_native_failures, assert_completion_supports_file_and_col_alias, assert_definition_projects_native_lsp, assert_definition_rejects_invalid_arguments_before_native, assert_definition_rejects_native_failures, assert_definition_supports_file_and_col_alias, assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias, assert_references_projects_empty_native_result, assert_references_projects_native_lsp, assert_references_rejects_invalid_arguments_before_native, assert_references_rejects_native_failures, assert_references_supports_file_and_col_alias
 from native_selfhost_mcp_manifest_tests import assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
+from native_selfhost_mcp_validate_tests import assert_validate_rejects_invalid_report
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
 def request(request_id, method, params=None):
@@ -88,6 +89,15 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                         "stale_reviews": 0,
                         "stale_evidence": 0,
                     }}
+                    report_mode = os.environ.get("FAKE_NATIVE_REPORT_MODE", "object")
+                    if report_mode == "missing":
+                        report.pop("status")
+                    elif report_mode == "unknown":
+                        report["extra"] = True
+                    elif report_mode == "status":
+                        report["status"] = "maybe"
+                    elif report_mode == "count-bool":
+                        report["open_questions"] = True
                     if report_identity is not None:
                         report["review_evidence_identity"] = report_identity
                     if "--emit-manifest" in args:
@@ -112,7 +122,15 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                                 manifest["review_evidence_identity"] = manifest_identity
                             manifest_output = json.dumps(manifest)
                         output.write_text(manifest_output, encoding="utf-8")
-                    print(json.dumps(report))
+                    if report_mode == "array":
+                        report_output = "[]"
+                    elif report_mode == "null":
+                        report_output = "null"
+                    elif report_mode == "malformed":
+                        report_output = "{{"
+                    else:
+                        report_output = json.dumps(report)
+                    print(report_output)
                     raise SystemExit(2)
                 if args[:1] == ["fmt"]:
                     print("(formatted)")
@@ -133,7 +151,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         os.chmod(program, 0o755)
         return program
 
-    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None, wasmtime_path=None, manifest_mode=None):
+    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None, wasmtime_path=None, manifest_mode=None, report_mode=None):
         environment = os.environ.copy()
         environment["FAKE_NATIVE_LOG"] = str(root / "native.log")
         environment["FAKE_WASMTIME_LOG"] = str(root / "wasmtime.log")
@@ -150,6 +168,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             environment["LSHARP_WASMTIME"] = str(wasmtime_path)
         if manifest_mode is not None:
             environment["FAKE_NATIVE_MANIFEST_MODE"] = manifest_mode
+        if report_mode is not None:
+            environment["FAKE_NATIVE_REPORT_MODE"] = report_mode
         return subprocess.run(
             [sys.executable, str(SHIM), "--program", str(program)],
             input=payload,
@@ -462,6 +482,9 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_validate_rejects_invalid_emitted_manifest(self):
         assert_validate_rejects_invalid_emitted_manifest(self)
+
+    def test_validate_rejects_invalid_report(self):
+        assert_validate_rejects_invalid_report(self)
     def test_package_api_projects_local_api_json_without_native_execution(self):
         assert_package_api_projects_local_api_json(self)
     def test_package_api_rejects_invalid_arguments_before_native_execution(self):
