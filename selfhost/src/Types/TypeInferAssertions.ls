@@ -1866,14 +1866,18 @@
         0
         0
         0))))
-(defn check-program-assertions-loop
+(defn check-program-assertions-step-v3
   [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state-with-span
-      diagnostic-count
-      first-error-code
-      first-error-start
-      first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state-with-span
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end))
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -1893,28 +1897,126 @@
                 (assertion-check-state-with-span 0 0 0 0))))]
           (do
             (root_push state)
-            (let [next-count (+ diagnostic-count (vector-get state 0))
-              state-first-code (vector-get state 1)
-              next-first-code
-                (if (= first-error-code 0) state-first-code first-error-code)
-              next-first-error-start
-                (if (= first-error-code 0) (vector-get state 2) first-error-start)
-              next-first-error-end
-                (if (= first-error-code 0) (vector-get state 3) first-error-end)
-              result (check-program-assertions-loop
-                program
+            (let [step
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                0
                 (+ idx 1)
-                count
-                env
-                counter
-                next-count
-                next-first-code
-                next-first-error-start
-                next-first-error-end)]
+                (assertion-check-state-with-span
+                  (+ diagnostic-count (vector-get state 0))
+                  (if (= first-error-code 0) (vector-get state 1) first-error-code)
+                  (if (= first-error-code 0) (vector-get state 2) first-error-start)
+                  (if (= first-error-code 0) (vector-get state 3) first-error-end)))]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                step))))))))
+(defn check-program-assertions-step-64-loop-bounded
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-program-assertions-step-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-program-assertions-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-program-assertions-rooted-v3
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-program-assertions-step-64-loop-bounded
+      program
+      idx
+      count
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-program-assertions-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-program-assertions-loop
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-program-assertions-rooted-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-canonical-assertions-with-analysis [program analysis]
   (let [counter (typeinfer-make-alias-aware-counter program)
     env (infer-program-analysis-env analysis)]
@@ -1985,10 +2087,14 @@
         0
         0
         0))))
-(defn check-case-program-loop
+(defn check-case-program-step-v3
   [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (case-check-state diagnostic-count first-error-code first-error-start first-error-end))
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -2008,30 +2114,126 @@
                 (case-check-state 0 0 0 0))))]
           (do
             (root_push state)
-            (let [next-count (+ diagnostic-count (vector-get state 0))
-              state-first-code (vector-get state 1)
-              state-first-start (vector-get state 2)
-              state-first-end (vector-get state 3)
-              next-first-code
-                (if (= first-error-code 0) state-first-code first-error-code)
-              next-first-start
-                (if (= first-error-code 0) state-first-start first-error-start)
-              next-first-end
-                (if (= first-error-code 0) state-first-end first-error-end)
-              result (check-case-program-loop
-                program
+            (let [step
+              (vector-push-triple-rooted-v3
+                (vector-new 3)
+                0
                 (+ idx 1)
-                count
-                env
-                counter
-                next-count
-                next-first-code
-                next-first-start
-                next-first-end)]
+                (case-check-state
+                  (+ diagnostic-count (vector-get state 0))
+                  (if (= first-error-code 0) (vector-get state 1) first-error-code)
+                  (if (= first-error-code 0) (vector-get state 2) first-error-start)
+                  (if (= first-error-code 0) (vector-get state 3) first-error-end)))]
               (do
                 (root_pop)
                 (root_pop)
-                result))))))))
+                step))))))))
+(defn check-case-program-step-64-loop-bounded
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-case-program-step-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-case-program-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      count
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-case-program-rooted-v3
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-case-program-step-64-loop-bounded
+      program
+      idx
+      count
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-case-program-rooted-v3
+                program
+                (vector-get step 1)
+                count
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-case-program-loop
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-case-program-rooted-v3
+        program
+        idx
+        count
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-canonical-cases-with-analysis [program analysis]
   (let [counter (typeinfer-make-alias-aware-counter program)
     env (infer-program-analysis-env analysis)]
