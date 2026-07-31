@@ -147,6 +147,45 @@ fn lifecycle_rejects_duplicate_or_rollback_sequences_and_invalid_transitions() {
 }
 
 #[test]
+fn lifecycle_rejects_effective_time_rollback() {
+    let mut registry = ReviewLifecycleRegistry::default();
+    registry
+        .add_event(
+            ReviewLifecycleEvent::new(
+                "review:orders/reviewer-001",
+                1,
+                ReviewLifecycleState::Proposed,
+                "2026-08-02T00:00:00Z",
+                None,
+            )
+            .expect("valid initial event"),
+        )
+        .expect("initial event should be accepted");
+
+    let result = registry.add_event(
+        ReviewLifecycleEvent::new(
+            "review:orders/reviewer-001",
+            2,
+            ReviewLifecycleState::Active,
+            "2026-08-01T23:59:59Z",
+            None,
+        )
+        .expect("valid event shape"),
+    );
+
+    assert!(matches!(
+        result,
+        Err(LifecycleError::EffectiveTimeRollback {
+            review_id,
+            previous,
+            next,
+        }) if review_id == "review:orders/reviewer-001"
+            && previous == "2026-08-02T00:00:00Z"
+            && next == "2026-08-01T23:59:59Z"
+    ));
+}
+
+#[test]
 fn lifecycle_rejects_resurrection_after_terminal_state() {
     let mut registry = ReviewLifecycleRegistry::default();
     registry

@@ -64,6 +64,14 @@ pub enum LifecycleError {
         previous: u64,
         next: u64,
     },
+    #[error(
+        "review lifecycle の effective_at が巻き戻っています: review_id={review_id:?}, previous={previous:?}, next={next:?}"
+    )]
+    EffectiveTimeRollback {
+        review_id: String,
+        previous: String,
+        next: String,
+    },
     #[error("review lifecycle に同じ sequence が重複しています: review_id={review_id:?}, sequence={sequence}")]
     DuplicateSequence { review_id: String, sequence: u64 },
     #[error(
@@ -187,6 +195,14 @@ impl ReviewLifecycleRegistry {
                     review_id,
                     previous: previous.sequence(),
                     next: event.sequence(),
+                });
+            }
+            // event construction で固定長の canonical UTC へ検証済みなので、文字列順は時系列順と一致する。
+            if event.effective_at() < previous.effective_at() {
+                return Err(LifecycleError::EffectiveTimeRollback {
+                    review_id,
+                    previous: previous.effective_at().to_string(),
+                    next: event.effective_at().to_string(),
                 });
             }
             if !previous.state().allows_transition_to(event.state()) {
