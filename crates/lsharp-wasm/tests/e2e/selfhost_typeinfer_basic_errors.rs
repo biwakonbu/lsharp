@@ -3510,3 +3510,102 @@ fn test_e2e_selfhost_typeinfer_large_import_export_loops_preserve_filters() {
         "65要素の import :only/:open export loop は先頭・末尾・未選択の意味を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_prepass_loops_use_bounded_chunks() {
+    let type_infer = selfhost_module("TypeInfer.ls");
+
+    assert!(
+        type_infer.contains("typeinfer-pending-env-vars-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-predeclare-defns-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-type-expr-contains-name-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-recursive-alias-count-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-pending-env-vars-rooted-v3")
+            && type_infer.contains("typeinfer-predeclare-defns-rooted-v3")
+            && type_infer.contains("typeinfer-type-expr-contains-name-rooted-v3")
+            && type_infer.contains("typeinfer-recursive-alias-count-rooted-v3"),
+        "TypeInfer の prepass/recursive alias loop は bounded helper と rooted continuation へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_prepass_loops_preserve_results() {
+    let mut program_expr = "(vector-new 0)".to_string();
+    let mut placeholders_expr = "(map-new)".to_string();
+    let mut type_args_expr = "(vector-new 0)".to_string();
+    let mut aliases_expr = "(vector-new 0)".to_string();
+
+    for idx in 0..65 {
+        let defn_name = 50000 + idx;
+        program_expr = format!(
+            "(vector-push {} (vector-push (vector-push (vector-new 2) 20) {}))",
+            program_expr, defn_name
+        );
+        placeholders_expr = format!(
+            "(map-insert-object-safe {} {} (make-type-var {}))",
+            placeholders_expr,
+            defn_name,
+            1000 + idx
+        );
+        type_args_expr = format!(
+            "(vector-push {} (make-type-named {}))",
+            type_args_expr,
+            30000 + idx
+        );
+        aliases_expr = format!(
+            "(vector-push {} (make-type-alias {} (make-type-named {})))",
+            aliases_expr,
+            60000 + idx,
+            60000 + idx
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program {program_expr}
+        placeholders {placeholders_expr}
+        pending
+          (typeinfer-pending-env-vars
+            program 0 65 placeholders (subst-new))
+        predeclared
+          (typeinfer-predeclare-defns
+            program (type-env-new) (make-var-counter))
+        pre-env (vector-get predeclared 0)
+        pre-placeholders (vector-get predeclared 1)
+        pre-first-scheme (type-env-lookup pre-env 50000)
+        pre-last-scheme (type-env-lookup pre-env 50064)
+        raw-app (make-type-app-expr 999 {type_args_expr})
+        alias-program {aliases_expr}]
+    (do
+      (print (map-get-safe pending 1000))
+      (print (map-get-safe pending 1064))
+      (print (map-get-safe pending 999))
+      (print (ty-name (map-get-safe pre-placeholders 50000)))
+      (print (ty-name (map-get-safe pre-placeholders 50064)))
+      (print (ty-name (scheme-type pre-first-scheme)))
+      (print (ty-name (scheme-type pre-last-scheme)))
+      (print (typeinfer-type-expr-contains-name-range raw-app 3 68 30064))
+      (print (typeinfer-type-expr-contains-name-range raw-app 3 68 39999))
+      (print (typeinfer-recursive-alias-count alias-program))
+      0)))
+"#,
+        program_expr = program_expr,
+        placeholders_expr = placeholders_expr,
+        type_args_expr = type_args_expr,
+        aliases_expr = aliases_expr,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1", "1", "0", "1000", "1064", "1000", "1064", "1", "0", "65"
+        ],
+        "65要素の TypeInfer prepass は chunk 境界を越えて env/placeholder/alias の結果を保持するべき"
+    );
+}

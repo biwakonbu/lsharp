@@ -1232,39 +1232,315 @@
     env))
 
 ;; 後続 top-level defn の placeholder に残る自由型変数を集める。
-(defn typeinfer-pending-env-vars-loop [program idx len placeholders subst env-vars]
+(defn typeinfer-pending-env-vars-state [done next-idx env-vars]
+  (vector-push-triple-rooted (vector-new 3) done next-idx env-vars))
+
+(defn typeinfer-pending-env-vars-step-v3
+  [program idx len placeholders subst env-vars]
   (if (>= idx len)
-    env-vars
-    (let [decl (typeinfer-unprivate-defn (vector-get program idx))
-      tag (vector-get decl 0)]
-      (if (= tag 20)
-        (let [name-hash (vector-get decl 1)
-          placeholder (map-get-safe placeholders name-hash)
-          resolved-placeholder (apply-subst subst placeholder)
-          free (free-vars resolved-placeholder)
-          next-env-vars (typeinfer-free-vars-to-set free 0 (vector-length free) env-vars)]
-          (typeinfer-pending-env-vars-loop program (+ idx 1) len placeholders subst next-env-vars))
-        (typeinfer-pending-env-vars-loop program (+ idx 1) len placeholders subst env-vars)))))
+    (typeinfer-pending-env-vars-state 1 idx env-vars)
+    (do
+      (root_push program)
+      (root_push placeholders)
+      (root_push subst)
+      (root_push env-vars)
+      (let [decl (typeinfer-unprivate-defn (vector-get program idx))]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)]
+            (if (= tag 20)
+              (let [name-hash (vector-get decl 1)
+                placeholder (map-get-safe placeholders name-hash)]
+                (do
+                  (root_push placeholder)
+                  (let [resolved-placeholder (apply-subst subst placeholder)]
+                    (do
+                      (root_push resolved-placeholder)
+                      (let [free (free-vars resolved-placeholder)]
+                        (do
+                          (root_push free)
+                          (let [next-env-vars
+                                  (typeinfer-free-vars-to-set
+                                    free
+                                    0
+                                    (vector-length free)
+                                    env-vars)]
+                            (do
+                              (root_push next-env-vars)
+                              (let [state
+                                      (typeinfer-pending-env-vars-state
+                                        0
+                                        (+ idx 1)
+                                        next-env-vars)]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  state))))))))))
+              (let [state
+                      (typeinfer-pending-env-vars-state
+                        0
+                        (+ idx 1)
+                        env-vars)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-pending-env-vars-step-64-loop-bounded
+  [program idx len placeholders subst env-vars remaining]
+  (do
+    (root_push program)
+    (root_push placeholders)
+    (root_push subst)
+    (root_push env-vars)
+    (let [step
+            (typeinfer-pending-env-vars-step-v3
+              program idx len placeholders subst env-vars)
+          done (vector-get step 0)
+          next-env-vars (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env-vars)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-pending-env-vars-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      len
+                      placeholders
+                      subst
+                      next-env-vars
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-pending-env-vars-step-64
+  [program idx len placeholders subst env-vars]
+  (typeinfer-pending-env-vars-step-64-loop-bounded
+    program idx len placeholders subst env-vars 64))
+
+(defn typeinfer-pending-env-vars-rooted-v3
+  [program idx len placeholders subst env-vars]
+  (let [step
+          (typeinfer-pending-env-vars-step-64
+            program idx len placeholders subst env-vars)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push placeholders)
+        (root_push subst)
+        (root_push step)
+        (let [next-env-vars (vector-get step 2)]
+          (do
+            (root_push next-env-vars)
+            (let [resolved
+                    (typeinfer-pending-env-vars-rooted-v3
+                      program
+                      (vector-get step 1)
+                      len
+                      placeholders
+                      subst
+                      next-env-vars)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-pending-env-vars-loop [program idx len placeholders subst env-vars]
+  (typeinfer-pending-env-vars-rooted-v3
+    program idx len placeholders subst env-vars))
 
 (defn typeinfer-pending-env-vars [program next-idx len placeholders subst]
   (typeinfer-pending-env-vars-loop program next-idx len placeholders subst (map-new)))
 
 ;; program 内の top-level defn 名を単相 placeholder として先に登録する。
-(defn typeinfer-predeclare-defns-loop [program idx len env placeholders counter]
+(defn typeinfer-predeclare-defns-state [done next-idx env placeholders]
+  (do
+    (root_push env)
+    (root_push placeholders)
+    (let [result
+            (push-object-vector-local
+              (push-object-vector-local (vector-new 2) env)
+              placeholders)]
+      (do
+        (root_push result)
+        (let [state
+                (vector-push-triple-rooted
+                  (vector-new 3)
+                  done
+                  next-idx
+                  result)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            state))))))
+
+(defn typeinfer-predeclare-defns-step-v3
+  [program idx len env placeholders counter]
   (if (>= idx len)
-    (push-object-vector-local (push-object-vector-local (vector-new 2) env) placeholders)
-    (let [decl (typeinfer-unprivate-defn (vector-get program idx))
-      tag (vector-get decl 0)]
-      (if (= tag 20)
-        (let [name-hash (vector-get decl 1)
-          placeholder (fresh-type-var counter)
-          next-env (type-env-insert env name-hash (mono placeholder))
-          next-placeholders (map-insert-object-safe placeholders name-hash placeholder)]
-          (typeinfer-predeclare-defns-loop program (+ idx 1) len next-env next-placeholders counter))
-        (typeinfer-predeclare-defns-loop program (+ idx 1) len env placeholders counter)))))
+    (typeinfer-predeclare-defns-state 1 idx env placeholders)
+    (do
+      (root_push program)
+      (root_push env)
+      (root_push placeholders)
+      (root_push counter)
+      (let [decl (typeinfer-unprivate-defn (vector-get program idx))]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)]
+            (if (= tag 20)
+              (let [name-hash (vector-get decl 1)
+                placeholder (fresh-type-var counter)]
+                (do
+                  (root_push placeholder)
+                  (let [next-env
+                          (type-env-insert env name-hash (mono placeholder))]
+                    (do
+                      (root_push next-env)
+                      (let [next-placeholders
+                              (map-insert-object-safe
+                                placeholders
+                                name-hash
+                                placeholder)]
+                        (do
+                          (root_push next-placeholders)
+                          (let [state
+                                  (typeinfer-predeclare-defns-state
+                                    0
+                                    (+ idx 1)
+                                    next-env
+                                    next-placeholders)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              state))))))))
+              (let [state
+                      (typeinfer-predeclare-defns-state
+                        0
+                        (+ idx 1)
+                        env
+                        placeholders)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-predeclare-defns-step-64-loop-bounded
+  [program idx len env placeholders counter remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push placeholders)
+    (root_push counter)
+    (let [step
+            (typeinfer-predeclare-defns-step-v3
+              program idx len env placeholders counter)
+          done (vector-get step 0)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-predeclare-defns-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      len
+                      (vector-get next-result 0)
+                      (vector-get next-result 1)
+                      counter
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-predeclare-defns-step-64
+  [program idx len env placeholders counter]
+  (typeinfer-predeclare-defns-step-64-loop-bounded
+    program idx len env placeholders counter 64))
+
+(defn typeinfer-predeclare-defns-rooted-v3
+  [program idx len env placeholders counter]
+  (let [step
+          (typeinfer-predeclare-defns-step-64
+            program idx len env placeholders counter)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push counter)
+        (root_push step)
+        (let [next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (typeinfer-predeclare-defns-rooted-v3
+                      program
+                      (vector-get step 1)
+                      len
+                      (vector-get next-result 0)
+                      (vector-get next-result 1)
+                      counter)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-predeclare-defns-loop [program idx len env placeholders counter]
+  (typeinfer-predeclare-defns-rooted-v3
+    program idx len env placeholders counter))
 
 (defn typeinfer-predeclare-defns [program env counter]
-  (typeinfer-predeclare-defns-loop program 0 (vector-length program) env (map-new) counter))
+  (typeinfer-predeclare-defns-loop
+    program
+    0
+    (vector-length program)
+    env
+    (map-new)
+    counter))
 
 ;; type-alias の raw target を取得する。parametric alias は [tag, name, params, target] を使う。
 (defn typeinfer-type-alias-target [decl]
@@ -1276,12 +1552,80 @@
 
 ;; Rust implementation と同じく、alias 自身を target に含む宣言は拒否する。
 ;; raw TypeExpr を直接走査するため、closed / parametric の両形式と nested target に対応する。
-(defn typeinfer-type-expr-contains-name-range [type-expr idx end name-hash]
+(defn typeinfer-type-expr-contains-name-state [done next-idx found]
+  (vector-push-triple-rooted (vector-new 3) done next-idx found))
+
+(defn typeinfer-type-expr-contains-name-step-v3
+  [type-expr idx end name-hash]
   (if (>= idx end)
-    0
-    (if (= (typeinfer-type-expr-contains-name (vector-get type-expr idx) name-hash) 1)
-      1
-      (typeinfer-type-expr-contains-name-range type-expr (+ idx 1) end name-hash))))
+    (typeinfer-type-expr-contains-name-state 1 idx 0)
+    (do
+      (root_push type-expr)
+      (let [found
+              (typeinfer-type-expr-contains-name
+                (vector-get type-expr idx)
+                name-hash)]
+        (do
+          (root_pop)
+          (if (= found 1)
+            (typeinfer-type-expr-contains-name-state 1 idx 1)
+            (typeinfer-type-expr-contains-name-state 0 (+ idx 1) 0)))))))
+
+(defn typeinfer-type-expr-contains-name-step-64-loop-bounded
+  [type-expr idx end name-hash remaining]
+  (do
+    (root_push type-expr)
+    (let [step
+            (typeinfer-type-expr-contains-name-step-v3
+              type-expr idx end name-hash)
+          done (vector-get step 0)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-type-expr-contains-name-step-64-loop-bounded
+                      type-expr
+                      (vector-get step 1)
+                      end
+                      name-hash
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-type-expr-contains-name-step-64
+  [type-expr idx end name-hash]
+  (typeinfer-type-expr-contains-name-step-64-loop-bounded
+    type-expr idx end name-hash 64))
+
+(defn typeinfer-type-expr-contains-name-rooted-v3
+  [type-expr idx end name-hash]
+  (let [step
+          (typeinfer-type-expr-contains-name-step-64
+            type-expr idx end name-hash)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push type-expr)
+        (root_push step)
+        (let [resolved
+                (typeinfer-type-expr-contains-name-rooted-v3
+                  type-expr
+                  (vector-get step 1)
+                  end
+                  name-hash)]
+          (do
+            (root_pop)
+            (root_pop)
+            resolved))))))
+
+(defn typeinfer-type-expr-contains-name-range [type-expr idx end name-hash]
+  (typeinfer-type-expr-contains-name-rooted-v3
+    type-expr idx end name-hash))
 
 (defn typeinfer-type-expr-contains-name [type-expr name-hash]
   (if (= type-expr 0)
@@ -1307,18 +1651,96 @@
                 name-hash)
               0)))))))
 
-(defn typeinfer-recursive-alias-count-loop [program idx len count]
+(defn typeinfer-recursive-alias-count-state [done next-idx count]
+  (vector-push-triple-rooted (vector-new 3) done next-idx count))
+
+(defn typeinfer-recursive-alias-count-step-v3
+  [program idx len count]
   (if (>= idx len)
-    count
-    (let [decl (vector-get program idx)
-      tag (vector-get decl 0)]
-      (if (= tag (ast-typealias))
-        (let [name-hash (vector-get decl 1)
-          target-expr (typeinfer-type-alias-target decl)]
-          (if (= (typeinfer-type-expr-contains-name target-expr name-hash) 1)
-            (typeinfer-recursive-alias-count-loop program (+ idx 1) len (+ count 1))
-            (typeinfer-recursive-alias-count-loop program (+ idx 1) len count)))
-        (typeinfer-recursive-alias-count-loop program (+ idx 1) len count)))))
+    (typeinfer-recursive-alias-count-state 1 idx count)
+    (do
+      (root_push program)
+      (let [decl (vector-get program idx)]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)]
+            (if (= tag (ast-typealias))
+              (let [name-hash (vector-get decl 1)
+                target-expr (typeinfer-type-alias-target decl)
+                recursive
+                  (typeinfer-type-expr-contains-name target-expr name-hash)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (typeinfer-recursive-alias-count-state
+                    0
+                    (+ idx 1)
+                    (if (= recursive 1) (+ count 1) count))))
+              (let [state
+                      (typeinfer-recursive-alias-count-state
+                        0
+                        (+ idx 1)
+                        count)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-recursive-alias-count-step-64-loop-bounded
+  [program idx len count remaining]
+  (do
+    (root_push program)
+    (let [step
+            (typeinfer-recursive-alias-count-step-v3
+              program idx len count)
+          done (vector-get step 0)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-recursive-alias-count-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      len
+                      (vector-get step 2)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-recursive-alias-count-step-64
+  [program idx len count]
+  (typeinfer-recursive-alias-count-step-64-loop-bounded
+    program idx len count 64))
+
+(defn typeinfer-recursive-alias-count-rooted-v3
+  [program idx len count]
+  (let [step
+          (typeinfer-recursive-alias-count-step-64
+            program idx len count)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push step)
+        (let [resolved
+                (typeinfer-recursive-alias-count-rooted-v3
+                  program
+                  (vector-get step 1)
+                  len
+                  (vector-get step 2))]
+          (do
+            (root_pop)
+            (root_pop)
+            resolved))))))
+
+(defn typeinfer-recursive-alias-count-loop [program idx len count]
+  (typeinfer-recursive-alias-count-rooted-v3
+    program idx len count))
 
 (defn typeinfer-recursive-alias-count [program]
   (typeinfer-recursive-alias-count-loop program 0 (vector-length program) 0))
