@@ -453,8 +453,12 @@
             (root_pop)
             updated))))))
 
-(defn vector-set-at-loop [vec result idx new-val i len]
-  (if (>= i len) result
+(defn make-vector-set-at-state [done next-index result]
+  (vector-push-triple-rooted-v3 (vector-new 3) done next-index result))
+
+(defn vector-set-at-step-v3 [vec result idx new-val i len]
+  (if (>= i len)
+    (make-vector-set-at-state 1 i result)
     (do
       (root_push vec)
       (root_push result)
@@ -463,11 +467,65 @@
         (if (= i idx)
           (vector-push result new-val)
           (vector-push result (vector-get vec i)))]
-        (do
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (vector-set-at-loop vec next-result idx new-val (+ i 1) len))))))
+        (let [state (make-vector-set-at-state 0 (+ i 1) next-result)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            state))))))
+
+(defn vector-set-at-step-64-loop-bounded [vec result idx new-val i len remaining]
+  (do
+    (root_push vec)
+    (root_push result)
+    (root_push new-val)
+    (let [step (vector-set-at-step-v3 vec result idx new-val i len)
+      done (vector-get step 0)
+      next-index (vector-get step 1)
+      next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (vector-set-at-step-64-loop-bounded
+                vec
+                next-result
+                idx
+                new-val
+                next-index
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn vector-set-at-step-64 [vec result idx new-val i len]
+  (vector-set-at-step-64-loop-bounded vec result idx new-val i len 64))
+
+(defn vector-set-at-loop [vec result idx new-val i len]
+  (let [step (vector-set-at-step-64 vec result idx new-val i len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-index (vector-get step 1)
+          next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [parsed
+              (vector-set-at-loop vec next-result idx new-val next-index len)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn vector-set-at-rooted-v3 [vec idx new-val]
   (do
@@ -2366,12 +2424,53 @@
         (root_pop)
         parsed))))
 
-(defn defn-signature-param-present-v3 [signature idx count]
+(defn defn-signature-param-present-step-v3 [signature idx count]
   (if (>= idx count)
-    0
+    (make-parser-scan-state 1 idx 0)
     (if (= (vector-get signature (+ idx 2)) 0)
-      (defn-signature-param-present-v3 signature (+ idx 1) count)
-      1)))
+      (make-parser-scan-state 0 (+ idx 1) 0)
+      (make-parser-scan-state 1 idx 1))))
+
+(defn defn-signature-param-present-step-64-loop-bounded
+  [signature idx count remaining]
+  (do
+    (root_push signature)
+    (let [step (defn-signature-param-present-step-v3 signature idx count)
+      done (vector-get step 0)
+      next-index (vector-get step 1)
+      present (vector-get step 2)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (defn-signature-param-present-step-64-loop-bounded
+                signature
+                next-index
+                count
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn defn-signature-param-present-step-64 [signature idx count]
+  (defn-signature-param-present-step-64-loop-bounded signature idx count 64))
+
+(defn defn-signature-param-present-v3 [signature idx count]
+  (let [step (defn-signature-param-present-step-64 signature idx count)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-index (vector-get step 1)]
+          (let [parsed
+            (defn-signature-param-present-v3 signature next-index count)]
+            (do
+              (root_pop)
+              parsed)))))))
 
 (defn defn-signature-present-v3 [signature]
   (let [param-count (vector-get signature 1)
