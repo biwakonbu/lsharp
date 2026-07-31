@@ -678,6 +678,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。これは
   TypeInferApply の bounded traversal と current-source Linux native self-regeneration の
   verified sliceであり、64超の診断契約、全 diagnostic/span、Mac/Linux aggregate parity は残る。
+  2026-07-31 に selfhost `Types.TypeInferPattern` の constructor/record child pattern inference を
+  64 要素 bounded rooted continuationへ集約し、65 要素 cross-chunk contract/runtime 2件、
+  match error 10件、quote/pattern 12件を通した。Linux x86_64 fixed point は status `pass`、
+  stage2/stage3 code length 各 `11168596`、stdout SHA-256 は両方
+  `dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。これは
+  TypeInferPattern child traversal と current-source Linux native self-regeneration の verified
+  sliceであり、record schema inference、全 diagnostic/span、Mac/Linux aggregate parity は残る。
 - [~] `EC-M1-02` canonical metadata IR — canonical case/assert/property inventory、
   typed binder、precondition/postcondition、directive span の slice は verified。一般 `TypeExpr`、
   全 `ContractSuite` evaluator、binder/predicate 個別 span、formatter/docs、2 target evidence を閉じる。
