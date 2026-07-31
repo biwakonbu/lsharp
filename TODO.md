@@ -134,6 +134,12 @@ source-file smoke は別タスクの live hostgen replay lock により exit `90
 MCP と provider API/auth adapter、および Linux runtime は未完了のため `[~]` を維持する。ADR:
 `docs/adr/decisions-v0.3-current-source-two-target-runtime.md`。
 
+同日、native selfhost `mcp-server` を JSON-RPC shim経由の `lsharp_check` / `lsharp_validate` /
+`lsharp_format` deterministic subsetへ接続した。native program以外の fallbackは呼ばず、provider
+snapshot pathはexternal adapter未接続として実行前に拒否する。focused runner/protocol testsは通過したが、
+Rust MCP 全tool parity、provider取得/auth、Linux runtimeは未完了のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.3-native-mcp-subset-shim.md`。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:

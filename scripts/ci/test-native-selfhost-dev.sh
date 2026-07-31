@@ -60,6 +60,21 @@ with log_path.open("a", encoding="ascii") as log:
     log.write("lsp-shim|" + " ".join(args[3:]) + "\\n")
 PY
 
+cat >"$TEST_ROOT/scripts/native-selfhost-mcp.py" <<'PY'
+import os
+import pathlib
+import sys
+
+log_path = pathlib.Path(os.environ["NATIVE_TEST_LOG"])
+args = sys.argv[1:]
+if len(args) != 2 or args[0] != "--program":
+    raise SystemExit(114)
+if not pathlib.Path(args[1]).is_file():
+    raise SystemExit(115)
+with log_path.open("a", encoding="ascii") as log:
+    log.write("mcp-helper|" + " ".join(args) + "\n")
+PY
+
 cat >"$TEST_ROOT/scripts/native-selfhost-install.py" <<'PY'
 import os
 import pathlib
@@ -407,10 +422,8 @@ fi
 assert_file_contains "$TMP_ROOT/lsp.stderr" "error: native selfhost runner supports lsp only with --stdio"
 assert_file_not_contains "$LOG_FILE" "program|lsp"
 
-if run_runner mcp-server >"$TMP_ROOT/mcp-server.stdout" 2>"$TMP_ROOT/mcp-server.stderr"; then
-  fail "native runner accepted Rust-only mcp-server"
-fi
-assert_file_contains "$TMP_ROOT/mcp-server.stderr" "error: native selfhost runner does not provide mcp-server"
+run_runner mcp-server
+assert_file_contains "$LOG_FILE" "mcp-helper|--program"
 assert_file_not_contains "$LOG_FILE" "program|mcp-server"
 
 run_runner install

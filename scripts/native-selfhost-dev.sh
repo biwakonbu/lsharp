@@ -8,6 +8,7 @@ STAGE_DIR="${NATIVE_STAGE_DIR:-$ROOT/.native-selfhost-dev}"
 RELATIVE_ENTRY="${NATIVE_RELATIVE_ENTRY:-src/App/Cli.ls}"
 DECODER="$ROOT/scripts/ci/decode-native-selfhost-transport.py"
 LSP_STDIO_SHIM="$ROOT/scripts/native-selfhost-lsp-stdio.py"
+MCP_SHIM="$ROOT/scripts/native-selfhost-mcp.py"
 INSTALL_HELPER="$ROOT/scripts/native-selfhost-install.py"
 REPL_HELPER="$ROOT/scripts/native-selfhost-repl.py"
 DOC_HELPER="$ROOT/scripts/native-selfhost-doc.py"
@@ -407,7 +408,8 @@ if [[ "${1:-}" == "doc" ]]; then
 fi
 
 if [[ "${1:-}" == "mcp-server" ]]; then
-  die "native selfhost runner does not provide mcp-server; use the Rust host integration"
+  [[ -f "$MCP_SHIM" ]] || die "native MCP shim not found: $MCP_SHIM"
+  exec python3 "$MCP_SHIM" --program "$STAGE_DIR/program.native"
 fi
 
 if [[ "${1:-}" == "lsp" ]]; then
