@@ -39,6 +39,7 @@ NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDE
 SMOKE_ROOT="${LSHARP_NATIVE_RELEASE_SMOKE_ROOT:-/tmp/lsharp-native-official-release-smoke}"
 MAX_DIST_KIB="${LSHARP_NATIVE_RELEASE_MAX_DIST_KIB:-1048576}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
+HOSTGEN_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${VM_NAME}.lock}"
 
 require_safe_cleanup_path() {
   local path="$1"
@@ -53,6 +54,7 @@ require_safe_cleanup_path() {
 }
 
 require_safe_cleanup_path "${SMOKE_ROOT}" "release smoke root"
+require_safe_cleanup_path "${HOSTGEN_REPLAY_LOCK_DIR}" "Linux hostgen replay lock"
 
 cleanup() {
   if [[ "${KEEP_WORK_DIR:-0}" != "1" ]]; then
@@ -367,6 +369,31 @@ smoke_stage0_runtime() {
       ;;
   esac
 }
+
+preflight_linux_hostgen_replay_lock() {
+  [[ ! -e "${HOSTGEN_REPLAY_LOCK_DIR}" ]] && return 0
+
+  if [[ ! -d "${HOSTGEN_REPLAY_LOCK_DIR}" || -L "${HOSTGEN_REPLAY_LOCK_DIR}" ]]; then
+    echo "ERROR: Linux hostgen replay lock has an unsafe shape: ${HOSTGEN_REPLAY_LOCK_DIR}" >&2
+    exit 90
+  fi
+
+  local holder_pid
+  local holder_artifact_dir
+  local holder_vm_work_dir
+  holder_pid="$(cat "${HOSTGEN_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)"
+  holder_artifact_dir="$(cat "${HOSTGEN_REPLAY_LOCK_DIR}/artifact_dir" 2>/dev/null || true)"
+  holder_vm_work_dir="$(cat "${HOSTGEN_REPLAY_LOCK_DIR}/vm_work_dir" 2>/dev/null || true)"
+  if [[ "${holder_pid}" =~ ^[0-9]+$ ]] && kill -0 "${holder_pid}" 2>/dev/null; then
+    echo "ERROR: Linux hostgen replay lock is held: holder_pid=${holder_pid} artifact_dir=${holder_artifact_dir} vm_work_dir=${holder_vm_work_dir} lock_dir=${HOSTGEN_REPLAY_LOCK_DIR}" >&2
+    exit 90
+  fi
+
+  echo "ERROR: Linux hostgen replay lock exists without a live owner; refusing to remove it: lock_dir=${HOSTGEN_REPLAY_LOCK_DIR}" >&2
+  exit 90
+}
+
+preflight_linux_hostgen_replay_lock
 
 mkdir -p "${DIST_DIR}"
 rm -rf "${SMOKE_ROOT}"

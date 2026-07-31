@@ -55,13 +55,18 @@ provider snapshot の取得・認証や release archive の identity 検証は�
   `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`（2,559 bytes）、stage0
   manifest digest `103566c49e1d16074e7cda46ff42ca59ea74c08210a41541d9b882adaa43586b` を確認した。
   current App.Cli producerの `--version`（`lsharp 0.1.0`）と `--help` も exit `0` / stderr空で通過した。
+- GREEN: `native-official-release-local.sh` の開始時に
+  `LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR`（既定は hostgen VM lock）を検査し、別セッションが
+  live hostgen replayを所有している場合は release/dist作成や `limactl` 呼び出しより前に exit `90` で
+  fail-closed に停止する。fake lock contractと、実際に稼働中の parser replay lock（artifact/vm workdir/PID
+  を含む）で preflight停止を確認した。stale/不正形状の lockも自動削除せず停止する。
 - Direct Mac evidence: current `f6a6da30` の producer/package outputを Mac source-file smokeへ渡す経路は
   actual App.Cli E2E と `aarch64-apple-darwin native selfhost source-file smoke passed` まで通過した。
   これは `fetch-stage0.sh` を含む公式 orchestrator の証拠ではなく、Linux x86_64 runtimeも未検証である。
 - `bash -n scripts/ci/native-official-release-local.sh scripts/ci/test-native-official-release-snapshots.sh`
   と `git diff --check` を通過した。
 
-この証拠は orchestrator の wiring、target別 evidence propagation、fresh current-source Mac stage0の
+この証拠は orchestrator の wiring、target別 evidence propagation、replay lock の所有境界、fresh current-source Mac stage0の
 producer → package → fetch → source-file smoke境界を含む。provider snapshot digest bytes比較、
 current checkoutと一致する Linux x86_64 stage0、Linux source-file smoke、両 targetの packaged App.Cli
 `--version` / `--help` と rollback/Wasm parityは未取得であり、N9 と EC-M3-05 は `[~]` のまま残す。

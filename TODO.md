@@ -98,10 +98,8 @@
   2026-07-31 に fresh current `e44ca727` の Mac Apple Silicon stage0 producer（actual App.Cli E2E
   491.75秒）→stage0 archive→local HTTP `fetch-stage0.sh`→fetched package source-file smokeを完走し、
   source commit/target、stage0 payload、`compile.wasm` / `build.wasm` digest/size、App.Cli
-  `--version` / `--help` の exit/stderrを確認した。これは Mac current-source/fetch runtimeの
-  verified partial sliceであり、Linux runtime、provider取得、両 target packaged bytes/rollback parityは残る。
-  これは証跡伝播と Mac current-source/fetch runtime の verified partial sliceであり、実 Linux runtime、
-  provider取得、両 target packaged bytes/rollback parityは残る。ADR:
+  `--version` / `--help` の exit/stderrを確認した。これは証跡伝播と Mac current-source/fetch runtime の
+  verified partial sliceであり、実 Linux runtime、provider取得、両 target packaged bytes/rollback parityは残る。ADR:
   `docs/adr/decisions-v0.3-native-official-stage0-runtime-smoke.md`。さらに native manifest の
   node/evidence/subject ID fields を一つの serializer helper へ統合し、EC-M3-01 canonical
   manifest bytes の working-tree preflight parity を確認した。これは serializer の verified
