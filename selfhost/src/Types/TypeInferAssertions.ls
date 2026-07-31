@@ -797,12 +797,61 @@
           (root_pop)
           (root_pop)
           parsed)))))
-(defn assertion-contains-param-loop [predicate decl idx count]
+;; assertion/case の implicit scope 検査は 64 要素ごとの rooted chunk に分ける。
+(defn assertion-contains-param-step-v3 [predicate decl idx count]
   (if (>= idx count)
-    0
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 0)
     (if (= (ast-contains-var predicate (vector-get decl (+ 3 idx))) 1)
-      1
-      (assertion-contains-param-loop predicate decl (+ idx 1) count))))
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 1)
+      (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) 0))))
+(defn assertion-contains-param-step-64-loop-bounded
+  [predicate decl idx count remaining]
+  (do
+    (root_push predicate)
+    (root_push decl)
+    (let [step (assertion-contains-param-step-v3 predicate decl idx count)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (assertion-contains-param-step-64-loop-bounded
+                predicate
+                decl
+                (vector-get step 1)
+                count
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn assertion-contains-param-rooted-v3 [predicate decl idx count]
+  (let [step (assertion-contains-param-step-64-loop-bounded predicate decl idx count 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+          (assertion-contains-param-rooted-v3
+            predicate
+            decl
+            (vector-get step 1)
+            count)]
+          (do
+            (root_pop)
+            parsed))))))
+(defn assertion-contains-param-loop [predicate decl idx count]
+  (do
+    (root_push predicate)
+    (root_push decl)
+    (let [parsed (assertion-contains-param-rooted-v3 predicate decl idx count)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
 ;; operator の name-hash は Parser の 31-fold hash と一致させる。
 (defn static-comparison-operator? [operator]
   (if (= operator 61) 1
@@ -998,14 +1047,18 @@
                 0
                 (canonical-assertion-non-bool-code))
               (canonical-assertion-non-bool-code))))))))
-(defn check-assertion-predicates-loop
+(defn check-assertion-predicates-step-v3
   [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state-with-span
-      diagnostic-count
-      first-error-code
-      first-error-start
-      first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state-with-span
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end))
     (let [span-count (if (= spans 0) 0 (vector-length spans))
       span-index (* idx 2)
       predicate-start
@@ -1026,18 +1079,139 @@
         (if (= first-error-code 0) predicate-start first-error-start)
       next-first-error-end
         (if (= first-error-code 0) predicate-end first-error-end)]
-      (check-assertion-predicates-loop
+      (vector-push-triple-rooted-v3
+        (vector-new 3)
+        0
+        (+ idx 1)
+        (assertion-check-state-with-span
+          next-count
+          next-first-error-code
+          next-first-error-start
+          next-first-error-end)))))
+(defn check-assertion-predicates-step-64-loop-bounded
+  [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push predicates)
+    (root_push spans)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-assertion-predicates-step-v3
         predicates
         spans
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        next-count
-        next-first-error-code
-        next-first-error-start
-        next-first-error-end))))
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-assertion-predicates-step-64-loop-bounded
+                      predicates
+                      spans
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-assertion-predicates-rooted-v3
+  [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-assertion-predicates-step-64-loop-bounded
+      predicates
+      spans
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-assertion-predicates-rooted-v3
+                predicates
+                spans
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-assertion-predicates-loop
+  [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push predicates)
+    (root_push spans)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-assertion-predicates-rooted-v3
+        predicates
+        spans
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-assertion-form
   [form decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (= (vector-get form 0) 3)
@@ -1175,40 +1349,159 @@
                           (canonical-case-value-error-code)
                           expected-start
                           expected-end)))))))))))))
-(defn check-case-expectations-loop
+(defn check-case-expectations-step-v3
   [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (case-check-state diagnostic-count first-error-code first-error-start first-error-end))
     (let [check-result (check-case-expectation
         (vector-get expectations idx)
         decl
         env
-        counter)
-      check-result-root-slot (root_push check-result)
-      code (vector-get check-result 0)
-      error-start (vector-get check-result 1)
-      error-end (vector-get check-result 2)
-      next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
-      next-first-error-code
-        (if (= first-error-code 0) code first-error-code)
-      next-first-error-start
-        (if (= first-error-code 0) error-start first-error-start)
-      next-first-error-end
-        (if (= first-error-code 0) error-end first-error-end)
-      result (check-case-expectations-loop
+        counter)]
+      (do
+        (root_push check-result)
+        (let [code (vector-get check-result 0)
+          error-start (vector-get check-result 1)
+          error-end (vector-get check-result 2)
+          next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
+          next-first-error-code
+            (if (= first-error-code 0) code first-error-code)
+          next-first-error-start
+            (if (= first-error-code 0) error-start first-error-start)
+          next-first-error-end
+            (if (= first-error-code 0) error-end first-error-end)]
+          (let [step
+            (vector-push-triple-rooted-v3
+              (vector-new 3)
+              0
+              (+ idx 1)
+              (case-check-state
+                next-count
+                next-first-error-code
+                next-first-error-start
+                next-first-error-end))]
+            (do
+              (root_pop)
+              step)))))))
+(defn check-case-expectations-step-64-loop-bounded
+  [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push expectations)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-case-expectations-step-v3
         expectations
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        next-count
-        next-first-error-code
-        next-first-error-start
-        next-first-error-end)]
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-case-expectations-step-64-loop-bounded
+                      expectations
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-case-expectations-rooted-v3
+  [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-case-expectations-step-64-loop-bounded
+      expectations
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-case-expectations-rooted-v3
+                expectations
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-case-expectations-loop
+  [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push expectations)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-case-expectations-rooted-v3
+        expectations
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
       (do
         (root_pop)
-        result))))
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-case-form [form decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (= (vector-get form 0) (contract-form-case))
     (let [expectations (vector-get form 1)]

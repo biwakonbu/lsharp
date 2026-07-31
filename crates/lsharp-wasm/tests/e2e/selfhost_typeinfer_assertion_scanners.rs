@@ -80,6 +80,80 @@ fn test_e2e_selfhost_typeinfer_property_checks_use_bounded_chunks() {
 }
 
 #[test]
+fn test_e2e_selfhost_typeinfer_assertion_forms_use_bounded_rooted_chunks() {
+    let source = selfhost_module("TypeInferAssertions.ls");
+    for name in [
+        "assertion-contains-param-step-64-loop-bounded",
+        "assertion-contains-param-rooted-v3",
+        "check-assertion-predicates-step-64-loop-bounded",
+        "check-assertion-predicates-rooted-v3",
+        "check-case-expectations-step-64-loop-bounded",
+        "check-case-expectations-rooted-v3",
+    ] {
+        assert!(
+            source.contains(name),
+            "TypeInferAssertions の assertion/case form check は {} を持つべき",
+            name
+        );
+    }
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_assertion_forms_preserve_cross_chunk_results() {
+    let parameters = (0..65)
+        .map(|index| format!("p{index}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let predicates = (0..65).map(|_| "true").collect::<Vec<_>>().join(" ");
+    let expectations = (0..65)
+        .map(|_| "(expect 1 1)")
+        .collect::<Vec<_>>()
+        .join(" ");
+    let assertion_source = format!(
+        "(defn checks [{parameters}] :assert [p64] 0)",
+        parameters = parameters
+    );
+    let predicate_source = format!(
+        "(defn predicates [] :assert [{predicates}] true)",
+        predicates = predicates
+    );
+    let case_source = format!(
+        "(defn cases [] :case [{expectations}] 0)",
+        expectations = expectations
+    );
+    let assertion_literal = assertion_source.replace('"', "\\\"");
+    let predicate_literal = predicate_source.replace('"', "\\\"");
+    let case_literal = case_source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [assertion-result (check-canonical-assertions (parse-program "{assertion_literal}"))
+        predicate-result (check-canonical-assertions (parse-program "{predicate_literal}"))
+        case-result (check-canonical-cases (parse-program "{case_literal}"))]
+    (do
+      (print (vector-get assertion-result 0))
+      (print (vector-get assertion-result 1))
+      (print (vector-get predicate-result 0))
+      (print (vector-get predicate-result 1))
+      (print (vector-get case-result 0))
+      (print (vector-get case-result 1))
+      0)))
+"#,
+        assertion_literal = assertion_literal,
+        predicate_literal = predicate_literal,
+        case_literal = case_literal,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1001", "65", "2005", "0", "0"],
+        "assertion/case form checker は64要素境界を跨いでも診断件数と先頭コードを保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_typeinfer_property_checks_preserve_cross_chunk_results() {
     let binders = (0..65)
         .map(|index| format!("p{index} Int"))
