@@ -7,7 +7,7 @@ FAKE_ROOT="$TMP_ROOT/project"
 LOG_PATH="$TMP_ROOT/invocations.log"
 TRUST_STORE="$TMP_ROOT/trust-store.json"
 LIFECYCLE="$TMP_ROOT/review-lifecycle.jsonl"
-SOURCE_COMMIT="0123456789abcdef0123456789abcdef01234567"
+SOURCE_COMMIT=""
 VERSION="v0.0.0-test"
 PATH_PREFIX="$TMP_ROOT/bin"
 SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
@@ -113,6 +113,13 @@ for target in aarch64-apple-darwin x86_64-unknown-linux-gnu; do
   printf '%s\n' 'rollback' >"$TMP_ROOT/rollback-$target.tar.gz"
 done
 
+git -C "$FAKE_ROOT" init -q
+git -C "$FAKE_ROOT" config user.email fixture@example.invalid
+git -C "$FAKE_ROOT" config user.name fixture
+git -C "$FAKE_ROOT" add .
+git -C "$FAKE_ROOT" -c commit.gpgSign=false commit -qm 'native official release fixture'
+SOURCE_COMMIT="$(git -C "$FAKE_ROOT" rev-parse HEAD)"
+
 FAKE_LOG="$LOG_PATH" \
 PATH="$PATH_PREFIX:$PATH" \
 VERSION="$VERSION" \
@@ -141,6 +148,34 @@ grep -F "fetch target=aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "fetch target=x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
 grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
+
+before_stale_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+set +e
+stale_output="$(
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="0000000000000000000000000000000000000000" \
+  DIST_DIR="$FAKE_ROOT/stale-dist" \
+  SMOKE_ROOT="$TMP_ROOT/stale-smoke" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$TMP_ROOT/stale-smoke" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+stale_status=$?
+set -e
+[[ "$stale_status" -ne 0 ]] || { echo 'stale source commit was accepted' >&2; exit 1; }
+grep -F 'SOURCE_COMMIT must match current checkout HEAD' <<<"$stale_output" >/dev/null
+after_stale_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+[[ "$after_stale_log_lines" == "$before_stale_log_lines" ]] \
+  || { echo 'stale source commit reached a release or smoke boundary' >&2; exit 1; }
 
 set +e
 PARTIAL_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-partial.XXXXXX)"

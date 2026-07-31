@@ -5,6 +5,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
+CURRENT_SOURCE_COMMIT="$(git rev-parse --verify HEAD 2>/dev/null || true)"
+if [[ ! "${CURRENT_SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: current checkout source_commit is unavailable: ${CURRENT_SOURCE_COMMIT}" >&2
+  exit 1
+fi
+SOURCE_COMMIT="${SOURCE_COMMIT:-${CURRENT_SOURCE_COMMIT}}"
+if [[ ! "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: SOURCE_COMMIT must be a 40-character lowercase hexadecimal commit: ${SOURCE_COMMIT}" >&2
+  exit 1
+fi
+if [[ "${SOURCE_COMMIT}" != "${CURRENT_SOURCE_COMMIT}" ]]; then
+  echo "ERROR: SOURCE_COMMIT must match current checkout HEAD: expected=${CURRENT_SOURCE_COMMIT} actual=${SOURCE_COMMIT}" >&2
+  exit 1
+fi
 VERSION="${VERSION:-}"
 if [[ -z "${VERSION}" ]]; then
   command -v cargo >/dev/null 2>&1 \
@@ -12,7 +26,6 @@ if [[ -z "${VERSION}" ]]; then
   PACKAGE_VERSION="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(p["version"] for p in data["packages"] if p["name"] == "lsharp-wasm"))')"
   VERSION="v${PACKAGE_VERSION}"
 fi
-SOURCE_COMMIT="${SOURCE_COMMIT:-$(git rev-parse HEAD)}"
 DIST_DIR="${DIST_DIR:-${ROOT_DIR}/dist/native-official}"
 MACOS_APP_CLI_ARTIFACT_DIR="${MACOS_APP_CLI_ARTIFACT_DIR:-}"
 LINUX_APP_CLI_ARTIFACT_DIR="${LINUX_APP_CLI_ARTIFACT_DIR:-}"
