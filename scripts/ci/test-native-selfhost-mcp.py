@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import hashlib
 import json
 import os
@@ -9,14 +8,9 @@ import sys
 import tempfile
 import textwrap
 import unittest
-
-from native_selfhost_mcp_error_tests import (
-    assert_errors_lookup,
-    assert_errors_reject_invalid_arguments,
-)
-from native_selfhost_mcp_package_tests import assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
+from native_selfhost_mcp_error_tests import assert_errors_lookup, assert_errors_reject_invalid_arguments
+from native_selfhost_mcp_package_tests import assert_package_api_projects_local_api_json, assert_package_api_rejects_invalid_arguments, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
 from native_selfhost_mcp_context_tests import assert_project_context_projects_local_metadata, assert_project_context_rejects_invalid_arguments
-
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
 
@@ -163,6 +157,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     "lsharp_errors",
                     "lsharp_search",
                     "lsharp_project_context",
+                    "lsharp_package_api",
                 },
             )
             check_tool = next(
@@ -362,6 +357,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_project_context_rejects_invalid_arguments_before_native_execution(self):
         assert_project_context_rejects_invalid_arguments(self)
+    def test_package_api_projects_local_api_json_without_native_execution(self):
+        assert_package_api_projects_local_api_json(self)
+    def test_package_api_rejects_invalid_arguments_before_native_execution(self):
+        assert_package_api_rejects_invalid_arguments(self)
 
     def test_validate_forwards_explicit_identity_and_manifest_request(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

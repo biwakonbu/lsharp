@@ -9,6 +9,8 @@ lookup over the canonical Rust error-code table and never executes a host
 compiler.  ``lsharp_search`` is an offline projection of local
 ``.lsharp/packages`` metadata and never accesses a registry.  ``lsharp_project_context``
 is an offline projection of local ``lsharp.toml`` and installed package metadata.
+``lsharp_package_api`` reads an installed package's existing ``docs/api.json`` and
+never generates or mutates package files.
 Explicit provider snapshot paths are an offline bytes-to-digest adapter; signature and lifecycle
 semantic verification remain an external provider boundary until a native
 verifier is available.
@@ -34,8 +36,10 @@ from native_selfhost_mcp_schema import (
 from native_selfhost_errors import ERRORS_OUTPUT_SCHEMA, ErrorLookupError, call_errors
 from native_selfhost_mcp_packages import (
     PackageLookupError,
+    PACKAGE_API_OUTPUT_SCHEMA,
     PROJECT_CONTEXT_OUTPUT_SCHEMA,
     SEARCH_OUTPUT_SCHEMA,
+    call_package_api,
     call_project_context,
     call_search,
 )
@@ -374,6 +378,17 @@ TOOLS = [
         PROJECT_CONTEXT_OUTPUT_SCHEMA,
         {"additionalProperties": False},
     ),
+    tool_descriptor(
+        "lsharp_package_api",
+        "インストール済み L# package の docs/api.json を返す (native offline subset)",
+        {
+            "name": {"type": "string", "minLength": 1},
+            "project_dir": {"type": "string", "minLength": 1},
+        },
+        ["name"],
+        PACKAGE_API_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
+    ),
 ]
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
@@ -679,6 +694,11 @@ def call_tool(program, name, arguments):
             elif name == "lsharp_project_context":
                 try:
                     value = call_project_context(arguments)
+                except PackageLookupError as error:
+                    raise ToolError(str(error)) from error
+            elif name == "lsharp_package_api":
+                try:
+                    value = call_package_api(arguments)
                 except PackageLookupError as error:
                     raise ToolError(str(error)) from error
             else:

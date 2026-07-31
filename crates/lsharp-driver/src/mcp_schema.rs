@@ -36,11 +36,12 @@ fn tool_input_schema(name: &str) -> Value {
         "lsharp_package_api" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
+            "additionalProperties": false,
             "properties": {
-                "name": { "type": "string" },
-                "project_dir": { "type": "string" }
+                "name": { "type": "string", "minLength": 1 },
+                "project_dir": { "type": "string", "minLength": 1 }
             },
-            "required": ["name"]
+            "oneOf": [{ "required": ["name"] }]
         }),
         "lsharp_stdlib_api" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -313,11 +314,64 @@ fn tool_output_schema(name: &str) -> Value {
                 }
             }
         }),
+        "lsharp_package_api" => package_api_output_schema(),
         _ => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object"
         }),
     }
+}
+
+fn package_api_output_schema() -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object", "additionalProperties": false,
+        "required": ["package", "version", "modules"],
+        "properties": {
+            "package": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "minLength": 1 },
+            "modules": { "type": "array", "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["name", "doc", "functions", "types"],
+                "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "doc": { "type": ["string", "null"] },
+                    "functions": { "type": "array", "items": {
+                        "type": "object", "additionalProperties": false,
+                        "required": ["name", "signature", "params", "returns", "doc", "example"],
+                        "properties": {
+                            "name": { "type": "string", "minLength": 1 },
+                            "signature": { "type": "string", "minLength": 1 },
+                            "params": { "type": "array", "items": {
+                                "type": "object", "additionalProperties": false,
+                                "required": ["name", "type", "doc"],
+                                "properties": {
+                                    "name": { "type": "string", "minLength": 1 },
+                                    "type": { "type": "string", "minLength": 1 },
+                                    "doc": { "type": ["string", "null"] }
+                                }
+                            }},
+                            "returns": { "type": "object", "additionalProperties": false,
+                                "required": ["type", "doc"], "properties": {
+                                    "type": { "type": "string", "minLength": 1 },
+                                    "doc": { "type": ["string", "null"] }
+                                }
+                            },
+                            "doc": { "type": ["string", "null"] },
+                            "example": { "type": ["string", "null"] }
+                        }
+                    }},
+                    "types": { "type": "array", "items": {
+                        "type": "object", "additionalProperties": false,
+                        "required": ["name", "kind"], "properties": {
+                            "name": { "type": "string", "minLength": 1 },
+                            "kind": { "type": "string", "minLength": 1 }
+                        }
+                    }}
+                }
+            }}
+        }
+    })
 }
 
 fn json_schema(required_primary: &[&str], required_secondary: &[&str]) -> Value {

@@ -795,6 +795,70 @@ branch = "main"
     }
 
     #[test]
+    fn test_package_api_tool_schema_is_closed_world_and_has_output_schema() {
+        let input = tool_input_schema("lsharp_package_api");
+        assert_eq!(input["additionalProperties"], json!(false));
+        assert_eq!(input["properties"]["name"]["minLength"], json!(1));
+
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .and_then(|tools| {
+                tools
+                    .iter()
+                    .find(|tool| tool["name"] == "lsharp_package_api")
+            })
+            .expect("lsharp_package_api が tools/list に必要");
+        assert_eq!(
+            tool["outputSchema"]["required"],
+            json!(["package", "version", "modules"])
+        );
+        assert_eq!(tool["outputSchema"]["additionalProperties"], json!(false));
+    }
+
+    #[test]
+    fn test_package_api_tool_rejects_unknown_or_empty_arguments() {
+        let unknown = call_tool("lsharp_package_api", &json!({"unknown": true}))
+            .expect_err("未知引数は reject するべき");
+        assert!(unknown.contains("未知の引数"));
+
+        let empty = call_tool("lsharp_package_api", &json!({"name": ""}))
+            .expect_err("空の name は reject するべき");
+        assert!(empty.contains("name"));
+
+        let invalid_project = call_tool(
+            "lsharp_package_api",
+            &json!({"name": "demo", "project_dir": 42}),
+        )
+        .expect_err("project_dir の数値は reject するべき");
+        assert!(invalid_project.contains("project_dir"));
+    }
+
+    #[test]
+    fn test_package_api_tool_rejects_non_object_api_json() {
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_api_invalid_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let api_dir = root.join(".lsharp/packages/invalid-1.0.0/docs");
+        std::fs::create_dir_all(&api_dir).unwrap();
+        std::fs::write(api_dir.join("api.json"), "[]").unwrap();
+
+        let error = call_tool(
+            "lsharp_package_api",
+            &json!({"project_dir": root.display().to_string(), "name": "invalid"}),
+        )
+        .expect_err("非 object の api.json は reject するべき");
+        assert!(error.contains("root"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn test_package_api_tool_reads_installed_api_json() {
         let dir = std::env::temp_dir().join("lsharp_mcp_package_api");
         let _ = std::fs::remove_dir_all(&dir);

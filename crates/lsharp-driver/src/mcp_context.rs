@@ -35,11 +35,32 @@ fn project_context_tool(arguments: &Value) -> Result<Value, String> {
 }
 
 fn package_api_tool(arguments: &Value) -> Result<Value, String> {
-    let name = arguments
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "name が必要です".to_string())?;
-    let project_dir = project_dir_argument(arguments);
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| "lsharp_package_api の arguments は object が必要です".to_string())?;
+    if let Some(unknown) = object
+        .keys()
+        .find(|key| !matches!(key.as_str(), "name" | "project_dir"))
+    {
+        return Err(format!("lsharp_package_api の未知の引数: {unknown}"));
+    }
+    let name = match arguments.get("name") {
+        Some(Value::String(name)) if !name.trim().is_empty() => name,
+        Some(Value::String(_)) => {
+            return Err("lsharp_package_api の name は空でない文字列が必要です".to_string());
+        }
+        Some(_) => return Err("lsharp_package_api の name は文字列が必要です".to_string()),
+        None => return Err("lsharp_package_api の name は必須です".to_string()),
+    };
+    let project_dir = match arguments.get("project_dir") {
+        None => project_dir_argument(arguments),
+        Some(Value::String(project_dir)) if !project_dir.trim().is_empty() => {
+            PathBuf::from(project_dir)
+        }
+        Some(_) => {
+            return Err("lsharp_package_api の project_dir は空でない文字列が必要です".to_string());
+        }
+    };
     let package_dir = find_installed_package_dir(&project_dir, name)
         .ok_or_else(|| format!("インストール済みパッケージ '{name}' が見つかりません"))?;
     read_or_generate_package_api(&package_dir)
@@ -188,7 +209,15 @@ fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
     if api_path.exists() {
         let content =
             std::fs::read_to_string(&api_path).map_err(|e| mcp_io_error(api_path.display(), e))?;
-        return serde_json::from_str(&content).map_err(|e| format!("{}: {e}", api_path.display()));
+        let value: Value =
+            serde_json::from_str(&content).map_err(|e| format!("{}: {e}", api_path.display()))?;
+        if !value.is_object() {
+            return Err(format!(
+                "{}: api.json の root は object が必要です",
+                api_path.display()
+            ));
+        }
+        return Ok(value);
     }
 
     let cfg = config::load_config(package_dir);

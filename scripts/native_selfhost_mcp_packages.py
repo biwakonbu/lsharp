@@ -75,6 +75,77 @@ PROJECT_CONTEXT_OUTPUT_SCHEMA = {
     },
 }
 
+PACKAGE_API_OUTPUT_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["package", "version", "modules"],
+    "properties": {
+        "package": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "modules": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "doc", "functions", "types"],
+                "properties": {
+                    "name": {"type": "string", "minLength": 1},
+                    "doc": {"type": ["string", "null"]},
+                    "functions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["name", "signature", "params", "returns", "doc", "example"],
+                            "properties": {
+                                "name": {"type": "string", "minLength": 1},
+                                "signature": {"type": "string", "minLength": 1},
+                                "params": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "required": ["name", "type", "doc"],
+                                        "properties": {
+                                            "name": {"type": "string", "minLength": 1},
+                                            "type": {"type": "string", "minLength": 1},
+                                            "doc": {"type": ["string", "null"]},
+                                        },
+                                    },
+                                },
+                                "returns": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": ["type", "doc"],
+                                    "properties": {
+                                        "type": {"type": "string", "minLength": 1},
+                                        "doc": {"type": ["string", "null"]},
+                                    },
+                                },
+                                "doc": {"type": ["string", "null"]},
+                                "example": {"type": ["string", "null"]},
+                            },
+                        },
+                    },
+                    "types": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["name", "kind"],
+                            "properties": {
+                                "name": {"type": "string", "minLength": 1},
+                                "kind": {"type": "string", "minLength": 1},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
 
 def _decode_string(value):
     if value.startswith('"') and value.endswith('"'):
@@ -244,3 +315,36 @@ def call_project_context(arguments):
         "dependencies": summaries,
         "installedPackages": _installed_packages(project_path),
     }
+
+
+def call_package_api(arguments):
+    unknown = sorted(set(arguments).difference({"name", "project_dir"}))
+    if unknown:
+        raise PackageLookupError(f"lsharp_package_api の未知の引数: {', '.join(unknown)}")
+    name = arguments.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise PackageLookupError("lsharp_package_api の name は空でない文字列が必要です")
+    project_dir = arguments.get("project_dir")
+    if project_dir is None:
+        project_path = pathlib.Path.cwd()
+    elif isinstance(project_dir, str) and project_dir.strip():
+        project_path = pathlib.Path(project_dir)
+    else:
+        raise PackageLookupError("lsharp_package_api の project_dir は空でない文字列が必要です")
+    packages_dir = project_path / ".lsharp" / "packages"
+    try:
+        package_dir = next(
+            path
+            for path in sorted(packages_dir.iterdir(), key=lambda path: path.name)
+            if path.name.startswith(f"{name}-") and path.is_dir()
+        )
+    except (OSError, StopIteration):
+        raise PackageLookupError(f"インストール済みパッケージ '{name}' が見つかりません") from None
+    api_path = package_dir / "docs" / "api.json"
+    try:
+        value = json.loads(api_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
+    if not isinstance(value, dict):
+        raise PackageLookupError(f"{api_path}: api.json の root は object が必要です")
+    return value
