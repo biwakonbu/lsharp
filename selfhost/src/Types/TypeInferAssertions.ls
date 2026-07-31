@@ -1244,14 +1244,18 @@
       first-error-code
       first-error-start
       first-error-end)))
-(defn check-assertion-forms-loop
+(defn check-assertion-forms-step-v3
   [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state-with-span
-      diagnostic-count
-      first-error-code
-      first-error-start
-      first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (assertion-check-state-with-span
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end))
     (let [state (check-assertion-form
         (vector-get forms idx)
         decl
@@ -1261,17 +1265,136 @@
         first-error-code
         first-error-start
         first-error-end)]
-      (check-assertion-forms-loop
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (assertion-check-state-with-span
+              (vector-get state 0)
+              (vector-get state 1)
+              (vector-get state 2)
+              (vector-get state 3)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-assertion-forms-step-64-loop-bounded
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-assertion-forms-step-v3
         forms
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        (vector-get state 0)
-        (vector-get state 1)
-        (vector-get state 2)
-        (vector-get state 3)))))
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-assertion-forms-step-64-loop-bounded
+                      forms
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-assertion-forms-rooted-v3
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-assertion-forms-step-64-loop-bounded
+      forms
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-assertion-forms-rooted-v3
+                forms
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-assertion-forms-loop
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-assertion-forms-rooted-v3
+        forms
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-defn-assertions [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -1525,10 +1648,14 @@
           first-error-start
           first-error-end)))
     (case-check-state diagnostic-count first-error-code first-error-start first-error-end)))
-(defn check-case-forms-loop
+(defn check-case-forms-step-v3
   [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (vector-push-triple-rooted-v3
+      (vector-new 3)
+      1
+      idx
+      (case-check-state diagnostic-count first-error-code first-error-start first-error-end))
     (let [state (check-case-form
         (vector-get forms idx)
         decl
@@ -1538,17 +1665,136 @@
         first-error-code
         first-error-start
         first-error-end)]
-      (check-case-forms-loop
+      (do
+        (root_push state)
+        (let [step
+          (vector-push-triple-rooted-v3
+            (vector-new 3)
+            0
+            (+ idx 1)
+            (case-check-state
+              (vector-get state 0)
+              (vector-get state 1)
+              (vector-get state 2)
+              (vector-get state 3)))]
+          (do
+            (root_pop)
+            step))))))
+(defn check-case-forms-step-64-loop-bounded
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end remaining]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [step
+      (check-case-forms-step-v3
         forms
-        (+ idx 1)
+        idx
         count
         decl
         env
         counter
-        (vector-get state 0)
-        (vector-get state 1)
-        (vector-get state 2)
-        (vector-get state 3)))))
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (let [state (vector-get step 2)]
+                (do
+                  (root_push state)
+                  (let [next
+                    (check-case-forms-step-64-loop-bounded
+                      forms
+                      (vector-get step 1)
+                      count
+                      decl
+                      env
+                      counter
+                      (vector-get state 0)
+                      (vector-get state 1)
+                      (vector-get state 2)
+                      (vector-get state 3)
+                      (- remaining 1))]
+                    (do
+                      (root_pop)
+                      next))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+(defn check-case-forms-rooted-v3
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (let [step
+    (check-case-forms-step-64-loop-bounded
+      forms
+      idx
+      count
+      decl
+      env
+      counter
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end
+      64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [state (vector-get step 2)]
+          (do
+            (root_push state)
+            (let [parsed
+              (check-case-forms-rooted-v3
+                forms
+                (vector-get step 1)
+                count
+                decl
+                env
+                counter
+                (vector-get state 0)
+                (vector-get state 1)
+                (vector-get state 2)
+                (vector-get state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+(defn check-case-forms-loop
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
+  (do
+    (root_push forms)
+    (root_push decl)
+    (root_push env)
+    (root_push counter)
+    (let [parsed
+      (check-case-forms-rooted-v3
+        forms
+        idx
+        count
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code
+        first-error-start
+        first-error-end)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 (defn check-defn-cases [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)

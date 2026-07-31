@@ -154,6 +154,65 @@ fn test_e2e_selfhost_typeinfer_assertion_forms_preserve_cross_chunk_results() {
 }
 
 #[test]
+fn test_e2e_selfhost_typeinfer_form_collections_use_bounded_rooted_chunks() {
+    let source = selfhost_module("TypeInferAssertions.ls");
+    for name in [
+        "check-assertion-forms-step-64-loop-bounded",
+        "check-assertion-forms-rooted-v3",
+        "check-case-forms-step-64-loop-bounded",
+        "check-case-forms-rooted-v3",
+    ] {
+        assert!(
+            source.contains(name),
+            "TypeInferAssertions の form collection check は {} を持つべき",
+            name
+        );
+    }
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_form_collections_preserve_cross_chunk_results() {
+    let assertions = (0..65)
+        .map(|_| ":assert [1]")
+        .collect::<Vec<_>>()
+        .join(" ");
+    let cases = (0..65)
+        .map(|_| ":case [(expect 1 1)]")
+        .collect::<Vec<_>>()
+        .join(" ");
+    let assertion_source = format!(
+        "(defn assertions [] {assertions} true)",
+        assertions = assertions
+    );
+    let case_source = format!("(defn cases [] {cases} 0)", cases = cases);
+    let assertion_literal = assertion_source.replace('"', "\\\"");
+    let case_literal = case_source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [assertion-result (check-canonical-assertions (parse-program "{assertion_literal}"))
+        case-result (check-canonical-cases (parse-program "{case_literal}"))]
+    (do
+      (print (vector-get assertion-result 0))
+      (print (vector-get assertion-result 1))
+      (print (vector-get case-result 0))
+      (print (vector-get case-result 1))
+      0)))
+"#,
+        assertion_literal = assertion_literal,
+        case_literal = case_literal,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["65", "1002", "0", "0"],
+        "assertion/case form collection は64要素境界を跨いでも件数と先頭コードを保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_typeinfer_property_checks_preserve_cross_chunk_results() {
     let binders = (0..65)
         .map(|index| format!("p{index} Int"))
