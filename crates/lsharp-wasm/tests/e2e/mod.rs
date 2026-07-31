@@ -51,6 +51,7 @@ mod selfhost_typeinfer_match_errors;
 mod selfhost_typeinfer_pipeline_bootstrap;
 mod selfhost_typeinfer_private_visibility;
 mod selfhost_typeinfer_quote_patterns;
+mod selfhost_typeinfer_pattern_loops;
 mod selfhost_typeinfer_record_registration;
 mod selfhost_typeinfer_record_filtering;
 mod selfhost_typeinfer_record_inference;
