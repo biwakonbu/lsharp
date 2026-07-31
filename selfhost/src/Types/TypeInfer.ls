@@ -2229,95 +2229,447 @@
     (vector-new (vector-length params))))
 
 ;; closed / parametric type-alias を source order で登録する。
-(defn typeinfer-predeclare-closed-aliases-loop [program idx len closed-aliases parametric-aliases counter]
-  (if (>= idx len)
-    (make-type-alias-env closed-aliases parametric-aliases)
-    (let [decl (vector-get program idx)
-      tag (vector-get decl 0)]
-      (if (= tag (ast-typealias))
-        (let [name-hash (vector-get decl 1)
-          target-expr (typeinfer-type-alias-target decl)]
-            (if (= target-expr 0)
-            (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len closed-aliases parametric-aliases counter)
-            (if (>= (vector-length decl) 4)
-              (let [params (vector-get decl 2)]
-                (if (= (vector-length params) 0)
-                  (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
-                    target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
-                    next-closed-aliases (map-insert-object-safe closed-aliases name-hash target-type)]
-                    (typeinfer-predeclare-closed-aliases-loop
-                      program
-                      (+ idx 1)
-                      len
-                      next-closed-aliases
-                      parametric-aliases
-                      counter))
-                  (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
-                    param-state (typeinfer-build-parametric-alias-param-state params counter)
-                    param-env (vector-get param-state 0)
-                    param-types (vector-get param-state 1)
-                    target-type
-                      (typeinfer-resolve-type-expr-with-aliases-and-params
-                        target-expr
-                        alias-env
-                        param-env)
-                    entry (typeinfer-make-parametric-alias-entry param-types target-type)
-                    next-parametric-aliases (map-insert-object-safe parametric-aliases name-hash entry)]
-                    (typeinfer-predeclare-closed-aliases-loop
-                      program
-                      (+ idx 1)
-                      len
+;; 外側の走査は 64 件ごとに continuation を切り替え、長い宣言列でも
+;; native stack を宣言数に比例して消費しない。
+(defn typeinfer-predeclare-closed-aliases-result [closed-aliases parametric-aliases]
+  (push-object-vector-local
+    (push-object-vector-local (vector-new 2) closed-aliases)
+    parametric-aliases))
+
+(defn typeinfer-predeclare-closed-aliases-state
+  [done next-idx closed-aliases parametric-aliases]
+  (do
+    (root_push closed-aliases)
+    (root_push parametric-aliases)
+    (let [result
+            (typeinfer-predeclare-closed-aliases-result
+              closed-aliases
+              parametric-aliases)]
+      (do
+        (root_push result)
+        (let [state
+                (vector-push-triple-rooted
+                  (vector-new 3)
+                  done
+                  next-idx
+                  result)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            state))))))
+
+(defn typeinfer-predeclare-closed-aliases-resolve-closed
+  [name-hash target-expr closed-aliases parametric-aliases]
+  (do
+    (root_push closed-aliases)
+    (root_push parametric-aliases)
+    (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)]
+      (do
+        (root_push alias-env)
+        (let [target-type
+                (typeinfer-resolve-type-expr-with-aliases
+                  target-expr
+                  alias-env)]
+          (do
+            (root_push target-type)
+            (let [next-closed-aliases
+                    (map-insert-object-safe
                       closed-aliases
-                      next-parametric-aliases
-                      counter))))
-              (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
-                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
-                next-closed-aliases (map-insert-object-safe closed-aliases name-hash target-type)]
-                (typeinfer-predeclare-closed-aliases-loop
-                  program
-                  (+ idx 1)
-                  len
-                  next-closed-aliases
+                      name-hash
+                      target-type)]
+              (do
+                (root_push next-closed-aliases)
+                (let [result
+                        (typeinfer-predeclare-closed-aliases-result
+                          next-closed-aliases
+                          parametric-aliases)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+
+(defn typeinfer-predeclare-closed-aliases-resolve-parametric
+  [name-hash target-expr params closed-aliases parametric-aliases counter]
+  (do
+    (root_push params)
+    (root_push closed-aliases)
+    (root_push parametric-aliases)
+    (root_push counter)
+    (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)]
+      (do
+        (root_push alias-env)
+        (let [param-state
+                (typeinfer-build-parametric-alias-param-state params counter)]
+          (do
+            (root_push param-state)
+            (let [param-env (vector-get param-state 0)
+              param-types (vector-get param-state 1)]
+              (do
+                (root_push param-env)
+                (root_push param-types)
+                (let [target-type
+                        (typeinfer-resolve-type-expr-with-aliases-and-params
+                          target-expr
+                          alias-env
+                          param-env)]
+                  (do
+                    (root_push target-type)
+                    (let [entry
+                            (typeinfer-make-parametric-alias-entry
+                              param-types
+                              target-type)]
+                      (do
+                        (root_push entry)
+                        (let [next-parametric-aliases
+                                (map-insert-object-safe
+                                  parametric-aliases
+                                  name-hash
+                                  entry)]
+                          (do
+                            (root_push next-parametric-aliases)
+                            (let [result
+                                    (typeinfer-predeclare-closed-aliases-result
+                                      closed-aliases
+                                      next-parametric-aliases)]
+                              (do
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result))))))))))))))))
+
+(defn typeinfer-predeclare-closed-aliases-next
+  [decl closed-aliases parametric-aliases counter]
+  (let [name-hash (vector-get decl 1)
+    target-expr (typeinfer-type-alias-target decl)]
+    (if (= target-expr 0)
+      (typeinfer-predeclare-closed-aliases-result
+        closed-aliases
+        parametric-aliases)
+      (if (>= (vector-length decl) 4)
+        (let [params (vector-get decl 2)]
+          (if (= (vector-length params) 0)
+            (typeinfer-predeclare-closed-aliases-resolve-closed
+              name-hash
+              target-expr
+              closed-aliases
+              parametric-aliases)
+            (typeinfer-predeclare-closed-aliases-resolve-parametric
+              name-hash
+              target-expr
+              params
+              closed-aliases
+              parametric-aliases
+              counter)))
+        (typeinfer-predeclare-closed-aliases-resolve-closed
+          name-hash
+          target-expr
+          closed-aliases
+          parametric-aliases)))))
+
+(defn typeinfer-predeclare-closed-aliases-step-v3
+  [program idx len closed-aliases parametric-aliases counter]
+  (if (>= idx len)
+    (typeinfer-predeclare-closed-aliases-state
+      1
+      idx
+      closed-aliases
+      parametric-aliases)
+    (do
+      (root_push program)
+      (root_push closed-aliases)
+      (root_push parametric-aliases)
+      (root_push counter)
+      (let [decl (vector-get program idx)]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)
+            next-result
+              (if (= tag (ast-typealias))
+                (typeinfer-predeclare-closed-aliases-next
+                  decl
+                  closed-aliases
                   parametric-aliases
-                  counter)))))
-        (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len closed-aliases parametric-aliases counter)))))
+                  counter)
+                (typeinfer-predeclare-closed-aliases-result
+                  closed-aliases
+                  parametric-aliases))]
+            (do
+              (root_push next-result)
+              (let [state
+                      (typeinfer-predeclare-closed-aliases-state
+                        0
+                        (+ idx 1)
+                        (vector-get next-result 0)
+                        (vector-get next-result 1))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-predeclare-closed-aliases-step-64-loop-bounded
+  [program idx len closed-aliases parametric-aliases counter remaining]
+  (do
+    (root_push program)
+    (root_push closed-aliases)
+    (root_push parametric-aliases)
+    (root_push counter)
+    (let [step
+            (typeinfer-predeclare-closed-aliases-step-v3
+              program
+              idx
+              len
+              closed-aliases
+              parametric-aliases
+              counter)
+          done (vector-get step 0)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-predeclare-closed-aliases-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      len
+                      (vector-get next-result 0)
+                      (vector-get next-result 1)
+                      counter
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-predeclare-closed-aliases-step-64
+  [program idx len closed-aliases parametric-aliases counter]
+  (typeinfer-predeclare-closed-aliases-step-64-loop-bounded
+    program idx len closed-aliases parametric-aliases counter 64))
+
+(defn typeinfer-predeclare-closed-aliases-rooted-v3
+  [program idx len closed-aliases parametric-aliases counter]
+  (let [step
+          (typeinfer-predeclare-closed-aliases-step-64
+            program
+            idx
+            len
+            closed-aliases
+            parametric-aliases
+            counter)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push counter)
+        (root_push step)
+        (let [next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (typeinfer-predeclare-closed-aliases-rooted-v3
+                      program
+                      (vector-get step 1)
+                      len
+                      (vector-get next-result 0)
+                      (vector-get next-result 1)
+                      counter)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-predeclare-closed-aliases-loop
+  [program idx len closed-aliases parametric-aliases counter]
+  (typeinfer-predeclare-closed-aliases-rooted-v3
+    program idx len closed-aliases parametric-aliases counter))
 
 ;; 初回 prepass 後に閉 alias だけを再評価する。parametric alias は fresh 型変数を
 ;; 持つため、ここでは再登録せず、forward な閉 alias chain だけを収束させる。
-(defn typeinfer-refresh-closed-aliases-loop [program idx len closed-aliases parametric-aliases]
-  (if (>= idx len)
-    (make-type-alias-env closed-aliases parametric-aliases)
-    (let [decl (vector-get program idx)
-      tag (vector-get decl 0)]
-      (if (= tag (ast-typealias))
-        (let [target-expr (typeinfer-type-alias-target decl)
-          is-closed
-            (if (< (vector-length decl) 4)
-              1
-              (if (= (vector-length (vector-get decl 2)) 0) 1 0))]
-          (if (= is-closed 1)
-            (if (= target-expr 0)
-              (typeinfer-refresh-closed-aliases-loop
-                program (+ idx 1) len closed-aliases parametric-aliases)
-              (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
-                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
-                next-closed-aliases
-                  (map-insert-object-safe closed-aliases (vector-get decl 1) target-type)]
-                (typeinfer-refresh-closed-aliases-loop
-                  program
-                  (+ idx 1)
-                  len
-                  next-closed-aliases
-                  parametric-aliases)))
-            (typeinfer-refresh-closed-aliases-loop
-              program (+ idx 1) len closed-aliases parametric-aliases)))
-        (typeinfer-refresh-closed-aliases-loop
-          program (+ idx 1) len closed-aliases parametric-aliases)))))
+(defn typeinfer-refresh-closed-aliases-state [done next-idx closed-aliases]
+  (vector-push-triple-rooted (vector-new 3) done next-idx closed-aliases))
 
-(defn typeinfer-refresh-closed-aliases-rounds [program alias-env rounds]
-  (if (>= rounds (vector-length program))
-    alias-env
+(defn typeinfer-refresh-closed-aliases-next
+  [decl closed-aliases parametric-aliases]
+  (let [target-expr (typeinfer-type-alias-target decl)
+    is-closed
+      (if (< (vector-length decl) 4)
+        1
+        (if (= (vector-length (vector-get decl 2)) 0) 1 0))]
+    (if (= is-closed 0)
+      closed-aliases
+      (if (= target-expr 0)
+        closed-aliases
+        (do
+          (root_push closed-aliases)
+          (root_push parametric-aliases)
+          (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)]
+            (do
+              (root_push alias-env)
+              (let [target-type
+                      (typeinfer-resolve-type-expr-with-aliases
+                        target-expr
+                        alias-env)]
+                (do
+                  (root_push target-type)
+                  (let [next-closed-aliases
+                          (map-insert-object-safe
+                            closed-aliases
+                            (vector-get decl 1)
+                            target-type)]
+                    (do
+                      (root_push next-closed-aliases)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      next-closed-aliases)))))))))))
+
+(defn typeinfer-refresh-closed-aliases-step-v3
+  [program idx len closed-aliases parametric-aliases]
+  (if (>= idx len)
+    (typeinfer-refresh-closed-aliases-state 1 idx closed-aliases)
     (do
+      (root_push program)
+      (root_push closed-aliases)
+      (root_push parametric-aliases)
+      (let [decl (vector-get program idx)]
+        (do
+          (root_push decl)
+          (let [tag (vector-get decl 0)
+            next-closed-aliases
+              (if (= tag (ast-typealias))
+                (typeinfer-refresh-closed-aliases-next
+                  decl
+                  closed-aliases
+                  parametric-aliases)
+                closed-aliases)]
+            (do
+              (root_push next-closed-aliases)
+              (let [state
+                      (typeinfer-refresh-closed-aliases-state
+                        0
+                        (+ idx 1)
+                        next-closed-aliases)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-refresh-closed-aliases-step-64-loop-bounded
+  [program idx len closed-aliases parametric-aliases remaining]
+  (do
+    (root_push program)
+    (root_push closed-aliases)
+    (root_push parametric-aliases)
+    (let [step
+            (typeinfer-refresh-closed-aliases-step-v3
+              program
+              idx
+              len
+              closed-aliases
+              parametric-aliases)
+          done (vector-get step 0)
+          next-closed-aliases (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-closed-aliases)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-refresh-closed-aliases-step-64-loop-bounded
+                      program
+                      (vector-get step 1)
+                      len
+                      next-closed-aliases
+                      parametric-aliases
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-refresh-closed-aliases-step-64
+  [program idx len closed-aliases parametric-aliases]
+  (typeinfer-refresh-closed-aliases-step-64-loop-bounded
+    program idx len closed-aliases parametric-aliases 64))
+
+(defn typeinfer-refresh-closed-aliases-rooted-v3
+  [program idx len closed-aliases parametric-aliases]
+  (let [step
+          (typeinfer-refresh-closed-aliases-step-64
+            program idx len closed-aliases parametric-aliases)]
+    (if (= (vector-get step 0) 1)
+      (make-type-alias-env (vector-get step 2) parametric-aliases)
+      (do
+        (root_push program)
+        (root_push parametric-aliases)
+        (root_push step)
+        (let [next-closed-aliases (vector-get step 2)]
+          (do
+            (root_push next-closed-aliases)
+            (let [resolved
+                    (typeinfer-refresh-closed-aliases-rooted-v3
+                      program
+                      (vector-get step 1)
+                      len
+                      next-closed-aliases
+                      parametric-aliases)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-refresh-closed-aliases-loop
+  [program idx len closed-aliases parametric-aliases]
+  (typeinfer-refresh-closed-aliases-rooted-v3
+    program idx len closed-aliases parametric-aliases))
+
+(defn typeinfer-refresh-closed-aliases-rounds-state
+  [done next-round alias-env]
+  (vector-push-triple-rooted (vector-new 3) done next-round alias-env))
+
+(defn typeinfer-refresh-closed-aliases-rounds-step-v3
+  [program alias-env rounds]
+  (if (>= rounds (vector-length program))
+    (typeinfer-refresh-closed-aliases-rounds-state 1 rounds alias-env)
+    (do
+      (root_push program)
       (root_push alias-env)
       (let [closed-aliases (type-alias-env-closed alias-env)
         parametric-aliases (type-alias-env-parametric alias-env)]
@@ -2333,17 +2685,81 @@
                     parametric-aliases)]
             (do
               (root_push next-env)
-              (let [result
-                      (typeinfer-refresh-closed-aliases-rounds
-                        program
-                        next-env
-                        (+ rounds 1))]
+              (let [state
+                      (typeinfer-refresh-closed-aliases-rounds-state
+                        0
+                        (+ rounds 1)
+                        next-env)]
                 (do
                   (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  result)))))))))
+                  (root_pop)
+                  state)))))))))
+
+(defn typeinfer-refresh-closed-aliases-rounds-step-64-loop-bounded
+  [program alias-env rounds remaining]
+  (do
+    (root_push program)
+    (root_push alias-env)
+    (let [step
+            (typeinfer-refresh-closed-aliases-rounds-step-v3
+              program alias-env rounds)
+          done (vector-get step 0)
+          next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-refresh-closed-aliases-rounds-step-64-loop-bounded
+                      program
+                      next-env
+                      (vector-get step 1)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-refresh-closed-aliases-rounds-step-64
+  [program alias-env rounds]
+  (typeinfer-refresh-closed-aliases-rounds-step-64-loop-bounded
+    program alias-env rounds 64))
+
+(defn typeinfer-refresh-closed-aliases-rounds-rooted-v3
+  [program alias-env rounds]
+  (let [step
+          (typeinfer-refresh-closed-aliases-rounds-step-64
+            program alias-env rounds)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push step)
+        (let [next-env (vector-get step 2)]
+          (do
+            (root_push next-env)
+            (let [resolved
+                    (typeinfer-refresh-closed-aliases-rounds-rooted-v3
+                      program
+                      next-env
+                      (vector-get step 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                resolved))))))))
+
+(defn typeinfer-refresh-closed-aliases-rounds [program alias-env rounds]
+  (typeinfer-refresh-closed-aliases-rounds-rooted-v3
+    program alias-env rounds))
 
 (defn typeinfer-predeclare-closed-aliases [program counter]
   (let [initial-env

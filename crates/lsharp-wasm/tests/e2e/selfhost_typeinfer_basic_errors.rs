@@ -3841,3 +3841,63 @@ fn test_e2e_selfhost_typeinfer_large_import_qualification_with_open_preserves_re
         "65件の :open import qualification は chunk 境界を越えて qualified/raw export を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_closed_alias_scans_use_bounded_chunks() {
+    let type_infer = selfhost_module("TypeInfer.ls");
+
+    assert!(
+        type_infer.contains("typeinfer-predeclare-closed-aliases-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-predeclare-closed-aliases-rooted-v3")
+            && type_infer.contains("typeinfer-refresh-closed-aliases-step-64-loop-bounded")
+            && type_infer.contains("typeinfer-refresh-closed-aliases-rooted-v3")
+            && type_infer.contains(
+                "typeinfer-refresh-closed-aliases-rounds-step-64-loop-bounded"
+            )
+            && type_infer.contains("typeinfer-refresh-closed-aliases-rounds-rooted-v3"),
+        "closed alias の predeclare/refresh 走査は bounded helper と rooted continuation へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_closed_alias_scans_preserve_results() {
+    let mut aliases_expr = "(vector-new 0)".to_string();
+    for idx in 0..65 {
+        let name_hash = 60000 + idx;
+        let target_hash = if idx == 64 {
+            73679
+        } else {
+            60000 + idx + 1
+        };
+        aliases_expr = format!(
+            "(vector-push {} (make-type-alias {} (make-type-named {})))",
+            aliases_expr, name_hash, target_hash
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program {aliases_expr}
+        alias-env (typeinfer-predeclare-closed-aliases program (make-var-counter))
+        closed-aliases (type-alias-env-closed alias-env)]
+    (do
+      (print (ty-name (map-get-safe closed-aliases 60000)))
+      (print (ty-name (map-get-safe closed-aliases 60032)))
+      (print (ty-name (map-get-safe closed-aliases 60064)))
+      0)))
+"#,
+        aliases_expr = aliases_expr,
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["100", "100", "100"],
+        "65件の closed alias chain は predeclare/refresh の chunk 境界を越えて最終 target へ収束するべき"
+    );
+}
