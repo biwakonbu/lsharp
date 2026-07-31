@@ -38,11 +38,13 @@
   明示 artifact/trust-store/lifecycle bytes を canonical identity へ変換する offline input preparer の
   verified partial sliceを追加した。preparer/verifier の `now` は Rust canonical timestamp と同じ閏年・暦日・時分秒範囲を
   共有し、lexical shapeだけでは通る不正日時を fail-closed にする。verifier は明示 snapshot の raw bytes を任意に再計算し、trust-store/lifecycle digest mismatch と片側指定を fail-closed にする。
+  native-only `scripts/release.sh` から snapshot path を verifier へ伝播し、packaging 前の digest mismatch を拒否する wiring も verified partial として追加した。
   provider helperの実取得、selfhost/native MCP parity、current-source と packaged stage0 の provenance、
-  Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。ADR:
+  stage0 package / release smoke / multi-target snapshot propagation、Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。ADR:
   `docs/adr/decisions-v0.3-release-identity-gate.md`,
   `docs/adr/decisions-v0.3-provider-input-identity-preparer.md`,
-  `docs/adr/decisions-v0.3-provider-snapshot-digest-verification.md`。
+  `docs/adr/decisions-v0.3-provider-snapshot-digest-verification.md`,
+  `docs/adr/decisions-v0.3-native-release-snapshot-wiring.md`。
 
 ## Current priority — v0.2 Milestone 2
 

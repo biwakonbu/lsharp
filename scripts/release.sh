@@ -27,6 +27,8 @@ NATIVE_ONLY_RELEASE="${NATIVE_ONLY_RELEASE:-1}"
 NATIVE_ONLY_PROGRAM="${NATIVE_ONLY_PROGRAM:-}"
 NATIVE_ONLY_PROGRAM_MANIFEST="${NATIVE_ONLY_PROGRAM_MANIFEST:-}"
 NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY="${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY:-}"
+NATIVE_ONLY_REVIEW_TRUST_STORE="${NATIVE_ONLY_REVIEW_TRUST_STORE:-}"
+NATIVE_ONLY_REVIEW_LIFECYCLE="${NATIVE_ONLY_REVIEW_LIFECYCLE:-}"
 ROLLBACK_COMPATIBILITY_ASSET_PATH="${ROLLBACK_COMPATIBILITY_ASSET_PATH:-}"
 SOURCE_COMMIT="${SOURCE_COMMIT:-$(git rev-parse --verify HEAD 2>/dev/null || echo "unknown")}"
 BASE_ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}"
@@ -39,6 +41,7 @@ ROLLBACK_COMPATIBILITY_ASSET=""
 ROLLBACK_COMPATIBILITY_SHA256=""
 NATIVE_ONLY_PROGRAM_INPUT_SHA256=""
 NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY_JSON=""
+NATIVE_ONLY_REVIEW_PROVIDER_ARGS=()
 REVIEW_IDENTITY_VERIFIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci/verify-native-release-identity.py"
 
 case "$TARGET" in
@@ -149,11 +152,33 @@ PY
       echo "ERROR: native review_evidence_identity input is not a non-empty file" >&2
       exit 1
     fi
+    if [[ -n "${NATIVE_ONLY_REVIEW_TRUST_STORE}" || -n "${NATIVE_ONLY_REVIEW_LIFECYCLE}" ]]; then
+      if [[ -z "${NATIVE_ONLY_REVIEW_TRUST_STORE}" || -z "${NATIVE_ONLY_REVIEW_LIFECYCLE}" ]]; then
+        echo "ERROR: NATIVE_ONLY_REVIEW_TRUST_STORE and NATIVE_ONLY_REVIEW_LIFECYCLE must be supplied together" >&2
+        exit 1
+      fi
+      if [[ ! -s "${NATIVE_ONLY_REVIEW_TRUST_STORE}" ]]; then
+        echo "ERROR: native review trust-store snapshot is not a non-empty file" >&2
+        exit 1
+      fi
+      if [[ ! -s "${NATIVE_ONLY_REVIEW_LIFECYCLE}" ]]; then
+        echo "ERROR: native review lifecycle snapshot is not a non-empty file" >&2
+        exit 1
+      fi
+      NATIVE_ONLY_REVIEW_PROVIDER_ARGS=(
+        --trust-store "${NATIVE_ONLY_REVIEW_TRUST_STORE}"
+        --review-lifecycle "${NATIVE_ONLY_REVIEW_LIFECYCLE}"
+      )
+    fi
     NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY_JSON="$(python3 "${REVIEW_IDENTITY_VERIFIER}" \
       --identity "${NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY}" \
       --artifact "${NATIVE_ONLY_PROGRAM}" \
       --source-commit "${SOURCE_COMMIT}" \
+      "${NATIVE_ONLY_REVIEW_PROVIDER_ARGS[@]}" \
       --require-provider-input)"
+  elif [[ -n "${NATIVE_ONLY_REVIEW_TRUST_STORE}" || -n "${NATIVE_ONLY_REVIEW_LIFECYCLE}" ]]; then
+    echo "ERROR: native review snapshots require NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY" >&2
+    exit 1
   fi
 
   ROLLBACK_COMPATIBILITY_ASSET="$(basename "${ROLLBACK_COMPATIBILITY_ASSET_PATH}")"

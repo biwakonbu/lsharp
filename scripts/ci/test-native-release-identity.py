@@ -243,8 +243,11 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                 content = (project_root / relative_path).read_text(encoding="utf-8")
                 self.assertIn("verify-native-release-identity.py", content)
                 self.assertIn("review_evidence_identity", content)
+                if relative_path == "scripts/release.sh":
+                    self.assertIn("NATIVE_ONLY_REVIEW_TRUST_STORE", content)
+                    self.assertIn("NATIVE_ONLY_REVIEW_LIFECYCLE", content)
 
-    def test_native_release_packages_verified_identity_without_recomputing_it(self):
+    def test_native_release_packages_and_recomputes_provider_identity(self):
         project_root = SCRIPTS_DIR.parent.parent
         release_script = project_root / "scripts" / "release.sh"
         source_commit = SOURCE_COMMIT
@@ -273,26 +276,38 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                 encoding="utf-8",
             )
             identity_path = root / "identity.json"
-            self.write_identity(identity_path, identity_for(program_digest))
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["release-key"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_bytes(b'{"review_id":"review:release/r1","state":"active"}\n')
+            identity = identity_for(
+                program_digest,
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
+            self.write_identity(identity_path, identity)
             rollback = root / "rollback.tar.gz"
             rollback.write_bytes(b"rollback fixture\n")
             dist = root / "dist"
 
+            environment = {
+                **os.environ,
+                "VERSION": "v0.0.0-identity-test",
+                "TARGET": target,
+                "SOURCE_COMMIT": source_commit,
+                "DIST_DIR": str(dist),
+                "NATIVE_ONLY_RELEASE": "1",
+                "NATIVE_ONLY_PROGRAM": str(program),
+                "NATIVE_ONLY_PROGRAM_MANIFEST": str(input_manifest),
+                "NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY": str(identity_path),
+                "NATIVE_ONLY_REVIEW_TRUST_STORE": str(trust_store),
+                "NATIVE_ONLY_REVIEW_LIFECYCLE": str(lifecycle),
+                "ROLLBACK_COMPATIBILITY_ASSET_PATH": str(rollback),
+            }
             result = subprocess.run(
                 ["bash", str(release_script)],
                 cwd=project_root,
-                env={
-                    **os.environ,
-                    "VERSION": "v0.0.0-identity-test",
-                    "TARGET": target,
-                    "SOURCE_COMMIT": source_commit,
-                    "DIST_DIR": str(dist),
-                    "NATIVE_ONLY_RELEASE": "1",
-                    "NATIVE_ONLY_PROGRAM": str(program),
-                    "NATIVE_ONLY_PROGRAM_MANIFEST": str(input_manifest),
-                    "NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY": str(identity_path),
-                    "ROLLBACK_COMPATIBILITY_ASSET_PATH": str(rollback),
-                },
+                env=environment,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -304,7 +319,7 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             )
             self.assertEqual(
                 packaged_manifest["review_evidence_identity"],
-                identity_for(program_digest),
+                identity,
             )
             self.assertEqual(
                 json.loads(
@@ -312,8 +327,40 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                         encoding="utf-8"
                     )
                 ),
-                identity_for(program_digest),
+                identity,
             )
+
+            trust_store.write_bytes(b'{"keys":["tampered-key"]}\n')
+            rejected = subprocess.run(
+                ["bash", str(release_script)],
+                cwd=project_root,
+                env={
+                    **environment,
+                    "VERSION": "v0.0.0-identity-mismatch-test",
+                    "DIST_DIR": str(root / "mismatch-dist"),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("trust_store_digest", rejected.stderr)
+
+            partial_identity = subprocess.run(
+                ["bash", str(release_script)],
+                cwd=project_root,
+                env={
+                    **environment,
+                    "VERSION": "v0.0.0-identity-partial-test",
+                    "DIST_DIR": str(root / "partial-dist"),
+                    "NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY": "",
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(partial_identity.returncode, 0)
+            self.assertIn("require NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY", partial_identity.stderr)
 
 
 if __name__ == "__main__":
