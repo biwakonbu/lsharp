@@ -92,6 +92,7 @@
   の verified slice として ADR に記録したが、native stage0 parity は残る。
 - [~] `EC-M2-02` evidence graph — required provenance を持つ evidence record、
   `supports` / `contradicts` の registry closure、source の `shrinks` / `coverage`、
+  canonical manifest と MCP input/output schema の coverage bucket 名 non-blank 境界、
   `evaluates` / `invalidates` の Rust source typed-edge projection、Rust CLI の source→report/manifest
   projection、canonical manifest projection、optional review provenance registry の Rust CLI
   input/output roundtrip と未登録 review edge の fail-closed 検査、
@@ -169,7 +170,8 @@
   no-report として返す Rust CLI boundary、
   Rust MCP `lsharp_validate` の `reviews` input/output schema、input top-level unknown field の
   `additionalProperties: false` boundary、空の manifest/path string を schema で拒否する
-  `minLength: 1` boundary と `include_manifest` projection、
+  `minLength: 1` boundary、coverage bucket 名の non-blank schema boundary と
+  `include_manifest` projection、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
   `EmbeddedCli` の source/report/pass-fail-unknown/exit、EmbeddedCli の
   `--emit-manifest` による report と version 1 manifest file の分離出力は Rust-host
@@ -476,6 +478,14 @@ fail-closed にした。空 `source` は既存 semantics（空 programを受理�
 `test_validate_tool_input_schema_rejects_empty_manifest_and_path_strings` の Draft 2020-12 validator matrix
 と `mcp_server::tests` 70件を通過した。selfhost/native MCP、current-source artifact/runtime、対応2 target、
 EC-M2-03 aggregate は残件。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-31 に coverage bucket 名の non-blank policy を canonical manifest schema と MCP input/output schemaへ
+接続した。runtime の `trim().is_empty()` boundary と同じく、空文字・ASCII空白・NBSP-only の property nameを
+Draft 2020-12 `propertyNames.pattern: "\\S"` で rejectする。canonical schema、MCP input、MCP outputの
+validator matrixを `test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures` に追加し、
+既存の valid fixtureを保ったまま3種類の空 bucketを全validatorで拒否することを固定した。Rust-host schema
+verified partial sliceであり、selfhost/native manifest parser、current-source artifact/runtime、対応2 target、
+EC-M2-02/03 aggregate は残件。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

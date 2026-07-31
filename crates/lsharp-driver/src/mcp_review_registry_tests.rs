@@ -260,6 +260,37 @@ mod review_registry_tests {
             "canonical fixture は MCP output schema に適合するべき"
         );
 
+        for (label, bucket) in [
+            ("empty", ""),
+            ("ascii-whitespace", " "),
+            ("unicode-whitespace", "\u{00a0}"),
+        ] {
+            let mut blank_coverage = fixture.clone();
+            blank_coverage["evidence"][0]["execution"]["sampling"]["coverage"] =
+                json!({ bucket: 3 });
+            assert!(
+                !canonical_validator.is_valid(&blank_coverage),
+                "{label}: canonical schema は空 coverage bucket を拒否するべき"
+            );
+            assert!(
+                !input_validator.is_valid(&json!({ "manifest": blank_coverage.clone() })),
+                "{label}: MCP input schema は空 coverage bucket を拒否するべき"
+            );
+            assert!(
+                !output_validator.is_valid(&json!({
+                    "status": "pass",
+                    "trace_gaps": [],
+                    "open_questions": 0,
+                    "independent_reviews": 1,
+                    "contradicting_observations": 0,
+                    "stale_reviews": 0,
+                    "stale_evidence": 0,
+                    "manifest": blank_coverage
+                })),
+                "{label}: MCP output schema は空 coverage bucket を拒否するべき"
+            );
+        }
+
         let mut fractional = fixture.clone();
         fractional["nodes"][0]["span"]["start"] = json!(0.5);
         let mut null = fixture.clone();
@@ -522,6 +553,10 @@ mod review_registry_tests {
         assert_eq!(
             sampling["properties"]["coverage"]["additionalProperties"]["maximum"],
             u64::MAX
+        );
+        assert_eq!(
+            sampling["properties"]["coverage"]["propertyNames"]["pattern"],
+            "\\S"
         );
     }
 

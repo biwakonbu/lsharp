@@ -208,7 +208,11 @@
                 "seed": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
                 "generator": {"type": "string", "minLength": 1},
                 "shrinks": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}},
-                "coverage": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}}
+                "coverage": {
+                  "type": "object",
+                  "propertyNames": {"type": "string", "pattern": "\\S"},
+                  "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}
+                }
               }
             }
           }

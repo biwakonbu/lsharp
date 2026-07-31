@@ -441,6 +441,7 @@ fn sampling_schema() -> Value {
             },
             "coverage": {
                 "type": "object",
+                "propertyNames": { "type": "string", "pattern": "\\S" },
                 "additionalProperties": non_negative_integer_schema()
             }
         }

@@ -187,6 +187,24 @@ runtime の入力契約がずれていた。
 selfhost/native MCP producer、current-source stage0 artifact/runtime、対応2 target、EC-M2-03 aggregate の
 完了証拠ではない。
 
+### Coverage bucket name schema closure (2026-07-31)
+
+`SamplingPlan` の runtime validation は coverage bucket 名を `trim().is_empty()` で検査するが、canonical
+`intent-graph.schema.json` と MCP `lsharp_validate` input/output schema の `coverage` object は
+`additionalProperties` だけを指定していた。そのため空文字、ASCII空白、NBSP-only の bucket 名が static
+schemaでは有効に見えていた。
+
+- canonical schema と MCP の共有 `sampling_schema()` に `propertyNames.pattern: "\\S"` を追加する。
+- bucket の count type・non-negative・maximum policyは変更しない。
+- RED: `test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures` に空文字、ASCII空白、
+  NBSP-only の coverage property nameを追加し、canonical/input/output validatorが空 bucketを受理することを
+  確認した。
+- GREEN: 同じ3ケースを canonical manifest schema、MCP input schema、MCP output schemaの全validatorで拒否し、
+  valid canonical fixtureは維持した。focused `mcp_server::tests` はこの変更を含めて70件を通過した。
+
+これは Rust-host の canonical/MCP static schema parity に限定した verified partial sliceであり、selfhost/native
+manifest parser、current-source stage0 artifact/runtime、対応2 target、EC-M2-02/03 aggregateの完了証拠ではない。
+
 ## Boundary and follow-up
 
 これは Rust MCP の manifest input/report wiring に限定した verified slice である。EmbeddedCli の

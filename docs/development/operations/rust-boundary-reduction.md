@@ -722,6 +722,23 @@ REDは `test_validate_tool_input_schema_rejects_empty_manifest_and_path_strings`
 current-source stage0 artifact/runtime、Mac Apple Silicon / Linux x86_64、EC-M2-03 aggregate の完了証拠
 ではない。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
+### EC-M2-02/03 canonical and MCP coverage bucket name schema closure (2026-07-31)
+
+runtime の `SamplingPlan` は `coverage` bucket 名を `trim().is_empty()` で拒否するが、canonical manifest
+schema と MCP input/output schema は任意の property nameを受理していた。canonical
+`intent-graph.schema.json` と MCPの共有 `sampling_schema()` に `propertyNames.pattern: "\\S"` を追加し、
+空文字・ASCII空白・NBSP-only の bucket 名を schema consumerの段階で fail-closed にした。countの
+non-negative/maximum contractと、coverage省略時の互換性は維持する。
+
+REDは `test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures` に3種類の空 bucket
+を追加し、canonical/input/output Draft 2020-12 validatorが受理することを確認した。GREENでは同じ3ケース
+を全validatorで拒否し、既存の valid fixtureと schema meta validationを維持した。focused
+`mcp_server::tests` は70件 passした。
+
+これは Rust-host canonical/MCP schema parityの verified partial sliceであり、selfhost/native manifest parser、
+current-source stage0 artifact/runtime、Mac Apple Silicon / Linux x86_64、EC-M2-02/03 aggregateの完了証拠では
+ない。ADR: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
