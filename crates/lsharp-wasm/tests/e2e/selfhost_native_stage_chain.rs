@@ -62598,6 +62598,10 @@ fn test_native_macos_aarch64_release_producer_accepts_task_owned_tmpdir() {
         selfhost_project_root().join("scripts/ci/native-macos-aarch64-selfhost-release.sh");
     let script = std::fs::read_to_string(&script_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let stage0_script_path = selfhost_project_root()
+        .join("scripts/ci/native-macos-aarch64-stage0-release.sh");
+    let stage0_script = std::fs::read_to_string(&stage0_script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", stage0_script_path.display()));
 
     for required in [
         "TMPDIR_ROOT=\"${TMPDIR:-/tmp}\"",
@@ -62607,6 +62611,16 @@ fn test_native_macos_aarch64_release_producer_accepts_task_owned_tmpdir() {
         assert!(
             script.contains(required),
             "Mac producer は task-owned TMPDIR boundary `{required}` を許可するべき"
+        );
+    }
+    for required in [
+        "TMPDIR_ROOT=\"${TMPDIR:-/tmp}\"",
+        "TMPDIR_ROOT=\"${TMPDIR_ROOT%/}\"",
+        "mktemp -d \"${TMPDIR_ROOT}/lsharp-native-macos-aarch64-stage0",
+    ] {
+        assert!(
+            stage0_script.contains(required),
+            "Mac stage0 producer は TMPDIR の末尾 slashを正規化するべき: {required}"
         );
     }
 }

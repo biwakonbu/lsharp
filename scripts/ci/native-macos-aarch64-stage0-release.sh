@@ -8,11 +8,15 @@ STAGE0_DIR="${LSHARP_NATIVE_MACOS_AARCH64_STAGE0_DIR:-${ROOT_DIR}/ci-artifacts/n
 SOURCE_COMMIT="$(git rev-parse --verify HEAD 2>/dev/null || true)"
 WORK_DIR=""
 KEEP_WORK_DIR="${LSHARP_NATIVE_MACOS_AARCH64_KEEP_STAGE0_WORK_DIR:-0}"
+TMPDIR_ROOT="${TMPDIR:-/tmp}"
+TMPDIR_ROOT="${TMPDIR_ROOT%/}"
 
 die() {
   echo "ERROR: $*" >&2
   exit 1
 }
+
+[[ -n "$TMPDIR_ROOT" ]] || die "TMPDIR must not be root"
 
 require_file() {
   local path="$1"
@@ -43,7 +47,7 @@ require_safe_output_path "$STAGE0_DIR"
 [[ ! -e "$STAGE0_DIR" && ! -L "$STAGE0_DIR" ]] \
   || die "stage0 output directory already exists: $STAGE0_DIR"
 
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-native-macos-aarch64-stage0.XXXXXX")"
+WORK_DIR="$(mktemp -d "${TMPDIR_ROOT}/lsharp-native-macos-aarch64-stage0.XXXXXX")"
 APP_ARTIFACT_DIR="$WORK_DIR/app-cli"
 STAGE0_COMPILER_ARTIFACT_DIR="$WORK_DIR/stage0-compiler"
 CARGO_TARGET_DIR="$WORK_DIR/cargo-target"
