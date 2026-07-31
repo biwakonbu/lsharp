@@ -443,6 +443,103 @@
     0
     (vector-length attestations)))
 
+(defn validation-source-attestation-bytes-json-loop [bytes idx len out]
+  (if (>= idx len)
+    out
+    (validation-source-attestation-bytes-json-loop
+      bytes
+      (+ idx 1)
+      len
+      (validation-json-append out (int-to-string (vector-get bytes idx))))))
+(defn validation-source-attestation-bytes-json [bytes]
+  (validation-json-array-wrap
+    (validation-source-attestation-bytes-json-loop
+      bytes
+      0
+      (vector-length bytes)
+      "")))
+(defn validation-source-review-attestation-projection-json [attestation]
+  (let [fields0 (validation-json-string-field
+      "review_id"
+      (source-review-attestation-id attestation))
+    fields1 (validation-json-append fields0
+      (validation-json-string-field
+        "subject_digest"
+        (source-review-attestation-subject-digest attestation)))
+    fields2 (validation-json-append fields1
+      (validation-json-string-field
+        "source_commit"
+        (source-review-attestation-source-commit attestation)))
+    fields3 (validation-json-append fields2
+      (validation-json-string-field
+        "provenance_digest"
+        (source-review-attestation-provenance-digest attestation)))
+    fields4 (validation-json-append fields3
+      (validation-json-string-field
+        "provider"
+        (source-review-attestation-provider attestation)))
+    fields5 (validation-json-append fields4
+      (validation-json-string-field
+        "key_id"
+        (source-review-attestation-key-id attestation)))
+    fields6 (validation-json-append fields5
+      (validation-json-string-field
+        "algorithm"
+        (source-review-attestation-algorithm attestation)))
+    fields7 (validation-json-append fields6
+      (validation-json-string-field
+        "signature"
+        (source-review-attestation-signature attestation)))
+    fields8 (validation-json-append fields7
+      (validation-json-string-field
+        "issued_at"
+        (source-review-attestation-issued-at attestation)))
+    expires-at (source-review-attestation-expires-at attestation)
+    fields9 (if (> (string-length expires-at) 0)
+      (validation-json-append fields8
+        (validation-json-string-field "expires_at" expires-at))
+      (validation-json-append fields8
+        (validation-json-field "expires_at" "null")))
+    fields10 (validation-json-append fields9
+      (validation-json-int-field
+        "sequence"
+        (source-review-attestation-sequence attestation)))
+    fields11 (validation-json-append fields10
+      (validation-json-string-field
+        "state"
+        (source-review-attestation-state attestation)))
+    fields12 (validation-json-append fields11
+      (validation-json-array-field
+        "canonical_bytes"
+        (validation-source-attestation-bytes-json
+          (source-review-attestation-canonical-bytes attestation))))
+    fields13 (validation-json-append fields12
+      (validation-json-object-field
+        "span"
+        (validation-source-span-json
+          (source-review-attestation-start attestation)
+          (source-review-attestation-end attestation))))]
+    (validation-json-object-wrap fields13)))
+(defn validation-source-review-attestation-projections-json-loop
+  [attestations idx len out]
+  (if (>= idx len)
+    out
+    (validation-source-review-attestation-projections-json-loop
+      attestations
+      (+ idx 1)
+      len
+      (validation-json-append
+        out
+        (validation-source-review-attestation-projection-json
+          (vector-get attestations idx))))))
+(defn validation-source-review-attestation-projections-json [attestations]
+  (validation-json-array-wrap
+    (validation-source-review-attestation-projections-json-loop
+      attestations
+      0
+      (vector-length attestations)
+      "")))
+
 (defn validation-source-review-json [review attestations]
   (let [id (source-review-id review)
     fields0 (validation-json-string-field "namespace"

@@ -162,6 +162,69 @@ fn validate_source_projects_attestation_as_unverified_fact_and_manifest_state() 
             "state": "unverified"
         }])
     );
+    let expected_attestation = ReviewAttestation::new(
+        "review:checkout/reviewer-001",
+        "sha256:subject-001",
+        "0123456789abcdef",
+        "sha256:review-001",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z",
+        Some("2026-09-01T00:00:00Z".to_string()),
+        3,
+        vec![0, 1, 2],
+    )
+    .expect("source attestation projection fixture should be valid");
+    let attestation_start = SOURCE
+        .find(":review-attestation")
+        .expect("attestation directive span should exist");
+    let attestation_end = SOURCE
+        .rfind("\n  true")
+        .expect("attestation directive end should exist");
+    assert_eq!(
+        report["review_attestations"],
+        serde_json::json!([{
+            "review_id": "review:checkout/reviewer-001",
+            "subject_digest": "sha256:subject-001",
+            "source_commit": "0123456789abcdef",
+            "provenance_digest": "sha256:review-001",
+            "provider": "github",
+            "key_id": "org/reviews-2026",
+            "algorithm": "ed25519",
+            "signature": "AAECAw",
+            "issued_at": "2026-08-01T00:00:00Z",
+            "expires_at": "2026-09-01T00:00:00Z",
+            "sequence": 3,
+            "state": "unverified",
+            "canonical_bytes": expected_attestation.canonical_bytes(),
+            "span": {"start": attestation_start, "end": attestation_end}
+        }])
+    );
+    let report_text = String::from_utf8_lossy(&result.stdout);
+    let expected_attestation_fields = [
+        "\"review_id\"",
+        "\"subject_digest\"",
+        "\"source_commit\"",
+        "\"provenance_digest\"",
+        "\"provider\"",
+        "\"key_id\"",
+        "\"algorithm\"",
+        "\"signature\"",
+        "\"issued_at\"",
+        "\"expires_at\"",
+        "\"sequence\"",
+        "\"state\"",
+        "\"canonical_bytes\"",
+        "\"span\"",
+    ];
+    let mut previous = 0;
+    for field in expected_attestation_fields {
+        let relative = report_text[previous..]
+            .find(field)
+            .expect("review attestation fields should be present in deterministic order");
+        previous += relative + field.len();
+    }
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(&output).expect("source manifest should be emitted"))
             .expect("manifest should be JSON");

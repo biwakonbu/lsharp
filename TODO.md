@@ -448,9 +448,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   とした。selfhost/native parity は残る。ADR:
   `docs/adr/decisions-v0.3-review-explicit-context.md`。
 - [~] `EC-M3-04` source と selfhost/native producer の attestation named-field、canonical bytes、
-  state、span、exit code の Rust/selfhost 同一 fixture parity は verified partial。native source-file
-  smoke の fixture contract、current-source native stage0、packaged artifact provenance、Mac/Linux
-  runtime parityを `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
+  state、span、exit code の Rust/selfhost 同一 fixture parity は verified partial。JSON report の
+  field order、nullable `expires_at`、canonical bytes、span と native source-file smoke の
+  report/manifest fixture contract を追加検証した。current-source native stage0、packaged
+  artifact provenance、Mac/Linux runtime parityを `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
 - [~] `EC-M3-05` keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity
   projection、nullable field order、conflict rejection は verified partial。offline release identity
   verifier、native-only archive / packaged stage0 の optional projection、artifact/source mismatch の

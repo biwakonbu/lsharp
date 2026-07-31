@@ -1651,7 +1651,7 @@ run_expected_failure validation-attestation-json 0 validate \
   --source "$VALIDATION_ATTESTATION_SOURCE" \
   --format json \
   --emit-manifest "$VALIDATION_ATTESTATION_MANIFEST"
-python3 - "$WORK_DIR/validation-attestation-json.stdout" "$VALIDATION_ATTESTATION_MANIFEST" <<'PY'
+python3 - "$WORK_DIR/validation-attestation-json.stdout" "$VALIDATION_ATTESTATION_MANIFEST" "$VALIDATION_ATTESTATION_SOURCE" <<'PY'
 import json
 import pathlib
 import sys
@@ -1661,6 +1661,79 @@ if report.get("review_verifications") != [
     {"review_id": "review:checkout/reviewer-001", "state": "unverified"}
 ]:
     raise SystemExit(f"native source attestation report is invalid: {report!r}")
+expected_attestation_fields = [
+    "review_id",
+    "subject_digest",
+    "source_commit",
+    "provenance_digest",
+    "provider",
+    "key_id",
+    "algorithm",
+    "signature",
+    "issued_at",
+    "expires_at",
+    "sequence",
+    "state",
+    "canonical_bytes",
+    "span",
+]
+attestations = report.get("review_attestations")
+if not isinstance(attestations, list) or len(attestations) != 1:
+    raise SystemExit(f"native source attestation projections are invalid: {report!r}")
+attestation = attestations[0]
+if list(attestation) != expected_attestation_fields:
+    raise SystemExit(f"native source attestation field order is invalid: {attestation!r}")
+expected_values = {
+    "review_id": "review:checkout/reviewer-001",
+    "subject_digest": "sha256:subject-001",
+    "source_commit": "0123456789abcdef",
+    "provenance_digest": "sha256:review-001",
+    "provider": "github",
+    "key_id": "org/reviews-2026",
+    "algorithm": "ed25519",
+    "signature": "AAECAw",
+    "issued_at": "2026-08-01T00:00:00Z",
+    "expires_at": "2026-09-01T00:00:00Z",
+    "sequence": 3,
+    "state": "unverified",
+}
+if (
+    attestation.get("subject_digest") != expected_values["subject_digest"]
+    or attestation.get("source_commit") != expected_values["source_commit"]
+    or attestation.get("provenance_digest") != expected_values["provenance_digest"]
+    or attestation.get("provider") != expected_values["provider"]
+    or attestation.get("key_id") != expected_values["key_id"]
+    or attestation.get("algorithm") != expected_values["algorithm"]
+    or attestation.get("signature") != expected_values["signature"]
+    or attestation.get("issued_at") != expected_values["issued_at"]
+    or attestation.get("expires_at") != expected_values["expires_at"]
+    or attestation.get("sequence") != expected_values["sequence"]
+    or attestation.get("state") != expected_values["state"]
+):
+    raise SystemExit(f"native source attestation fields are invalid: {attestation!r}")
+def append_field(out, value):
+    encoded = value.encode("utf-8")
+    return out + len(encoded).to_bytes(8, "big") + encoded
+canonical = b"lsharp.review-attestation.v1\0"
+for value in (
+    expected_values["review_id"],
+    expected_values["subject_digest"],
+    expected_values["source_commit"],
+    expected_values["provenance_digest"],
+    expected_values["provider"],
+    expected_values["key_id"],
+    expected_values["algorithm"],
+    expected_values["issued_at"],
+    expected_values["expires_at"],
+    str(expected_values["sequence"]),
+):
+    canonical = append_field(canonical, value)
+if attestation.get("canonical_bytes") != list(canonical):
+    raise SystemExit(f"native source attestation canonical bytes are invalid: {attestation!r}")
+source = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
+expected_span = {"start": source.find(":review-attestation"), "end": source.rfind("\n  true")}
+if attestation.get("span") != expected_span:
+    raise SystemExit(f"native source attestation span is invalid: {attestation!r}")
 reviews = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")).get("reviews")
 if not isinstance(reviews, list) or len(reviews) != 1:
     raise SystemExit(f"native source attestation manifest reviews are invalid: {reviews!r}")
@@ -1673,7 +1746,7 @@ run_expected_failure validation-attestation-no-expiry-json 0 validate \
   --source "$VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE" \
   --format json \
   --emit-manifest "$VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST"
-python3 - "$WORK_DIR/validation-attestation-no-expiry-json.stdout" "$VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST" <<'PY'
+python3 - "$WORK_DIR/validation-attestation-no-expiry-json.stdout" "$VALIDATION_ATTESTATION_NO_EXPIRY_MANIFEST" "$VALIDATION_ATTESTATION_NO_EXPIRY_SOURCE" <<'PY'
 import json
 import pathlib
 import sys
@@ -1683,6 +1756,79 @@ if report.get("review_verifications") != [
     {"review_id": "review:checkout/reviewer-001", "state": "unverified"}
 ]:
     raise SystemExit(f"native source attestation without expiry report is invalid: {report!r}")
+expected_attestation_fields = [
+    "review_id",
+    "subject_digest",
+    "source_commit",
+    "provenance_digest",
+    "provider",
+    "key_id",
+    "algorithm",
+    "signature",
+    "issued_at",
+    "expires_at",
+    "sequence",
+    "state",
+    "canonical_bytes",
+    "span",
+]
+attestations = report.get("review_attestations")
+if not isinstance(attestations, list) or len(attestations) != 1:
+    raise SystemExit(f"native source attestation without expiry projections are invalid: {report!r}")
+attestation = attestations[0]
+if list(attestation) != expected_attestation_fields:
+    raise SystemExit(f"native source attestation without expiry field order is invalid: {attestation!r}")
+expected_values = {
+    "review_id": "review:checkout/reviewer-001",
+    "subject_digest": "sha256:subject-001",
+    "source_commit": "0123456789abcdef",
+    "provenance_digest": "sha256:review-001",
+    "provider": "github",
+    "key_id": "org/reviews-2026",
+    "algorithm": "ed25519",
+    "signature": "AAECAw",
+    "issued_at": "2026-08-01T00:00:00Z",
+    "expires_at": None,
+    "sequence": 3,
+    "state": "unverified",
+}
+if (
+    attestation.get("subject_digest") != expected_values["subject_digest"]
+    or attestation.get("source_commit") != expected_values["source_commit"]
+    or attestation.get("provenance_digest") != expected_values["provenance_digest"]
+    or attestation.get("provider") != expected_values["provider"]
+    or attestation.get("key_id") != expected_values["key_id"]
+    or attestation.get("algorithm") != expected_values["algorithm"]
+    or attestation.get("signature") != expected_values["signature"]
+    or attestation.get("issued_at") != expected_values["issued_at"]
+    or attestation.get("expires_at") != expected_values["expires_at"]
+    or attestation.get("sequence") != expected_values["sequence"]
+    or attestation.get("state") != expected_values["state"]
+):
+    raise SystemExit(f"native source attestation without expiry fields are invalid: {attestation!r}")
+def append_field(out, value):
+    encoded = value.encode("utf-8")
+    return out + len(encoded).to_bytes(8, "big") + encoded
+canonical = b"lsharp.review-attestation.v1\0"
+for value in (
+    expected_values["review_id"],
+    expected_values["subject_digest"],
+    expected_values["source_commit"],
+    expected_values["provenance_digest"],
+    expected_values["provider"],
+    expected_values["key_id"],
+    expected_values["algorithm"],
+    expected_values["issued_at"],
+    "",
+    str(expected_values["sequence"]),
+):
+    canonical = append_field(canonical, value)
+if attestation.get("canonical_bytes") != list(canonical):
+    raise SystemExit(f"native source attestation without expiry canonical bytes are invalid: {attestation!r}")
+source = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
+expected_span = {"start": source.find(":review-attestation"), "end": source.rfind("\n  true")}
+if attestation.get("span") != expected_span:
+    raise SystemExit(f"native source attestation without expiry span is invalid: {attestation!r}")
 reviews = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")).get("reviews")
 if not isinstance(reviews, list) or len(reviews) != 1:
     raise SystemExit(f"native source attestation without expiry reviews are invalid: {reviews!r}")

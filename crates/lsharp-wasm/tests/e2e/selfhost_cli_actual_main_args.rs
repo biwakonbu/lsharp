@@ -1,4 +1,5 @@
 use super::support::*;
+use lsharp_types::intent::review_attestation::{AttestationAlgorithm, ReviewAttestation};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1024,6 +1025,48 @@ fn test_e2e_selfhost_embedded_cli_validate_source_projects_review_attestation() 
             }
         ])
     );
+    let expected_canonical = ReviewAttestation::new(
+        "review:checkout/reviewer-001",
+        "sha256:subject-001",
+        "0123456789abcdef",
+        "sha256:review-001",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z",
+        Some("2026-09-01T00:00:00Z".to_string()),
+        3,
+        vec![0, 1, 2],
+    )
+    .expect("review attestation projection fixture は valid であるべき")
+    .canonical_bytes();
+    let projections = report["review_attestations"]
+        .as_array()
+        .expect("review_attestations は array であるべき");
+    assert_eq!(projections.len(), 2);
+    assert_eq!(projections[0]["review_id"], "review:checkout/reviewer-001");
+    assert_eq!(projections[0]["subject_digest"], "sha256:subject-001");
+    assert_eq!(projections[0]["source_commit"], "0123456789abcdef");
+    assert_eq!(projections[0]["provenance_digest"], "sha256:review-001");
+    assert_eq!(projections[0]["provider"], "github");
+    assert_eq!(projections[0]["key_id"], "org/reviews-2026");
+    assert_eq!(projections[0]["algorithm"], "ed25519");
+    assert_eq!(projections[0]["signature"], "AAECAw");
+    assert_eq!(projections[0]["issued_at"], "2026-08-01T00:00:00Z");
+    assert_eq!(projections[0]["expires_at"], "2026-09-01T00:00:00Z");
+    assert_eq!(projections[0]["sequence"], 3);
+    assert_eq!(projections[0]["state"], "unverified");
+    assert_eq!(
+        projections[0]["canonical_bytes"],
+        serde_json::to_value(expected_canonical).expect("canonical bytes は JSON 化できるべき")
+    );
+    assert!(
+        projections[0]["span"]["start"].as_u64().unwrap()
+            < projections[0]["span"]["end"].as_u64().unwrap()
+    );
+    assert_eq!(projections[1]["review_id"], "review:checkout/reviewer-002");
+    assert_eq!(projections[1]["provenance_digest"], "sha256:review-002");
+    assert_eq!(projections[1]["state"], "unverified");
 
     let manifest: Value =
         serde_json::from_str(&manifest).expect("manifest は valid JSON であるべき");

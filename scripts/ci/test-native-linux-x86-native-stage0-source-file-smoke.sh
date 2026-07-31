@@ -84,6 +84,21 @@ for required in \
   'run_expected_failure validation-attestation-json' \
   'validation-attestation-no-expiry-json' \
   'report.get("review_verifications")' \
+  'report.get("review_attestations")' \
+  'attestation.get("subject_digest")' \
+  'attestation.get("source_commit")' \
+  'attestation.get("provenance_digest")' \
+  'attestation.get("provider")' \
+  'attestation.get("key_id")' \
+  'attestation.get("algorithm")' \
+  'attestation.get("signature")' \
+  'attestation.get("issued_at")' \
+  'attestation.get("expires_at")' \
+  'attestation.get("sequence")' \
+  'attestation.get("state")' \
+  'attestation.get("canonical_bytes")' \
+  'attestation.get("span")' \
+  'expected_attestation_fields' \
   'review.get("verification_state") != "unverified"' \
   'run_expected_failure validation-attestation-text' \
   'validation-attestation-no-expiry-text' \

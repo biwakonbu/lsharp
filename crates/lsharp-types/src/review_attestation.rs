@@ -506,6 +506,35 @@ pub fn decode_signature_base64url(value: &str) -> Result<Vec<u8>, AttestationErr
     Ok(output)
 }
 
+/// source/report projection 用の padding なし base64url encoder。
+///
+/// source named field を decode しても wire の値を失わないよう、標準化した同じ encoding
+/// を report へ戻す。署名対象の canonical bytes とは別の表示用 field である。
+pub fn encode_signature_base64url(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut output = String::new();
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        output.push(ALPHABET[(first >> 2) as usize] as char);
+        output.push(
+            ALPHABET[((first & 0b11) << 4 | chunk.get(1).copied().unwrap_or(0) >> 4) as usize]
+                as char,
+        );
+        if let Some(second) = chunk.get(1) {
+            output.push(
+                ALPHABET
+                    [((second & 0b1111) << 2 | chunk.get(2).copied().unwrap_or(0) >> 6) as usize]
+                    as char,
+            );
+        }
+        if let Some(third) = chunk.get(2) {
+            output.push(ALPHABET[(third & 0b0011_1111) as usize] as char);
+        }
+    }
+    output
+}
+
 fn decode_base64url_char(byte: u8) -> Option<u8> {
     match byte {
         b'A'..=b'Z' => Some(byte - b'A'),

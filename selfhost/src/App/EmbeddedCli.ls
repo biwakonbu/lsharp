@@ -565,22 +565,30 @@
     fields6 (docjson-append fields5 (docjson-int-field "stale_reviews" stale-reviews))
     fields7 (docjson-append fields6 (docjson-int-field "stale_evidence" stale-evidence))
     fields8
-      (if (> (vector-length review-verifications) 0)
-        (docjson-append
-          fields7
-          (docjson-array-field
-            "review_verifications"
-            (validation-source-review-verifications-json review-verifications)))
-        fields7)
-    fields9
       (if (> (vector-length review-evidence-identity) 0)
         (docjson-append
-          fields8
+          fields7
           (docjson-object-field
             "review_evidence_identity"
             (source-review-evidence-identity-json review-evidence-identity)))
-        fields8)]
-    (docjson-object-wrap fields9)))
+        fields7)
+    fields9
+      (if (> (vector-length review-verifications) 0)
+        (docjson-append
+          fields8
+          (docjson-array-field
+            "review_verifications"
+            (validation-source-review-verifications-json review-verifications)))
+        fields8)
+    fields10
+      (if (> (vector-length review-verifications) 0)
+        (docjson-append
+          fields9
+          (docjson-array-field
+            "review_attestations"
+            (validation-source-review-attestation-projections-json review-verifications)))
+        fields9)]
+    (docjson-object-wrap fields10)))
 (defn validation-report-text-line [key value]
   (string-concat key (string-concat ": " value)))
 (defn validation-report-text-append [out line]

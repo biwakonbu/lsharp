@@ -11,8 +11,8 @@
 
 Rust source adapter と selfhost `EmbeddedCli` は named-field `:review-attestation` を
 `unverified` として report/manifest へ投影できる。一方、native source-file smoke は
-review registry と stale/invalid 境界だけを確認しており、native producer が attestation を
-落としても検知できなかった。
+review registry と stale/invalid 境界、`review_verifications` だけを確認しており、
+native producer が named fields、canonical bytes、span を落としても検知できなかった。
 
 native stage0 は trust store、lifecycle、current subject/source identity を暗黙に補完しては
 ならない。外部 verification input がない source attestation は、Rust/selfhost と同じ
@@ -29,6 +29,13 @@ native stage0 は trust store、lifecycle、current subject/source identity を�
   - external trust/lifecycle input がないため exit は `2`、stderr は空である。
 - `--format text` は同じ fixtureを
   `review-verification: review:checkout/reviewer-001=unverified` の固定行へ投影する。
+- JSON report の `review_attestations` は source record がある場合だけ出力し、次の field order を
+  Rust wire と固定する: `review_id`, `subject_digest`, `source_commit`, `provenance_digest`,
+  `provider`, `key_id`, `algorithm`, `signature`, `issued_at`, `expires_at`, `sequence`, `state`,
+  `canonical_bytes`, `span`。`expires-at` 省略時は JSON `null` とし、canonical bytes は UTF-8
+  length-prefixed field、span は directive の `start` / `end` を投影する。
+- 通常 selfhost CLI と `EmbeddedCli` は共通の `Tools.Validation.Evidence` projection helper を
+  使い、attestation のない既存 report shape と manifest shape を変えない。
 - named-field attestation の `algorithm`、`signature`、`issued-at`、`expires-at` を壊した
   4 variant は、すべて stable な `source validation error:8`、exit `1`、stdout 空、
   no-report/no-manifest で fail-closed に拒否する。
@@ -41,6 +48,13 @@ native stage0 は trust store、lifecycle、current subject/source identity を�
   marker を先に要求し、実装前に `VALIDATION_ATTESTATION_SOURCE` 欠落で失敗することを確認した。
 - GREEN: fixture、JSON/text assertions、manifest state assertionsを source smokeへ追加し、同じ
   static/provenance harness が `Linux native stage0 source-file provenance tests: OK` で通過した。
+- RED/GREEN: Rust driver の `validate_source_review_attestation` test と native marker を先に
+  追加し、report の `review_attestations` が named field order、期限付き/期限なしの nullable
+  expiry、canonical bytes、span を持つことを固定した。Rust focused test、selfhost
+  `EmbeddedCli` actual Wasm E2E、Linux source-file static/provenance harness が通過した。
+- Native runner の入口である `App.Cli` に残っていた `run-validate-source` の閉じ括弧不足を
+  最小修正し、actual selfhost CLI の `check --json` bundle gate も通過させた。これにより
+  通常 CLI と EmbeddedCli が同じ Evidence helper を構文・bundle compile まで共有する。
 - Negative GREEN: valid fixtureから4つの invalid attestation variantを生成し、共通 helperで
   code `8`、exit `1`、stderr diagnostic、stdout/manifestなしを要求する static/provenance
   harness が通過した。
@@ -52,7 +66,8 @@ native stage0 は trust store、lifecycle、current subject/source identity を�
 
 ## Boundary
 
-この ADR の GREEN は、source smoke contract と fake Lima/provenance harness の証拠である。
+この ADR の GREEN は、Rust/selfhost report projection と source smoke contract、fake
+Lima/provenance harness の evidence である。
 別セッションが Linux x86_64 hostgen を実行中だったため、同じ VM に競合する native stage0
 replay は起動していない。従って current-source に一致する packaged stage0 の実 runtime、
 Mac Apple Silicon / Linux x86_64 の二 target matrix、trust store/lifecycle による

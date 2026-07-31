@@ -1412,6 +1412,7 @@ fn cmd_validate(
         format,
         &review_verifications,
         review_identity.as_ref(),
+        &[],
     )
 }
 
@@ -1441,6 +1442,7 @@ fn cmd_validate_source(
         format,
         &review_verifications,
         review_identity.as_ref(),
+        &source_attestations,
     )
 }
 
@@ -1559,6 +1561,7 @@ fn emit_validation_report(
     format: CliValidationFormat,
     review_verifications: &[lsharp_types::validation::ReviewVerificationFact],
     review_identity: Option<&lsharp_types::validation::ReviewEvidenceIdentity>,
+    source_attestations: &[lsharp_types::validation_source::SourceReviewAttestation],
 ) -> miette::Result<i32> {
     let mut report = if review_verifications.is_empty() {
         graph.validate()
@@ -1569,6 +1572,25 @@ fn emit_validation_report(
     };
     if let Some(identity) = review_identity {
         report = report.with_review_evidence_identity(identity.clone());
+    }
+    if !source_attestations.is_empty() {
+        let mut projections = source_attestations
+            .iter()
+            .map(|source_attestation| {
+                let state = review_verifications
+                    .iter()
+                    .find(|fact| fact.review_id() == source_attestation.attestation().review_id())
+                    .map(|fact| fact.state())
+                    .unwrap_or_else(|| source_attestation.verification_state());
+                lsharp_types::validation::ReviewAttestationProjection::new(
+                    source_attestation.attestation(),
+                    state,
+                    source_attestation.span(),
+                )
+            })
+            .collect::<Vec<_>>();
+        projections.sort_by(|left, right| left.review_id().cmp(right.review_id()));
+        report = report.with_review_attestations(projections);
     }
 
     match format {

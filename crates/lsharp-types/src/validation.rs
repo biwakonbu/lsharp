@@ -10,13 +10,16 @@ use crate::evidence::{
 };
 use crate::intent::{
     ClaimId, EvidenceId, IntentId, IntentNode, ReviewId, StableId,
-    review_attestation::ReviewVerificationState,
+    review_attestation::{
+        encode_signature_base64url, ReviewAttestation, ReviewVerificationState,
+    },
 };
 pub(crate) use crate::validation_identity::ReviewEvidenceIdentityWire;
 pub use crate::validation_identity::{
     ReviewEvidenceIdentity, ReviewEvidenceIdentityError, ReviewEvidenceIdentityProjectionError,
 };
 use serde::Serialize;
+use lsharp_syntax::span::Span;
 
 /// node の trace が欠けている箇所。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +117,57 @@ impl ReviewVerificationFact {
     }
 }
 
+/// source の named-field attestation を report へ投影する deterministic record。
+///
+/// verifier が解決した state、source directive span、署名対象の canonical bytes を同じ
+/// JSON object に束ね、Rust/selfhost/native の producer が同一 fixture を比較できるようにする。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewAttestationProjection {
+    review_id: String,
+    subject_digest: String,
+    source_commit: String,
+    provenance_digest: String,
+    provider: String,
+    key_id: String,
+    algorithm: String,
+    signature: String,
+    issued_at: String,
+    expires_at: Option<String>,
+    sequence: u64,
+    state: ReviewVerificationState,
+    canonical_bytes: Vec<u8>,
+    span: Span,
+}
+
+impl ReviewAttestationProjection {
+    pub fn new(
+        attestation: &ReviewAttestation,
+        state: ReviewVerificationState,
+        span: Span,
+    ) -> Self {
+        Self {
+            review_id: attestation.review_id().as_str().to_string(),
+            subject_digest: attestation.subject_digest().to_string(),
+            source_commit: attestation.source_commit().to_string(),
+            provenance_digest: attestation.provenance_digest().to_string(),
+            provider: attestation.provider().to_string(),
+            key_id: attestation.key_id().to_string(),
+            algorithm: attestation.algorithm().as_str().to_string(),
+            signature: encode_signature_base64url(attestation.signature()),
+            issued_at: attestation.issued_at().to_string(),
+            expires_at: attestation.expires_at().map(ToOwned::to_owned),
+            sequence: attestation.sequence(),
+            state,
+            canonical_bytes: attestation.canonical_bytes(),
+            span,
+        }
+    }
+
+    pub fn review_id(&self) -> &str {
+        &self.review_id
+    }
+}
+
 /// verification fact を report へ投影できない理由。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ReviewVerificationProjectionError {
@@ -138,6 +192,7 @@ pub struct ValidationReport {
     stale_evidence: usize,
     review_evidence_identity: Option<ReviewEvidenceIdentity>,
     review_verifications: Option<Vec<ReviewVerificationFact>>,
+    review_attestations: Option<Vec<ReviewAttestationProjection>>,
 }
 
 impl ValidationReport {
@@ -175,6 +230,17 @@ impl ValidationReport {
 
     pub fn review_evidence_identity(&self) -> Option<&ReviewEvidenceIdentity> {
         self.review_evidence_identity.as_ref()
+    }
+
+    /// source-owned attestation の named fields/canonical bytes/span を report に追加する。
+    pub fn with_review_attestations(
+        mut self,
+        attestations: Vec<ReviewAttestationProjection>,
+    ) -> Self {
+        if !attestations.is_empty() {
+            self.review_attestations = Some(attestations);
+        }
+        self
     }
 
     /// explicit review input identity を report に追加する。
@@ -271,6 +337,12 @@ impl ValidationReport {
                     .map(ReviewVerificationWire::from_fact)
                     .collect()
             }),
+            review_attestations: self.review_attestations.as_ref().map(|attestations| {
+                attestations
+                    .iter()
+                    .map(ReviewAttestationProjectionWire::from_projection)
+                    .collect()
+            }),
         }
     }
 }
@@ -288,6 +360,8 @@ struct ValidationReportWire {
     review_evidence_identity: Option<ReviewEvidenceIdentityWire>,
     #[serde(skip_serializing_if = "Option::is_none")]
     review_verifications: Option<Vec<ReviewVerificationWire>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    review_attestations: Option<Vec<ReviewAttestationProjectionWire>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -307,6 +381,54 @@ impl ReviewVerificationWire {
         Self {
             review_id: fact.review_id().as_str().to_string(),
             state: fact.state().as_str(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewAttestationProjectionWire {
+    review_id: String,
+    subject_digest: String,
+    source_commit: String,
+    provenance_digest: String,
+    provider: String,
+    key_id: String,
+    algorithm: String,
+    signature: String,
+    issued_at: String,
+    expires_at: Option<String>,
+    sequence: u64,
+    state: &'static str,
+    canonical_bytes: Vec<u8>,
+    span: SourceSpanWire,
+}
+
+#[derive(Debug, Serialize)]
+struct SourceSpanWire {
+    start: usize,
+    end: usize,
+}
+
+impl ReviewAttestationProjectionWire {
+    fn from_projection(projection: &ReviewAttestationProjection) -> Self {
+        Self {
+            review_id: projection.review_id.clone(),
+            subject_digest: projection.subject_digest.clone(),
+            source_commit: projection.source_commit.clone(),
+            provenance_digest: projection.provenance_digest.clone(),
+            provider: projection.provider.clone(),
+            key_id: projection.key_id.clone(),
+            algorithm: projection.algorithm.clone(),
+            signature: projection.signature.clone(),
+            issued_at: projection.issued_at.clone(),
+            expires_at: projection.expires_at.clone(),
+            sequence: projection.sequence,
+            state: projection.state.as_str(),
+            canonical_bytes: projection.canonical_bytes.clone(),
+            span: SourceSpanWire {
+                start: projection.span.start,
+                end: projection.span.end,
+            },
         }
     }
 }
@@ -681,6 +803,7 @@ fn validate_graph(
         stale_evidence: stale_subjects.evidence().len(),
         review_evidence_identity: graph.review_evidence_identity.clone(),
         review_verifications: review_verifications.map(ToOwned::to_owned),
+        review_attestations: None,
     }
 }
 
