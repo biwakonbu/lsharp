@@ -55,6 +55,10 @@ def load_json(path):
 def load_identity(path, manifest):
     value = load_json(path)
     if manifest:
+        if not isinstance(value, dict):
+            raise IdentityError(
+                "manifest must be a JSON object containing review_evidence_identity"
+            )
         value = value.get("review_evidence_identity")
         if value is None:
             raise IdentityError("manifest review_evidence_identity is required")

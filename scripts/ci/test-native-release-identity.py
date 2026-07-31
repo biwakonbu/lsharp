@@ -137,6 +137,18 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("field order", result.stderr)
 
+    def test_rejects_non_object_manifest_without_traceback(self):
+        for payload in ("[]", "null", "1"):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as temporary_directory:
+                manifest = pathlib.Path(temporary_directory) / "manifest.json"
+                manifest.write_text(payload + "\n", encoding="utf-8")
+
+                result = self.run_verifier("--manifest", str(manifest))
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("review_evidence_identity", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
     def test_matches_rust_calendar_timestamp_boundary(self):
         valid = identity_for("sha256:" + "e" * 64)
         valid["now"] = "2024-02-29T23:59:59Z"

@@ -61,6 +61,10 @@
   明示 artifact/trust-store/lifecycle bytes を canonical identity へ変換する offline input preparer の
   verified partial sliceを追加した。preparer/verifier の `now` は Rust canonical timestamp と同じ閏年・暦日・時分秒範囲を
   共有し、lexical shapeだけでは通る不正日時を fail-closed にする。verifier は明示 snapshot の raw bytes を任意に再計算し、trust-store/lifecycle digest mismatch と片側指定を fail-closed にする。
+  2026-08-01 に `--manifest` の JSON root shape も検証し、配列・null・数値を traceback ではなく
+  return code `1` の `review_evidence_identity` 入力エラーへ変換する contract test を追加した。これは
+  manifest runtime validation の verified partial sliceであり、native MCP full-tool/provider semantics、
+  current-source target runtime、packaged bytes parity は残る。
   2026-07-31 に native source-file smoke の identity options なし JSON/manifest が
   `review_evidence_identity` を暗黙生成しない no-implicit boundary を追加した。実 native MCP、provider、
   current-source/packaged runtime は残る。

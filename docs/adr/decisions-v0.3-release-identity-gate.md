@@ -31,16 +31,21 @@ network/helper を release smoke へ暗黙に入れることも、offline な ta
   manifest/packageへ投影する。`native-official-release-local.sh` は artifact/stage0 directoryに
   `review-evidence-identity.json` がある場合だけこの入力を伝播し、明示された provider snapshot は
   下流の release/package/smoke verifierへ渡す。
+- verifier の `--manifest` 入力は JSON object を要求する。配列・null・数値などの非 object root は
+  `review_evidence_identity` を含む安定した入力エラーへ変換し、Python traceback を release surface
+  へ漏らさない。object 内の identity 欠落や shape 不正は既存の identity validation へ渡す。
 
 ## Evidence
 
 - RED: `scripts/ci/test-native-release-identity.py` が verifier未実装時に失敗し、release、release
   smoke、stage0 package の共通 gate marker と identity conflict を先に固定した。
-- GREEN: 同テスト（5 tests）、native release packaging fixture、
+- GREEN: 同テスト（8 tests）、native release packaging fixture、
   `scripts/ci/test-native-stage0-release-package.sh`、`scripts/ci/test-native-stage0-package.sh`、
   `scripts/ci/test-native-release-input-bundle.py` が passした。`bash -n` で変更 shell scriptも検査した。
 - identity field order、artifact SHA-256 mismatch、provider digest 欠落、manifest/file conflict は
   offline fixtureで再現可能な failure boundary として固定した。
+- manifest root が配列・null・数値の場合も、return code `1`、`review_evidence_identity` を含む
+  diagnostics、traceback なしの fail-closed boundary を `NativeReleaseIdentityTest` で固定した。
 
 ## Boundary and follow-up
 
