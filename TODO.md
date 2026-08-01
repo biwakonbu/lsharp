@@ -1874,3 +1874,15 @@ packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-0
 `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'`
 と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。
 Evidence: `docs/adr/decisions-v0.3-native-stage0-release-embedded-identity-conflict.md`。
+
+2026-08-02 に native official release gate の Linux hostgen replay lock preflight を provider snapshot / identity /
+source smoke evidence より前へ移動した。別セッションが live replayを所有中で provider identityが欠ける fixtureでも、
+provider/package/fetch/smokeへ進まず exit `90` と lock owner/artifact/VM path を返し、release outputを作成しない
+RED→GREENを `test-native-official-release-replay-lock.sh` で確認した verified partial sliceである。provider API/auth取得・
+意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが
+現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため、Linux replay・stage regeneration・
+full buildは未実行である。blockerの再現 commandは
+`current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'`
+と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。
+Evidence: [`decisions-v0.3-native-official-release-replay-lock-precedence.md`](docs/adr/decisions-v0.3-native-official-release-replay-lock-precedence.md)。

@@ -7,6 +7,8 @@ TMP_ROOT="$(mktemp -d "/tmp/lsharp-native-official-replay-lock.XXXXXX")"
 LOCK_DIR="$TMP_ROOT/hostgen.lock"
 DIST_DIR="$TMP_ROOT/dist"
 SMOKE_ROOT="$TMP_ROOT/smoke"
+TRUST_STORE="$TMP_ROOT/trust-store.json"
+LIFECYCLE="$TMP_ROOT/review-lifecycle.jsonl"
 SOURCE_COMMIT="$(git rev-parse HEAD)"
 
 cleanup() {
@@ -18,6 +20,8 @@ mkdir "$LOCK_DIR"
 printf '%s\n' "$$" >"$LOCK_DIR/pid"
 printf '%s\n' "$TMP_ROOT/artifact" >"$LOCK_DIR/artifact_dir"
 printf '%s\n' '/tmp/lsharp-native-official-replay-lock-vm' >"$LOCK_DIR/vm_work_dir"
+printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
+printf '%s\n' '{"review_id":"review:orchestrator/r1","state":"active"}' >"$LIFECYCLE"
 
 set +e
 output="$({
@@ -26,6 +30,8 @@ output="$({
   TMPDIR=/tmp \
   DIST_DIR="$DIST_DIR" \
   LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$SMOKE_ROOT" \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
   LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR="$LOCK_DIR" \
     bash "$GATE"
 } 2>&1)"
