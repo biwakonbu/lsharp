@@ -142,8 +142,13 @@ def load_index(path: pathlib.Path, root: pathlib.Path, manifest: Mapping[str, An
         if identifier not in fixture_by_id:
             raise ObservationError(f"{label}.id is not in the fixture matrix: {identifier}")
         command = require_string(entry["command"], f"{label}.command")
-        if command not in fixture_by_id[identifier]["commands"]:
+        fixture = fixture_by_id[identifier]
+        if command not in fixture["commands"]:
             raise ObservationError(f"{label}.command is not declared for fixture: {command}")
+        if fixture["expected"]["artifact"]["required"] and command not in {"compile", "build"}:
+            raise ObservationError(
+                f"{label}.command must be an artifact command (compile or build)"
+            )
         identifiers.append(identifier)
         normalized_entries.append(
             {

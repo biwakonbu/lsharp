@@ -34,7 +34,11 @@ traversal と project root 外への resolve を拒否する safe-reference boun
 `docs/adr/decisions-v0.4-m1-06-evidence-reference-boundary.md`。さらに evidence index の
 `task` と fixture matrix `suite` の identity mismatch を拒否する task-scope boundary を verified
 partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の
-完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-06-task-scope-boundary.md`。
+完了項目には移さない。さらに artifact を要求する evidence index の command を `compile`/`build`
+に限定し、`check` route で artifact/runtime を宣言できない command-scope boundary を verified
+partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の
+完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-06-task-scope-boundary.md`、
+`docs/adr/decisions-v0.4-m1-06-command-scope-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、

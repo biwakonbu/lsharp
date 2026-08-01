@@ -32,6 +32,9 @@ reports and comparison result as authoritative and recompute the comparison.
   `fallback-forbidden`, `network-forbidden`, `source-commit-bound`, and
   `target-declared`. Every gate must have the value `pass`; missing or unknown
   gates fail closed.
+- If the selected fixture requires an artifact, its evidence command must be
+  `compile` or `build`; a `check` selection cannot claim artifact/runtime
+  evidence even when `check` is listed in the fixture's command set.
 - `scripts/ci/semantic_fixture_evidence_audit.py` validates project-relative
   regular-file references without symlink traversal, revalidates both reports through the V4-M1-01
   report contract, recomputes `semantic_fixture_diff.py`'s comparison, and

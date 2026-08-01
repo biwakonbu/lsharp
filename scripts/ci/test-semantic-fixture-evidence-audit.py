@@ -178,6 +178,9 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             mismatched_task = index_for(root)
             mismatched_task["task"] = "V4-M1-03"
             cases.append(("task", mismatched_task, "task"))
+            check_for_artifact = index_for(root)
+            check_for_artifact["fixtures"][1]["command"] = "check"
+            cases.append(("command", check_for_artifact, "artifact command"))
             unsafe_path = index_for(root)
             unsafe_path["oracle_report"] = "../outside.json"
             cases.append(("path", unsafe_path, "relative"))
