@@ -30,7 +30,7 @@
     "adr": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+      "pattern": "^docs/adr/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.md$"
     },
     "oracle_report": {
       "type": "string",

@@ -49,6 +49,9 @@ Mac/Linux matrix は未接続のため v0.4 の完了項目には移さない。
 `docs/adr/*.md` に限定する ADR-reference boundary を verified partial として追加した。実 Rust/native
 artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には移さない。ADR:
 `docs/adr/decisions-v0.4-m1-06-adr-reference-boundary.md`。
+同じ `docs/adr/*.md` path shape を JSON Schema にも反映する schema-parity boundary を verified partial
+として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には
+移さない。ADR: `docs/adr/decisions-v0.4-m1-06-adr-schema-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、

@@ -47,7 +47,12 @@ class SemanticFixtureEvidenceSchemaTest(unittest.TestCase):
         self.assertEqual(properties["status"]["enum"], ["pass", "pending", "mismatch"])
         self.assertEqual(properties["target"]["enum"], ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"])
         self.assertEqual(properties["source_commit"]["pattern"], "^[0-9a-f]{40}$")
-        for field in ("adr", "oracle_report", "native_report", "comparison"):
+        self.assertEqual(properties["adr"]["type"], "string")
+        self.assertEqual(
+            properties["adr"]["pattern"],
+            r"^docs/adr/(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\).+\.md$",
+        )
+        for field in ("oracle_report", "native_report", "comparison"):
             self.assertEqual(properties[field]["type"], "string")
             self.assertIn("pattern", properties[field])
 

@@ -40,6 +40,8 @@ reports and comparison result as authoritative and recompute the comparison.
   Producer identity is checked before differential comparison.
 - The `adr` reference must be a regular Markdown file under `docs/adr/`; a
   readable README or source file is not a decision record for this index.
+- The published JSON Schema repeats the `docs/adr/*.md` path shape; existence,
+  regular-file, symlink, and resolved-root checks remain executable semantics.
 - Both report source commits, and the evidence index source commit, must equal
   `git rev-parse --verify HEAD` in the supplied project root. Matching a stale
   commit across all inputs is not current-source evidence.
