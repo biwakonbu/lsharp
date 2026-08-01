@@ -128,3 +128,10 @@ look stronger than its evidence.
   commits for current evidence and is recorded in the
   [`Mac Rust-oracle current-source full batch ADR`](decisions-v0.4-m1-01-rust-oracle-current-source-full-batch.md).
   Native stage0, Linux, differential, and aggregate gates remain pending.
+- The native-stage0 producer at implementation commit
+  `bf7878926a3f937da93bf0b07744874ea54d8a22` now passes a task-owned source
+  copy to the runner. Its 12-test contract suite proves a mutating runner
+  cannot alter the manifest fixture, while preserving the explicit stage0
+  manifest, fallback, invalid diagnostic, runtime input, and batch isolation
+  boundaries. This is a producer safety slice only; no stale native artifact
+  is promoted to current-source evidence.

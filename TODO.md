@@ -120,6 +120,14 @@ verified partial sliceであり、native stage0、Linux x86_64、Rust/native dif
 stage0、Linux x86_64、Rust/native differential、aggregate は未接続のため `[~]` を維持する。ADR:
 `docs/adr/decisions-v0.4-m1-01-rust-oracle-current-source-full-batch.md`。
 
+さらに native-stage0 report producer の implementation commit
+`bf7878926a3f937da93bf0b07744874ea54d8a22` で、runner に渡す source を fixture work directory の
+task-owned copy へ隔離した。mutating runner の RED/GREEN と native producer 12 tests により、
+evidence 生成が checkout の source を変更しない verified partial boundary を確認した。実 native
+stage0 package/runtime、Linux x86_64、Wasm validation/runtime、Rust/native differential、aggregate は
+未接続のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.4-m1-01-native-report-source-isolation.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。
