@@ -253,6 +253,11 @@ code/semantics/disposition enum、range、非負 position、optional message の
 返さない contract を追加した。完全な item はそのまま通し、native MCP 69 tests と Python compile を
 通過した verified partial である。ADR: `docs/adr/decisions-v0.3-native-mcp-check-output-items.md`。
 target runtime、provider semantics、Rust/native full parity は残る。
+さらに native MCP `lsharp_validate` の `trace_gaps` / `review_verifications` item を postflight 検証し、
+required field、closed field、trace-gap code、review ID pattern、lifecycle state の不正値を native 成功
+として返さない contract を追加した。完全な nested report はそのまま通し、native MCP 70 tests と
+Python compile を通過した verified partial である。ADR: `docs/adr/decisions-v0.3-native-mcp-validate-output-items.md`。
+identity、manifest runtime、target runtime、provider semantics、Rust/native full parity は残る。
 
 ## Current priority — v0.2 Milestone 2
 

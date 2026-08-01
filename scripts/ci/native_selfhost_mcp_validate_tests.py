@@ -19,6 +19,12 @@ def assert_validate_rejects_invalid_report(test):
         ("unknown", "unknown field"),
         ("status", "status"),
         ("count-bool", "open_questions"),
+        ("trace-gap-missing", "missing field: code"),
+        ("trace-gap-code", "code must be one of"),
+        ("trace-gap-extra", "unknown field: extra"),
+        ("review-verification-missing", "missing field: review_id"),
+        ("review-verification-id", "review_id has invalid format"),
+        ("review-verification-state", "state must be one of"),
     )
     for report_mode, expected_message in cases:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -43,3 +49,34 @@ def assert_validate_rejects_invalid_report(test):
             test.assertTrue(response["result"]["isError"])
             test.assertIn(expected_message, response["result"]["content"][0]["text"])
             test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
+
+
+def assert_validate_accepts_valid_nested_report(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {"source": "(defn main [] true)"},
+                },
+            ),
+            root,
+            report_mode="nested-valid",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        report = response["result"]["structuredContent"]
+        test.assertEqual(
+            report["trace_gaps"],
+            [{"code": "trace-gap.claim-without-test", "subject_id": "claim-1"}],
+        )
+        test.assertEqual(
+            report["review_verifications"],
+            [{"review_id": "review:team/one", "state": "verified"}],
+        )

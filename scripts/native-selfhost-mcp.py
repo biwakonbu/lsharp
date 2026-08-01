@@ -782,6 +782,47 @@ def validate_manifest_output(value):
             raise ToolError(f"native emitted manifest {name} must be an array")
 
 
+def validate_trace_gap(value, index):
+    label = f"native validate report trace_gaps[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"code", "subject_id"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in ("code", "subject_id") if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    if value["code"] not in (
+        "trace-gap.intent-without-claim",
+        "trace-gap.claim-without-test",
+    ):
+        raise ToolError(f"{label}.code must be one of trace-gap.intent-without-claim, trace-gap.claim-without-test")
+    subject_id = value["subject_id"]
+    if not isinstance(subject_id, str) or len(subject_id) < 1:
+        raise ToolError(f"{label}.subject_id must be a non-empty string")
+
+
+def validate_review_verification(value, index):
+    label = f"native validate report review_verifications[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"review_id", "state"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in ("review_id", "state") if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    review_id = value["review_id"]
+    if not isinstance(review_id, str) or re.fullmatch(
+        r"review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", review_id
+    ) is None:
+        raise ToolError(f"{label}.review_id has invalid format")
+    if value["state"] not in ("verified", "unverified", "stale", "revoked"):
+        raise ToolError(f"{label}.state must be one of verified, unverified, stale, revoked")
+
+
 def validate_report_output(value):
     if not isinstance(value, dict):
         raise ToolError("native validate report root must be a JSON object")
@@ -806,6 +847,10 @@ def validate_report_output(value):
     for name in ("trace_gaps", "review_verifications"):
         if name in value and not isinstance(value[name], list):
             raise ToolError(f"native validate report {name} must be an array")
+    for index, gap in enumerate(value["trace_gaps"]):
+        validate_trace_gap(gap, index)
+    for index, verification in enumerate(value.get("review_verifications", [])):
+        validate_review_verification(verification, index)
     for name in (
         "open_questions",
         "independent_reviews",
