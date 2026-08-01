@@ -1909,3 +1909,15 @@ blockerの再現 commandは
 `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'`
 と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。
 Evidence: [`decisions-v0.3-native-stage0-release-provider-snapshot-exclusion.md`](docs/adr/decisions-v0.3-native-stage0-release-provider-snapshot-exclusion.md)。
+
+2026-08-02 に stage0 release package の input/output ownership boundaryを追加した。output directory が stage0 input
+directory 自身またはその配下にある場合、staging directoryを入力 package内へ作成せず archive生成前に拒否する RED→GREENを
+`test-native-stage0-release-package.sh` で確認し、stage0外の relative output directoryを受理する既存経路も維持した。
+これは packaged stage0 path ownership の verified partial sliceであり、live provider API/auth取得・意味検証、current-source
+Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 /
+M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有の
+Lima/cargo/replay processも変更していないため Linux replay・stage regeneration・full buildは未実行である。blockerの再現
+commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name
+manifest.json -path '*lsharp*'` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name
+'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-native-stage0-release-output-boundary.md`](docs/adr/decisions-v0.3-native-stage0-release-output-boundary.md)。

@@ -182,6 +182,30 @@ PY
 
 validate_native_stage0_package "$STAGE0_DIR" "$TARGET"
 
+STAGE0_REALPATH="$(python3 - "$STAGE0_DIR" <<'PY'
+import pathlib
+import sys
+
+print(pathlib.Path(sys.argv[1]).resolve())
+PY
+)"
+python3 - "$STAGE0_REALPATH" "$OUTPUT_DIR" <<'PY'
+import pathlib
+import sys
+
+stage0_dir = pathlib.Path(sys.argv[1])
+output_dir = pathlib.Path(sys.argv[2])
+try:
+    output_dir.relative_to(stage0_dir)
+except ValueError:
+    pass
+else:
+    raise SystemExit(
+        "output directory must be outside native stage0 package: "
+        f"{output_dir}"
+    )
+PY
+
 STAGE0_ARTIFACT_PATH="$(python3 - "$STAGE0_DIR/manifest.json" "$STAGE0_DIR" <<'PY'
 import json
 import pathlib

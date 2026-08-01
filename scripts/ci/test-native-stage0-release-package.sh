@@ -94,6 +94,27 @@ PATH="$HOST_BIN:$PATH" "$PACKAGE" \
   --materializer "$INPUT_DIR/materializer.py" \
   --output-dir "$STAGE0_DIR"
 
+NESTED_OUTPUT_DIR="$STAGE0_DIR/nested-dist"
+set +e
+nested_output="$(
+  NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
+    PATH="$HOST_BIN:$PATH" \
+    "$RELEASE_PACKAGE" \
+      --target "$TARGET" \
+      --version "${VERSION}-nested-output" \
+      --stage0-dir "$STAGE0_DIR" \
+      --source-commit "$SOURCE_COMMIT" \
+      --output-dir "$NESTED_OUTPUT_DIR" 2>&1
+)"
+nested_status=$?
+set -e
+[[ "$nested_status" -ne 0 ]] \
+  || fail "native stage0 release accepted an output directory inside its input package"
+grep -F "output directory must be outside native stage0 package" <<<"$nested_output" >/dev/null \
+  || fail "nested output rejection did not expose a stable diagnostic"
+[[ ! -e "$NESTED_OUTPUT_DIR" ]] \
+  || fail "nested output rejection created an output directory inside the input package"
+
 printf '%s\n' 'private trust-store snapshot must not ship' >"$STAGE0_DIR/review-trust-store.snapshot"
 printf '%s\n' 'private lifecycle snapshot must not ship' >"$STAGE0_DIR/review-lifecycle.snapshot"
 
