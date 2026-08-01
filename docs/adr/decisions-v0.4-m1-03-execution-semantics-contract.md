@@ -150,7 +150,7 @@ observations as pending rather than overloading `stdout` or a debug log.
   nested record variable patterns on the supported path and declares the
   AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
 - The matrix RED→GREEN contract is covered by
-  `python3 scripts/ci/test-semantic-fixture-matrix.py` (5 tests). The Rust
+  `python3 scripts/ci/test-semantic-fixture-matrix.py` (6 tests). The Rust
   oracle producer, with fixture implementation commit
   `4790bb3e647d03b2ccfa883bc502e40d2385865f`
   and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
@@ -159,9 +159,11 @@ observations as pending rather than overloading `stdout` or a debug log.
   `wasm-tools validate` also passed. The current Rust report observes the
   artifact/runtime fields; ftable/import byte observations remain pending.
 - A literal record-field pattern currently returns explicit `LS3001` unsupported
-  representation in the Rust compiler. The R1 valid fixture intentionally does
-  not hide that boundary; a dedicated invalid fixture and native counterpart
-  remain follow-up work.
+  representation in the Rust compiler. The dedicated
+  `invalid/record-field-pattern-literal` fixture now fixes that boundary at
+  line 8, columns 19–21, exit `1`, with no artifact or runtime. The Rust report
+  producer accepts both the existing `(start..end)` form and the compiler's
+  multiline `Span { start: …, end: … }` form; missing spans still fail closed.
 - This is Rust-oracle evidence only. Native stage0 execution, Linux x86_64,
   ftable/import byte parity, resource metrics, and the two-target completion
   audit remain pending, so R1 and V4-M1-03 stay `[~]`. The report was captured

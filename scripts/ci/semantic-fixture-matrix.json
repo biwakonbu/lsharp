@@ -96,6 +96,34 @@
       }
     },
     {
+      "id": "invalid/record-field-pattern-literal",
+      "source": "scripts/ci/semantic-fixtures/invalid-record-field-pattern.ls",
+      "kind": "invalid",
+      "layers": ["syntax", "types", "ir", "codegen"],
+      "observables": ["ast", "type", "ir", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["compile"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [
+          {
+            "code": "LS3001",
+            "span": {
+              "start": {"line": 8, "column": 19},
+              "end": {"line": 8, "column": 21}
+            }
+          }
+        ],
+        "exit_code": 1,
+        "artifact": {"required": false, "status": "not-applicable"},
+        "runtime": {"status": "not-run", "exit_code": null, "stdout": null, "stderr": null}
+      }
+    },
+    {
       "id": "invalid/type-undefined-value",
       "source": "scripts/ci/semantic-fixtures/invalid-type.ls",
       "kind": "invalid",

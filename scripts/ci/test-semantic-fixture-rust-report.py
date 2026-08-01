@@ -180,6 +180,46 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 {"status": "not-run", "exit_code": None, "stdout": None, "stderr": None},
             )
 
+    def test_writes_invalid_report_from_multiline_span_struct(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "invalid-span-struct-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stderr.write('Error: [LS3001] unsupported literal pattern "
+                "Span { start:\\n  │ 214, end: 216 }\\n')\n"
+                "raise SystemExit(1)\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_id="invalid/record-field-pattern-literal",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                report["fixtures"][0]["diagnostics"],
+                [
+                    {
+                        "code": "LS3001",
+                        "span": {
+                            "start": {"line": 8, "column": 19},
+                            "end": {"line": 8, "column": 21},
+                        },
+                    }
+                ],
+            )
+
     def test_rejects_invalid_reports_without_explicit_code_or_span(self):
         cases = [
             (

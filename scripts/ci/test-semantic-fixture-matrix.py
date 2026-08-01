@@ -78,6 +78,35 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
         self.assertEqual(fixture["expected"]["runtime"]["stdout"], "41\n1\n7\n")
         self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
 
+    def test_r1_literal_record_pattern_is_explicit_unsupported_boundary(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "invalid/record-field-pattern-literal"
+        )
+        self.assertEqual(fixture["kind"], "invalid")
+        self.assertEqual(fixture["commands"], ["compile"])
+        self.assertEqual(fixture["expected"]["exit_code"], 1)
+        self.assertEqual(
+            fixture["expected"]["diagnostics"],
+            [
+                {
+                    "code": "LS3001",
+                    "span": {
+                        "start": {"line": 8, "column": 19},
+                        "end": {"line": 8, "column": 21},
+                    },
+                }
+            ],
+        )
+        self.assertEqual(
+            fixture["expected"]["artifact"],
+            {"required": False, "status": "not-applicable"},
+        )
+
     def test_rejects_unresolved_target_and_unsafe_source(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))
         cases = (
