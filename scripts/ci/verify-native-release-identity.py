@@ -12,6 +12,7 @@ import hashlib
 import json
 import pathlib
 import re
+import stat
 import sys
 
 from review_identity_timestamp import is_valid_utc_timestamp
@@ -39,6 +40,9 @@ class UnverifiedIdentity(IdentityError):
 
 def digest_file(path, field):
     try:
+        file_stat = path.lstat()
+        if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
+            raise IdentityError(f"{field} must be a regular non-symlink file: {path}")
         payload = path.read_bytes()
     except OSError as error:
         raise IdentityError(f"{field} cannot be read: {path}: {error}") from error

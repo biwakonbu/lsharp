@@ -340,6 +340,12 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   -name manifest.json -path '*lsharp*'`。ADR:
   `docs/adr/decisions-v0.3-rollback-anchor-kind-parity.md`。
 
+  続けて同日、provider/auth snapshot の入力 path を regular non-symlink file に限定した。実体と同じ bytes の
+  trust-store / lifecycle symlink を verifier が辿らず拒否する RED→GREEN を identity harness で固定した
+  verified partial sliceである。live provider/auth acquisition、current-source Linux runtime、両 target の
+  packaged provenance/rollback bytes parity は未検証のため、M3-05-N2 / M3-05-N7 は `[~]` のまま残る。ADR:
+  `docs/adr/decisions-v0.3-provider-snapshot-regular-file.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。

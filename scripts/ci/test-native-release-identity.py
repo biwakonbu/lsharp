@@ -243,6 +243,47 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertNotEqual(partial.returncode, 0)
             self.assertIn("together", partial.stderr)
 
+    def test_rejects_symlink_provider_snapshots(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"active"}\n')
+            trust_store_link = root / "trust-store-link.json"
+            lifecycle_link = root / "review-lifecycle-link.jsonl"
+            trust_store_link.symlink_to(trust_store)
+            lifecycle_link.symlink_to(lifecycle)
+            artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+            identity_path = root / "identity.json"
+            self.write_identity(
+                identity_path,
+                identity_for(
+                    artifact_digest,
+                    trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                    lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+                ),
+            )
+
+            result = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store_link),
+                "--review-lifecycle",
+                str(lifecycle_link),
+                "--require-provider-input",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("regular non-symlink file", result.stderr)
+
     def test_release_surfaces_use_the_same_offline_identity_gate(self):
         project_root = SCRIPTS_DIR.parent.parent
         for relative_path in (
