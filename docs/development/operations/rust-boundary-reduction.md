@@ -2891,3 +2891,30 @@ sliceである。review/evidence field schema全体、parser recovery/metadata�
 record schema pattern semantic parity、全 pattern/import target、ftable/linear-memory/runtime ABI、Mac
 Apple Siliconのこの変更後 current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。
 Rust oracle / bootstrap / host integration境界と TODOの `[~]` は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser evidence/review field schema scans (2026-08-01)
+
+`Syntax.Parser.ls` の `parse-source-evidence-fields-loop-v3` と
+`parse-source-review-attestation-fields-loop-v3`、および各 field value handlerを、field一つを処理する
+step、64 field bounded loop、rooted continuation、public wrapperへ移行した。evidenceの integer/string/vector
+field、reviewの string/sequence fieldは旧 field loopへ直接再帰せず、`[done, payload]` stateで duplicate marker、
+payload更新、cursor進行を次のchunkへ渡す。65個の重複 `:subject` / `:subject-digest` fieldで evidence/review
+payload length `82` / `75`、body cursor kind `10` を維持する cross-chunk contractを固定した。
+
+Evidence: `selfhost_parser_metadata_fields` のstatic/runtime 2 tests、`selfhost_parser_` grouped filter 70
+tests、fixtureの `rustfmt --edition 2021 --check`、`git diff --check` が passした。source commit `7f1e21d8` に
+対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、host-generated stage1 x86 payloadが Linux x86_64
+VM内でstage2/stage3 native self-regenerationを完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/7f1e21d8-parser-metadata-fields/actual-selfregen-summary.json` に保存し、
+`status=pass`、stage2/stage3 code lengthは双方 `11314848`、stdout SHA-256は双方
+`63466a74503a2e979f7bb805b8d99f91a848f883ea5c0f4124ac8ffdc0a288a7` で一致した。VMは `4 CPU / 16 GiB RAM /
+12 GiB disk` の既存設定を使用し、空き容量 `7680847872` bytes が required `4294967296` bytesを満たした後に
+停止した。stage debug、stdout、stage intermediate、local Cargo targetは回収し、481Bのsummaryだけを残した。
+
+これは evidence/review field handlerとfield scanの bounded parity、ならびに Linux x86_64 stage2/stage3
+fixed-pointだけを閉じる verified sliceである。`source-evidence-seen-new-v3-loop`、required-field check、
+`source-review-attestation-seen-new-loop` の固定長初期化 scan、field schema全体の診断/semantic parity、parser
+recovery/metadata全体、Parser.lsの大規模ファイル分割、record schema pattern semantic parity、全 pattern/import
+target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後 current-source gate、全公開 surface、
+`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration境界と TODOの `[~]` は
+維持する。

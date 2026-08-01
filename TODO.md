@@ -857,6 +857,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `ci-artifacts/native-linux-x86-hostgen-vm/7b7a4f24-parser-metadata-outer/actual-selfregen-summary.json` に保存し、
   stage2/stage3 code lengthは双方 `11297622`、stdout SHA-256は双方
   `6082b4494b46a2244b1d1e84c4faf3824f9b6ff664ca6859785acc8c73240a3c` で一致した。
+  evidence/review metadataの field handler と field loopも、各 fieldを一つ処理する step、64 field
+  bounded loop、rooted continuation、public wrapperへ移行した。65個の重複 `:subject` / `:subject-digest`
+  fieldで evidence/review payload length `82` / `75` と body cursor `10` を
+  `selfhost_parser_metadata_fields` のstatic/runtime 2 testsで確認し、`selfhost_parser_` grouped filter
+  70 tests、scoped rustfmt、`git diff --check`、Linux x86_64 stage2/stage3 fixed-pointを通過した。summaryは
+  `ci-artifacts/native-linux-x86-hostgen-vm/7f1e21d8-parser-metadata-fields/actual-selfregen-summary.json` に保存し、
+  stage2/stage3 code lengthは双方 `11314848`、stdout SHA-256は双方
+  `63466a74503a2e979f7bb805b8d99f91a848f883ea5c0f4124ac8ffdc0a288a7` で一致した。固定長の
+  `source-evidence-seen-new-v3-loop`、required-field check、`source-review-attestation-seen-new-loop` は
+  このbatchの対象外として残る。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
