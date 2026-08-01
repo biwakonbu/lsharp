@@ -165,6 +165,24 @@ RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
   WORK_DIR="$TMP_ROOT/smoke-work" \
   bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" >/dev/null
 
+ROLLBACK_REAL_ARCHIVE="$TMP_ROOT/rollback-input-real.tar.gz"
+mv "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" "$ROLLBACK_REAL_ARCHIVE"
+ln -s "$ROLLBACK_REAL_ARCHIVE" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz"
+set +e
+rollback_symlink_output="$(
+  RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
+    RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
+    WORK_DIR="$TMP_ROOT/rollback-symlink-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" 2>&1
+)"
+rollback_symlink_status=$?
+set -e
+[[ "$rollback_symlink_status" -ne 0 ]] || { echo "rollback archive symlink was accepted" >&2; exit 1; }
+grep -F "regular file without symlink" <<<"$rollback_symlink_output" >/dev/null \
+  || { echo "rollback archive symlink rejection did not expose a stable diagnostic" >&2; exit 1; }
+rm "$TMP_ROOT/$ROLLBACK_NAME.tar.gz"
+mv "$ROLLBACK_REAL_ARCHIVE" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz"
+
 set +e
 partial_output="$(
   RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \

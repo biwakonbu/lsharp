@@ -2172,3 +2172,14 @@ provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux
 replay・stage regeneration・full buildは未実行である。Evidence:
 [`decisions-v0.3-provider-lifecycle-future-effective-at.md`](docs/adr/decisions-v0.3-provider-lifecycle-future-effective-at.md)。
+
+2026-08-02 に packaged release-smoke の release archive と rollback compatibility archive の入力を symlink でない
+regular file に限定した。anchor checksum と同じ bytes を指す rollback archive symlink を offline fixture の RED
+で受け入れることを確認し、`regular file without symlink` で fail-closed に拒否する GREEN を
+`test-release-smoke-provider-snapshots.sh` で固定した。これは archive input path の provenance-safe boundaryだけを
+閉じる verified partial sliceであり、既存の manifest/anchor/checksum/rollback payload 契約を再実装しない。
+live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback
+bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source
+manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・
+stage regeneration・full buildは未実行である。Evidence:
+[`decisions-v0.3-packaged-archive-input-regular-file.md`](docs/adr/decisions-v0.3-packaged-archive-input-regular-file.md)。

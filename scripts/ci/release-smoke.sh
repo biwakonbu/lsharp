@@ -67,6 +67,19 @@ hash_file() {
   fi
 }
 
+validate_archive_input() {
+  local kind="$1"
+  local path="$2"
+  if [[ ! -e "$path" ]]; then
+    echo "ERROR: ${kind} archive not found: $path" >&2
+    exit 1
+  fi
+  if [[ -L "$path" || ! -f "$path" ]]; then
+    echo "ERROR: ${kind} archive must be a regular file without symlink: $path" >&2
+    exit 1
+  fi
+}
+
 validate_release_review_provider_inputs() {
   if [[ -z "$RELEASE_REVIEW_TRUST_STORE" && -z "$RELEASE_REVIEW_LIFECYCLE" ]]; then
     return 0
@@ -119,10 +132,7 @@ if [[ -z "$ARCHIVE_PATH" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$ARCHIVE_PATH" ]]; then
-  echo "ERROR: archive not found: $ARCHIVE_PATH" >&2
-  exit 1
-fi
+validate_archive_input "release" "$ARCHIVE_PATH"
 
 echo "=== release-smoke: unpack artifact ==="
 python3 - "$ARCHIVE_PATH" "$MAX_ARCHIVE_BYTES" <<'PY'
@@ -362,6 +372,7 @@ if [[ "$NATIVE_ONLY" == "1" ]]; then
     echo "ERROR: rollback compatibility archive is required" >&2
     exit 1
   fi
+  validate_archive_input "rollback compatibility" "$ROLLBACK_ARCHIVE_PATH"
   rollback_name="$(basename "$ROLLBACK_ARCHIVE_PATH")"
   rollback_sha256="$(hash_file "$ROLLBACK_ARCHIVE_PATH")"
   python3 - \
