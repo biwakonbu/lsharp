@@ -32,6 +32,7 @@ SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 REVIEW_LIFECYCLE_STATES = frozenset(
     ("proposed", "active", "superseded", "revoked")
 )
+TERMINAL_REVIEW_LIFECYCLE_STATES = frozenset(("superseded", "revoked"))
 
 
 class IdentityError(ValueError):
@@ -102,6 +103,7 @@ def validate_review_lifecycle_snapshot(path):
         raise IdentityError(f"review lifecycle snapshot must contain at least one record: {path}")
     seen_sequences = set()
     last_sequences = {}
+    last_states = {}
     for record in records:
         if not isinstance(record, dict):
             raise IdentityError(f"review lifecycle snapshot records must be JSON objects: {path}")
@@ -124,6 +126,12 @@ def validate_review_lifecycle_snapshot(path):
                     f"duplicate review lifecycle sequence: {path}: "
                     f"review_id={review_id!r} sequence={sequence}"
                 )
+            previous_state = last_states.get(review_id)
+            if previous_state in TERMINAL_REVIEW_LIFECYCLE_STATES:
+                raise IdentityError(
+                    f"review lifecycle terminal state reactivation: {path}: "
+                    f"review_id={review_id!r} previous={previous_state} current={state}"
+                )
             previous_sequence = last_sequences.get(review_id)
             if previous_sequence is not None and sequence < previous_sequence:
                 raise IdentityError(
@@ -132,6 +140,7 @@ def validate_review_lifecycle_snapshot(path):
                 )
             seen_sequences.add(sequence_key)
             last_sequences[review_id] = sequence
+            last_states[review_id] = state
 
     return records
 
