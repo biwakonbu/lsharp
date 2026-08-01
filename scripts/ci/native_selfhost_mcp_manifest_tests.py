@@ -86,6 +86,13 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
         ("edge-extra", "edges[0] has unknown field: extra"),
         ("edge-id", "edges[0].intent is missing field: key"),
         ("edge-subject", "edges[0].subject.kind has invalid value"),
+        ("evidence-missing", "evidence[0] is missing field: namespace"),
+        ("evidence-method", "evidence[0].method has invalid value"),
+        ("evidence-subject", "evidence[0].subject.kind has invalid value"),
+        ("evidence-execution", "evidence[0].execution is missing field: runner"),
+        ("evidence-sampling", "evidence[0].execution.sampling.cases must be a non-negative integer"),
+        ("evidence-provenance", "evidence[0].provenance.producer must be a non-empty string"),
+        ("evidence-extra", "evidence[0] has unknown field: extra"),
     )
     for manifest_mode, expected_message in cases:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -168,3 +175,31 @@ def assert_validate_accepts_valid_emitted_manifest_edges(test):
         test.assertFalse(response["result"]["isError"])
         edges = response["result"]["structuredContent"]["manifest"]["edges"]
         test.assertEqual([edge["relation"] for edge in edges], ["motivates", "supports", "evaluates"])
+
+
+def assert_validate_accepts_valid_emitted_manifest_evidence(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "include_manifest": True,
+                    },
+                },
+            ),
+            root,
+            manifest_mode="evidence-valid",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        evidence = response["result"]["structuredContent"]["manifest"]["evidence"][0]
+        test.assertEqual(evidence["method"], "example")
+        test.assertEqual(evidence["execution"]["sampling"]["coverage"], {"branch": 1})

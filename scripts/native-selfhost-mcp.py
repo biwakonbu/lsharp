@@ -789,6 +789,8 @@ def validate_manifest_output(value):
             validate_manifest_review(review, index)
     for index, edge in enumerate(value["edges"]):
         validate_manifest_edge(edge, index)
+    for index, evidence in enumerate(value["evidence"]):
+        validate_manifest_evidence(evidence, index)
 
 
 def validate_manifest_non_empty_string(value, label):
@@ -942,6 +944,124 @@ def validate_manifest_edge(value, index):
             validate_manifest_subject(value[name], f"{label}.{name}", subject_kinds)
         else:
             validate_manifest_id(value[name], f"{label}.{name}")
+
+
+def validate_manifest_sampling(value, label):
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"cases", "seed", "generator", "shrinks", "coverage"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    required = ("cases", "seed", "generator")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    validate_manifest_integer(value["cases"], f"{label}.cases")
+    validate_manifest_integer(value["seed"], f"{label}.seed")
+    validate_manifest_non_empty_string(value["generator"], f"{label}.generator")
+    if "shrinks" in value:
+        if not isinstance(value["shrinks"], list):
+            raise ToolError(f"{label}.shrinks must be an array")
+        for index, shrink in enumerate(value["shrinks"]):
+            validate_manifest_integer(shrink, f"{label}.shrinks[{index}]")
+    if "coverage" in value:
+        coverage = value["coverage"]
+        if not isinstance(coverage, dict):
+            raise ToolError(f"{label}.coverage must be an object")
+        for name, count in coverage.items():
+            if re.search(r"\S", name) is None:
+                raise ToolError(f"{label}.coverage has an invalid property name")
+            validate_manifest_integer(count, f"{label}.coverage[{name}]")
+
+
+def validate_manifest_execution(value, label):
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"runner", "target", "source_commit", "artifact_digest", "sampling"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    required = ("runner", "target", "source_commit", "artifact_digest", "sampling")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    for name in ("runner", "target", "source_commit", "artifact_digest"):
+        validate_manifest_non_empty_string(value[name], f"{label}.{name}")
+    validate_manifest_sampling(value["sampling"], f"{label}.sampling")
+
+
+def validate_manifest_provenance(value, label):
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"producer", "tool_version", "timestamp"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    required = ("producer", "tool_version", "timestamp")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    for name in required:
+        validate_manifest_non_empty_string(value[name], f"{label}.{name}")
+
+
+def validate_manifest_evidence(value, index):
+    label = f"native emitted manifest evidence[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {
+        "namespace",
+        "key",
+        "method",
+        "subject",
+        "outcome",
+        "execution",
+        "provenance",
+        "independence",
+    }
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    required = (
+        "namespace",
+        "key",
+        "method",
+        "subject",
+        "outcome",
+        "execution",
+        "provenance",
+        "independence",
+    )
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    validate_manifest_identifier(value["namespace"], f"{label}.namespace")
+    validate_manifest_identifier(value["key"], f"{label}.key")
+    if value["method"] not in (
+        "example",
+        "case",
+        "assert",
+        "property",
+        "production",
+        "reference",
+        "proof",
+        "review",
+    ):
+        raise ToolError(f"{label}.method has invalid value")
+    validate_manifest_subject(
+        value["subject"], f"{label}.subject", ("intent", "claim", "contract")
+    )
+    if value["outcome"] not in ("pass", "fail", "contradicted", "unknown", "stale"):
+        raise ToolError(f"{label}.outcome has invalid value")
+    validate_manifest_execution(value["execution"], f"{label}.execution")
+    validate_manifest_provenance(value["provenance"], f"{label}.provenance")
+    if value["independence"] not in (
+        "same-author",
+        "independent-review",
+        "external-observation",
+    ):
+        raise ToolError(f"{label}.independence has invalid value")
 
 
 def validate_trace_gap(value, index):

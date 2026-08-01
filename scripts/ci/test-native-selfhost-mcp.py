@@ -14,7 +14,7 @@ from native_selfhost_mcp_context_tests import assert_project_context_projects_lo
 from native_selfhost_mcp_compile_tests import assert_compile_run_fails_closed_and_cleans_artifacts, assert_compile_run_projects_file_without_mutating_input, assert_compile_run_projects_source_and_external_runtime, assert_compile_run_rejects_invalid_arguments_before_native, assert_compile_run_requires_explicit_runtime_without_host_fallback
 from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_native_doc, assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments, assert_stdlib_api_rejects_malformed_native_doc
 from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_native_result, assert_completion_projects_native_lsp, assert_completion_rejects_invalid_arguments_before_native, assert_completion_rejects_native_failures, assert_completion_supports_file_and_col_alias, assert_definition_projects_native_lsp, assert_definition_rejects_invalid_arguments_before_native, assert_definition_rejects_native_failures, assert_definition_supports_file_and_col_alias, assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias, assert_lsp_position_alias_schema_is_exclusive, assert_lsp_rejects_both_position_aliases, assert_references_projects_empty_native_result, assert_references_projects_native_lsp, assert_references_rejects_invalid_arguments_before_native, assert_references_rejects_native_failures, assert_references_supports_file_and_col_alias
-from native_selfhost_mcp_manifest_tests import assert_validate_accepts_valid_emitted_manifest_edges, assert_validate_accepts_valid_emitted_manifest_items, assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
+from native_selfhost_mcp_manifest_tests import assert_validate_accepts_valid_emitted_manifest_edges, assert_validate_accepts_valid_emitted_manifest_evidence, assert_validate_accepts_valid_emitted_manifest_items, assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
 from native_selfhost_mcp_validate_tests import assert_validate_accepts_valid_nested_report, assert_validate_accepts_valid_report_identity, assert_validate_rejects_invalid_report, assert_validate_rejects_invalid_report_identity
 from native_selfhost_mcp_check_tests import assert_check_accepts_valid_migration_diagnostics, assert_check_rejects_blank_source_before_native, assert_check_rejects_invalid_arguments_before_native, assert_check_rejects_invalid_output, assert_source_input_schema_requires_non_empty_strings
 from native_selfhost_mcp_format_tests import assert_check_format_input_schemas_are_closed, assert_format_output_schema_is_closed, assert_format_rejects_blank_source_before_native, assert_format_rejects_invalid_arguments_before_native, assert_format_rejects_native_failures
@@ -224,6 +224,32 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                         output = pathlib.Path(args[args.index("--emit-manifest") + 1])
                         output.parent.mkdir(parents=True, exist_ok=True)
                         manifest_mode = os.environ.get("FAKE_NATIVE_MANIFEST_MODE", "object")
+                        evidence_item = {{
+                            "namespace": "demo",
+                            "key": "evidence-1",
+                            "method": "example",
+                            "subject": {{"kind": "claim", "namespace": "demo", "key": "claim-1"}},
+                            "outcome": "pass",
+                            "execution": {{
+                                "runner": "native",
+                                "target": "aarch64-apple-darwin",
+                                "source_commit": "a" * 40,
+                                "artifact_digest": "sha256:artifact",
+                                "sampling": {{
+                                    "cases": 1,
+                                    "seed": 2,
+                                    "generator": "fixed",
+                                    "shrinks": [0, 1],
+                                    "coverage": {{"branch": 1}},
+                                }},
+                            }},
+                            "provenance": {{
+                                "producer": "native",
+                                "tool_version": "0.1",
+                                "timestamp": "2026-08-01T00:00:00Z",
+                            }},
+                            "independence": "same-author",
+                        }}
                         if manifest_mode == "array":
                             manifest_output = "[]"
                         elif manifest_mode == "null":
@@ -342,6 +368,37 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                                     "subject": {{"kind": "evidence", "namespace": "demo", "key": "evidence-1"}},
                                 }},
                             ]}})
+                        elif manifest_mode == "evidence-missing":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [{{}}], "edges": []}})
+                        elif manifest_mode == "evidence-method":
+                            item = dict(evidence_item)
+                            item["method"] = "unknown"
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [item], "edges": []}})
+                        elif manifest_mode == "evidence-subject":
+                            item = dict(evidence_item)
+                            item["subject"] = {{"kind": "review", "namespace": "demo", "key": "review-1"}}
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [item], "edges": []}})
+                        elif manifest_mode == "evidence-execution":
+                            item = dict(evidence_item)
+                            item["execution"] = {{}}
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [item], "edges": []}})
+                        elif manifest_mode == "evidence-sampling":
+                            item = dict(evidence_item)
+                            item["execution"] = dict(evidence_item["execution"])
+                            item["execution"]["sampling"] = dict(evidence_item["execution"]["sampling"])
+                            item["execution"]["sampling"]["cases"] = -1
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [item], "edges": []}})
+                        elif manifest_mode == "evidence-provenance":
+                            item = dict(evidence_item)
+                            item["provenance"] = dict(evidence_item["provenance"])
+                            item["provenance"]["producer"] = ""
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [item], "edges": []}})
+                        elif manifest_mode == "evidence-extra":
+                            item = dict(evidence_item)
+                            item["extra"] = True
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [item], "edges": []}})
+                        elif manifest_mode == "evidence-valid":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [evidence_item], "edges": []}})
                         else:
                             manifest = {{"schema_version": 1, "nodes": [], "evidence": [], "edges": []}}
                             if manifest_identity is not None:
@@ -686,6 +743,33 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 evidence_schema["properties"]["method"]["enum"],
                 ["example", "case", "assert", "property", "production", "reference", "proof", "review"],
             )
+            self.assertFalse(evidence_schema["additionalProperties"])
+            self.assertEqual(
+                evidence_schema["properties"]["subject"]["required"],
+                ["kind", "namespace", "key"],
+            )
+            self.assertEqual(
+                evidence_schema["properties"]["subject"]["properties"]["kind"]["enum"],
+                ["intent", "claim", "contract"],
+            )
+            execution_schema = evidence_schema["properties"]["execution"]
+            self.assertFalse(execution_schema["additionalProperties"])
+            self.assertEqual(
+                execution_schema["required"],
+                ["runner", "target", "source_commit", "artifact_digest", "sampling"],
+            )
+            sampling_schema = execution_schema["properties"]["sampling"]
+            self.assertFalse(sampling_schema["additionalProperties"])
+            self.assertEqual(sampling_schema["required"], ["cases", "seed", "generator"])
+            provenance_schema = evidence_schema["properties"]["provenance"]
+            self.assertFalse(provenance_schema["additionalProperties"])
+            self.assertEqual(
+                provenance_schema["required"], ["producer", "tool_version", "timestamp"]
+            )
+            self.assertEqual(
+                evidence_schema["properties"]["independence"]["enum"],
+                ["same-author", "independent-review", "external-observation"],
+            )
             self.assertEqual(len(manifest_schema["properties"]["edges"]["items"]["oneOf"]), 6)
             manifest_input_schema = validate_schema["properties"]["manifest"]["oneOf"][0]
             self.assertFalse(manifest_input_schema["additionalProperties"])
@@ -727,6 +811,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         assert_validate_accepts_valid_emitted_manifest_items(self)
     def test_validate_accepts_valid_emitted_manifest_edges(self):
         assert_validate_accepts_valid_emitted_manifest_edges(self)
+    def test_validate_accepts_valid_emitted_manifest_evidence(self):
+        assert_validate_accepts_valid_emitted_manifest_evidence(self)
 
     def test_validate_rejects_invalid_report(self):
         assert_validate_rejects_invalid_report(self)
