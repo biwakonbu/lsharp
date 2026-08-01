@@ -866,7 +866,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   stage2/stage3 code lengthは双方 `11314848`、stdout SHA-256は双方
   `63466a74503a2e979f7bb805b8d99f91a848f883ea5c0f4124ac8ffdc0a288a7` で一致した。固定長の
   `source-evidence-seen-new-v3-loop`、required-field check、`source-review-attestation-seen-new-loop` は
-  このbatchの対象外として残る。
+  このbatchの対象外として残る。gate後に `origin/main` へ入った差分はMCP専用で、gate時の
+  `7f1e21d8` と統合後の対象3ファイルは byte-for-byte 一致したため、同じLinux replayは重複実行していない。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。

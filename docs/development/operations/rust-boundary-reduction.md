@@ -2902,7 +2902,7 @@ payload更新、cursor進行を次のchunkへ渡す。65個の重複 `:subject` 
 payload length `82` / `75`、body cursor kind `10` を維持する cross-chunk contractを固定した。
 
 Evidence: `selfhost_parser_metadata_fields` のstatic/runtime 2 tests、`selfhost_parser_` grouped filter 70
-tests、fixtureの `rustfmt --edition 2021 --check`、`git diff --check` が passした。source commit `7f1e21d8` に
+tests、fixtureの `rustfmt --edition 2021 --check`、`git diff --check` が passした。gate実行時の source commit `7f1e21d8` に
 対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、host-generated stage1 x86 payloadが Linux x86_64
 VM内でstage2/stage3 native self-regenerationを完走した。summaryは
 `ci-artifacts/native-linux-x86-hostgen-vm/7f1e21d8-parser-metadata-fields/actual-selfregen-summary.json` に保存し、
@@ -2910,6 +2910,8 @@ VM内でstage2/stage3 native self-regenerationを完走した。summaryは
 `63466a74503a2e979f7bb805b8d99f91a848f883ea5c0f4124ac8ffdc0a288a7` で一致した。VMは `4 CPU / 16 GiB RAM /
 12 GiB disk` の既存設定を使用し、空き容量 `7680847872` bytes が required `4294967296` bytesを満たした後に
 停止した。stage debug、stdout、stage intermediate、local Cargo targetは回収し、481Bのsummaryだけを残した。
+gate後に `origin/main` へ入った差分はMCP専用で、gate時の feature対象3ファイルと統合後の対象3ファイルは
+byte-for-byte 一致したため、同じLinux replayは重複実行していない。
 
 これは evidence/review field handlerとfield scanの bounded parity、ならびに Linux x86_64 stage2/stage3
 fixed-pointだけを閉じる verified sliceである。`source-evidence-seen-new-v3-loop`、required-field check、
