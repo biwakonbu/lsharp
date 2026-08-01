@@ -81,6 +81,15 @@ def command_outputs(work_dir: Path) -> list[str]:
     )
 
 
+def first_symlink(path: Path) -> Path | None:
+    for root, directories, files in os.walk(path, topdown=True, followlinks=False):
+        for name in sorted((*directories, *files)):
+            candidate = Path(root) / name
+            if candidate.is_symlink():
+                return candidate
+    return None
+
+
 def main() -> int:
     args = parse_args()
     if not 0 <= args.exit_code <= 255:
@@ -95,6 +104,9 @@ def main() -> int:
     work_dir = Path(args.work_dir)
     if work_dir.is_symlink() or not work_dir.is_dir():
         fail(f"source smoke work directory is unavailable: {work_dir}")
+    work_symlink = first_symlink(work_dir)
+    if work_symlink is not None:
+        fail(f"source smoke work directory contains a symlink: {work_symlink}")
 
     stage0_manifest = Path(args.stage0_manifest)
     manifest, stage0_digest = load_stage0_manifest(stage0_manifest, args.target)
@@ -104,6 +116,9 @@ def main() -> int:
     staging = Path(tempfile.mkdtemp(prefix=f".{evidence_dir.name}.", dir=parent))
     try:
         shutil.copytree(work_dir, staging / "work", symlinks=True)
+        staged_symlink = first_symlink(staging / "work")
+        if staged_symlink is not None:
+            fail(f"source smoke evidence contains a symlink: {staged_symlink}")
         shutil.copy2(stage0_manifest, staging / "stage0-manifest.json")
         (staging / "exit.code").write_text(f"{args.exit_code}\n", encoding="ascii")
         evidence = {

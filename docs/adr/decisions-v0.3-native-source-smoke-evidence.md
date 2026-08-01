@@ -23,9 +23,11 @@ N9 が要求する current-source target gate の実 bytes、stdout/stderr、exi
    stdout/stderr の相対パスを記録する。
 4. stage0 manifest の `source_commit` は小文字の40桁 hexadecimal に限定し、uppercase や別形式は証跡を
    作成する前に fail-closed で拒否する。
-5. 環境変数が未指定の場合の smoke 出力と cleanup は従来どおりで、証跡を自動で `/tmp` や release directoryへ
+5. work directory 内の symlink は保存前に fail-closed で拒否し、既存の evidence directory や外部 path を
+   symlink 経由で参照する証跡を作らない。
+6. 環境変数が未指定の場合の smoke 出力と cleanup は従来どおりで、証跡を自動で `/tmp` や release directoryへ
    残さない。
-6. 証跡の書き込みに失敗した成功 run は失敗へ反転し、元の非 zero exit code は保持する。
+7. 証跡の書き込みに失敗した成功 run は失敗へ反転し、元の非 zero exit code は保持する。
 
 ## Evidence
 
@@ -36,6 +38,8 @@ N9 が要求する current-source target gate の実 bytes、stdout/stderr、exi
 - `python3 -m py_compile scripts/ci/write-native-source-smoke-evidence.py`
 - uppercase `source_commit` を渡した writer は証跡 directory を作成せず拒否し、canonical lowercase
   40 桁入力は従来どおり保存する。
+- work directory 内の symlink を渡した writer は evidence directory を作成せず拒否し、staging 側の
+  symlink 検査も持つ。
 - current `3e1b26901aef8191a47382b06bf87fe62c9fb9ad` の Mac stage0 を fresh evidence directoryへ渡し、
   `aarch64-apple-darwin native selfhost source-file smoke passed` を確認した。保存した
   `manifest.json` は stage0 source commit、stage0 manifest digest、`compile.wasm` / `build.wasm` の

@@ -74,6 +74,20 @@ assert manifest["exit_code"] == 7
 assert manifest["artifacts"]["compile.wasm"]["size"] == len(b"compile-bytes")
 PY
 
+SYMLINK_TARGET="$TMP_ROOT/outside.txt"
+SYMLINK_EVIDENCE_DIR="$TMP_ROOT/symlink-evidence"
+printf 'outside-evidence\n' >"$SYMLINK_TARGET"
+ln -s "$SYMLINK_TARGET" "$WORK_DIR/linked.stdout"
+if python3 "$WRITER" \
+  --evidence-dir "$SYMLINK_EVIDENCE_DIR" \
+  --work-dir "$WORK_DIR" \
+  --stage0-manifest "$STAGE0_MANIFEST" \
+  --target aarch64-apple-darwin \
+  --exit-code 0; then
+  fail "evidence writer accepted a symlink inside the work directory"
+fi
+[[ ! -e "$SYMLINK_EVIDENCE_DIR" ]] || fail "symlink work input created evidence output"
+
 UPPER_MANIFEST="$TMP_ROOT/stage0-manifest-uppercase.json"
 UPPER_EVIDENCE_DIR="$TMP_ROOT/uppercase-evidence"
 python3 - "$STAGE0_MANIFEST" "$UPPER_MANIFEST" <<'PY'
