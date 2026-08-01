@@ -173,10 +173,9 @@ observations as pending rather than overloading `stdout` or a debug log.
   Wasmtime 43.0.0 validation and standalone execution passed.
 - This is Rust-oracle evidence only. Native stage0 execution, Linux x86_64,
   ftable/import byte parity, root/resource metrics, and the two-target completion
-  audit remain pending, so R1, R2, and V4-M1-03 stay `[~]`. The reports were
-  captured
-  before this follow-up docs-only annotation; regenerate it at the final main
-  SHA before attaching it to the evidence index.
+  audit remain pending, so R1, R2, and V4-M1-03 stay `[~]`. The report is
+  task-local and is not attached to the evidence index; regenerate it at the
+  final main SHA before attaching it.
 
 ## Evidence and remaining work
 
