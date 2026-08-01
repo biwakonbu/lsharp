@@ -2747,3 +2747,31 @@ Parser.lsの大規模ファイル分割、record schema pattern semantic parity�
 ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後 current-source gate、全公開
 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration
 境界と TODOの `[~]` は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser expression span scans (2026-08-01)
+
+`Syntax.Parser.ls` の `collect-example-expression-spans-v3-loop` を、式一つを返す step、64要素
+bounded loop、rooted continuation、public wrapperへ移行した。`:example` / `:assert` の bracket内
+にある atom/list 式の `(start,end)` の順序、nested list の終端、RBracket 停止を既存の span contract
+のまま保持し、`result` と `next-result` は vector allocation 前後で root 化した。
+
+Evidence: `selfhost_parser_expression_spans` の static/runtime 2 tests、
+`selfhost_parser_forms` の22 tests、`selfhost_parser_metadata_forms` の29 tests、fixtureの
+`rustfmt --edition 2021 --check`、`git diff --check` が passした。parser 回帰の
+`test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms` は変更前の detached
+`origin/main` (`5e0b0b3a`) でも `left "7"` / `right "5"` となり、今回の変更起因ではない。
+
+source commit `23af742e` に対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、
+host-generated stage1 x86 payloadが Linux x86_64 VM内でstage2/stage3 native self-regenerationを
+完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/23af742e-parser-expression-spans/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11260030`、stdout SHA-256は双方
+`5467c937c0b33a7662896d1d211a581ecf3441550357fb83943fd9ad5378a0eb` で一致した。VMは停止し、
+中間 stage、stdout、local Cargo targetは回収して481Bのsummaryだけを残した。
+
+これは parser expression span collection の bounded scan と Linux x86_64 stage2/stage3 fixed-point
+だけを閉じる verified sliceである。`:case` / `:assert` metadata list loop、parser recovery/metadata
+全体、Parser.lsの大規模ファイル分割、record schema pattern semantic parity、全 pattern/import target、
+ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後 current-source gate、全公開 surface、
+`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration境界と
+TODOの `[~]` は維持する。
