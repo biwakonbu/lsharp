@@ -2127,3 +2127,10 @@ current-source manifest/expected replay lockが現HEADに一致せず、別セ�
 blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
 `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-provider-lifecycle-effective-at-ordering-parity.md`](docs/adr/decisions-v0.3-provider-lifecycle-effective-at-ordering-parity.md)。
+
+2026-08-02 に native selfhost MCP `initialize` の `serverInfo` を Rust canonical route と揃えた。native shim の
+`"lsharp-native"` を `"lsharp"` へ変更し、package version `0.1.0` とともに固定する RED→GREEN を focused
+route testで確認した。これは MCP JSON-RPC envelope metadata の verified partial parity slice であり、Rust MCP
+全tool parity、package-install semantics、live provider API/auth acquisition・意味検証、current-source Linux runtime、
+Mac/Linux 両 target の packaged provenance/rollback bytes parity の完了証拠ではない。関連項目は `[~]` のまま残す。
+Evidence: [`decisions-v0.3-native-mcp-initialize-server-identity-parity.md`](docs/adr/decisions-v0.3-native-mcp-initialize-server-identity-parity.md)。

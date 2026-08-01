@@ -702,6 +702,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             responses = self.responses(result.stdout)
             self.assertEqual(len(responses), 5)
             self.assertEqual(responses[0]["result"]["protocolVersion"], "2025-11-25")
+            self.assertEqual(
+                responses[0]["result"]["serverInfo"],
+                {"name": "lsharp", "version": "0.1.0"},
+            )
             tool_names = {tool["name"] for tool in responses[1]["result"]["tools"]}
             self.assertEqual(
                 tool_names,

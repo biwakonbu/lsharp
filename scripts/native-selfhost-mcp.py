@@ -1515,7 +1515,7 @@ def handle_request(program, request):
             {
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "lsharp-native", "version": "0.1.0"},
+                "serverInfo": {"name": "lsharp", "version": "0.1.0"},
             },
         )
     if method == "ping":
