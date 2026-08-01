@@ -1312,6 +1312,21 @@ def validate_report_output(value):
         validate_manifest_output(value["manifest"])
 
 
+def reject_provider_semantic_states(report, provider_digests):
+    if not provider_digests:
+        return
+    semantic_states = [
+        verification["state"]
+        for verification in report.get("review_verifications", [])
+        if verification["state"] != "unverified"
+    ]
+    if semantic_states:
+        raise ToolError(
+            "provider semantic verification is unavailable; "
+            "review_verifications must remain unverified"
+        )
+
+
 def verify_identity_projection(
     report, expected_identity, include_manifest, allow_existing_manifest_identity
 ):
@@ -1370,6 +1385,7 @@ def call_validate(program, arguments, temporary_directory):
     completed = run_native(program, command)
     report = parse_json_output(completed)
     validate_report_output(report)
+    reject_provider_semantic_states(report, provider_digests)
     if include_manifest:
         if manifest_path is None or not manifest_path.is_file():
             raise ToolError("native validate が manifest を生成しませんでした")

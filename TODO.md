@@ -388,6 +388,14 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   runtime、両 target packaged provenance/rollback bytes parityは未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は
   `[~]` のまま残る。ADR: `docs/adr/decisions-v0.3-provider-snapshot-role-binding.md`。
 
+  続けて、native MCP が明示 provider snapshotを raw bytes の digestへ変換するだけで署名・lifecycleの
+  semantic verificationを実行しない境界を固定した。snapshot使用時に native report の `verified` /
+  `stale` / `revoked` stateを受理せず、`unverified` 以外を `provider semantic verification is unavailable`
+  で fail-closed にする RED→GREEN と focused suiteを確認した verified partial sliceである。live provider/auth
+  acquisition、実 semantic verifier、current-source Linux runtime、両 target packaged provenance/rollback bytes
+  parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。ADR:
+  `docs/adr/decisions-v0.3-native-mcp-provider-semantic-boundary.md`。
+
   続けて同日、release smoke の `checksums.txt` target path を archive root 内の POSIX relative path に限定した。
   checksum-valid な `../../../outside-checksum-target.txt` fixture を拒否する RED→GREEN を provider snapshot
   harness で確認し、package 外部 file を checksum evidence として受理しない verified partial slice を追加した。

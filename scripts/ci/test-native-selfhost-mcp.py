@@ -1308,6 +1308,34 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 [command[index : index + 2] for index in range(len(command) - 1)],
             )
 
+    def test_provider_snapshot_semantic_state_is_rejected_without_native_verifier(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            trust_store = root / "trust.json"
+            lifecycle = root / "lifecycle.json"
+            trust_store.write_bytes(b"trust snapshot\n")
+            lifecycle.write_bytes(b"lifecycle snapshot\n")
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "trust_store": str(trust_store),
+                        "review_lifecycle": str(lifecycle),
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root, report_mode="nested-valid")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("semantic verification is unavailable", response["content"][0]["text"])
+
     def test_provider_digest_mismatch_is_rejected_before_native_execution(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
