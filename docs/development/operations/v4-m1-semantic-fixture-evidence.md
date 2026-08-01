@@ -49,10 +49,13 @@ FIXTURES=(
   --fixture-id invalid/lexer-unexpected-character
   --fixture-id invalid/module-not-found
   --fixture-id invalid/parser-unexpected-eof
+  --fixture-id invalid/record-field-pattern-literal
   --fixture-id invalid/type-undefined-value
   --fixture-id valid/adt-pattern
+  --fixture-id valid/closure-allocation
   --fixture-id valid/io-read-file
   --fixture-id valid/module-import
+  --fixture-id valid/nested-record-pattern
   --fixture-id valid/record-accessor
   --fixture-id valid/recursive-runtime
   --fixture-id valid/syntax-basic

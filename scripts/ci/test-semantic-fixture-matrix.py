@@ -107,6 +107,28 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
             {"required": False, "status": "not-applicable"},
         )
 
+    def test_r2_closure_allocation_fixture_declares_runtime_contract(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/closure-allocation"
+        )
+        self.assertEqual(fixture["kind"], "valid")
+        self.assertEqual(
+            fixture["layers"],
+            ["syntax", "types", "ir", "codegen", "runtime"],
+        )
+        self.assertEqual(
+            fixture["observables"],
+            ["ast", "type", "ir", "wasm", "runtime", "report"],
+        )
+        self.assertEqual(fixture["commands"], ["check", "compile", "build"])
+        self.assertEqual(fixture["expected"]["runtime"]["stdout"], "5\n")
+        self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
+
     def test_rejects_unresolved_target_and_unsafe_source(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))
         cases = (
