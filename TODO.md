@@ -102,6 +102,15 @@ ADR: `docs/adr/decisions-v0.4-m1-01-rust-oracle-valid-batch.md`。
 native stage0、Linux x86_64、full invalid parity、Rust/native differential、aggregate は未接続のため
 v0.4 の完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-01-rust-oracle-invalid-batch.md`。
 
+さらに diagnostic parity 実装を含む current source commit
+`6943f488a213e63b5612eeabefe106357c922427` の Mac Rust-oracle で invalid 5件を再実行し、
+`LS0001` (line 1 columns 1–2)、`LS3102` (line 1 columns 1–23)、`LS0102`
+(line 1 columns 1–14)、`LS3001` (line 8 columns 19–21)、`LS1001` (line 1 columns 16–29) の
+code/span/exit/no-artifact/runtime-not-run boundary を全件確認した。これは V4-M1-01 の
+verified partial sliceであり、native stage0、Linux x86_64、Rust/native differential、aggregate は
+未接続のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.4-m1-01-rust-oracle-invalid-diagnostic-parity.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。

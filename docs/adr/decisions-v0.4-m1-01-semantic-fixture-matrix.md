@@ -110,3 +110,12 @@ look stronger than its evidence.
   fixtures (`LS3001` and `LS1001`) and kept three code/span-missing diagnostics
   rejected; the classification is recorded in the
   [`Mac Rust-oracle invalid batch ADR`](decisions-v0.4-m1-01-rust-oracle-invalid-batch.md).
+- The diagnostic-parity implementation at current source commit
+  `6943f488a213e63b5612eeabefe106357c922427` was followed by a Mac
+  `aarch64-apple-darwin` Rust-oracle run over all five invalid fixtures. It
+  observed `LS0001` (line 1 columns 1–2), `LS3102` (line 1 columns 1–23),
+  `LS0102` (line 1 columns 1–14), `LS3001` (line 8 columns 19–21), and
+  `LS1001` (line 1 columns 16–29), each with exit `1`, no artifact, and no
+  runtime execution. The implementation and evidence are recorded in the
+  [`Rust-oracle invalid diagnostic parity ADR`](decisions-v0.4-m1-01-rust-oracle-invalid-diagnostic-parity.md);
+  native stage0, Linux, differential, and aggregate gates remain pending.

@@ -6,6 +6,10 @@ Accepted for the verified partial evidence slice (2026-08-01, source commit
 `3b6039fcd3f91e5d5c266aaeaa2f87af7c349948`). This ADR does not complete
 V4-M1-01, native stage0 parity, or either-target completion gate.
 
+The three pending classifications below are the historical baseline. They are
+superseded by the diagnostic-parity fix and current-source evidence in
+[`Rust-oracle invalid diagnostic parity ADR`](decisions-v0.4-m1-01-rust-oracle-invalid-diagnostic-parity.md).
+
 ## Context
 
 The invalid half of the semantic fixture matrix must not turn missing compiler
