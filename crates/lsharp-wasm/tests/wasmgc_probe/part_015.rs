@@ -312,3 +312,42 @@ fn wasm_gc_emitter_executes_captured_lambda_let_alias_call_ref() {
 
     assert_eq!(main.call(&mut store, 1).unwrap(), 42);
 }
+
+#[test]
+fn wasm_gc_emitter_executes_lowered_nested_parametric_record_pattern() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (type (Box a) (record (: value a)))
+        (type (Outer a) (record (: inner (Box a))))
+        (defn read-inner [o]
+          (match o
+            [{Outer inner {Box value x}} x]
+            [_ 0]))
+        (defn main [] (read-inner {Outer inner {Box value 41}}))
+        "#,
+    )
+    .expect("nested parametric record pattern source を parse できる");
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .expect("nested parametric record pattern source を型推論できる");
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = lsharp_ir::lower::Lower::with_backend(lsharp_ir::lower::LowerBackend::WasmGc);
+    let ir = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("nested parametric record pattern を WasmGC IR へ lowering できる");
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&ir)
+        .expect("nested parametric record pattern module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("nested record module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let instance = Instance::new(&mut store, &module, &[]).expect("module を instantiate できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+
+    assert_eq!(main.call(&mut store, ()).unwrap(), 41);
+}

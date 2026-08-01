@@ -582,6 +582,21 @@ fixtures, not completion of record-pattern semantic parity. Greater depths, full
 ftable/linear-memory ABI, and the `LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise
 incomplete boundaries.
 
+### WasmGC nested parametric record reference slice (2026-08-01)
+
+The Rust WasmGC lowering boundary now resolves the named head of a registered `TypeExpr::App`
+field to the corresponding GC `Ref` type. Before this fix, `Outer.inner : (Box a)` was lowered as
+`I64`, so a nested `StructGet` could not preserve the reference-typed `Box` value. The change is
+limited to registered record/ADT heads; unknown applications retain the previous fallback and
+remain outside this evidence.
+
+`test_wasmgc_nested_parametric_record_pattern_preserves_reference_field_types` verifies the IR
+field type, and `wasm_gc_emitter_executes_lowered_nested_parametric_record_pattern` validates,
+instantiates, and executes the WasmGC module in Wasmtime with result `41`. This is a Rust IR and
+emitter backend slice. It does not update the native stage0 source producer or prove Rust-free
+selfhost parity, so the record-pattern aggregate and the full WasmGC type-argument/runtime
+surface remain incomplete.
+
 ### legacy source compile boundary 更新 (2026-07-14)
 
 `App.Cli`、`EmbeddedCli`、`SmokeCli`、`PipelineSmoke` の source/full helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`PipelineSmoke` は Rust host compile と Wasm validate まで確認した。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `run-main-smoke` の単一 AST `lower` は診断用として残り、App.Cli / EmbeddedCli の component sidecar、no-arg pipeline entrypoint の full-program runtime/native E2E は別の未完了 surface である。

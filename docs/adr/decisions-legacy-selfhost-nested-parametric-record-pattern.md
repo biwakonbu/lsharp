@@ -5,7 +5,10 @@
 - Scope: `crates/lsharp-types/src/infer.rs`,
   `crates/lsharp-types/src/infer/expr.rs`,
   `selfhost/src/Types/TypeInferPattern.ls`,
+  `crates/lsharp-ir/src/lower/mod.rs`,
   `crates/lsharp-types/src/infer_tests.rs`,
+  `crates/lsharp-ir/src/lower/tests/records_and_adt.rs`,
+  `crates/lsharp-wasm/tests/wasmgc_probe/part_015.rs`,
   `crates/lsharp-wasm/tests/e2e/selfhost_typeinfer_quote_patterns.rs`,
   `crates/lsharp-wasm/tests/e2e/strings_patterns_compiler_integration.rs`
 - Related: `LEGACY-LANG-01`,
@@ -29,6 +32,9 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
   alone cannot make a private record pattern visible.
 - Recursive broad expansion, spill-floor changes, and context/state refactors are outside this
   decision; only the observed registered-record application mismatch is addressed.
+- WasmGC lowering resolves a registered named head inside `TypeExpr::App` to its concrete GC
+  reference type. Unknown applications retain the existing fallback and are not claimed as
+  supported by this slice.
 
 ## Evidence
 
@@ -46,6 +52,10 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
   bounded depth regression, not an arbitrary-depth completion claim.
 - `test_e2e_selfhost_ftable_compiler_deep_nested_parametric_record_pattern_runs` passed for the
   same four-record chain; the source and ftable deep fixtures passed together in one focused batch.
+- `test_wasmgc_nested_parametric_record_pattern_preserves_reference_field_types` passed after
+  confirming that `Outer.inner` is `Ref(Box)` in the WasmGC IR.
+- `wasm_gc_emitter_executes_lowered_nested_parametric_record_pattern` passed through Wasmtime
+  WasmGC validation, instantiation, and execution with result `41`.
 - Mac Apple Silicon native gate passed for source commit
   `fa97fa948489f635dc8888b5a269755a75776670`; the ignored native test passed and the artifact was
   4660 KiB.
@@ -58,4 +68,6 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
 This closes the nested parametric record field-binding slice, source/import/ftable Wasm runtime
 fixtures, and the four-record recursion regression. Arbitrarily deep patterns, depths beyond the
 four-record regression, complete record-pattern semantic parity, full ftable/linear-memory ABI, and the
-`LEGACY-LANG-01` aggregate remain incomplete. `TODO.md` therefore keeps the aggregate as `[~]`.
+`LEGACY-LANG-01` aggregate remain incomplete. The WasmGC evidence is a Rust IR/emitter backend
+slice and does not establish native stage0 or Rust-free selfhost producer parity. `TODO.md`
+therefore keeps the aggregate as `[~]`.

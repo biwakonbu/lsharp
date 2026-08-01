@@ -1088,7 +1088,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   pattern、import、source/ftable runtime fixtureの verified sliceであり、arbitrarily deep
   patternについては4-record chain (`Root a -> Outer a -> Middle a -> Box a`) の source runtime
   regressionまで確認し、同じ4段を ftable runtimeでも確認した。それを超える深さ、full
-  ftable/linear-memory ABI、`LEGACY-LANG-01` aggregateは残る。
+  ftable/linear-memory ABI、`LEGACY-LANG-01` aggregateは残る。さらに Rust WasmGC backendの
+  `TypeExpr::App` named headを登録済みrecordの `Ref` へ解決する狭い修正を行い、IRの
+  `Outer.inner = Ref(Box)` と Wasmtimeでの nested pattern実行結果 `41` を確認した。
+  これはRust IR/emitter backendのverified sliceであり、native stage0 producer parityや
+  Rust-free selfhostの証拠には拡大しない。
 - [~] `LEGACY-LANG-02` ADT/GADT execution parity — ordinary ADT の direct/nested constructor と
   GADT parser/type refinement は verified。2026-07-31 に selfhost
   `Types.TypeInferAdt` の type parameter、constructor field、variant、type declaration scan を

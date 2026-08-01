@@ -64,6 +64,58 @@ fn test_nested_record_pattern_emits_recursive_struct_get() {
 }
 
 #[test]
+fn test_wasmgc_nested_parametric_record_pattern_preserves_reference_field_types() {
+    let source = r#"
+        (type (Box a) (record (: value a)))
+        (type (Outer a) (record (: inner (Box a))))
+        (defn read-inner [o]
+          (match o
+            [{Outer inner {Box value x}} x]
+            [_ 0]))
+        (defn main [] (read-inner {Outer inner {Box value 41}}))
+    "#;
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
+
+    let box_index = module
+        .gc_types
+        .iter()
+        .position(|type_def| type_def.name == "Box")
+        .unwrap() as u32;
+    let outer = module
+        .gc_types
+        .iter()
+        .find(|type_def| type_def.name == "Outer")
+        .unwrap();
+    let GcTypeKind::Struct(fields) = &outer.kind else {
+        panic!("Outer は WasmGC struct であるべき: {outer:?}");
+    };
+    assert_eq!(fields[0].ty, IrType::Ref(box_index));
+
+    let read_inner = module
+        .functions
+        .iter()
+        .find(|function| function.name == "read-inner")
+        .unwrap();
+    let struct_gets = read_inner
+        .body
+        .iter()
+        .filter(|instruction| matches!(instruction, Instruction::StructGet(_, _)))
+        .count();
+    assert!(
+        struct_gets >= 2,
+        "WasmGC nested parametric record pattern は親子の StructGet を生成すべき: {:?}",
+        read_inner.body
+    );
+}
+
+#[test]
 fn test_nested_record_pattern_rejects_literal_child_until_lowered() {
     let source = r#"
         (type Inner (record (: x Int)))

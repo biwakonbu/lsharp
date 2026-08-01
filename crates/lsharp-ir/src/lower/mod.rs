@@ -231,9 +231,18 @@ impl Lower {
 
     /// 宣言中の型式を選択した値表現の IR 型へ変換する。
     pub(crate) fn type_expr_to_ir(&self, ty: &lsharp_syntax::ast::TypeExpr) -> IrType {
-        if self.backend == LowerBackend::WasmGc
-            && let lsharp_syntax::ast::TypeExpr::Named(_, name) = ty
-        {
+        if self.backend == LowerBackend::WasmGc {
+            let name = match ty {
+                lsharp_syntax::ast::TypeExpr::Named(_, name) => Some(name),
+                lsharp_syntax::ast::TypeExpr::App(_, head, _) => match head.as_ref() {
+                    lsharp_syntax::ast::TypeExpr::Named(_, name) => Some(name),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let Some(name) = name else {
+                return type_expr_to_ir(ty);
+            };
             if name == "String"
                 && let Some(gc_idx) = self.string_array_type_index
             {
