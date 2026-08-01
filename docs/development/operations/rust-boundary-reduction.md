@@ -610,6 +610,20 @@ This is Rust IR/emitter backend evidence only. Parametric or recursive ADT repre
 nominal/exhaustiveness parity, import/ftable and linear-memory ABI parity, native stage0 producer
 parity, and the `LEGACY-LANG-02` aggregate remain incomplete.
 
+### selfhost imported ADT constructor pattern runtime slice (2026-08-01)
+
+The selfhost compiler-mode file path now has an actual runtime regression for an ADT declared in a
+separate module. `App.Shapes` declares parameterized `Maybe a`, and `App.Main` imports only `Just`
+and `Nothing` with `:open :only`, matches both constructors, and emits Wasm through
+`compile-file-mode`. `test_e2e_selfhost_compiler_mode_imported_adt_constructor_pattern_runs` runs the
+generated artifact with the compiler-mode runtime imports and produces `41\n0\n`.
+
+This verifies the source-file resolver, constructor export filtering, pattern binder/fallback, and
+generated artifact/runtime as one selfhost slice. Ftable import parity, qualified or alias-qualified
+constructor patterns, broad parametric/recursive ADT representation, nominal/exhaustiveness,
+WasmGC/linear-memory parity, and current-source native stage0 evidence on both supported targets
+remain incomplete. The test-only change does not broaden prior native producer evidence.
+
 ### legacy source compile boundary 更新 (2026-07-14)
 
 `App.Cli`、`EmbeddedCli`、`SmokeCli`、`PipelineSmoke` の source/full helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`PipelineSmoke` は Rust host compile と Wasm validate まで確認した。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `run-main-smoke` の単一 AST `lower` は診断用として残り、App.Cli / EmbeddedCli の component sidecar、no-arg pipeline entrypoint の full-program runtime/native E2E は別の未完了 surface である。

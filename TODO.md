@@ -1107,6 +1107,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   で実行し、`Some` の typed payload、variant tag、`None` fallbackを `42` の結果で確認した。
   これはRust IR/emitter backendの verified sliceであり、parametric ADT、nominal/exhaustiveness、
   full ftable/import、native stage0 producer parityの完了を意味しない。
+  さらに `test_e2e_selfhost_compiler_mode_imported_adt_constructor_pattern_runs` で、別ファイルの
+  `App.Shapes` に定義した parameterized `Maybe a` と `App.Main` の
+  `(import App.Shapes :open :only [Just Nothing])` を selfhost compiler-mode でコンパイルし、生成
+  Wasm を実行して `41\n0\n` を確認した。これは source-file import、constructor export filtering、constructor
+  pattern binder/fallback、生成 artifact/runtime を同じ fixtureで閉じる verified sliceである。
+  ftable の同じ import target、qualified/alias-qualified pattern、parametric/recursive ADT の広い形、
+  nominal/exhaustiveness、両 supported target の current-source native stage0 parity、
+  `LEGACY-LANG-02` aggregateは残る。test-only変更のため既存の native producer evidence は拡大していない。
 - [~] `LEGACY-COMP-01` full-program compiler closure — 主要 CLI builder は full-program 化済み。
   `TypeInferBlock.ls` の大きな do/computation 子要素走査は 64 要素 bounded/rooted scanへ移行し、
   Linux x86_64 stage2/stage3 fixed-pointを確認した。full-program compiler closure、
