@@ -1886,3 +1886,14 @@ full buildは未実行である。blockerの再現 commandは
 `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'`
 と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。
 Evidence: [`decisions-v0.3-native-official-release-replay-lock-precedence.md`](docs/adr/decisions-v0.3-native-official-release-replay-lock-precedence.md)。
+
+2026-08-02 に release smoke の provider snapshot preflight を archive path確認・展開より前へ移動した。欠落 archiveと
+trust-storeのみを指定した fixtureでも、archive lookupへ進まず all-or-none provider診断を返し、release smoke work
+directoryを作成しない RED→GREENを `test-release-smoke-provider-snapshots.sh` で確認した verified partial sliceである。
+live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback
+bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source
+manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため、
+Linux replay・stage regeneration・full buildは未実行である。blockerの再現 commandは
+`current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'`
+と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。
+Evidence: [`decisions-v0.3-release-smoke-provider-preflight-order.md`](docs/adr/decisions-v0.3-release-smoke-provider-preflight-order.md)。

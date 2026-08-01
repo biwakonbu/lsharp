@@ -60,6 +60,8 @@ validate_release_review_provider_inputs() {
   )
 }
 
+validate_release_review_provider_inputs
+
 find_archive_root() {
   local extract_dir="$1"
   local direct_children=()
@@ -188,7 +190,6 @@ done
 NATIVE_ONLY=0
 if [[ -f "$PROGRAM_NATIVE" ]]; then
   NATIVE_ONLY=1
-  validate_release_review_provider_inputs
   if [[ ! -x "$PROGRAM_NATIVE" ]]; then
     echo "ERROR: native-only program.native is not executable: $PROGRAM_NATIVE" >&2
     exit 1

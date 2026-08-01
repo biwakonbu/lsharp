@@ -131,6 +131,21 @@ PY
 bash "$ROOT/scripts/checksum.sh" "$STABLE_ROOT" >"$STABLE_ROOT/checksums.txt"
 tar -czf "$TMP_ROOT/$STABLE_NAME.tar.gz" -C "$TMP_ROOT" "$STABLE_NAME"
 
+set +e
+preflight_output="$(
+  RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
+    RELEASE_REVIEW_LIFECYCLE="" \
+    WORK_DIR="$TMP_ROOT/preflight-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/missing-release.tar.gz" 2>&1
+)"
+preflight_status=$?
+set -e
+[[ "$preflight_status" -ne 0 ]] || { echo "incomplete provider input was accepted for a missing archive" >&2; exit 1; }
+grep -F "must be supplied together" <<<"$preflight_output" >/dev/null \
+  || { echo "provider preflight did not precede archive lookup" >&2; echo "$preflight_output" >&2; exit 1; }
+[[ ! -e "$TMP_ROOT/preflight-work" ]] \
+  || { echo "provider preflight created release smoke work before archive access" >&2; exit 1; }
+
 RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
 RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
   WORK_DIR="$TMP_ROOT/smoke-work" \
