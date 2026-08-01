@@ -228,6 +228,30 @@ def validate_expected(value: Any, kind: str, label: str) -> Dict[str, Any]:
     }
 
 
+def validate_scope(
+    layers: List[str], observables: List[str], expected: Mapping[str, Any], label: str
+) -> None:
+    """Keep artifact/runtime claims aligned with their processing boundaries."""
+    artifact_required = expected["artifact"]["required"]
+    runtime_expected = expected["runtime"]["status"] == "expected"
+    if artifact_required:
+        if "codegen" not in layers:
+            raise ManifestError(f"{label}.layers must include codegen for a required artifact")
+        if "wasm" not in observables:
+            raise ManifestError(f"{label}.observables must include wasm for a required artifact")
+    if "wasm" in observables and not artifact_required:
+        raise ManifestError(f"{label}.observables cannot include wasm without a required artifact")
+    if runtime_expected:
+        if "runtime" not in layers:
+            raise ManifestError(f"{label}.layers must include runtime for expected runtime")
+        if "runtime" not in observables:
+            raise ManifestError(f"{label}.observables must include runtime for expected runtime")
+    if "runtime" in observables and not runtime_expected:
+        raise ManifestError(f"{label}.observables cannot include runtime when runtime is not expected")
+    if "runtime" in layers and not runtime_expected:
+        raise ManifestError(f"{label}.layers cannot include runtime when runtime is not expected")
+
+
 def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[str, Any]:
     expect_keys(manifest, ("schema_version", "suite", "targets", "execution", "fixtures"), "manifest")
     if manifest["schema_version"] != 1:
@@ -272,6 +296,7 @@ def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[st
         if fixture_execution != execution:
             raise ManifestError(f"{label}.execution must match manifest.execution")
         expected = validate_expected(fixture["expected"], kind, f"{label}.expected")
+        validate_scope(layers, observables, expected, label)
         if expected["artifact"]["required"] and not set(commands).intersection(
             {"compile", "build"}
         ):

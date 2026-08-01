@@ -343,6 +343,53 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("artifact command", result.stderr.lower())
 
+    def test_rejects_artifact_runtime_scope_without_matching_layer_or_observable(self):
+        original = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        fixture_index = next(
+            index
+            for index, fixture in enumerate(original["fixtures"])
+            if fixture["kind"] == "valid"
+        )
+        cases = (
+            ("missing wasm observable", lambda fixture: fixture["observables"].remove("wasm"), "wasm"),
+            ("missing runtime layer", lambda fixture: fixture["layers"].remove("runtime"), "must include runtime"),
+        )
+        for label, mutate, expected_word in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                manifest = pathlib.Path(directory) / "manifest.json"
+                payload = json.loads(json.dumps(original))
+                mutate(payload["fixtures"][fixture_index])
+                manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+                result = self.run_validator(manifest)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_word, result.stderr.lower())
+
+    def test_rejects_artifact_runtime_observables_without_expected_scope(self):
+        original = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        fixture_index = next(
+            index
+            for index, fixture in enumerate(original["fixtures"])
+            if fixture["kind"] == "invalid"
+        )
+        cases = (
+            ("wasm without artifact", "observables", "wasm", "required artifact"),
+            ("runtime without expected result", "observables", "runtime", "runtime is not expected"),
+            ("runtime layer without expected result", "layers", "runtime", "runtime is not expected"),
+        )
+        for label, field, value, expected_word in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                manifest = pathlib.Path(directory) / "manifest.json"
+                payload = json.loads(json.dumps(original))
+                payload["fixtures"][fixture_index][field].append(value)
+                manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+                result = self.run_validator(manifest)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_word, result.stderr.lower())
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

@@ -23,7 +23,11 @@
 v0.4 M1-01 の semantic fixture matrix では、artifact を要求する fixture が `compile` または
 `build` を commands に宣言しない場合を validator が拒否する command/artifact scope boundary を
 verified partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため
-v0.4 の完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-01-artifact-command-boundary.md`。
+v0.4 の完了項目には移さない。さらに artifact/runtime の期待値と `codegen`/`wasm`、
+`runtime`/`runtime` の layer・observable 対を validator が拒否する scope boundary を verified
+partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため
+v0.4 の完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-01-artifact-command-boundary.md`、
+`docs/adr/decisions-v0.4-m1-01-scope-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、

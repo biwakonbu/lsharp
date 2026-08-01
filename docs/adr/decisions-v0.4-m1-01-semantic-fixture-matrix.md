@@ -30,6 +30,10 @@ look stronger than its evidence.
 - Require every fixture whose expected artifact is required to name `compile`
   or `build` in its command list. A `check`-only fixture cannot claim an
   artifact or runtime boundary.
+- Keep the scope inventory aligned with execution claims: a required artifact
+  names the `codegen` layer and `wasm` observable, while expected runtime names
+  the `runtime` layer and `runtime` observable. Invalid intermediate failures
+  may stop at codegen without claiming an artifact.
 - Keep artifact and target/runtime results explicitly `pending` or `not-run`
   until the corresponding Rust differential, native, Wasm, and target gates
   produce evidence. The validator must not promote pending data to success.
