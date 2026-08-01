@@ -1505,6 +1505,23 @@ payload materialization、Linux native stage0 source-file smoke、package acquis
 parityの証拠には拡張しない。VMは停止し、Cargo target、stage1、診断artifactを回収した。
 ADR: `docs/adr/decisions-v0.3-native-linux-stage2-metadata-prefix-e2e.md`。
 
+同じ current stage1 の entrypoint user index `3408`（actual function index `3418`）を metadata
+`3408..3409`、prefix `128` で取得した。summaryは `status=diagnostic` / `phase=stage2-metadata`、
+stdout `3,228` bytes、stderr `0` bytes。entrypoint IRの opcode `40` rowは3件で、次の通り emitted
+bytes、signed rel32、function-relative targetが stage1の expected target diagnosticと一致した。
+
+| IR idx | operand | offset | emitted bytes | rel32 | target |
+| ---: | ---: | ---: | --- | ---: | ---: |
+| 0 | 3416 | 11 | `e8 dd 9e ff ff` | `-24,867` | `-24,851` |
+| 4 | 3417 | 49 | `e8 cd a8 ff ff` | `-22,323` | `-22,269` |
+| 6 | 3415 | 59 | `e8 24 8b ff ff` | `-29,916` | `-29,852` |
+
+この結果では entrypoint call rel32の opcode/bytes/target不一致は再現せず、広い append helper、spill
+floor、offset-depth ctx/state refactor、または推測による call bundle修正は行わない。metadata-onlyのため、
+full stage2 transport/materialize、target codeへの着地、stage3 fixed-point、Linux native stage0
+source-file smoke、package acquisition/rollback、両 target parityは未検証である。ADR:
+`docs/adr/decisions-v0.3-native-linux-stage2-entrypoint-rel32-diagnostic.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。

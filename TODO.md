@@ -1217,6 +1217,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これは stage2 metadata prefix の入口が現行 source でも進むことを示すが、full stage2/stage3、
   current-source Linux stage0 package、
   source-file smoke、release/rollbackは未完了のまま残る。
+  さらに entrypoint user index `3408`（actual function index `3418`）だけを metadata `3408..3409`
+  / prefix `128` で診断し、IR opcode `40` の user call `(3416, 3417, 3415)`について emitted bytes、
+  signed rel32、function-relative targetを相関した。3 rowとも `e8 dd 9e ff ff` → `-24867` / `-24851`、
+  `e8 cd a8 ff ff` → `-22323` / `-22269`、`e8 24 8b ff ff` → `-29916` / `-29852`となり、stage1の
+  expected target diagnosticと一致した。これは call rel32の最小修正を正当化する不一致がないことを
+  示す診断であり、full transport/materializeの実行証拠ではない。
 
 ## ISSUES-derived quality and runtime work
 
