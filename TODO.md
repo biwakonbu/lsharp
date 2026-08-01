@@ -307,6 +307,13 @@ Python compile、docs audit、diff check で確認した verified partial であ
 Rust/native full parity は残る。ADR:
 `docs/adr/decisions-v0.3-native-mcp-validate-report-counters.md`。
 
+さらに native MCP shim が直接読む JSON-RPC request、native report、direct/file manifest input、emitted
+manifest を strict object-pairs parserで読み、nestedを含む duplicate JSON object key を最後の値へ黙って
+上書きせず fail-closedにした。duplicate `id` / `schema_version` / report `status` fixtureを native MCP
+78 tests、Python compile、docs audit、diff checkで確認した verified partial である。provider semantics、target
+runtime、Rust/native full parity は残る。ADR:
+`docs/adr/decisions-v0.3-native-mcp-json-duplicate-keys.md`。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:

@@ -77,6 +77,19 @@ CANONICAL_UTC_TIMESTAMP_PATTERN = (
 )
 CANONICAL_UTC_TIMESTAMP_RE = re.compile(CANONICAL_UTC_TIMESTAMP_PATTERN)
 
+
+def strict_json_loads(content):
+    def reject_duplicate_keys(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON object key: {key}")
+            value[key] = item
+        return value
+
+    return json.loads(content, object_pairs_hook=reject_duplicate_keys)
+
+
 class ShimError(Exception):
     pass
 
@@ -509,8 +522,8 @@ def run_native(program, arguments):
 
 def parse_json_output(completed):
     try:
-        return json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
+        return strict_json_loads(completed.stdout)
+    except (json.JSONDecodeError, ValueError) as error:
         raise ToolError(f"malformed native JSON: {error}") from error
 
 
@@ -611,8 +624,8 @@ def input_file(arguments, temporary_directory, names=("source", "file")):
 def require_manifest_object(path, label):
     try:
         content = path.read_text(encoding="utf-8")
-        value = json.loads(content)
-    except (OSError, json.JSONDecodeError) as error:
+        value = strict_json_loads(content)
+    except (OSError, json.JSONDecodeError, ValueError) as error:
         raise ToolError(f"{label} は有効な JSON object が必要です: {error}") from error
     if not isinstance(value, dict):
         raise ToolError(f"{label} は JSON object が必要です")
@@ -637,8 +650,8 @@ def validate_input_file(arguments, temporary_directory):
         content = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     elif isinstance(value, str) and value.strip():
         try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError as error:
+            parsed = strict_json_loads(value)
+        except (json.JSONDecodeError, ValueError) as error:
             raise ToolError(f"manifest は有効な JSON object が必要です: {error}") from error
         if not isinstance(parsed, dict):
             raise ToolError("manifest は JSON object が必要です")
@@ -1372,8 +1385,8 @@ def call_validate(program, arguments, temporary_directory):
         if manifest_path is None or not manifest_path.is_file():
             raise ToolError("native validate が manifest を生成しませんでした")
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
+            manifest = strict_json_loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError) as error:
             raise ToolError(f"native emitted manifest が不正です: {error}") from error
         validate_manifest_output(manifest)
         report["manifest"] = manifest
@@ -1540,8 +1553,8 @@ def main(argv=None):
             if not line.strip():
                 continue
             try:
-                request = json.loads(line)
-            except json.JSONDecodeError as error:
+                request = strict_json_loads(line)
+            except (json.JSONDecodeError, ValueError) as error:
                 raise ShimError(f"invalid JSON: {error}") from error
             response = handle_request(program, request)
             if response is not None:

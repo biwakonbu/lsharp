@@ -70,6 +70,7 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
         ("array", "JSON object"),
         ("null", "JSON object"),
         ("malformed", "manifest"),
+        ("duplicate", "duplicate JSON object key: schema_version"),
         ("missing", "missing field"),
         ("unknown", "unknown field"),
         ("nodes-object", "must be an array"),
@@ -136,6 +137,48 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
             test.assertTrue(response["result"]["isError"])
             test.assertIn(expected_message, response["result"]["content"][0]["text"])
             test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
+
+
+def assert_validate_rejects_duplicate_manifest_input_before_native(test):
+    duplicate_manifest = (
+        '{"schema_version":1,"schema_version":1,"nodes":[],"evidence":[],"edges":[]}'
+    )
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        manifest_file = root / "manifest.json"
+        manifest_file.write_text(duplicate_manifest, encoding="utf-8")
+        payload = b"".join(
+            (
+                request(
+                    request_id,
+                    "tools/call",
+                    {
+                        "name": "lsharp_validate",
+                        "arguments": arguments,
+                    },
+                )
+            )
+            for request_id, arguments in enumerate(
+                (
+                    {"manifest": duplicate_manifest},
+                    {"manifest_file": str(manifest_file)},
+                ),
+                1,
+            )
+        )
+        result = test.run_shim(program, payload, root)
+
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        test.assertEqual(len(responses), 2)
+        for response in responses:
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn(
+                "duplicate JSON object key: schema_version",
+                response["result"]["content"][0]["text"],
+            )
+        test.assertFalse((root / "native.log").exists())
 
 
 def assert_validate_accepts_valid_emitted_manifest_items(test):
