@@ -206,6 +206,18 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
         )
         self.assertEqual(fixture["runtime_inputs"], {"input.txt": "payload"})
 
+    def test_r4_empty_file_fixture_declares_explicit_empty_snapshot(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/io-read-file-empty"
+        )
+        self.assertEqual(fixture["runtime_inputs"], {"input.txt": ""})
+        self.assertEqual(fixture["expected"]["runtime"]["stdout"], "")
+
     def test_r4_stdin_fixture_declares_explicit_runtime_stdin_snapshot(self):
         result = self.run_validator()
         self.assertEqual(result.returncode, 0, result.stderr)

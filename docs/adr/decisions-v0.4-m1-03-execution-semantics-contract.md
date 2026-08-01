@@ -156,7 +156,7 @@ observations as pending rather than overloading `stdout` or a debug log.
   nested record variable patterns on the supported path and declares the
   AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
 - The matrix RED→GREEN contract is covered by
-  `python3 scripts/ci/test-semantic-fixture-matrix.py` (13 tests). The Rust
+  `python3 scripts/ci/test-semantic-fixture-matrix.py` (14 tests). The Rust
   oracle producer, with fixture implementation commit
   `4790bb3e647d03b2ccfa883bc502e40d2385865f`
   and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
@@ -208,6 +208,16 @@ observations as pending rather than overloading `stdout` or a debug log.
   exit `0`, and empty stderr. `wasm-tools 1.245.1 validate` passed. The
   producer refuses to overwrite an existing input and the report remains
   task-local until a final-main evidence run.
+- `valid/io-read-file-empty` fixes the EOF boundary for an explicitly created
+  zero-byte `input.txt`. The matrix keeps the empty content distinct from a
+  missing file; the Rust oracle at implementation commit
+  `0ab96b03fa6045126a03b8c94b3646eaa9e550b9` and target-declared
+  `aarch64-apple-darwin` observed a valid Wasm artifact of 6,583 bytes with
+  digest
+  `sha256:843524e4a13a230bfdf184c0392ab6a2eda9a422fb16c9d6eb48875f7267fb48`.
+  Wasmtime 43.0.0 with the task-owned directory preopened returned empty
+  stdout, exit `0`, and empty stderr. `wasm-tools 1.245.1 validate` passed;
+  native/Linux parity remains pending.
 - `valid/io-read-stdin` extends `V4-M1-03-R4` with the same explicit boundary
   for stdin: the matrix projects a UTF-8 `runtime_stdin` snapshot and both
   report producers pass it as child stdin without inheriting a host stream.
