@@ -1206,7 +1206,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   Rust oracle/host integration の隔離を閉じる。2026-08-02 に current `main` の Mac Apple Silicon
   native App.Cli releaseを再生成し、stage2/stage3 fixed-point、source commit、target、artifact
   digest、`--version` smokeを確認した。Linux x86_64のcurrent-source package/acquisition、
-  release archive、rollback実行、両 targetのprovenance parityは残る。
+  release archive、rollback実行、両 targetのprovenance parityは残る。さらに同日、現行 commitの
+  Linux x86_64 stage1 host payloadを `333.21s` で生成し、code `4,393,425` bytes、data `2,757`
+  bytes、entrypoint `4,390,965`、function-start `3,409` を確認した。Lima VMでこのstage1を
+  materializeし、metadata range `0..1` を実行した診断 gateは `status=diagnostic`、stdout `8,353`
+  bytes、stderr `0` で成功した。full stage2/stage3、current-source Linux stage0 package、
+  source-file smoke、release/rollbackは未完了のまま残る。
 
 ## ISSUES-derived quality and runtime work
 

@@ -1478,6 +1478,23 @@ packaged stage0 acquisition/release/rollback、全公開 command、component sid
 artifact/provenance parityは未検証である。専用 Cargo targetと `/tmp` artifactは検証後に削除する。
 ADR: `docs/adr/decisions-v0.3-native-macos-app-cli-release-e2e.md`。
 
+### V2-16e / LEGACY-BOOT-01 Linux current-source stage1 metadata boundary (2026-08-02)
+
+現行 `02201e1172ebb6dad8624186658f171fc9a88a3d` の Linux x86_64 stage1 host payloadを
+`test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact` で生成し、
+`1 passed`、`333.21s`。manifestは target `x86_64-unknown-linux-gnu`、code `4,393,425` bytes、
+data `2,757` bytes、entrypoint `4,390,965`、function-start `3,409`、main function `3,418`を
+記録した。code SHA-256は
+`625ec6a33f9f5722832eee6b9062994d680b48f6d1b6feba8e2db334629cbc9a`。
+
+このstage1をLima `lsharp-linux-x86`（16 GiB RAM / 12 GiB disk）へ渡し、free `7,688,683,520`
+bytes、required `4,294,967,296` bytesの条件で materializeした。full stage2を起動せず、
+metadata `0..1`だけを実行したところ summary `status=diagnostic`、stdout `8,353` bytes、stderr `0`
+bytesで終了した。これは current-source Linuxのstage1 materialize/native入口の診断証拠であり、
+full stage2/stage3 fixed-point、Linux native stage0 source-file smoke、App.Cli release、package
+acquisition/rollback、両 target parityは未検証である。VM、Cargo target、stage1/診断artifactは
+検証後に削除し、VMは停止した。ADR: `docs/adr/decisions-v0.3-native-linux-stage1-metadata-e2e.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
