@@ -149,7 +149,7 @@ fn installed_packages(project_dir: &Path) -> Vec<Value> {
     let mut packages = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() && path.symlink_metadata().is_err() {
+        if !path.is_dir() {
             continue;
         }
         let cfg = config::load_config(&path);
@@ -201,7 +201,11 @@ fn installed_package_dirs(project_dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(packages_dir) else {
         return Vec::new();
     };
-    let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect();
     paths.sort();
     paths
 }

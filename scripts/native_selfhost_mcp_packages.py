@@ -233,7 +233,7 @@ def _installed_packages(project_dir):
         return []
     packages = []
     for path in entries:
-        if not path.is_dir() and not path.is_symlink():
+        if not path.is_dir():
             continue
         config = _project_config(path)
         name = config["name"] or path.name or "package"

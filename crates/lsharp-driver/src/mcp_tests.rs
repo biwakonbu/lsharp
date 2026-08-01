@@ -712,6 +712,73 @@ description = "context fixture"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_search_tool_ignores_non_directory_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let root =
+            std::env::temp_dir().join(format!("lsharp_mcp_search_symlink_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let valid = root.join(".lsharp/packages/valid-1.0.0");
+        std::fs::create_dir_all(&valid).unwrap();
+        std::fs::write(
+            valid.join("lsharp.toml"),
+            "[project]\nname = \"valid\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let packages = root.join(".lsharp/packages");
+        let external_file = root.join("outside.txt");
+        std::fs::write(&external_file, "not a package\n").unwrap();
+        symlink(&external_file, packages.join("file-link-1.0.0")).unwrap();
+        symlink(
+            root.join("missing-package"),
+            packages.join("dangling-1.0.0"),
+        )
+        .unwrap();
+        let directory_link = packages.join("linked-1.0.0");
+        symlink(&valid, &directory_link).unwrap();
+
+        let project_dir = root.display().to_string();
+        let result = call_tool(
+            "lsharp_search",
+            &json!({"project_dir": project_dir, "query": ""}),
+        )
+        .expect("lsharp_search は directory package だけを返すべき");
+        assert_eq!(
+            result["packages"],
+            json!([
+                {
+                    "name": "valid",
+                    "version": "1.0.0",
+                    "path": directory_link.display().to_string()
+                },
+                {
+                    "name": "valid",
+                    "version": "1.0.0",
+                    "path": valid.display().to_string()
+                }
+            ])
+        );
+
+        for name in ["file-link", "dangling"] {
+            let error = call_tool(
+                "lsharp_package_api",
+                &json!({
+                    "project_dir": root.display().to_string(),
+                    "name": name
+                }),
+            )
+            .expect_err("非 directory symlink は package_api の対象にならないべき");
+            assert!(
+                error.contains("見つかりません"),
+                "unexpected error: {error}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn test_project_context_tool_projects_sorted_dependencies_and_packages() {
         let root = std::env::temp_dir().join(format!("lsharp_mcp_context_{}", std::process::id()));

@@ -50,6 +50,64 @@ def assert_search_projects_local_packages(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_search_ignores_non_directory_symlinks(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        valid = write_package(root, "valid-1.0.0", "valid", "1.0.0")
+        external_file = root / "outside.txt"
+        external_file.write_text("not a package\n", encoding="utf-8")
+        packages = root / ".lsharp" / "packages"
+        (packages / "file-link-1.0.0").symlink_to(external_file)
+        (packages / "dangling-1.0.0").symlink_to(root / "missing-package")
+        directory_link = packages / "linked-1.0.0"
+        directory_link.symlink_to(valid, target_is_directory=True)
+
+        payload = b"".join(
+            [
+                request(
+                    1,
+                    "tools/call",
+                    {"name": "lsharp_search", "arguments": {"project_dir": str(root)}},
+                ),
+                request(
+                    2,
+                    "tools/call",
+                    {
+                        "name": "lsharp_package_api",
+                        "arguments": {"project_dir": str(root), "name": "file-link"},
+                    },
+                ),
+                request(
+                    3,
+                    "tools/call",
+                    {
+                        "name": "lsharp_package_api",
+                        "arguments": {"project_dir": str(root), "name": "dangling"},
+                    },
+                ),
+            ]
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        test.assertEqual(len(responses), 3)
+        response = responses[0]
+        test.assertFalse(response["result"]["isError"])
+        packages_result = response["result"]["structuredContent"]["packages"]
+        test.assertEqual(
+            packages_result,
+            [
+                {"name": "valid", "version": "1.0.0", "path": str(directory_link)},
+                {"name": "valid", "version": "1.0.0", "path": str(valid)},
+            ],
+        )
+        for response in responses[1:]:
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn("見つかりません", response["result"]["content"][0]["text"])
+        test.assertFalse((root / "native.log").exists())
+
+
 def assert_search_rejects_invalid_arguments(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)
