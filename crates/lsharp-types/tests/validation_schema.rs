@@ -75,6 +75,23 @@ fn review_provenance_schema_bounds_sequences_to_unsigned_64_bit_values() {
 }
 
 #[test]
+fn review_provenance_schema_declares_nonblank_required_strings() {
+    let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
+        .expect("review provenance schema は JSON であるべき");
+
+    assert_eq!(
+        schema["$defs"]["non_empty_string"]["pattern"],
+        "[^\\s]",
+        "required string は whitespace-only を schema で拒否するべき"
+    );
+    assert_eq!(
+        schema["$defs"]["lifecycle"]["properties"]["reason_digest"]["anyOf"][0]["$ref"],
+        "#/$defs/non_empty_string",
+        "reason_digest は optional でも nonblank string boundary を共有するべき"
+    );
+}
+
+#[test]
 fn intent_graph_schema_declares_optional_review_verification_state() {
     let schema: Value =
         serde_json::from_str(INTENT_GRAPH_SCHEMA).expect("intent graph schema は JSON であるべき");

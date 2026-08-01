@@ -87,3 +87,62 @@ fn review_wire_schema_rejects_impossible_base64url_length() {
         Err(ReviewWireError::InvalidSignatureEncoding { .. })
     ));
 }
+
+#[test]
+fn review_wire_schema_rejects_whitespace_only_required_fields() {
+    let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
+        .expect("review wire schema は JSON であるべき");
+    let validator = jsonschema::draft202012::new(&schema)
+        .expect("review wire schema の validator を構築できるべき");
+
+    let mut attestation = valid_wire("AAECAw", VALID_PUBLIC_KEY);
+    attestation["attestations"][0]["subject_digest"] = json!(" \t");
+    assert!(
+        !validator.is_valid(&attestation),
+        "attestation required field の whitespace-only は schema で拒否するべき"
+    );
+    assert!(matches!(
+        parse_review_wire(&serde_json::to_string(&attestation).unwrap()),
+        Err(ReviewWireError::Attestation(
+            lsharp_types::intent::review_attestation::AttestationError::EmptyField {
+                field: "subject_digest"
+            }
+        ))
+    ));
+
+    let mut lifecycle = valid_wire("AAECAw", VALID_PUBLIC_KEY);
+    lifecycle["lifecycle"] = json!([{
+        "review_id": "review:checkout/reviewer-001",
+        "sequence": 1,
+        "state": "active",
+        "effective_at": "2026-08-01T00:00:00Z",
+        "reason_digest": "\n"
+    }]);
+    assert!(
+        !validator.is_valid(&lifecycle),
+        "optional reason_digest の whitespace-only は schema で拒否するべき"
+    );
+    assert!(matches!(
+        parse_review_wire(&serde_json::to_string(&lifecycle).unwrap()),
+        Err(ReviewWireError::Lifecycle(
+            lsharp_types::intent::review_lifecycle::LifecycleError::EmptyField {
+                field: "reason_digest"
+            }
+        ))
+    ));
+
+    let mut trust = valid_wire("AAECAw", VALID_PUBLIC_KEY);
+    trust["trust_store"][0]["provider"] = json!("\u{00a0}");
+    assert!(
+        !validator.is_valid(&trust),
+        "trust-store required field の whitespace-only は schema で拒否するべき"
+    );
+    assert!(matches!(
+        parse_review_wire(&serde_json::to_string(&trust).unwrap()),
+        Err(ReviewWireError::TrustStore(
+            lsharp_types::intent::review_trust_store::TrustStoreError::EmptyField {
+                field: "provider"
+            }
+        ))
+    ));
+}

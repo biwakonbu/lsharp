@@ -148,12 +148,14 @@ aggregate は未接続のため `[~]` を維持する。ADR:
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary、canonical base64url schema/parser parity、
-  `sequence` の `1..=u64::MAX` schema/parser boundary、`sequence >= 1` の Rust/selfhost source parity は
-  verified partial slice。source/native producer、trust store、署名検証、両対応 target の runtime
+  `sequence` の `1..=u64::MAX` schema/parser boundary、required string と optional `reason_digest` の
+  non-blank schema/parser parity、`sequence >= 1` の Rust/selfhost source parity は verified partial slice。
+  source/native producer、trust store、署名検証、両対応 target の runtime
   evidence は残る。ADR:
   `docs/adr/decisions-v0.3-review-attestation-sequence-boundary.md`、
   `docs/adr/decisions-v0.3-review-wire-schema-base64url.md`、
-  `docs/adr/decisions-v0.3-review-wire-sequence-overflow.md`。
+  `docs/adr/decisions-v0.3-review-wire-sequence-overflow.md`、
+  `docs/adr/decisions-v0.3-review-wire-schema-nonblank.md`。
 - [~] `EC-M3-02` lifecycle transition — append-only registry と stale/revoked 境界の Rust verified
   slice。selfhost reducerにも deterministic ordering、transition、sequence rollback、`effective_at`
   rollback（code `8` と前後 timestamp payload）、explicit clock 以下の最新 `event_at` 選択を接続し、
@@ -907,6 +909,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 
 - [~] `EC-M3-01` attestation の canonical bytes、strict UTC timestamp、Ed25519 signature、
   canonical base64url schema/parser parity、`sequence` の `1..=u64::MAX` schema/parser boundary、
+  required string と optional `reason_digest` の non-blank schema/parser parity、
   current subject/source/provenance binding と explicit report、および
   `reviews[].verification_state` manifest projection を Rust canonical model で検証する。
   attestation input wiring、selfhost/native parity、両 supported target の artifact/runtime evidence
