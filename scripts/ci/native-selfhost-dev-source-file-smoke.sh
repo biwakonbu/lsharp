@@ -6,6 +6,7 @@ RUNNER="$ROOT/scripts/native-selfhost-dev.sh"
 VALIDATION_SOURCE="$ROOT/tests/fixtures/validation/ec-m3-canonical-source.ls"
 EXPECTED_VALIDATION_MANIFEST="$ROOT/tests/fixtures/validation/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_SOURCE="$ROOT/tests/fixtures/validation/ec-m3-duplicate-node-source.ls"
+VALIDATION_PROJECT_DUPLICATE_SOURCE="$ROOT/tests/fixtures/validation/ec-m2-project-duplicate-source.ls"
 VALIDATION_ATTESTATION_FIXTURE="$ROOT/tests/fixtures/validation/ec-m3-review-attestation-source.ls"
 STAGE0_DIR="${NATIVE_STAGE0_DIR:-}"
 SOURCE_ROOT="${NATIVE_SELFHOST_SOURCE_ROOT:-$ROOT/selfhost}"
@@ -58,6 +59,7 @@ require_file "$SOURCE_ROOT/src/App/Cli.ls" "native selfhost App.Cli source"
 require_file "$VALIDATION_SOURCE" "EC-M3-01 validation source fixture"
 require_file "$EXPECTED_VALIDATION_MANIFEST" "EC-M3-01 canonical manifest fixture"
 require_file "$VALIDATION_INVALID_SOURCE" "EC-M3-01 duplicate node source fixture"
+require_file "$VALIDATION_PROJECT_DUPLICATE_SOURCE" "EC-M2-01 project duplicate source fixture"
 require_file "$VALIDATION_ATTESTATION_FIXTURE" "EC-M3-04 review attestation source fixture"
 
 if [[ -n "$SOURCE_SMOKE_EVIDENCE_DIR" ]]; then
@@ -125,6 +127,7 @@ COMPILE_OUTPUT="$WORK_DIR/compile.wasm"
 BUILD_OUTPUT="$WORK_DIR/build.wasm"
 VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
+VALIDATION_PROJECT_DUPLICATE_MANIFEST="$WORK_DIR/ec-m2-project-duplicate-manifest.json"
 VALIDATION_ORPHAN_MANIFEST="$WORK_DIR/ec-m3-orphan-node-manifest.json"
 VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
 VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
@@ -2685,6 +2688,16 @@ grep -F "source validation error:2" "$WORK_DIR/validation-duplicate-node.stderr"
   || die "duplicate validation diagnostic must expose the canonical duplicate-node code"
 [[ ! -e "$VALIDATION_INVALID_MANIFEST" ]] \
   || die "duplicate validation must produce no report or manifest"
+
+run_expected_validation_error validation-project-duplicate-node \
+  validate \
+  --source "$VALIDATION_PROJECT_DUPLICATE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_PROJECT_DUPLICATE_MANIFEST"
+grep -F "source validation error:2" "$WORK_DIR/validation-project-duplicate-node.stderr" >/dev/null \
+  || die "project duplicate validation diagnostic must expose the canonical duplicate-node code"
+[[ ! -e "$VALIDATION_PROJECT_DUPLICATE_MANIFEST" ]] \
+  || die "project duplicate validation must produce no report or manifest"
 
 run_command compile 0 compile "$INPUT" -o "$COMPILE_OUTPUT"
 run_command build 0 build "$INPUT" -o "$BUILD_OUTPUT"

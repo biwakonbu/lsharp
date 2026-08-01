@@ -337,6 +337,30 @@ fn source_adapter_reports_duplicate_node_with_both_source_spans() {
 }
 
 #[test]
+fn source_adapter_rejects_shared_project_level_duplicate_fixture() {
+    const SOURCE: &str =
+        include_str!("../../../../tests/fixtures/validation/ec-m2-project-duplicate-source.ls");
+    let program = parse(SOURCE).expect("shared project duplicate fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("shared project duplicate fixture は fail-closed に拒否するべき");
+    let SourceGraphError::DuplicateNode {
+        id,
+        first_span,
+        duplicate_span,
+    } = error
+    else {
+        panic!("shared project duplicate の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(id, "intent:checkout/same");
+    assert!(first_span.start < duplicate_span.start);
+    assert!(first_span.end <= duplicate_span.start);
+    assert!(SOURCE[first_span.start..first_span.end].contains("first declaration"));
+    assert!(SOURCE[duplicate_span.start..duplicate_span.end].contains("second declaration"));
+}
+
+#[test]
 fn source_adapter_projects_review_registry_forms_and_rejects_unknown_visibility() {
     let program = parse(
         r#"

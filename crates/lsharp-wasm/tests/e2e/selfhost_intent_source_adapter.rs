@@ -398,9 +398,52 @@ fn test_e2e_selfhost_source_adapter_rejects_duplicate_nodes() {
 
     assert_eq!(
         lines,
-        ["0", "4", "intent:checkout/cancel"],
+        ["0", "2", "intent:checkout/cancel"],
         "source node の stable ID 重複は拒否するべき"
     );
+}
+
+/// EC-M2-01: nested declaration をまたぐ project-level duplicate は最初と現在の span を返す。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_project_level_duplicate_nodes() {
+    const SOURCE: &str = r#"(module Checkout (private (defn first [] :intent "intent:checkout/same" "first declaration" true)) (impl (Show Int) (defn second [] :intent "intent:checkout/same" "second declaration" true)))"#;
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(module Checkout (private (defn first [] :intent \"intent:checkout/same\" \"first declaration\" true)) (impl (Show Int) (defn second [] :intent \"intent:checkout/same\" \"second declaration\" true)))"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      (print-string "\n")
+      (print (source-graph-error-start error))
+      (print (source-graph-error-end error))
+      (print (source-graph-error-related-start error))
+      (print (source-graph-error-related-end error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(&lines[..3], ["0", "2", "intent:checkout/same"]);
+
+    let current_start = lines[3]
+        .parse::<usize>()
+        .expect("duplicate declaration span は整数であるべき");
+    let current_end = lines[4]
+        .parse::<usize>()
+        .expect("duplicate declaration end は整数であるべき");
+    let first_start = lines[5]
+        .parse::<usize>()
+        .expect("first declaration span は整数であるべき");
+    let first_end = lines[6]
+        .parse::<usize>()
+        .expect("first declaration end は整数であるべき");
+    assert!(first_start < current_start);
+    assert!(first_end <= current_start);
+    assert!(SOURCE[current_start..current_end].contains(":intent"));
+    assert!(SOURCE[first_start..first_end].contains(":intent"));
 }
 
 /// EC-M2-01: graph-owned endpoint が未登録なら edge を追加しない。
@@ -915,7 +958,7 @@ fn test_e2e_selfhost_source_adapter_reports_error_spans() {
 
     assert_eq!(
         lines,
-        ["4", "60", "101", "19", "59", "5", "87", "155", "-1", "-1"],
+        ["2", "60", "101", "19", "59", "5", "87", "155", "-1", "-1"],
         "selfhost source adapter は現在の directive span と duplicate の first span を保持するべき"
     );
 }
@@ -1374,7 +1417,7 @@ fn test_e2e_selfhost_source_adapter_reports_blank_review_digest_before_invalid_r
     let harness = r#"
 (defn main []
   (let [result (source-graph-from-program
-                 (parse-program "(defn invalid [] :review \\\"review:checkout\\\" \\\"  \\\" \\\"public\\\" true)"))
+                 (parse-program "(defn invalid [] :review \"review:checkout\" \"  \" \"public\" true)"))
         error (source-graph-result-error result)]
     (do
       (print (source-graph-result-status result))
@@ -1388,7 +1431,7 @@ fn test_e2e_selfhost_source_adapter_reports_blank_review_digest_before_invalid_r
 
     assert_eq!(
         lines,
-        ["0", "8"],
+        ["0", "8", "review:checkout"],
         "blank review digest は invalid review code 8 を invalid ID より先に返すべき"
     );
 }

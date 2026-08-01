@@ -212,6 +212,8 @@ limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.jso
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json"
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-duplicate-node-source.ls" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-duplicate-node-source.ls"
+limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m2-project-duplicate-source.ls" \
+  "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m2-project-duplicate-source.ls"
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls"
 
