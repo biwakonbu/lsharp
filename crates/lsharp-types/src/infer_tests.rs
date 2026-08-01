@@ -310,6 +310,35 @@ mod tests {
     }
 
     #[test]
+    fn test_nested_parametric_record_pattern_propagates_field_type() {
+        let valid = infer(
+            "(type (Box a) (record (: value a)))
+             (type (Outer a) (record (: inner (Box a))))
+             (defn unbox [point] : Int
+               (match point
+                 [{Outer inner {Box value x}} x]
+                 [_ 0]))",
+        );
+        assert!(
+            valid.is_ok(),
+            "nested parametric record pattern should be accepted: {valid:?}"
+        );
+
+        let invalid = infer(
+            "(type (Box a) (record (: value a)))
+             (type (Outer a) (record (: inner (Box a))))
+             (defn unbox [point] : Int
+               (match point
+                 [{Outer inner {Box value true}} true]
+                 [_ 0]))",
+        );
+        assert!(
+            invalid.is_err(),
+            "nested parametric record pattern should reject a return type mismatch"
+        );
+    }
+
+    #[test]
     fn test_type_alias() {
         let results = infer(
             "(type-alias Str String)

@@ -414,6 +414,41 @@
               (do
                 (root_pop) (root_pop)
                 result))))))))
+;; record-env の registered scheme に対応する Type::App だけを、
+;; application 引数で bound variable を置換した structural Record へ変換する。
+;; field 内の application は次の nested pattern で必要になった時に遅延 materialize
+;; し、recursive record を無限展開しない。
+(defn infer-record-pattern-application-subst [vars app-ty idx len subst]
+  (if (>= idx len)
+    subst
+    (infer-record-pattern-application-subst
+      vars
+      app-ty
+      (+ idx 1)
+      len
+      (map-insert-object-safe
+        subst
+        (vector-get vars idx)
+        (type-app-arg app-ty idx)))))
+(defn infer-record-pattern-materialize-application [ty record-env]
+  (if (= (ty-tag ty) (ty-app))
+    (let [scheme (map-get-safe record-env (type-app-name ty))]
+      (if (= scheme 0)
+        ty
+        (let [vars (scheme-vars scheme)
+          var-count (vector-length vars)
+          arg-count (type-app-arg-count ty)]
+          (if (= var-count arg-count)
+            (apply-subst
+              (infer-record-pattern-application-subst
+                vars
+                ty
+                0
+                var-count
+                (map-new))
+              (scheme-type scheme))
+            ty))))
+    ty))
 ;; schema がある record pattern の field を左から推論し、schema field 型と unify する。
 (defn infer-record-pattern-schema-children-step-v3
   [node idx count env subst counter record-ty]
@@ -433,8 +468,14 @@
               (let [field-offset (+ 2 (* idx 2))
                     field-hash (vector-get node field-offset)
                     child (vector-get node (+ field-offset 1))
+                    raw-expected-ty
+                      (type-record-field-type record-ty field-hash)
                     expected-ty
-                      (type-record-field-type record-ty field-hash)]
+                      (if (= raw-expected-ty 0)
+                        0
+                        (infer-record-pattern-materialize-application
+                          (apply-subst subst raw-expected-ty)
+                          (var-counter-record-env counter)))]
                 (if (= expected-ty 0)
                   (infer-pattern-continuation-state
                     1

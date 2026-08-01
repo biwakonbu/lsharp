@@ -321,6 +321,102 @@ fn test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type() {
     );
 }
 
+/// selfhost TypeInfer.ls テスト: parametric record pattern の field binder を具体化する
+#[test]
+fn test_e2e_selfhost_typeinfer_parametric_record_pattern_binds_field_type() {
+    let valid_source =
+        "(type (Box a) (record (: value a))) (defn unbox [point] : Int (match point [{Box value x} x] [_ 0]))";
+    let invalid_source =
+        "(type (Box a) (record (: value a))) (defn unbox [point] : Int (match point [{Box value true} true] [_ 0]))";
+    let valid_program = lsharp_syntax::parse(valid_source)
+        .expect("parametric record pattern fixture は parse できるべき");
+    let mut valid_oracle = lsharp_types::infer::Infer::new();
+    assert!(
+        valid_oracle.infer_program(&valid_program).is_ok(),
+        "Rust oracle は parametric record pattern の field binder を受理するべき"
+    );
+    let invalid_program = lsharp_syntax::parse(invalid_source)
+        .expect("invalid parametric record pattern fixture は parse できるべき");
+    let mut invalid_oracle = lsharp_types::infer::Infer::new();
+    assert!(
+        invalid_oracle.infer_program(&invalid_program).is_err(),
+        "Rust oracle は parametric record pattern の戻り型不一致を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [valid
+          (infer-program-analysis
+            (parse-program "{}"))
+        invalid
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid))
+      (print (infer-program-analysis-diagnostic-count invalid))
+      0)))
+"#,
+        valid_source, invalid_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    assert_eq!(
+        output.trim().lines().collect::<Vec<_>>(),
+        ["0", "1"],
+        "parametric record pattern は field binder を型引数へ接続し、不一致を拒否するべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: nested parametric record pattern の field 型を伝播する
+#[test]
+fn test_e2e_selfhost_typeinfer_nested_parametric_record_pattern_binds_field_type() {
+    let valid_source = "(type (Box a) (record (: value a))) (type (Outer a) (record (: inner (Box a)))) (defn unbox [point] : Int (match point [{Outer inner {Box value x}} x] [_ 0]))";
+    let invalid_source = "(type (Box a) (record (: value a))) (type (Outer a) (record (: inner (Box a)))) (defn unbox [point] : Int (match point [{Outer inner {Box value true}} true] [_ 0]))";
+    let valid_program = lsharp_syntax::parse(valid_source)
+        .expect("nested parametric record pattern fixture は parse できるべき");
+    let mut valid_oracle = lsharp_types::infer::Infer::new();
+    assert!(
+        valid_oracle.infer_program(&valid_program).is_ok(),
+        "Rust oracle は nested parametric record pattern を受理するべき"
+    );
+    let invalid_program = lsharp_syntax::parse(invalid_source)
+        .expect("invalid nested parametric record pattern fixture は parse できるべき");
+    let mut invalid_oracle = lsharp_types::infer::Infer::new();
+    assert!(
+        invalid_oracle.infer_program(&invalid_program).is_err(),
+        "Rust oracle は nested parametric record pattern の戻り型不一致を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [valid
+          (infer-program-analysis
+            (parse-program "{}"))
+        invalid
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid))
+      (print (infer-program-analysis-diagnostic-count invalid))
+      0)))
+"#,
+        valid_source, invalid_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    assert_eq!(
+        output.trim().lines().collect::<Vec<_>>(),
+        ["0", "1"],
+        "nested parametric record pattern は内側のfield型を外側の型引数へ伝播するべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: match の constructor pattern binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {

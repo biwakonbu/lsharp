@@ -398,6 +398,7 @@ impl Infer {
                     field_name: field_name.clone(),
                     span,
                 })?;
+            let expected_ty = self.materialize_registered_type(&expected_ty);
 
             let current_env = env.apply_subst(&subst);
             let (s1, field_ty) = self.infer_expr(&current_env, field_expr)?;
@@ -409,7 +410,8 @@ impl Infer {
             result_fields.push((field_name.clone(), field_ty.apply_subst(&subst)));
         }
 
-        let record_type = Type::Record(type_name.to_string(), result_fields);
+        let record_type =
+            self.materialize_registered_type(&Type::Record(type_name.to_string(), result_fields));
         Ok((subst, record_type))
     }
 
@@ -525,6 +527,7 @@ impl Infer {
                             let mut pat_subst = Substitution::new();
                             for (sub_pat, expected_ty) in sub_pats.iter().zip(param_types.iter()) {
                                 let (pat_ty, bindings) = self.infer_pattern(env, sub_pat)?;
+                                let expected_ty = self.materialize_registered_type(expected_ty);
                                 // サブパターンの推論型とコンストラクタの期待型を unify
                                 // ネストコンストラクタパターンの型を正しく伝播させる
                                 let s = self.unify(
@@ -538,7 +541,8 @@ impl Infer {
                                 }
                             }
 
-                            let final_ret = ret_type.apply_subst(&pat_subst);
+                            let final_ret =
+                                self.materialize_registered_type(&ret_type.apply_subst(&pat_subst));
                             Ok((final_ret, all_bindings))
                         }
                         other => {
@@ -588,6 +592,7 @@ impl Infer {
                             field_name: field_name.clone(),
                             span: *span,
                         })?;
+                    let expected_ty = self.materialize_registered_type(&expected_ty);
 
                     let (pat_ty, bindings) = self.infer_pattern(env, field_pat)?;
                     let pat_subst = self.unify(
@@ -608,7 +613,10 @@ impl Infer {
                     }
                 }
 
-                let record_type = Type::Record(type_name.to_string(), result_fields);
+                let record_type = self.materialize_registered_type(&Type::Record(
+                    type_name.to_string(),
+                    result_fields,
+                ));
                 Ok((record_type, all_bindings))
             }
         }

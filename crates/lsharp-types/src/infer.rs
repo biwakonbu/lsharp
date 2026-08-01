@@ -316,7 +316,7 @@ impl Infer {
                     .iter()
                     .map(|a| self.resolve_type_expr(a, param_vars))
                     .collect();
-                Type::App(base_name, resolved_args)
+                self.materialize_registered_type(&Type::App(base_name, resolved_args))
             }
             TypeExpr::Fun(_, params, ret) => {
                 let param_types: Vec<Type> = params
@@ -335,6 +335,65 @@ impl Infer {
                     .collect();
                 Type::Record("_anon".to_string(), resolved_fields)
             }
+        }
+    }
+
+    /// 登録済み record の型適用を、フィールド型を具体化した Record 型へ展開する。
+    ///
+    /// `Type::App` は ADT と record の両方に使われるため、unify 全体で一律に
+    /// Record 扱いすると ADT の意味論を壊す。record registry に存在し、型引数の
+    /// 数が一致する場合だけ展開し、フィールド内部も再帰的に正規化する。
+    pub(super) fn materialize_registered_type(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Con(_) | Type::Var(_) => ty.clone(),
+            Type::Fun(params, ret) => Type::Fun(
+                params
+                    .iter()
+                    .map(|param| self.materialize_registered_type(param))
+                    .collect(),
+                Box::new(self.materialize_registered_type(ret)),
+            ),
+            Type::App(name, args) => {
+                let materialized_args: Vec<Type> = args
+                    .iter()
+                    .map(|arg| self.materialize_registered_type(arg))
+                    .collect();
+                let Some(record_info) = self.record_registry.get(name) else {
+                    return Type::App(name.clone(), materialized_args);
+                };
+                if record_info.type_params.len() != materialized_args.len() {
+                    return Type::App(name.clone(), materialized_args);
+                }
+
+                let mut param_subst = Substitution::new();
+                for (&param, arg) in record_info.type_params.iter().zip(materialized_args) {
+                    param_subst.insert(param, arg);
+                }
+                let fields = record_info
+                    .fields
+                    .iter()
+                    .map(|(field_name, field_ty)| {
+                        let instantiated = field_ty.apply_subst(&param_subst);
+                        (
+                            field_name.clone(),
+                            self.materialize_registered_type(&instantiated),
+                        )
+                    })
+                    .collect();
+                Type::Record(record_info.name.clone(), fields)
+            }
+            Type::Record(name, fields) => Type::Record(
+                name.clone(),
+                fields
+                    .iter()
+                    .map(|(field_name, field_ty)| {
+                        (
+                            field_name.clone(),
+                            self.materialize_registered_type(field_ty),
+                        )
+                    })
+                    .collect(),
+            ),
         }
     }
 
