@@ -129,6 +129,28 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
         self.assertEqual(fixture["expected"]["runtime"]["stdout"], "5\n")
         self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
 
+    def test_r3_free_list_growth_fixture_declares_runtime_contract(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/free-list-growth"
+        )
+        self.assertEqual(fixture["kind"], "valid")
+        self.assertEqual(
+            fixture["layers"],
+            ["syntax", "types", "ir", "codegen", "runtime"],
+        )
+        self.assertEqual(
+            fixture["observables"],
+            ["ast", "type", "ir", "wasm", "runtime", "report"],
+        )
+        self.assertEqual(fixture["commands"], ["check", "compile", "build"])
+        self.assertEqual(fixture["expected"]["runtime"]["stdout"], "4097\n")
+        self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
+
     def test_rejects_unresolved_target_and_unsafe_source(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))
         cases = (

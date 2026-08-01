@@ -150,7 +150,7 @@ observations as pending rather than overloading `stdout` or a debug log.
   nested record variable patterns on the supported path and declares the
   AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
 - The matrix RED→GREEN contract is covered by
-  `python3 scripts/ci/test-semantic-fixture-matrix.py` (7 tests). The Rust
+  `python3 scripts/ci/test-semantic-fixture-matrix.py` (8 tests). The Rust
   oracle producer, with fixture implementation commit
   `4790bb3e647d03b2ccfa883bc502e40d2385865f`
   and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
@@ -171,9 +171,17 @@ observations as pending rather than overloading `stdout` or a debug log.
   `aarch64-apple-darwin` observed a valid Wasm artifact of 7,148 bytes with
   digest `sha256:5713540aa1993830c2629aeaa4d5f24ce6bdaed0eb5422dd51201939a311e91f`;
   Wasmtime 43.0.0 validation and standalone execution passed.
+- `valid/free-list-growth` is the first `V4-M1-03-R3` fixture. It performs 4,097
+  unrooted `__alloc 8` calls, crossing the current initial free-list capacity,
+  and returns the completed allocation count (`4097\n`, exit `0`). The Rust
+  oracle at target-declared `aarch64-apple-darwin` observed a valid Wasm
+  artifact of 6,557 bytes with digest
+  `sha256:184ca6b1c66604b13b5e78560a06fac99e7d28f5673360d6282712ab7c138bff`;
+  Wasmtime 43.0.0 validation and standalone execution passed.
 - This is Rust-oracle evidence only. Native stage0 execution, Linux x86_64,
-  ftable/import byte parity, root/resource metrics, and the two-target completion
-  audit remain pending, so R1, R2, and V4-M1-03 stay `[~]`. The report is
+  ftable/import byte parity, root/resource telemetry, limit-boundary diagnostics,
+  and the two-target completion audit remain pending, so R1, R2, R3, and
+  V4-M1-03 stay `[~]`. The report is
   task-local and is not attached to the evidence index; regenerate it at the
   final main SHA before attaching it.
 

@@ -53,6 +53,7 @@ FIXTURES=(
   --fixture-id invalid/type-undefined-value
   --fixture-id valid/adt-pattern
   --fixture-id valid/closure-allocation
+  --fixture-id valid/free-list-growth
   --fixture-id valid/io-read-file
   --fixture-id valid/module-import
   --fixture-id valid/nested-record-pattern
