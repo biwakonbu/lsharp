@@ -258,6 +258,9 @@ ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
 
 cp -pR "$STAGE0_DIR/." "$PACKAGE_DIR"
 rm -f "$PACKAGE_DIR/checksums.txt"
+rm -f \
+  "$PACKAGE_DIR/review-trust-store.snapshot" \
+  "$PACKAGE_DIR/review-lifecycle.snapshot"
 if [[ -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then
   printf '%s\n' "$REVIEW_EVIDENCE_IDENTITY_JSON" >"$PACKAGE_DIR/review-evidence-identity.json"
 fi

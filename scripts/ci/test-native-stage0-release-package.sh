@@ -94,6 +94,9 @@ PATH="$HOST_BIN:$PATH" "$PACKAGE" \
   --materializer "$INPUT_DIR/materializer.py" \
   --output-dir "$STAGE0_DIR"
 
+printf '%s\n' 'private trust-store snapshot must not ship' >"$STAGE0_DIR/review-trust-store.snapshot"
+printf '%s\n' 'private lifecycle snapshot must not ship' >"$STAGE0_DIR/review-lifecycle.snapshot"
+
 NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
   PATH="$HOST_BIN:$PATH" \
   "$RELEASE_PACKAGE" \
@@ -123,6 +126,10 @@ for required in \
 done
 ! grep -E '(^|/)\._' <<<"$archive_listing" >/dev/null \
   || fail "archive contains macOS metadata files"
+! grep -Fx "$ARCHIVE_NAME/review-trust-store.snapshot" <<<"$archive_listing" >/dev/null \
+  || fail "archive leaked the raw review trust-store snapshot"
+! grep -Fx "$ARCHIVE_NAME/review-lifecycle.snapshot" <<<"$archive_listing" >/dev/null \
+  || fail "archive leaked the raw review lifecycle snapshot"
 
 mkdir -p "$EXTRACT_DIR"
 tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_DIR"
