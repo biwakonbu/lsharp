@@ -43,6 +43,8 @@ impl AttestationAlgorithm {
 pub enum AttestationError {
     #[error("review attestation の必須 field が空です: {field}")]
     EmptyField { field: &'static str },
+    #[error("review attestation の sequence は 1 以上でなければなりません: {sequence}")]
+    InvalidSequence { sequence: u64 },
     #[error("review attestation の署名が空です")]
     EmptySignature,
     #[error("review attestation の review ID が不正です: {0}")]
@@ -161,6 +163,9 @@ impl ReviewAttestation {
                     expires_at: expires_at.clone(),
                 });
             }
+        }
+        if sequence == 0 {
+            return Err(AttestationError::InvalidSequence { sequence });
         }
         if signature.is_empty() {
             return Err(AttestationError::EmptySignature);

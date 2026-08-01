@@ -173,6 +173,20 @@ fn wire_rejects_invalid_version_algorithm_signature_and_required_arrays() {
 }
 
 #[test]
+fn wire_rejects_zero_attestation_sequence() {
+    let malformed = VALID_WIRE.replace("\"sequence\": 1", "\"sequence\": 0");
+
+    assert!(matches!(
+        parse_review_wire(&malformed),
+        Err(ReviewWireError::Attestation(
+            lsharp_types::intent::review_attestation::AttestationError::InvalidSequence {
+                sequence: 0
+            }
+        ))
+    ));
+}
+
+#[test]
 fn wire_rejects_noncanonical_lifecycle_effective_timestamp() {
     let malformed = VALID_WIRE.replace(
         "\"effective_at\": \"2026-08-01T00:00:00Z\"",

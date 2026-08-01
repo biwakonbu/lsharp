@@ -69,6 +69,29 @@ fn optional_expiry_is_encoded_as_an_empty_field() {
 }
 
 #[test]
+fn sequence_zero_is_rejected_at_the_attestation_boundary() {
+    let error = ReviewAttestation::new(
+        "review:checkout/reviewer-001",
+        "sha256:graph-001",
+        "0123456789abcdef0123456789abcdef01234567",
+        "sha256:review-001",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z",
+        None::<String>,
+        0,
+        vec![1, 2, 3],
+    )
+    .expect_err("attestation sequence は 1 以上でなければならない");
+
+    assert_eq!(
+        error,
+        AttestationError::InvalidSequence { sequence: 0 }
+    );
+}
+
+#[test]
 fn required_fields_and_algorithm_are_fail_closed() {
     let error = ReviewAttestation::new(
         "",

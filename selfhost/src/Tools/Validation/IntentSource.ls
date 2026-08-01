@@ -706,7 +706,7 @@
                     (if (= (source-review-attestation-timestamp-valid? issued-at) 0)
                       0
                       (if (= (string-length expires-at) 0)
-                        (if (< sequence 0)
+                        (if (<= sequence 0)
                           0
                           (if (not (string-eq algorithm "ed25519"))
                             0
@@ -719,7 +719,7 @@
                                 (source-review-attestation-timestamp-key expires-at)
                                 (source-review-attestation-timestamp-key issued-at))
                             0
-                            (if (< sequence 0)
+                            (if (<= sequence 0)
                               0
                               (if (not (string-eq algorithm "ed25519"))
                                 0

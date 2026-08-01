@@ -1305,10 +1305,13 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_attestation_fields() {
                            (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-02-30T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
         window-result (source-graph-from-program
                        (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-07-01T00:00:00Z\" :sequence 3 true)"))
+        sequence-result (source-graph-from-program
+                         (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 0 true)"))
         algorithm-error (source-graph-result-error algorithm-result)
         signature-error (source-graph-result-error signature-result)
         timestamp-error (source-graph-result-error timestamp-result)
-        window-error (source-graph-result-error window-result)]
+        window-error (source-graph-result-error window-result)
+        sequence-error (source-graph-result-error sequence-result)]
     (do
       (print (source-graph-result-status algorithm-result))
       (print (source-graph-error-code algorithm-error))
@@ -1322,14 +1325,19 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_attestation_fields() {
       (print (source-graph-result-status window-result))
       (print (source-graph-error-code window-error))
       (print (if (< (source-graph-error-start window-error) (source-graph-error-end window-error)) 1 0))
+      (print (source-graph-result-status sequence-result))
+      (print (source-graph-error-code sequence-error))
+      (print (if (< (source-graph-error-start sequence-error) (source-graph-error-end sequence-error)) 1 0))
       0)))
 "#;
 
     let output = run_source_adapter_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(
-        lines,
-        ["0", "8", "1", "0", "8", "1", "0", "8", "1", "0", "8", "1"]
+    lines,
+        [
+            "0", "8", "1", "0", "8", "1", "0", "8", "1", "0", "8", "1", "0", "8", "1",
+        ]
     );
 }
 

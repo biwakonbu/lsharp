@@ -153,6 +153,24 @@ fn source_adapter_rejects_invalid_signature_encoding_with_attestation_span() {
 }
 
 #[test]
+fn source_adapter_rejects_zero_sequence_with_attestation_span() {
+    let source = SOURCE.replace(":sequence 3", ":sequence 0");
+    let program = parse(&source).expect("sequence boundary fixture は parse できるべき");
+    let error = source_program_to_review_attestations(&program).expect_err("zero sequence");
+
+    match error {
+        SourceGraphError::ReviewAttestationAt {
+            span,
+            source: AttestationError::InvalidSequence { sequence },
+        } => {
+            assert_eq!(sequence, 0);
+            assert!(span.start < span.end);
+        }
+        other => panic!("unexpected source attestation error: {other:?}"),
+    }
+}
+
+#[test]
 fn source_adapter_rejects_invalid_timestamp_and_time_window_with_attestation_span() {
     let invalid_timestamp = SOURCE.replace(
         ":issued-at \"2026-08-01T00:00:00Z\"",

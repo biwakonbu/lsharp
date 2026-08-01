@@ -147,8 +147,9 @@ aggregate は未接続のため `[~]` を維持する。ADR:
 `docs/adr/decisions-v0.4-m1-01-wasm-validation-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
-  canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
-  trust store、署名検証、両対応 target の runtime evidence は残る。
+  canonical bytes、signature encoding boundary、`sequence >= 1` の Rust/selfhost source parity は
+  verified partial slice。source/native producer、trust store、署名検証、両対応 target の runtime
+  evidence は残る。ADR: `docs/adr/decisions-v0.3-review-attestation-sequence-boundary.md`。
 - [~] `EC-M3-02` lifecycle transition — append-only registry と stale/revoked 境界の Rust verified
   slice。selfhost reducerにも deterministic ordering、transition、sequence rollback、`effective_at`
   rollback（code `8` と前後 timestamp payload）、explicit clock 以下の最新 `event_at` 選択を接続し、
