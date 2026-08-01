@@ -1086,7 +1086,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   確認した（test-only追加のため native source producerは不変）。さらに imported source
   compiler-mode と ftable alias-qualified の同じ fixtureも passした。これは nested parametric
   pattern、import、source/ftable runtime fixtureの verified sliceであり、arbitrarily deep
-  pattern、full ftable/linear-memory ABI、`LEGACY-LANG-01` aggregateは残る。
+  patternについては4-record chain (`Root a -> Outer a -> Middle a -> Box a`) の source runtime
+  regressionまで確認したが、それを超える深さ、full ftable/linear-memory ABI、
+  `LEGACY-LANG-01` aggregateは残る。
 - [~] `LEGACY-LANG-02` ADT/GADT execution parity — ordinary ADT の direct/nested constructor と
   GADT parser/type refinement は verified。2026-07-31 に selfhost
   `Types.TypeInferAdt` の type parameter、constructor field、variant、type declaration scan を

@@ -571,9 +571,13 @@ The imported source compiler-mode and ftable alias-qualified fixtures,
 `test_e2e_selfhost_ftable_compiler_nested_parametric_record_pattern_runs`, passed in the same
 focused batch and produced `41\n1\n7\n` as well.
 
+The bounded deep regression `test_e2e_selfhost_compiler_mode_deep_nested_parametric_record_pattern_runs`
+also passed for a four-record chain (`Root a -> Outer a -> Middle a -> Box a`) with the same
+output. It is evidence for recursive materialization at that depth, not an arbitrary-depth claim.
+
 This is a verified nested parametric field-binding slice plus source/import/ftable runtime
-fixtures, not completion of record-pattern semantic parity. Arbitrarily deep pattern coverage,
-full ftable/linear-memory ABI, and the `LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise
+fixtures, not completion of record-pattern semantic parity. Greater depths, full
+ftable/linear-memory ABI, and the `LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise
 incomplete boundaries.
 
 ### legacy source compile boundary 更新 (2026-07-14)
