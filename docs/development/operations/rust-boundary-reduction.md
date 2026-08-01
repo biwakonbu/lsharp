@@ -2835,3 +2835,31 @@ parser recovery/metadata全体、Parser.lsの大規模ファイル分割、recor
 全 pattern/import target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後
 current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle /
 bootstrap / host integration境界と TODOの `[~]` は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser typed signature scans (2026-08-01)
+
+`Syntax.Parser.ls` の `parse-defn-param-signature-loop-v3` と direct-recursive append pathを、
+`[done, next-index, next-signature]` stateを返す item step、64要素 bounded loop、rooted continuation、
+public wrapperへ移行した。typed parameterの raw type再読、untyped/invalid parameterの skip、return typeの
+後置は既存 contractのまま保持し、signature vectorの順序と countを変えない。
+
+Evidence: `selfhost_parser_signature_scanners` の static/runtime 2 tests、65 typed paramsの
+cross-chunk signature count・先頭 Int・末尾 String・return Bool、`selfhost_parser_metadata_forms` の29 tests、
+`selfhost_parser_forms` の22 tests、fixtureの `rustfmt --edition 2021 --check`、`git diff --check` が
+passした。root lifetime checkerの bounded helperも passしている。
+
+source commit `42819065` に対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、
+host-generated stage1 x86 payloadが Linux x86_64 VM内でstage2/stage3 native self-regenerationを
+完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/42819065-parser-signature/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11297018`、stdout SHA-256は双方
+`3e86547744086a66579c8a381390d85bf51e370c27e566b945233dd4d1499de5` で一致した。VMは
+`4 CPU / 16 GiB RAM / 12 GiB disk` の既存設定を使用し、完了後に停止した。stage debug、stdout、
+stage intermediate、local Cargo targetは回収して小さいsummaryだけを残す運用とする。
+
+これは parser typed parameter signature の bounded scan と Linux x86_64 stage2/stage3 fixed-pointだけを
+閉じる verified sliceである。metadata outer directive loop、review/evidence field schema全体、parser
+recovery/metadata全体、Parser.lsの大規模ファイル分割、record schema pattern semantic parity、全
+pattern/import target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後 current-source
+gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap /
+host integration境界と TODOの `[~]` は維持する。

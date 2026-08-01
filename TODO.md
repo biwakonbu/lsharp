@@ -791,6 +791,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   entries の件数と EOF cursorを `selfhost_parser_metadata_sequences` で確認した。sequence scanner 2 tests、
   parser filter 114 tests（既知の projection baseline 1件を除く）、evidence registry 59 tests、Linux
   x86_64 fixed-pointも通過した。
+  `parse-defn-param-signature-loop-v3` も `[done, next-index, next-signature]` stateを返す step、64要素
+  bounded loop、rooted continuation、public wrapperへ移行し、65 typed paramsの先頭/末尾/return typeと
+  signature countを `selfhost_parser_signature_scanners` で確認した。signature scanner 2 tests、metadata
+  forms 29 tests、parser forms 22 tests、Linux x86_64 fixed-pointも通過した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
