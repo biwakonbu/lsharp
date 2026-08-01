@@ -1210,7 +1210,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   Linux x86_64 stage1 host payloadを `333.21s` で生成し、code `4,393,425` bytes、data `2,757`
   bytes、entrypoint `4,390,965`、function-start `3,409` を確認した。Lima VMでこのstage1を
   materializeし、metadata range `0..1` を実行した診断 gateは `status=diagnostic`、stdout `8,353`
-  bytes、stderr `0` で成功した。full stage2/stage3、current-source Linux stage0 package、
+  bytes、stderr `0` で成功した。さらに current `HEAD=41be4f2b28a329addffd3cd4de55f075b76a9ec2`
+  から同じ stage1 を `347.89s` で再生成し、manifest の source commit と target、code/data/
+  entrypoint/function metadata が一致することを確認した。Lima VMで metadata range `0..8` を
+  実行した診断 gateは `status=diagnostic`、stdout `53,484` bytes、stderr `0` で成功した。
+  これは stage2 metadata prefix の入口が現行 source でも進むことを示すが、full stage2/stage3、
+  current-source Linux stage0 package、
   source-file smoke、release/rollbackは未完了のまま残る。
 
 ## ISSUES-derived quality and runtime work

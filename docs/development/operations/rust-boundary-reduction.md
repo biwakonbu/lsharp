@@ -1495,6 +1495,16 @@ full stage2/stage3 fixed-point、Linux native stage0 source-file smoke、App.Cli
 acquisition/rollback、両 target parityは未検証である。VM、Cargo target、stage1/診断artifactは
 検証後に削除し、VMは停止した。ADR: `docs/adr/decisions-v0.3-native-linux-stage1-metadata-e2e.md`。
 
+同日、docs-only commit後の current `HEAD=41be4f2b28a329addffd3cd4de55f075b76a9ec2`から stage1を
+再生成し、`1 passed`、`347.89s`、source commit `41be4f2b...`、code `4,393,425` bytes、data
+`2,757` bytes、entrypoint `4,390,965`、function-start `3,409`、main function `3,418`を確認した。
+同じ artifactをVMへ materializeし、full stage2を起動せず metadata `0..8`だけを実行した結果は
+summary `status=diagnostic` / `phase=stage2-metadata`、stdout `53,484` bytes、stderr `0` bytesだった。
+これは metadata prefixの現行 source境界を追加で識別した証拠であり、full stage2/stage3 fixed-pointや
+payload materialization、Linux native stage0 source-file smoke、package acquisition/rollback、両 target
+parityの証拠には拡張しない。VMは停止し、Cargo target、stage1、診断artifactを回収した。
+ADR: `docs/adr/decisions-v0.3-native-linux-stage2-metadata-prefix-e2e.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
