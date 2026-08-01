@@ -111,6 +111,30 @@ validate_review_identity_inputs() {
       echo "ERROR: review evidence identity is required when provider snapshots are supplied: ${identity_path}" >&2
       exit 1
     fi
+    python3 - "${identity_path}" "${CURRENT_SOURCE_COMMIT}" <<'PY'
+import json
+import pathlib
+import sys
+
+identity_path = pathlib.Path(sys.argv[1])
+expected_source_commit = sys.argv[2]
+try:
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(
+        f"ERROR: review evidence identity is invalid JSON: {identity_path}: {error}"
+    )
+if not isinstance(identity, dict):
+    raise SystemExit(
+        f"ERROR: review evidence identity must be a JSON object: {identity_path}"
+    )
+actual_source_commit = identity.get("source_commit")
+if actual_source_commit != expected_source_commit:
+    raise SystemExit(
+        "ERROR: review evidence identity source_commit mismatch: "
+        f"expected={expected_source_commit} actual={actual_source_commit!r}: {identity_path}"
+    )
+PY
   done
 }
 

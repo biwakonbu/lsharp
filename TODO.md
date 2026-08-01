@@ -346,6 +346,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   packaged provenance/rollback bytes parity は未検証のため、M3-05-N2 / M3-05-N7 は `[~]` のまま残る。ADR:
   `docs/adr/decisions-v0.3-provider-snapshot-regular-file.md`。
 
+  同日、provider snapshot が指定された official gate の App.Cli / stage0 identity 4入力について、JSON objectの
+  `source_commit` を current checkout HEAD に binding した。不正 JSON、非 object、欠落または別 source commitを
+  packaging 前に拒否し、fake two-target harnessで invocation log 不変を確認した verified partial sliceである。
+  provider API/auth acquisition、current-source Linux runtime、両 targetの packaged provenance/rollback bytes
+  parity は未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。ADR:
+  `docs/adr/decisions-v0.3-native-official-provider-source-commit-binding.md`。
+
   続けて同日、release smoke の `checksums.txt` target path を archive root 内の POSIX relative path に限定した。
   checksum-valid な `../../../outside-checksum-target.txt` fixture を拒否する RED→GREEN を provider snapshot
   harness で確認し、package 外部 file を checksum evidence として受理しない verified partial slice を追加した。

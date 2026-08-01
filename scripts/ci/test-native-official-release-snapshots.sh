@@ -14,6 +14,7 @@ SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
 SOURCE_SMOKE_EVIDENCE_ROOT="$TMP_ROOT/source-smoke-evidence"
 PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
+PROVIDER_IDENTITY_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
 RUNNING_VM_SMOKE_ROOT=""
 CLEANUP_FAILURE_SMOKE_ROOT=""
@@ -25,6 +26,7 @@ cleanup() {
   rm -rf "$HOSTGEN_REPLAY_LOCK_PATH"
   [[ -z "$PARTIAL_SMOKE_ROOT" ]] || rm -rf "$PARTIAL_SMOKE_ROOT"
   [[ -z "$MISSING_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$MISSING_IDENTITY_SMOKE_ROOT"
+  [[ -z "$PROVIDER_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$PROVIDER_IDENTITY_SMOKE_ROOT"
   [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
   [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
   [[ -z "$CLEANUP_FAILURE_SMOKE_ROOT" ]] || rm -rf "$CLEANUP_FAILURE_SMOKE_ROOT"
@@ -159,6 +161,13 @@ git -C "$FAKE_ROOT" config user.name fixture
 git -C "$FAKE_ROOT" add .
 git -C "$FAKE_ROOT" -c commit.gpgSign=false commit -qm 'native official release fixture'
 SOURCE_COMMIT="$(git -C "$FAKE_ROOT" rev-parse HEAD)"
+for identity_path in \
+  "$TMP_ROOT/artifact-aarch64-apple-darwin/review-evidence-identity.json" \
+  "$TMP_ROOT/artifact-x86_64-unknown-linux-gnu/review-evidence-identity.json" \
+  "$TMP_ROOT/stage0-aarch64-apple-darwin/review-evidence-identity.json" \
+  "$TMP_ROOT/stage0-x86_64-unknown-linux-gnu/review-evidence-identity.json"; do
+  printf '{"source_commit":"%s"}\n' "$SOURCE_COMMIT" >"$identity_path"
+done
 
 FAKE_LOG="$LOG_PATH" \
 PATH="$PATH_PREFIX:$PATH" \
@@ -276,6 +285,41 @@ grep -F 'SOURCE_COMMIT must match current checkout HEAD' <<<"$stale_output" >/de
 after_stale_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 [[ "$after_stale_log_lines" == "$before_stale_log_lines" ]] \
   || { echo 'stale source commit reached a release or smoke boundary' >&2; exit 1; }
+
+provider_identity_path="$TMP_ROOT/artifact-aarch64-apple-darwin/review-evidence-identity.json"
+provider_identity_backup="$TMP_ROOT/provider-identity-source-commit.json"
+PROVIDER_IDENTITY_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-provider-identity.XXXXXX)"
+mv "$provider_identity_path" "$provider_identity_backup"
+printf '%s\n' '{"source_commit":"0000000000000000000000000000000000000000"}' >"$provider_identity_path"
+before_provider_identity_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+set +e
+provider_identity_output="$(
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/provider-identity-dist" \
+  SMOKE_ROOT="$PROVIDER_IDENTITY_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$PROVIDER_IDENTITY_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+provider_identity_status=$?
+set -e
+mv "$provider_identity_backup" "$provider_identity_path"
+[[ "$provider_identity_status" -ne 0 ]] \
+  || { echo 'provider identity source_commit mismatch was accepted' >&2; exit 1; }
+grep -F 'review evidence identity source_commit mismatch' <<<"$provider_identity_output" >/dev/null
+after_provider_identity_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+[[ "$after_provider_identity_log_lines" == "$before_provider_identity_log_lines" ]] \
+  || { echo 'provider identity source_commit mismatch reached a release or smoke boundary' >&2; exit 1; }
 
 missing_identity_path="$TMP_ROOT/artifact-aarch64-apple-darwin/review-evidence-identity.json"
 missing_identity_backup="$TMP_ROOT/missing-review-evidence-identity.json"
