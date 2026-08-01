@@ -284,6 +284,13 @@ def assert_package_api_rejects_invalid_arguments(test):
             }),
             encoding="utf-8",
         )
+        duplicate = root / ".lsharp" / "packages" / "duplicate-1.0.0" / "docs"
+        duplicate.mkdir(parents=True)
+        (duplicate / "api.json").write_text(
+            '{"package":"duplicate","package":"duplicate",'
+            '"version":"0.1.0","modules":[]}',
+            encoding="utf-8",
+        )
         cases = [
             {"unknown": True},
             {"name": ""},
@@ -292,6 +299,7 @@ def assert_package_api_rejects_invalid_arguments(test):
             {"name": "missing", "project_dir": str(root)},
             {"name": "invalid", "project_dir": str(root)},
             {"name": "malformed", "project_dir": str(root)},
+            {"name": "duplicate", "project_dir": str(root)},
         ]
         payload = b"".join(request(index, "tools/call", {"name": "lsharp_package_api", "arguments": arguments}) for index, arguments in enumerate(cases, 1))
         result = test.run_shim(program, payload, root)
@@ -308,4 +316,5 @@ def assert_package_api_rejects_invalid_arguments(test):
         test.assertFalse((missing / "docs" / "api.json").exists())
         test.assertIn("root", responses[5]["result"]["content"][0]["text"])
         test.assertIn("modules[0].extra", responses[6]["result"]["content"][0]["text"])
+        test.assertIn("duplicate JSON object key: package", responses[7]["result"]["content"][0]["text"])
         test.assertFalse((root / "native.log").exists())

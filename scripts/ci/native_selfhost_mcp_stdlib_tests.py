@@ -65,6 +65,36 @@ def assert_stdlib_api_rejects_invalid_arguments(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_stdlib_api_rejects_duplicate_artifact(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        api_path = root / "api.json"
+        api_path.write_text(
+            '{"package":"stdlib","package":"stdlib",'
+            '"version":"0.1.0","modules":[]}',
+            encoding="utf-8",
+        )
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {"name": "lsharp_stdlib_api", "arguments": {}},
+            ),
+            root,
+            stdlib_api_path=api_path,
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        test.assertIn(
+            "duplicate JSON object key: package",
+            response["result"]["content"][0]["text"],
+        )
+        test.assertFalse((root / "native.log").exists())
+
+
 def _native_stdlib_document():
     return {
         "module": "module-List",

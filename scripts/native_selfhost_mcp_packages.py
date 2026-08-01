@@ -5,6 +5,8 @@ import json
 import os
 import pathlib
 
+from native_selfhost_json import strict_json_loads
+
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
@@ -479,8 +481,8 @@ def call_package_api(program, arguments):
     api_path = package_dir / "docs" / "api.json"
     if api_path.exists():
         try:
-            value = json.loads(api_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
+            value = strict_json_loads(api_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError) as error:
             raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
         _validate_package_api(value, api_path)
         return value
@@ -624,8 +626,8 @@ def call_stdlib_api(program, arguments):
     api_path = _stdlib_api_path()
     if api_path.exists():
         try:
-            value = json.loads(api_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
+            value = strict_json_loads(api_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError) as error:
             raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
         _validate_package_api(value, api_path)
     else:

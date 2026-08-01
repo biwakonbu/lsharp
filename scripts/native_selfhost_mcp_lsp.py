@@ -4,6 +4,8 @@ import importlib.util
 import json
 import pathlib
 
+from native_selfhost_json import strict_json_loads
+
 
 class HoverLookupError(Exception):
     """A native LSP hover request failed or returned an invalid result."""
@@ -297,8 +299,8 @@ def _run_lsp_request(
         raise error_type(f"native LSP の実行に失敗しました: {detail}") from error
     for raw_frame in frames:
         try:
-            response = json.loads(_frame_body(raw_frame, error_type).decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            response = strict_json_loads(_frame_body(raw_frame, error_type).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             raise error_type(f"native LSP response が JSON ではありません: {error}") from error
         if not isinstance(response, dict):
             raise error_type("native LSP response が object ではありません")

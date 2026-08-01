@@ -314,6 +314,13 @@ manifest を strict object-pairs parserで読み、nestedを含む duplicate JSO
 runtime、Rust/native full parity は残る。ADR:
 `docs/adr/decisions-v0.3-native-mcp-json-duplicate-keys.md`。
 
+さらに native MCP の LSP response frame と package/stdlib `api.json` artifact も shared strict JSON
+decoderへ統合し、duplicate `result` / `package` key を last-value 化せず relay-specific error として
+拒否する contract を追加した。LSP、package、stdlib の duplicate fixtureを native MCP 79 tests、Python
+compile、docs audit、diff checkで確認した verified partial である。provider semantics、target runtime、
+Rust/native full parity は残る。ADR:
+`docs/adr/decisions-v0.3-native-mcp-json-relays.md`。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:

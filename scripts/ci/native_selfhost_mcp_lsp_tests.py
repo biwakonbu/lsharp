@@ -67,6 +67,14 @@ def lsp_output(hover_text):
     return initialize_output() + frame(hover)
 
 
+def lsp_duplicate_output():
+    duplicate = (
+        b'{"jsonrpc":"2.0","id":2,"result":{"contents":{}},'
+        b'"result":{"contents":{"kind":"plaintext","value":"id : a -> a"}}}'
+    )
+    return initialize_output() + frame(duplicate)
+
+
 def definition_output(start=(0, 5), end=(0, 8)):
     definition = json.dumps(
         {
@@ -740,6 +748,7 @@ def assert_hover_rejects_native_failures(test):
         ("stderr", lsp_output("unused"), "diagnostic"),
         ("nonzero", lsp_output("unused"), "failure"),
         ("malformed", lsp_output("unused"), "malformed"),
+        ("success", lsp_duplicate_output(), "duplicate JSON object key: result"),
         ("success", initialize_output(), "response がありません"),
         ("success", lsp_output("invalid hover payload"), "signature"),
     )

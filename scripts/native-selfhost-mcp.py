@@ -70,24 +70,13 @@ from native_selfhost_mcp_packages import (
     call_search,
     call_stdlib_api,
 )
+from native_selfhost_json import strict_json_loads
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 CANONICAL_UTC_TIMESTAMP_PATTERN = (
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
 )
 CANONICAL_UTC_TIMESTAMP_RE = re.compile(CANONICAL_UTC_TIMESTAMP_PATTERN)
-
-
-def strict_json_loads(content):
-    def reject_duplicate_keys(pairs):
-        value = {}
-        for key, item in pairs:
-            if key in value:
-                raise ValueError(f"duplicate JSON object key: {key}")
-            value[key] = item
-        return value
-
-    return json.loads(content, object_pairs_hook=reject_duplicate_keys)
 
 
 class ShimError(Exception):
