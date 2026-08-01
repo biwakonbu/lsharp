@@ -254,6 +254,24 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("timestamp", result.stderr)
 
+    def test_rejects_identity_now_after_explicit_verification_clock(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            identity_path = pathlib.Path(temporary_directory) / "identity.json"
+            self.write_identity(
+                identity_path,
+                identity_for("sha256:" + "e" * 64),
+            )
+
+            result = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--verification-now",
+                "2026-08-14T23:59:59Z",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("identity now is after verification now", result.stderr)
+
     def test_recomputes_explicit_provider_snapshot_digests(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

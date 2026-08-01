@@ -1067,6 +1067,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   の verified partial sliceであり、live provider/auth取得・意味検証、current-source Linux runtime、Mac/Linux両
   targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
   ADR: `docs/adr/decisions-v0.3-packaged-lsp-version-output-parity.md`。
+  さらに offline release identity verifier に caller-provided `--verification-now` UTC clock を追加し、identity の
+  `now` が検証時計より未来の場合を `identity now is after verification now` で fail-closed にする
+  RED→GREENを `test-native-release-identity.py` で確認した。これは provider identity caller-clock freshness の
+  verified partial sliceであり、live provider/auth取得・署名意味検証、current-source Linux runtime、Mac/Linux両 targetの
+  packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
+  ADR: `docs/adr/decisions-v0.3-provider-identity-verification-clock.md`。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は

@@ -240,6 +240,7 @@ def validate_identity(
     require_provider=False,
     trust_store=None,
     review_lifecycle=None,
+    verification_now=None,
 ):
     actual_keys = tuple(identity)
     if actual_keys != IDENTITY_KEYS:
@@ -271,6 +272,16 @@ def validate_identity(
     validate_digest(identity["lifecycle_digest"], "lifecycle_digest", nullable=True)
     if not is_valid_utc_timestamp(identity["now"]):
         raise IdentityError("now must be a strict UTC timestamp ending in Z")
+    if verification_now is not None:
+        if not is_valid_utc_timestamp(verification_now):
+            raise IdentityError(
+                "verification_now must be a strict UTC timestamp ending in Z"
+            )
+        if identity["now"] > verification_now:
+            raise IdentityError(
+                "identity now is after verification now: "
+                f"identity_now={identity['now']} verification_now={verification_now}"
+            )
 
     has_trust_store = trust_store is not None
     has_lifecycle = review_lifecycle is not None
@@ -344,6 +355,10 @@ def parse_arguments():
         type=pathlib.Path,
         help="optional raw review-lifecycle snapshot to digest and compare",
     )
+    parser.add_argument(
+        "--verification-now",
+        help="optional caller-provided UTC clock for identity freshness verification",
+    )
     parser.add_argument("--require-provider-input", action="store_true")
     return parser.parse_args()
 
@@ -360,6 +375,7 @@ def main():
             require_provider=arguments.require_provider_input,
             trust_store=arguments.trust_store,
             review_lifecycle=arguments.review_lifecycle,
+            verification_now=arguments.verification_now,
         )
         if arguments.expected_identity is not None:
             expected = load_identity(arguments.expected_identity, False)
