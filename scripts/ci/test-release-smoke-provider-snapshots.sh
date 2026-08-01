@@ -163,4 +163,49 @@ set -e
 grep -F "trust_store_digest" <<<"$tamper_output" >/dev/null \
   || { echo "tampered snapshot did not expose digest mismatch" >&2; exit 1; }
 
+BAD_ROLLBACK_NAME="${ROLLBACK_NAME}-bad-manifest"
+BAD_ROLLBACK_ROOT="$TMP_ROOT/$BAD_ROLLBACK_NAME"
+BAD_ROLLBACK_ARCHIVE="$TMP_ROOT/$BAD_ROLLBACK_NAME.tar.gz"
+cp -R "$ROLLBACK_ROOT" "$BAD_ROLLBACK_ROOT"
+python3 - "$BAD_ROLLBACK_ROOT/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+manifest = json.loads(manifest_path.read_text())
+manifest["entry_binary"] = "unexpected-entry"
+manifest_path.write_text(json.dumps(manifest) + "\n")
+PY
+bash "$ROOT/scripts/checksum.sh" "$BAD_ROLLBACK_ROOT" >"$BAD_ROLLBACK_ROOT/checksums.txt"
+tar -czf "$BAD_ROLLBACK_ARCHIVE" -C "$TMP_ROOT" "$BAD_ROLLBACK_NAME"
+bad_rollback_sha256="$(sha256sum "$BAD_ROLLBACK_ARCHIVE" | awk '{print $1}')"
+python3 - "$STABLE_ROOT/manifest.json" "$BAD_ROLLBACK_NAME.tar.gz" "$bad_rollback_sha256" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+manifest = json.loads(manifest_path.read_text())
+manifest["rollback_anchor"]["asset"] = sys.argv[2]
+manifest["rollback_anchor"]["rollback_sha256"] = sys.argv[3]
+manifest_path.write_text(json.dumps(manifest) + "\n")
+PY
+bash "$ROOT/scripts/checksum.sh" "$STABLE_ROOT" >"$STABLE_ROOT/checksums.txt"
+tar -czf "$TMP_ROOT/$STABLE_NAME.tar.gz" -C "$TMP_ROOT" "$STABLE_NAME"
+
+printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
+set +e
+rollback_manifest_output="$(
+  RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
+    RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
+    WORK_DIR="$TMP_ROOT/rollback-manifest-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$BAD_ROLLBACK_ARCHIVE" 2>&1
+)"
+rollback_manifest_status=$?
+set -e
+[[ "$rollback_manifest_status" -ne 0 ]] || { echo "rollback manifest payload mismatch was accepted" >&2; exit 1; }
+grep -F "entry_binary" <<<"$rollback_manifest_output" >/dev/null \
+  || { echo "rollback manifest payload mismatch did not expose entry_binary diagnostic" >&2; exit 1; }
+
 echo "release-smoke provider snapshot tests: OK"

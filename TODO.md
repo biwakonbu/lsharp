@@ -324,6 +324,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   残るため、M3-05-N9 は `[~]` のまま維持する。ADR:
   `docs/adr/decisions-v0.3-stage0-fetch-rollback-restore-failure.md`。
 
+  同日、rollback compatibility archive の `manifest.json` にある `entry_binary` / `lsp_binary` / `component` を
+  release smoke が消費する固定 payload 名と照合する boundaryを追加した。checksum、rollback anchor、target /
+  version / source commit が正しくても payload 宣言が異なる archive を拒否する RED→GREEN を provider snapshot
+  harness で確認した verified partial sliceである。live provider/auth、current-source Linux runtime、両 target
+  の packaged provenance/rollback bytes parity は未検証のため、M3-04-N1 / M3-05-N2 は `[~]` のまま残る。ADR:
+  `docs/adr/decisions-v0.3-rollback-archive-manifest-payload-parity.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。

@@ -276,6 +276,14 @@ if expected_source_commit and manifest.get("source_commit") != expected_source_c
 for required in ("target", "version", "source_commit"):
     if not manifest.get(required):
         raise SystemExit(f"rollback compatibility manifest missing {required}")
+expected_payloads = {
+    "entry_binary": "lsharp",
+    "lsp_binary": "lsharp-lsp",
+    "component": "lsharp.component.wasm",
+}
+for field, expected in expected_payloads.items():
+    if manifest.get(field) != expected:
+        raise SystemExit(f"rollback compatibility manifest {field} mismatch")
 PY
 fi
 
