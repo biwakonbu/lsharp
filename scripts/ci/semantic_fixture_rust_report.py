@@ -232,13 +232,27 @@ def observe_fixture(
     environment: Dict[str, str],
 ) -> Dict[str, Any]:
     source = root / pathlib.PurePosixPath(fixture["source"])
-    source_text = source.read_text(encoding="utf-8")
+    source_bytes = source.read_bytes()
+    source_text = source_bytes.decode("utf-8")
     fixture_dir = fixture_work_dir(work_dir, index, batch_size)
+    # The Rust compile CLI applies formatting before compilation and may write
+    # the formatted source back to the path it receives. Keep the manifest
+    # fixture immutable by compiling a task-owned copy instead.
+    compile_source = fixture_dir / source.name
+    compile_source.write_bytes(source_bytes)
     artifact = fixture_dir / "semantic-fixture.wasm"
     if artifact.exists() or artifact.is_symlink():
         raise ReportError(f"artifact path already exists: {artifact}")
     compile_result = subprocess.run(
-        [str(compiler), "compile", str(source), "-o", str(artifact), "--target", "wasi-preview1"],
+        [
+            str(compiler),
+            "compile",
+            str(compile_source),
+            "-o",
+            str(artifact),
+            "--target",
+            "wasi-preview1",
+        ],
         cwd=root,
         env=environment,
         capture_output=True,
