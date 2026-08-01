@@ -178,6 +178,11 @@ def validate_review_lifecycle_snapshot(path):
                     f"review lifecycle sequence rollback: {path}: "
                     f"review_id={review_id!r} previous={previous_sequence} current={sequence}"
                 )
+            if previous_sequence is not None and sequence > previous_sequence + 1:
+                raise IdentityError(
+                    f"review lifecycle sequence gap: {path}: "
+                    f"review_id={review_id!r} previous={previous_sequence} current={sequence}"
+                )
             seen_sequences.add(sequence_key)
             last_sequences[review_id] = sequence
             last_states[review_id] = state
