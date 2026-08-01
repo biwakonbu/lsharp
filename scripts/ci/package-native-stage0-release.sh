@@ -182,6 +182,11 @@ PY
 
 validate_native_stage0_package "$STAGE0_DIR" "$TARGET"
 
+EMBEDDED_REVIEW_EVIDENCE_IDENTITY="$STAGE0_DIR/review-evidence-identity.json"
+if [[ -s "$EMBEDDED_REVIEW_EVIDENCE_IDENTITY" && ( -z "$REVIEW_EVIDENCE_IDENTITY" || -z "$REVIEW_TRUST_STORE" || -z "$REVIEW_LIFECYCLE" ) ]]; then
+  die "embedded review evidence identity requires explicit provider snapshots and identity input"
+fi
+
 if [[ -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then
   [[ -s "$REVIEW_EVIDENCE_IDENTITY" ]] \
     || die "review evidence identity is not a non-empty file: $REVIEW_EVIDENCE_IDENTITY"

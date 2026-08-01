@@ -170,6 +170,31 @@ PY
 cmp -s "$EXTRACTED_STAGE0/checksums.txt" "$TMP_ROOT/actual-checksums.txt" \
   || fail "archive package checksums do not match payload"
 
+EMBEDDED_STAGE0_DIR="$TMP_ROOT/embedded-identity-stage0"
+EMBEDDED_DIST_DIR="$TMP_ROOT/embedded-identity-dist"
+cp -pR "$STAGE0_DIR" "$EMBEDDED_STAGE0_DIR"
+cp "$IDENTITY_PATH" "$EMBEDDED_STAGE0_DIR/review-evidence-identity.json"
+set +e
+embedded_identity_output="$(
+  NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
+    PATH="$HOST_BIN:$PATH" \
+    "$RELEASE_PACKAGE" \
+      --target "$TARGET" \
+      --version "${VERSION}-embedded-identity" \
+      --stage0-dir "$EMBEDDED_STAGE0_DIR" \
+      --source-commit "$SOURCE_COMMIT" \
+      --output-dir "$EMBEDDED_DIST_DIR" 2>&1
+)"
+embedded_identity_status=$?
+set -e
+[[ "$embedded_identity_status" -ne 0 ]] \
+  || fail "embedded review evidence identity was packaged without provider snapshots"
+grep -F "embedded review evidence identity requires explicit provider snapshots" \
+  <<<"$embedded_identity_output" >/dev/null \
+  || fail "embedded identity rejection did not explain the provider snapshot requirement"
+[[ ! -e "$EMBEDDED_DIST_DIR/lsharp-stage0-${VERSION}-embedded-identity-${TARGET}.tar.gz" ]] \
+  || fail "embedded identity rejection left a release archive"
+
 RELATIVE_ROOT="$TMP_ROOT/relative-output"
 mkdir -p "$RELATIVE_ROOT"
 cp -pR "$STAGE0_DIR" "$RELATIVE_ROOT/stage0"

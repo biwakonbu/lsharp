@@ -360,6 +360,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   packaged provenance/rollback bytes parity は未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。ADR:
   `docs/adr/decisions-v0.3-native-official-provider-identity-schema-preflight.md`。
 
+  続けて、stage0 directoryに `review-evidence-identity.json` が埋め込まれている場合の release package入力を
+  explicit identity、trust-store、review-lifecycle snapshotの3点セットへ限定した。provider snapshotなしで
+  埋込み identityを包装する REDを追加し、packaging前の fail-closedとarchive不生成を direct release-package
+  harnessで確認した verified partial sliceである。live provider/auth acquisition、current-source Linux runtime、
+  両 target packaged provenance/rollback bytes parityは未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。
+  ADR: `docs/adr/decisions-v0.3-native-stage0-release-embedded-identity-provider-preflight.md`。
+
   続けて同日、release smoke の `checksums.txt` target path を archive root 内の POSIX relative path に限定した。
   checksum-valid な `../../../outside-checksum-target.txt` fixture を拒否する RED→GREEN を provider snapshot
   harness で確認し、package 外部 file を checksum evidence として受理しない verified partial slice を追加した。
