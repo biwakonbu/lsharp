@@ -162,6 +162,8 @@ def _position(arguments, error_type=HoverLookupError):
     line = arguments.get("line")
     if type(line) is not int or line < 0:
         raise error_type("line は 0 以上の整数が必要です")
+    if "character" in arguments and "col" in arguments:
+        raise error_type("character と col は同時指定できません")
     if "character" in arguments:
         character = arguments["character"]
     elif "col" in arguments:

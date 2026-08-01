@@ -234,6 +234,11 @@ compile/run boundary の判断は
 native MCP 60 tests で確認した。ADR:
 `docs/adr/decisions-v0.3-native-mcp-format-output.md`。これは source text の意味を解釈しない
 offline relay の verified partial slice であり、target runtime と Rust/native full parity は残る。
+さらに native MCP の `lsharp_hover` / `lsharp_definition` / `lsharp_references` /
+`lsharp_completion` で `character` と `col` の oneOf schema を揃え、両方指定した曖昧な入力を
+native LSP 実行前に拒否する contract を native MCP 62 tests で確認した。ADR:
+`docs/adr/decisions-v0.3-native-mcp-lsp-position-alias.md`。単独 `col` alias は互換性のため維持し、
+target runtime と Rust/native full parity は残る。
 
 ## Current priority — v0.2 Milestone 2
 

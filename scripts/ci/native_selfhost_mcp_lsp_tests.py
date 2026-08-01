@@ -161,7 +161,10 @@ def assert_completion_projects_native_lsp(test):
         test.assertEqual(result.returncode, 0, result.stderr.decode())
         responses = test.responses(result.stdout)
         tool = next(tool for tool in responses[0]["result"]["tools"] if tool["name"] == "lsharp_completion")
-        test.assertEqual(tool["inputSchema"]["oneOf"], [{"required": ["line", "character"]}])
+        test.assertEqual(
+            tool["inputSchema"]["oneOf"],
+            [{"required": ["line", "character"]}, {"required": ["line", "col"]}],
+        )
         test.assertFalse(tool["inputSchema"]["additionalProperties"])
         test.assertEqual(tool["outputSchema"]["required"], ["items"])
         test.assertEqual(
@@ -180,6 +183,56 @@ def assert_completion_projects_native_lsp(test):
             ["initialize", "initialized", "textDocument/didOpen", "textDocument/completion"],
         )
         test.assertEqual(messages[-1]["params"]["position"], {"line": 0, "character": 8})
+
+
+def assert_lsp_position_alias_schema_is_exclusive(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = write_fake_lsp_program(root, lsp_output("id : a -> a"))
+        result = test.run_shim(program, request(1, "tools/list"), root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        tools = {
+            tool["name"]: tool
+            for tool in test.responses(result.stdout)[0]["result"]["tools"]
+        }
+        expected = [{"required": ["line", "character"]}, {"required": ["line", "col"]}]
+        for name in ("lsharp_hover", "lsharp_definition", "lsharp_references", "lsharp_completion"):
+            test.assertEqual(tools[name]["inputSchema"]["oneOf"], expected)
+
+
+def assert_lsp_rejects_both_position_aliases(test):
+    cases = (
+        ("lsharp_hover", lsp_output("id : a -> a")),
+        ("lsharp_definition", definition_output()),
+        ("lsharp_references", references_output((((0, 1), (0, 3)),))),
+        ("lsharp_completion", completion_output([])),
+    )
+    for name, output in cases:
+        with test.subTest(tool=name), tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = write_fake_lsp_program(root, output)
+            result = test.run_shim(
+                program,
+                request(
+                    1,
+                    "tools/call",
+                    {
+                        "name": name,
+                        "arguments": {
+                            "source": "(defn id [x] x)\n",
+                            "line": 0,
+                            "character": 7,
+                            "col": 7,
+                        },
+                    },
+                ),
+                root,
+            )
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn("character と col", response["result"]["content"][0]["text"])
+            test.assertFalse((root / "lsp-input.bin").exists())
 
 
 def assert_completion_supports_file_and_col_alias(test):
@@ -315,7 +368,10 @@ def assert_references_projects_native_lsp(test):
         test.assertEqual(result.returncode, 0, result.stderr.decode())
         responses = test.responses(result.stdout)
         tool = next(tool for tool in responses[0]["result"]["tools"] if tool["name"] == "lsharp_references")
-        test.assertEqual(tool["inputSchema"]["oneOf"], [{"required": ["line", "character"]}])
+        test.assertEqual(
+            tool["inputSchema"]["oneOf"],
+            [{"required": ["line", "character"]}, {"required": ["line", "col"]}],
+        )
         test.assertFalse(tool["inputSchema"]["additionalProperties"])
         test.assertEqual(tool["outputSchema"]["required"], ["count", "ranges"])
         test.assertEqual(
@@ -470,7 +526,10 @@ def assert_definition_projects_native_lsp(test):
         test.assertEqual(result.returncode, 0, result.stderr.decode())
         responses = test.responses(result.stdout)
         tool = next(tool for tool in responses[0]["result"]["tools"] if tool["name"] == "lsharp_definition")
-        test.assertEqual(tool["inputSchema"]["oneOf"], [{"required": ["line", "character"]}])
+        test.assertEqual(
+            tool["inputSchema"]["oneOf"],
+            [{"required": ["line", "character"]}, {"required": ["line", "col"]}],
+        )
         test.assertFalse(tool["inputSchema"]["additionalProperties"])
         test.assertEqual(tool["outputSchema"]["required"], ["start", "end"])
         test.assertEqual(
@@ -602,7 +661,10 @@ def assert_hover_projects_native_lsp(test):
         test.assertEqual(result.returncode, 0, result.stderr.decode())
         responses = test.responses(result.stdout)
         tool = next(tool for tool in responses[0]["result"]["tools"] if tool["name"] == "lsharp_hover")
-        test.assertEqual(tool["inputSchema"]["oneOf"], [{"required": ["line", "character"]}])
+        test.assertEqual(
+            tool["inputSchema"]["oneOf"],
+            [{"required": ["line", "character"]}, {"required": ["line", "col"]}],
+        )
         test.assertFalse(tool["inputSchema"]["additionalProperties"])
         test.assertEqual(tool["outputSchema"]["required"], ["name", "type", "doc"])
         test.assertEqual(
