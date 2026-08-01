@@ -140,6 +140,12 @@ verified partial として追加した。実 Wasm validation/runtime、native st
 differential、aggregate は未接続のため `[~]` を維持する。ADR:
 `docs/adr/decisions-v0.4-m1-01-nonempty-artifact-boundary.md`。
 
+さらに Rust-oracle/native-stage0 producer の implementation commit `a20fae09` で、明示した
+`--wasm-tools` による `validate` を Wasmtime 前に必須化した。invalid bytes は report を生成せず runtime も
+起動しない verified partial boundary である。実 Mac/Linux native artifact/runtime、Rust/native differential、
+aggregate は未接続のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.4-m1-01-wasm-validation-boundary.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。

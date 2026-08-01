@@ -68,6 +68,9 @@ look stronger than its evidence.
   than silently delegating to a host compiler. Invalid output is reported only
   when an `LS####` code and source byte span are both present; missing fields
   and duplicate IDs fail closed.
+- Require an explicit `--wasm-tools` executable for both producers. Validate
+  each observed artifact before invoking Wasmtime; validation failure must
+  leave no report and no runtime execution.
 - Validate the contract with the standalone Python helper and focused unittest;
   the matrix projector emits the deterministic input and the diff helper emits
   a deterministic comparison result.
@@ -95,11 +98,13 @@ look stronger than its evidence.
 - `python3 scripts/ci/test-semantic-fixture-rust-report.py` — explicit compiler/
   Wasmtime paths, artifact digest, runtime output, fallback guard, invalid
   code/span conversion, missing-diagnostic-field refusal, sorted batch,
-  per-fixture isolation, and duplicate-ID rejection tests.
+  per-fixture isolation, duplicate-ID rejection, and pre-runtime Wasm
+  validation tests.
 - `python3 scripts/ci/test-semantic-fixture-native-report.py` — stage0 manifest
   provenance, explicit native runner/Wasmtime paths, fallback environment guard,
   artifact/runtime observation, invalid code/span conversion, missing-field
-  refusal, sorted batch, per-fixture isolation, and duplicate-ID rejection tests.
+  refusal, sorted batch, per-fixture isolation, duplicate-ID rejection, and
+  pre-runtime Wasm validation tests.
 - `python3 scripts/ci/semantic_fixture_matrix.py --manifest scripts/ci/semantic-fixture-matrix.json --root .`
   — deterministic manifest projection.
 - `python3 scripts/ci/semantic_fixture_rust_report.py` with source commit
@@ -141,3 +146,7 @@ look stronger than its evidence.
   artifact with `size=0` instead of allowing empty metadata to remain pending.
   The positive-size contract is producer-report validation only; native stage0,
   Linux, Wasm validation, and differential runtime evidence remain pending.
+- The producer implementation at commit `a20fae09` requires explicit
+  `wasm-tools validate` before Wasmtime for both Rust-oracle and native-stage0
+  reports. Invalid bytes fail closed without a report or runtime execution;
+  this is a producer gate, not actual Mac/Linux target evidence.

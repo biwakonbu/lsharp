@@ -86,6 +86,7 @@ subset を検証する場合も `--fixture-id` を省略せず、evidence index 
 ```bash
 COMPILER="/absolute/path/to/rust-oracle-compiler"
 WASMTIME="/absolute/path/to/wasmtime"
+WASM_TOOLS="/absolute/path/to/wasm-tools"
 ORACLE_WORK="$EVIDENCE_ROOT/oracle-work"
 mkdir -p "$ORACLE_WORK"
 
@@ -97,6 +98,7 @@ python3 scripts/ci/semantic_fixture_rust_report.py \
   --source-commit "$SOURCE_COMMIT" \
   --compiler "$COMPILER" \
   --wasmtime "$WASMTIME" \
+  --wasm-tools "$WASM_TOOLS" \
   --work-dir "$ORACLE_WORK" \
   --output "$EVIDENCE_ROOT/oracle.json"
 ```
@@ -122,6 +124,7 @@ stage0 boundary を所有していなければならない。
 ```bash
 RUNNER="/absolute/path/to/native-stage0-runner"
 WASMTIME="/absolute/path/to/wasmtime"
+WASM_TOOLS="/absolute/path/to/wasm-tools"
 STAGE0_MANIFEST="/absolute/path/to/current-source-stage0/manifest.json"
 NATIVE_WORK="$EVIDENCE_ROOT/native-work"
 mkdir -p "$NATIVE_WORK"
@@ -134,12 +137,13 @@ python3 scripts/ci/semantic_fixture_native_report.py \
   --source-commit "$SOURCE_COMMIT" \
   --runner "$RUNNER" \
   --wasmtime "$WASMTIME" \
+  --wasm-tools "$WASM_TOOLS" \
   --stage0-manifest "$STAGE0_MANIFEST" \
   --work-dir "$NATIVE_WORK" \
   --output "$EVIDENCE_ROOT/native.json"
 ```
 
-stale stage0、target mismatch、source commit mismatch、unexpected invalid artifact は report を生成せず
+stale stage0、target mismatch、source commit mismatch、Wasm validation failure、unexpected invalid artifact は report を生成せず
 停止する。Linux gate は Mac 側の古い artifact をコピーして済ませない。
 
 ## 4. Rust/native differential
