@@ -73,6 +73,14 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
         ("missing", "missing field"),
         ("unknown", "unknown field"),
         ("nodes-object", "must be an array"),
+        ("node-missing", "nodes[0] is missing field: kind"),
+        ("node-kind", "nodes[0].kind has invalid value"),
+        ("node-extra", "nodes[0] has unknown field: extra"),
+        ("node-text", "nodes[0].text must be a non-empty string"),
+        ("node-span", "nodes[0].span.start must be a non-negative integer"),
+        ("review-missing", "reviews[0] is missing field: namespace"),
+        ("review-visibility", "reviews[0].visibility has invalid value"),
+        ("review-extra", "reviews[0] has unknown field: extra"),
     )
     for manifest_mode, expected_message in cases:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -100,3 +108,31 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
             test.assertTrue(response["result"]["isError"])
             test.assertIn(expected_message, response["result"]["content"][0]["text"])
             test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
+
+
+def assert_validate_accepts_valid_emitted_manifest_items(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "include_manifest": True,
+                    },
+                },
+            ),
+            root,
+            manifest_mode="nested-valid",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        manifest = response["result"]["structuredContent"]["manifest"]
+        test.assertEqual(manifest["nodes"][0]["span"], {"start": 0, "end": 5})
+        test.assertEqual(manifest["reviews"][0]["verification_state"], "verified")

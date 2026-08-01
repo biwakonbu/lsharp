@@ -780,6 +780,102 @@ def validate_manifest_output(value):
     for name in ("nodes", "evidence", "edges"):
         if not isinstance(value[name], list):
             raise ToolError(f"native emitted manifest {name} must be an array")
+    for index, node in enumerate(value["nodes"]):
+        validate_manifest_node(node, index)
+    if "reviews" in value:
+        if not isinstance(value["reviews"], list):
+            raise ToolError("native emitted manifest reviews must be an array")
+        for index, review in enumerate(value["reviews"]):
+            validate_manifest_review(review, index)
+
+
+def validate_manifest_non_empty_string(value, label):
+    if not isinstance(value, str) or len(value) < 1:
+        raise ToolError(f"{label} must be a non-empty string")
+
+
+def validate_manifest_identifier(value, label):
+    if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_.-]+", value) is None:
+        raise ToolError(f"{label} must match the identifier pattern")
+
+
+def validate_manifest_integer(value, label):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 0
+        or value > 18446744073709551615
+    ):
+        raise ToolError(f"{label} must be a non-negative integer")
+
+
+def validate_manifest_span(value, label):
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"start", "end"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in ("start", "end") if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    for name in ("start", "end"):
+        validate_manifest_integer(value[name], f"{label}.{name}")
+
+
+def validate_manifest_node(value, index):
+    label = f"native emitted manifest nodes[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"kind", "namespace", "key", "text", "span"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    required = ("kind", "namespace", "key", "text")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    if value["kind"] not in ("intent", "claim", "assumption", "open-question"):
+        raise ToolError(f"{label}.kind has invalid value")
+    validate_manifest_identifier(value["namespace"], f"{label}.namespace")
+    validate_manifest_identifier(value["key"], f"{label}.key")
+    validate_manifest_non_empty_string(value["text"], f"{label}.text")
+    if "span" in value:
+        validate_manifest_span(value["span"], f"{label}.span")
+
+
+def validate_manifest_review(value, index):
+    label = f"native emitted manifest reviews[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {
+        "namespace",
+        "key",
+        "provenance_digest",
+        "visibility",
+        "verification_state",
+    }
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    required = ("namespace", "key", "provenance_digest", "visibility")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    validate_manifest_identifier(value["namespace"], f"{label}.namespace")
+    validate_manifest_identifier(value["key"], f"{label}.key")
+    validate_manifest_non_empty_string(
+        value["provenance_digest"], f"{label}.provenance_digest"
+    )
+    if value["visibility"] not in ("public", "redacted"):
+        raise ToolError(f"{label}.visibility has invalid value")
+    if "verification_state" in value and value["verification_state"] not in (
+        "verified",
+        "unverified",
+        "stale",
+        "revoked",
+    ):
+        raise ToolError(f"{label}.verification_state has invalid value")
 
 
 def validate_trace_gap(value, index):

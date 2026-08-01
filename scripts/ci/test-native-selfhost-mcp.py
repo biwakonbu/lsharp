@@ -14,7 +14,7 @@ from native_selfhost_mcp_context_tests import assert_project_context_projects_lo
 from native_selfhost_mcp_compile_tests import assert_compile_run_fails_closed_and_cleans_artifacts, assert_compile_run_projects_file_without_mutating_input, assert_compile_run_projects_source_and_external_runtime, assert_compile_run_rejects_invalid_arguments_before_native, assert_compile_run_requires_explicit_runtime_without_host_fallback
 from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_native_doc, assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments, assert_stdlib_api_rejects_malformed_native_doc
 from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_native_result, assert_completion_projects_native_lsp, assert_completion_rejects_invalid_arguments_before_native, assert_completion_rejects_native_failures, assert_completion_supports_file_and_col_alias, assert_definition_projects_native_lsp, assert_definition_rejects_invalid_arguments_before_native, assert_definition_rejects_native_failures, assert_definition_supports_file_and_col_alias, assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias, assert_lsp_position_alias_schema_is_exclusive, assert_lsp_rejects_both_position_aliases, assert_references_projects_empty_native_result, assert_references_projects_native_lsp, assert_references_rejects_invalid_arguments_before_native, assert_references_rejects_native_failures, assert_references_supports_file_and_col_alias
-from native_selfhost_mcp_manifest_tests import assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
+from native_selfhost_mcp_manifest_tests import assert_validate_accepts_valid_emitted_manifest_items, assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
 from native_selfhost_mcp_validate_tests import assert_validate_accepts_valid_nested_report, assert_validate_accepts_valid_report_identity, assert_validate_rejects_invalid_report, assert_validate_rejects_invalid_report_identity
 from native_selfhost_mcp_check_tests import assert_check_accepts_valid_migration_diagnostics, assert_check_rejects_blank_source_before_native, assert_check_rejects_invalid_arguments_before_native, assert_check_rejects_invalid_output, assert_source_input_schema_requires_non_empty_strings
 from native_selfhost_mcp_format_tests import assert_check_format_input_schemas_are_closed, assert_format_output_schema_is_closed, assert_format_rejects_blank_source_before_native, assert_format_rejects_invalid_arguments_before_native, assert_format_rejects_native_failures
@@ -236,6 +236,69 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                             manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "evidence": [], "edges": [], "extra": True}})
                         elif manifest_mode == "nodes-object":
                             manifest_output = json.dumps({{"schema_version": 1, "nodes": {{}}, "evidence": [], "edges": []}})
+                        elif manifest_mode == "node-missing":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [{{}}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "node-kind":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [{{
+                                "kind": "unknown",
+                                "namespace": "demo",
+                                "key": "claim-1",
+                                "text": "claim",
+                            }}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "node-extra":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [{{
+                                "kind": "claim",
+                                "namespace": "demo",
+                                "key": "claim-1",
+                                "text": "claim",
+                                "extra": True,
+                            }}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "node-text":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [{{
+                                "kind": "claim",
+                                "namespace": "demo",
+                                "key": "claim-1",
+                                "text": "",
+                            }}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "node-span":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [{{
+                                "kind": "claim",
+                                "namespace": "demo",
+                                "key": "claim-1",
+                                "text": "claim",
+                                "span": {{"start": -1, "end": 5}},
+                            }}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "review-missing":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "reviews": [{{}}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "review-visibility":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "reviews": [{{
+                                "namespace": "demo",
+                                "key": "review-1",
+                                "provenance_digest": "sha256:review",
+                                "visibility": "private",
+                            }}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "review-extra":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [], "reviews": [{{
+                                "namespace": "demo",
+                                "key": "review-1",
+                                "provenance_digest": "sha256:review",
+                                "visibility": "public",
+                                "extra": True,
+                            }}], "evidence": [], "edges": []}})
+                        elif manifest_mode == "nested-valid":
+                            manifest_output = json.dumps({{"schema_version": 1, "nodes": [{{
+                                "kind": "claim",
+                                "namespace": "demo",
+                                "key": "claim-1",
+                                "text": "claim",
+                                "span": {{"start": 0, "end": 5}},
+                            }}], "reviews": [{{
+                                "namespace": "demo",
+                                "key": "review-1",
+                                "provenance_digest": "sha256:review",
+                                "visibility": "public",
+                                "verification_state": "verified",
+                            }}], "evidence": [], "edges": []}})
                         else:
                             manifest = {{"schema_version": 1, "nodes": [], "evidence": [], "edges": []}}
                             if manifest_identity is not None:
@@ -617,6 +680,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_validate_rejects_invalid_emitted_manifest(self):
         assert_validate_rejects_invalid_emitted_manifest(self)
+    def test_validate_accepts_valid_emitted_manifest_items(self):
+        assert_validate_accepts_valid_emitted_manifest_items(self)
 
     def test_validate_rejects_invalid_report(self):
         assert_validate_rejects_invalid_report(self)
