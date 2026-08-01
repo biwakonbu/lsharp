@@ -520,6 +520,7 @@ print(manifest.get("target", ""), manifest.get("source_commit", ""), manifest.ge
 PY
   )
   WORK_DIR="$rollback_work_dir" \
+    VERSION="$rollback_version" \
     RELEASE_REVIEW_TRUST_STORE="" \
     RELEASE_REVIEW_LIFECYCLE="" \
     EXPECTED_ROLLBACK_TARGET="$rollback_target" \

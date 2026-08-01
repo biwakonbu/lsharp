@@ -2183,3 +2183,14 @@ bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 �
 manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・
 stage regeneration・full buildは未実行である。Evidence:
 [`decisions-v0.3-packaged-archive-input-regular-file.md`](docs/adr/decisions-v0.3-packaged-archive-input-regular-file.md)。
+
+2026-08-02 に rollback compatibility archive の再帰 smoke へ manifest の `version` を nested `VERSION` として渡し、
+rollback executable の `--version` output と manifest version の parity を固定した。manifest/anchor/checksum を
+再生成しても `lsharp 9.9.9` を返す rollback fixture を従来実装が受け入れる RED と、`packaged CLI version mismatch` で
+fail-closed にする GREEN を `test-release-smoke-provider-snapshots.sh` で確認した。これは rollback executable version の
+offline parityだけを閉じる verified partial sliceであり、既存の manifest/anchor/checksum/payload/archive input 契約を
+再実装しない。live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged
+provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux
+replay・stage regeneration・full buildは未実行である。Evidence:
+[`decisions-v0.3-packaged-rollback-version-output-parity.md`](docs/adr/decisions-v0.3-packaged-rollback-version-output-parity.md)。
