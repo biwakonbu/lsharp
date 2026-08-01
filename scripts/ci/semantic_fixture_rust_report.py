@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-"""Produce one explicit Rust-oracle observation for a semantic fixture.
+"""Produce explicit Rust-oracle observations for selected semantic fixtures.
 
 The compiler and Wasmtime executable are required inputs.  This command never
 invokes cargo, host lsharp, an embedded selfhost component, or a provider
-implicitly; the caller owns those boundaries and supplies the paths. Invalid
-fixtures are accepted only when their compiler diagnostic exposes an LS####
-code and a source byte span.
+implicitly; the caller owns those boundaries and supplies the paths. Repeat
+``--fixture-id`` to produce a deterministic batch. Invalid fixtures are
+accepted only when their compiler diagnostic exposes an LS#### code and a
+source byte span.
 """
 
 from __future__ import annotations
@@ -130,11 +131,120 @@ def write_report(path: pathlib.Path, report: Dict[str, Any]) -> None:
                 pass
 
 
+def select_fixtures(manifest: Dict[str, Any], fixture_ids: list[str], target: str) -> list[Dict[str, Any]]:
+    if not fixture_ids:
+        raise ReportError("at least one --fixture-id is required")
+    if len(set(fixture_ids)) != len(fixture_ids):
+        raise ReportError("duplicate fixture ids are not allowed")
+    by_id = {fixture["id"]: fixture for fixture in manifest["fixtures"]}
+    selected = []
+    for fixture_id in sorted(fixture_ids):
+        fixture = by_id.get(fixture_id)
+        if fixture is None:
+            raise ReportError(f"unknown fixture id: {fixture_id}")
+        if fixture["kind"] not in {"valid", "invalid"}:
+            raise ReportError(f"unsupported fixture kind: {fixture['kind']}")
+        if target not in fixture["targets"]:
+            raise ReportError(f"fixture target is not declared: {target}")
+        if fixture["kind"] == "valid" and fixture["expected"]["diagnostics"]:
+            raise ReportError("Rust report producer requires a valid fixture with no expected diagnostics")
+        selected.append(fixture)
+    return selected
+
+
+def fixture_work_dir(work_dir: pathlib.Path, index: int, batch_size: int) -> pathlib.Path:
+    if batch_size == 1:
+        return work_dir
+    path = work_dir / f"{index:04d}"
+    if path.exists() or path.is_symlink():
+        raise ReportError(f"fixture work directory already exists: {path}")
+    try:
+        path.mkdir()
+    except OSError as error:
+        raise ReportError(f"fixture work directory cannot be created: {path}: {error}") from error
+    return path
+
+
+def observe_fixture(
+    fixture: Dict[str, Any],
+    index: int,
+    batch_size: int,
+    root: pathlib.Path,
+    work_dir: pathlib.Path,
+    runtime_dir: pathlib.Path,
+    compiler: pathlib.Path,
+    wasmtime: pathlib.Path,
+    environment: Dict[str, str],
+) -> Dict[str, Any]:
+    source = root / pathlib.PurePosixPath(fixture["source"])
+    source_text = source.read_text(encoding="utf-8")
+    artifact = fixture_work_dir(work_dir, index, batch_size) / "semantic-fixture.wasm"
+    if artifact.exists() or artifact.is_symlink():
+        raise ReportError(f"artifact path already exists: {artifact}")
+    compile_result = subprocess.run(
+        [str(compiler), "compile", str(source), "-o", str(artifact), "--target", "wasi-preview1"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        check=False,
+    )
+    if fixture["kind"] == "invalid":
+        if compile_result.returncode == 0:
+            raise ReportError("Rust oracle invalid fixture unexpectedly compiled successfully")
+        if artifact.exists() or artifact.is_symlink():
+            raise ReportError("Rust oracle invalid fixture produced an unexpected Wasm artifact")
+        return {
+            "id": fixture["id"],
+            "diagnostics": [
+                parse_invalid_diagnostic(
+                    decode_output(compile_result.stderr) + "\n" + decode_output(compile_result.stdout),
+                    source_text,
+                )
+            ],
+            "exit_code": compile_result.returncode,
+            "artifact": {"status": "not-applicable"},
+            "runtime": {
+                "status": "not-run",
+                "exit_code": None,
+                "stdout": None,
+                "stderr": None,
+            },
+        }
+    if compile_result.returncode != 0:
+        detail = decode_output(compile_result.stderr).strip() or decode_output(compile_result.stdout).strip()
+        raise ReportError(f"Rust oracle compile failed with exit {compile_result.returncode}: {detail}")
+    if not artifact.is_file() or artifact.is_symlink():
+        raise ReportError("Rust oracle compile succeeded without a regular Wasm artifact")
+    runtime_result = subprocess.run(
+        [str(wasmtime), "run", str(artifact)],
+        cwd=runtime_dir,
+        env=environment,
+        capture_output=True,
+        check=False,
+    )
+    return {
+        "id": fixture["id"],
+        "diagnostics": [],
+        "exit_code": compile_result.returncode,
+        "artifact": {
+            "status": "observed",
+            "sha256": sha256(artifact),
+            "size": artifact.stat().st_size,
+        },
+        "runtime": {
+            "status": "observed",
+            "exit_code": runtime_result.returncode,
+            "stdout": decode_output(runtime_result.stdout),
+            "stderr": decode_output(runtime_result.stderr),
+        },
+    }
+
+
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=pathlib.Path, required=True)
     parser.add_argument("--root", type=pathlib.Path, required=True)
-    parser.add_argument("--fixture-id", required=True)
+    parser.add_argument("--fixture-id", dest="fixture_ids", action="append", required=True)
     parser.add_argument("--target", choices=SUPPORTED_TARGETS, required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--compiler", type=pathlib.Path, required=True)
@@ -157,106 +267,33 @@ def main() -> int:
         wasmtime = require_executable(arguments.wasmtime, "wasmtime")
         raw_manifest = json.loads(arguments.manifest.read_text(encoding="utf-8"))
         manifest = project_manifest(require_object(raw_manifest, "manifest"), root)
-        fixture = next(
-            (candidate for candidate in manifest["fixtures"] if candidate["id"] == arguments.fixture_id),
-            None,
-        )
-        if fixture is None:
-            raise ReportError(f"unknown fixture id: {arguments.fixture_id}")
-        if fixture["kind"] not in {"valid", "invalid"}:
-            raise ReportError(f"unsupported fixture kind: {fixture['kind']}")
-        if arguments.target not in fixture["targets"]:
-            raise ReportError(f"fixture target is not declared: {arguments.target}")
-        if fixture["kind"] == "valid" and fixture["expected"]["diagnostics"]:
-            raise ReportError("Rust report producer requires a valid fixture with no expected diagnostics")
-        source = root / pathlib.PurePosixPath(fixture["source"])
-        source_text = source.read_text(encoding="utf-8")
-        artifact = work_dir / "semantic-fixture.wasm"
-        if artifact.exists() or artifact.is_symlink():
-            raise ReportError(f"artifact path already exists: {artifact}")
+        fixtures = select_fixtures(manifest, arguments.fixture_ids, arguments.target)
 
         environment = os.environ.copy()
         environment["LSHARP_DISABLE_EMBEDDED_COMPONENT"] = "1"
         environment.pop("LSHARP_PATH", None)
-        compile_result = subprocess.run(
-            [str(compiler), "compile", str(source), "-o", str(artifact), "--target", "wasi-preview1"],
-            cwd=root,
-            env=environment,
-            capture_output=True,
-            check=False,
-        )
-        if fixture["kind"] == "invalid":
-            if compile_result.returncode == 0:
-                raise ReportError("Rust oracle invalid fixture unexpectedly compiled successfully")
-            if artifact.exists() or artifact.is_symlink():
-                raise ReportError("Rust oracle invalid fixture produced an unexpected Wasm artifact")
-            diagnostics = [
-                parse_invalid_diagnostic(
-                    decode_output(compile_result.stderr) + "\n" + decode_output(compile_result.stdout),
-                    source_text,
-                )
-            ]
-            report = {
-                "schema_version": 1,
-                "suite": "v4-m1-01",
-                "producer": "rust-oracle",
-                "target": arguments.target,
-                "source_commit": arguments.source_commit,
-                "fixtures": [
-                    {
-                        "id": fixture["id"],
-                        "diagnostics": diagnostics,
-                        "exit_code": compile_result.returncode,
-                        "artifact": {"status": "not-applicable"},
-                        "runtime": {
-                            "status": "not-run",
-                            "exit_code": None,
-                            "stdout": None,
-                            "stderr": None,
-                        },
-                    }
-                ],
-            }
-            write_report(arguments.output, report)
-            return 0
-        if compile_result.returncode != 0:
-            detail = decode_output(compile_result.stderr).strip() or decode_output(compile_result.stdout).strip()
-            raise ReportError(f"Rust oracle compile failed with exit {compile_result.returncode}: {detail}")
-        if not artifact.is_file() or artifact.is_symlink():
-            raise ReportError("Rust oracle compile succeeded without a regular Wasm artifact")
-
-        runtime_result = subprocess.run(
-            [str(wasmtime), "run", str(artifact)],
-            cwd=runtime_dir,
-            env=environment,
-            capture_output=True,
-            check=False,
-        )
         report = {
             "schema_version": 1,
             "suite": "v4-m1-01",
             "producer": "rust-oracle",
             "target": arguments.target,
             "source_commit": arguments.source_commit,
-            "fixtures": [
-                {
-                    "id": fixture["id"],
-                    "diagnostics": [],
-                    "exit_code": compile_result.returncode,
-                    "artifact": {
-                        "status": "observed",
-                        "sha256": sha256(artifact),
-                        "size": artifact.stat().st_size,
-                    },
-                    "runtime": {
-                        "status": "observed",
-                        "exit_code": runtime_result.returncode,
-                        "stdout": decode_output(runtime_result.stdout),
-                        "stderr": decode_output(runtime_result.stderr),
-                    },
-                }
-            ],
+            "fixtures": [],
         }
+        for index, fixture in enumerate(fixtures):
+            report["fixtures"].append(
+                observe_fixture(
+                    fixture,
+                    index,
+                    len(fixtures),
+                    root,
+                    work_dir,
+                    runtime_dir,
+                    compiler,
+                    wasmtime,
+                    environment,
+                )
+            )
         write_report(arguments.output, report)
     except (OSError, json.JSONDecodeError, ManifestError, ReportError) as error:
         print(f"error: {error}", file=sys.stderr)

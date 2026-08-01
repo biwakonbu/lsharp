@@ -37,7 +37,9 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
         work_dir,
         extra=None,
         fixture_id="valid/syntax-basic",
+        fixture_ids=None,
     ):
+        selected_fixture_ids = fixture_ids or [fixture_id]
         command = [
             sys.executable,
             str(PRODUCER),
@@ -45,8 +47,6 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             str(MANIFEST),
             "--root",
             str(ROOT),
-            "--fixture-id",
-            fixture_id,
             "--target",
             "aarch64-apple-darwin",
             "--source-commit",
@@ -60,6 +60,10 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             "--output",
             str(output),
         ]
+        fixture_arguments = []
+        for selected_fixture_id in selected_fixture_ids:
+            fixture_arguments.extend(["--fixture-id", selected_fixture_id])
+        command[command.index("--target"):command.index("--target")] = fixture_arguments
         if extra:
             command.extend(extra)
         return subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
@@ -192,11 +196,11 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             wasmtime = root / "fake-wasmtime.py"
-            work_dir = root / "work"
-            work_dir.mkdir()
             make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
             for index, (fixture_id, diagnostic, expected_error) in enumerate(cases):
                 compiler = root / f"invalid-compiler-{index}.py"
+                work_dir = root / f"work-{index}"
+                work_dir.mkdir()
                 output = root / f"report-{index}.json"
                 make_executable(
                     compiler,
@@ -230,6 +234,73 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             invalid_commit = self.run_producer(root, compiler, wasmtime, output, work_dir, ["--source-commit", "bad"])
             self.assertNotEqual(invalid_commit.returncode, 0)
             self.assertIn("source_commit", invalid_commit.stderr)
+
+    def test_writes_sorted_batch_report_with_isolated_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "batch-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "source = pathlib.Path(sys.argv[2])\n"
+                "if source.name == 'invalid-type.ls':\n"
+                "    sys.stderr.write('Error: [LS1001] undefined value (15..28)\\n')\n"
+                "    raise SystemExit(1)\n"
+                "out = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
+                "out.write_bytes(source.name.encode('utf-8'))\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_ids=["valid/syntax-basic", "invalid/type-undefined-value"],
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                [fixture["id"] for fixture in report["fixtures"]],
+                ["invalid/type-undefined-value", "valid/syntax-basic"],
+            )
+            invalid_fixture, valid_fixture = report["fixtures"]
+            self.assertEqual(invalid_fixture["artifact"], {"status": "not-applicable"})
+            self.assertEqual(invalid_fixture["runtime"]["status"], "not-run")
+            self.assertEqual(valid_fixture["artifact"]["status"], "observed")
+            self.assertEqual(valid_fixture["runtime"]["stdout"], "42\n")
+            self.assertFalse((work_dir / "0000" / "semantic-fixture.wasm").exists())
+            self.assertEqual(
+                (work_dir / "0001" / "semantic-fixture.wasm").read_bytes(),
+                b"hello.ls",
+            )
+
+    def test_rejects_duplicate_fixture_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "compiler"
+            wasmtime = root / "wasmtime"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(compiler, "#!/bin/sh\nexit 0\n")
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_ids=["valid/syntax-basic", "valid/syntax-basic"],
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("duplicate", result.stderr.lower())
+            self.assertFalse(output.exists())
 
 
 if __name__ == "__main__":
