@@ -2226,3 +2226,12 @@ provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux
 replay・stage regeneration・full buildは未実行である。Evidence:
 [`decisions-v0.3-packaged-rollback-version-output-parity.md`](docs/adr/decisions-v0.3-packaged-rollback-version-output-parity.md)。
+
+2026-08-02 に残件を細かな packaged edge ではなく、M3-04-N1 / M3-05-N9 の current-source two-target runtime gate
+（compile/build → source-bound artifact/manifest → packaged/stage0 → Mac/Linux runtime）として再監査した。監査時の
+`HEAD` `f36b51539c1d903d89005f02d4bd9a9fe11770f0` に source commit が一致する manifest と task-owned expected replay lockは
+見つからず、Lima hostagent/QEMU/replayd は別セッション所有だったため、`native-official-release-local.sh`、stage
+regeneration、Linux replay、full buildは起動していない。これは gate 未実行の blocker evidenceであり、live provider
+API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。再現 command、再開条件、次に一度だけ実行する gate の記録は
+[`decisions-v0.3-current-source-two-target-runtime-gate-blocker.md`](docs/adr/decisions-v0.3-current-source-two-target-runtime-gate-blocker.md) に固定した。
