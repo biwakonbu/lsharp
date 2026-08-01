@@ -816,13 +816,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   diagnostics、module/import、qualified/private record の parser/type/runtime slice と
   両 supported target の current-source core stage0 smoke は verified。constructor/record/GADT の
   残る semantics、全 diagnostic/span、standalone source check、full cross-target aggregate を閉じる。
-  2026-07-31 に selfhost `Types.TypeInferApply` の 3-7 引数 application を 64 要素 bounded
-  rooted continuationへ集約し、high-arity contract、failure propagation、既存 curried apply の
-  focused E2E 11件を通した。Linux x86_64 fixed point は status `pass`、stage2/stage3 code length
-  各 `11168596`、stdout SHA-256 は両方
-  `dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。これは
-  TypeInferApply の bounded traversal と current-source Linux native self-regeneration の
-  verified sliceであり、64超の診断契約、全 diagnostic/span、Mac/Linux aggregate parity は残る。
+  2026-07-31 に selfhost `Types.TypeInferApply` の 3-64 引数 application を共通の 64 要素
+  bounded rooted continuationへ通し、8/64 の成功、65 の fail-closed、failure propagation、既存
+  curried applyを合わせた focused E2E 13件を通した。Linux x86_64 fixed point は status `pass`、
+  stage2/stage3 code length 各 `11332908`、stdout SHA-256 は両方
+  `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad` で一致した。これは
+  TypeInferApply の 0-64 bounded arity と current-source Linux native self-regeneration の
+  verified sliceであり、65以上の診断/span契約、全 diagnostic/span、Mac/Linux aggregate parity は
+  残る。
   2026-07-31 に selfhost `Types.TypeInferPattern` の constructor/record child pattern inference を
   64 要素 bounded rooted continuationへ集約し、65 要素 cross-chunk contract/runtime 2件、
   match error 10件、quote/pattern 12件を通した。Linux x86_64 fixed point は status `pass`、

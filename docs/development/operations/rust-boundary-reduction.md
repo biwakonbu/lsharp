@@ -593,6 +593,17 @@ ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`Ty
   3-7 引数 bounded rooted scan、high-arity failure propagation、curried apply 11 tests の Linux
   x86_64 verified sliceであり、64超の診断契約、全 diagnostic/span、Mac/Linux aggregate parity は
   未完了である。VM workdir と replay lock は gate 後に削除し、task-owned build target も回収した。
+- 2026-07-31 に TypeInferApply の arity boundary batch（検証時 source commit
+  `754bbcd7072f7d880e055b45d8ca9cf469419b6b`）を Mac host から生成し、Lima `lsharp-linux-x86` の
+  actual stage1 -> stage2 -> stage3 self-regenerationを完走した。`actual-selfregen-summary.json` は
+  `status: pass`、stage2/stage3 code length 各 `11332908`、stdout SHA-256 は両方
+  `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad` で一致した。新規の
+  8/64 引数成功、65 引数の明示的 error result、既存の curried apply 11 tests と合わせた 13 tests、
+  Rust `lsharp-types` infer focused 99 testsを確認した。`TypeInferApply` の 0-64 bounded arity と
+  current-source Linux x86_64 native self-regenerationの verified sliceであり、65以上の診断/span、
+  全 diagnostic/span、Mac/Linux aggregate parity は未完了である。Evidence は
+  `ci-artifacts/native-linux-x86-hostgen-vm/754bbcd7-typeinfer-apply-64/actual-selfregen-summary.json`。
+  VM workdir と replay lock は gate 後に削除し、task-owned build artifact は summary のみに縮小した。
 - 2026-07-31 に TypeInferPattern batch（検証時 source commit `84becbb30bf93a15ffbe34155235c6321e67b245`）を
   Mac host から生成し、Lima `lsharp-linux-x86` の actual stage1 -> stage2 -> stage3 self-regenerationを
   完走した。`actual-selfregen-summary.json` は `status: pass`、stage2/stage3 code length 各
