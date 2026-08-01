@@ -60,7 +60,11 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
         fixture_id: str = "valid/syntax-basic",
         extra: list[str] | None = None,
         fixture_ids: list[str] | None = None,
+        wasm_tools: pathlib.Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
+        if wasm_tools is None:
+            wasm_tools = root / "fake-wasm-tools.py"
+            make_executable(wasm_tools, "#!/bin/sh\nexit 0\n")
         selected_fixture_ids = fixture_ids or [fixture_id]
         command = [
             sys.executable,
@@ -77,6 +81,8 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             str(runner),
             "--wasmtime",
             str(wasmtime),
+            "--wasm-tools",
+            str(wasm_tools),
             "--stage0-manifest",
             str(stage0_manifest),
             "--work-dir",
@@ -97,6 +103,7 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             root = pathlib.Path(directory)
             runner = root / "fake-native-runner.py"
             wasmtime = root / "fake-wasmtime.py"
+            wasm_tools = root / "fake-wasm-tools.py"
             stage0_manifest = write_stage0_manifest(root)
             work_dir = root / "work"
             work_dir.mkdir()
@@ -111,7 +118,16 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                 "out.write_bytes(b'native-wasm')\n",
             )
             make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
-            result = self.run_producer(root, runner, wasmtime, stage0_manifest, output, work_dir)
+            make_executable(wasm_tools, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                wasm_tools=wasm_tools,
+            )
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads(output.read_text(encoding="utf-8"))
             fixture = report["fixtures"][0]
@@ -127,6 +143,51 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                 fixture["runtime"],
                 {"status": "observed", "exit_code": 0, "stdout": "42\n", "stderr": ""},
             )
+
+    def test_rejects_invalid_wasm_before_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "fake-native-runner.py"
+            wasm_tools = root / "rejecting-wasm-tools.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            runtime_log = root / "runtime.log"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'not-wasm')\n",
+            )
+            make_executable(
+                wasm_tools,
+                "#!/bin/sh\n"
+                "echo invalid-wasm >&2\n"
+                "exit 1\n",
+            )
+            make_executable(
+                wasmtime,
+                "#!/bin/sh\n"
+                f"printf 'executed' > {runtime_log}\n"
+                "exit 0\n",
+            )
+
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                wasm_tools=wasm_tools,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("wasm validation", result.stderr.lower())
+            self.assertFalse(output.exists())
+            self.assertFalse(runtime_log.exists())
 
     def test_runner_cannot_mutate_manifest_source(self):
         source_path = ROOT / "examples/types.ls"

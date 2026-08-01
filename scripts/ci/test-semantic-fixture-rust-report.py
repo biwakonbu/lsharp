@@ -38,7 +38,11 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
         extra=None,
         fixture_id="valid/syntax-basic",
         fixture_ids=None,
+        wasm_tools=None,
     ):
+        if wasm_tools is None:
+            wasm_tools = root / "fake-wasm-tools.py"
+            make_executable(wasm_tools, "#!/bin/sh\nexit 0\n")
         selected_fixture_ids = fixture_ids or [fixture_id]
         command = [
             sys.executable,
@@ -55,6 +59,8 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             str(compiler),
             "--wasmtime",
             str(wasmtime),
+            "--wasm-tools",
+            str(wasm_tools),
             "--work-dir",
             str(work_dir),
             "--output",
@@ -73,6 +79,7 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             root = pathlib.Path(directory)
             compiler = root / "fake-compiler.py"
             wasmtime = root / "fake-wasmtime.py"
+            wasm_tools = root / "fake-wasm-tools.py"
             work_dir = root / "work"
             work_dir.mkdir()
             output = root / "report.json"
@@ -89,6 +96,7 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 "#!/usr/bin/env python3\n"
                 "print('42')\n",
             )
+            make_executable(wasm_tools, "#!/bin/sh\nexit 0\n")
             environment = os.environ.copy()
             environment["FAKE_LOG"] = str(root / "compiler.log")
             result = subprocess.run(
@@ -109,6 +117,8 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                     str(compiler),
                     "--wasmtime",
                     str(wasmtime),
+                    "--wasm-tools",
+                    str(wasm_tools),
                     "--work-dir",
                     str(work_dir),
                     "--output",
@@ -133,6 +143,50 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             )
             self.assertEqual(fixture["runtime"], {"status": "observed", "exit_code": 0, "stdout": "42\n", "stderr": ""})
             self.assertEqual((root / "compiler.log").read_text(encoding="utf-8"), "1")
+
+    def test_rejects_invalid_wasm_before_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "fake-compiler.py"
+            wasm_tools = root / "rejecting-wasm-tools.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            runtime_log = root / "runtime.log"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'not-wasm')\n",
+            )
+            make_executable(
+                wasm_tools,
+                "#!/bin/sh\n"
+                "echo invalid-wasm >&2\n"
+                "exit 1\n",
+            )
+            make_executable(
+                wasmtime,
+                "#!/bin/sh\n"
+                f"printf 'executed' > {runtime_log}\n"
+                "exit 0\n",
+            )
+
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_id="valid/syntax-basic",
+                wasm_tools=wasm_tools,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("wasm validation", result.stderr.lower())
+            self.assertFalse(output.exists())
+            self.assertFalse(runtime_log.exists())
 
     def test_compiler_cannot_mutate_manifest_source(self):
         source_path = ROOT / "examples/types.ls"

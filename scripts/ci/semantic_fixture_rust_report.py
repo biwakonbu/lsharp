@@ -2,7 +2,7 @@
 
 """Produce explicit Rust-oracle observations for selected semantic fixtures.
 
-The compiler and Wasmtime executable are required inputs.  This command never
+The compiler, Wasmtime, and wasm-tools executables are required inputs.  This command never
 invokes cargo, host lsharp, an embedded selfhost component, or a provider
 implicitly; the caller owns those boundaries and supplies the paths. Repeat
 ``--fixture-id`` to produce a deterministic batch. Invalid fixtures are
@@ -74,6 +74,26 @@ def sha256(path: pathlib.Path) -> str:
 
 def decode_output(value: bytes) -> str:
     return value.decode("utf-8", errors="replace")
+
+
+def validate_wasm_artifact(
+    artifact: pathlib.Path,
+    wasm_tools: pathlib.Path,
+    work_dir: pathlib.Path,
+    environment: Dict[str, str],
+) -> None:
+    result = subprocess.run(
+        [str(wasm_tools), "validate", str(artifact)],
+        cwd=work_dir,
+        env=environment,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = decode_output(result.stderr).strip() or decode_output(result.stdout).strip()
+        raise ReportError(
+            f"Rust oracle Wasm validation failed with exit {result.returncode}: {detail}"
+        )
 
 
 def source_point(source: str, offset: int, label: str) -> Dict[str, int]:
@@ -229,6 +249,7 @@ def observe_fixture(
     runtime_dir: pathlib.Path,
     compiler: pathlib.Path,
     wasmtime: pathlib.Path,
+    wasm_tools: pathlib.Path,
     environment: Dict[str, str],
 ) -> Dict[str, Any]:
     source = root / pathlib.PurePosixPath(fixture["source"])
@@ -285,6 +306,7 @@ def observe_fixture(
         raise ReportError(f"Rust oracle compile failed with exit {compile_result.returncode}: {detail}")
     if not artifact.is_file() or artifact.is_symlink():
         raise ReportError("Rust oracle compile succeeded without a regular Wasm artifact")
+    validate_wasm_artifact(artifact, wasm_tools, fixture_dir, environment)
     execution_dir = fixture_runtime_dir(runtime_dir, fixture_dir, index, batch_size)
     materialize_runtime_inputs(fixture, execution_dir)
     runtime_command = [str(wasmtime), "run"]
@@ -327,6 +349,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--compiler", type=pathlib.Path, required=True)
     parser.add_argument("--wasmtime", type=pathlib.Path, required=True)
+    parser.add_argument("--wasm-tools", type=pathlib.Path, required=True)
     parser.add_argument("--work-dir", type=pathlib.Path, required=True)
     parser.add_argument("--runtime-dir", type=pathlib.Path)
     parser.add_argument("--output", type=pathlib.Path, required=True)
@@ -343,6 +366,7 @@ def main() -> int:
         runtime_dir = require_absolute_directory(arguments.runtime_dir, "runtime-dir") if arguments.runtime_dir else work_dir
         compiler = require_executable(arguments.compiler, "compiler")
         wasmtime = require_executable(arguments.wasmtime, "wasmtime")
+        wasm_tools = require_executable(arguments.wasm_tools, "wasm-tools")
         raw_manifest = json.loads(arguments.manifest.read_text(encoding="utf-8"))
         manifest = project_manifest(require_object(raw_manifest, "manifest"), root)
         fixtures = select_fixtures(manifest, arguments.fixture_ids, arguments.target)
@@ -369,6 +393,7 @@ def main() -> int:
                     runtime_dir,
                     compiler,
                     wasmtime,
+                    wasm_tools,
                     environment,
                 )
             )
