@@ -109,6 +109,11 @@ def load_index(path: pathlib.Path, root: pathlib.Path, manifest: Mapping[str, An
     task = require_string(index["task"], "evidence index.task")
     if not re.fullmatch(r"V4-M1-[0-9]{2}", task):
         raise ObservationError("evidence index.task must use V4-M1-##")
+    expected_task = manifest["suite"].upper()
+    if task != expected_task:
+        raise ObservationError(
+            f"evidence index.task must match fixture matrix suite: expected {expected_task}"
+        )
     target = require_string(index["target"], "evidence index.target")
     if target not in SUPPORTED_TARGETS:
         raise ObservationError(f"evidence index.target is unsupported: {target}")

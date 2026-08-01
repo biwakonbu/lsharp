@@ -18,6 +18,9 @@ reports and comparison result as authoritative and recompute the comparison.
 - Use a version-1 `v4-m1-06` evidence index with a V4 task, target,
   source commit, ADR path, Rust/native report paths, comparison path, overall
   status, and a lexicographically sorted fixture list.
+- Require the index `task` to match the fixture matrix suite identity. The
+  current `v4-m1-01` matrix therefore accepts only `V4-M1-01` as the covered
+  task; a syntactically valid but different V4-M1 task fails closed.
 - Publish the input shape as
   `docs/schemas/v4-m1-06-evidence-index.schema.json`. The JSON Schema fixes
   required fields, supported targets/statuses, safe relative reference shape,

@@ -175,6 +175,9 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             missing_gate = index_for(root)
             del missing_gate["fixtures"][0]["negative_gates"]["network-forbidden"]
             cases.append(("gate", missing_gate, "network-forbidden"))
+            mismatched_task = index_for(root)
+            mismatched_task["task"] = "V4-M1-03"
+            cases.append(("task", mismatched_task, "task"))
             unsafe_path = index_for(root)
             unsafe_path["oracle_report"] = "../outside.json"
             cases.append(("path", unsafe_path, "relative"))
