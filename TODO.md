@@ -1933,3 +1933,14 @@ full buildは未実行である。blockerの再現 commandは `current_head="$(g
 /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と `find /tmp
 /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-release-smoke-workdir-safety.md`](docs/adr/decisions-v0.3-release-smoke-workdir-safety.md)。
+
+2026-08-02 に `fetch-stage0.sh` の install destination safetyを追加した。`STAGE0_DIR` が `/`、`/tmp`、`/private/tmp`、
+repository root、repositoryの `target` または `target/ci` に解決される場合、release URL validation・temporary workspace・curlより
+前に安定診断で拒否する RED→GREENを `test-fetch-stage0-provider-url.sh` で確認した。これは fetch install destination ownershipの
+verified partial sliceであり、live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged
+provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source
+manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage
+regeneration・full buildは未実行である。blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp
+/Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と `find /tmp
+/Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-fetch-stage0-install-directory-safety.md`](docs/adr/decisions-v0.3-fetch-stage0-install-directory-safety.md)。

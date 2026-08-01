@@ -23,6 +23,49 @@ exit 0
 SH
 chmod 0755 "${HOST_BIN}/curl"
 
+expect_rejected_destination() {
+  local label="$1"
+  local destination="$2"
+  local stderr_path="${TMP_ROOT}/${label}.stderr"
+  : >"${CURL_LOG}"
+
+  set +e
+  PATH="${HOST_BIN}:${PATH}" \
+    LSHARP_TEST_CURL_LOG="${CURL_LOG}" \
+    STAGE0_RELEASE_BASE_URL="https://mirror.example.invalid/lsharp" \
+    STAGE0_VERSION="${VERSION}" \
+    STAGE0_TARGET="${TARGET}" \
+    STAGE0_DIR="${destination}" \
+    bash "${FETCH_SCRIPT}" >"${TMP_ROOT}/${label}.stdout" 2>"${stderr_path}"
+  local status=$?
+  set -e
+
+  [[ "${status}" -ne 0 ]] || {
+    echo "${label}: protected install destination unexpectedly accepted" >&2
+    exit 1
+  }
+  grep -F "ERROR: unsafe stage0 install directory" "${stderr_path}" >/dev/null || {
+    echo "${label}: expected install directory diagnostic was missing" >&2
+    cat "${stderr_path}" >&2
+    exit 1
+  }
+  [[ ! -s "${CURL_LOG}" ]] || {
+    echo "${label}: curl was invoked before install directory validation" >&2
+    cat "${CURL_LOG}" >&2
+    exit 1
+  }
+}
+
+expect_rejected_destination "repository-root" "${ROOT_DIR}"
+expect_rejected_destination "repository-target" "${ROOT_DIR}/target"
+expect_rejected_destination "repository-target-ci" "${ROOT_DIR}/target/ci"
+expect_rejected_destination "system-tmp" "/tmp"
+expect_rejected_destination "private-system-tmp" "/private/tmp"
+[[ -d "${ROOT_DIR}" ]] || {
+  echo "unsafe-destination: repository root was changed" >&2
+  exit 1
+}
+
 expect_rejected_url() {
   local label="$1"
   local url="$2"

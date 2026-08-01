@@ -101,6 +101,31 @@ else:
 PY
 }
 
+validate_stage0_install_dir() {
+  local install_dir="$1"
+  python3 - "$ROOT" "$install_dir" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1]).resolve()
+raw_install_dir = sys.argv[2]
+if raw_install_dir in ("", ".", "/"):
+    raise SystemExit(f"ERROR: unsafe stage0 install directory: {raw_install_dir}")
+
+install_dir = Path(raw_install_dir).resolve()
+protected_paths = {
+    Path("/"),
+    Path("/tmp"),
+    Path("/private/tmp"),
+    root,
+    root / "target",
+    root / "target" / "ci",
+}
+if install_dir in protected_paths:
+    raise SystemExit(f"ERROR: unsafe stage0 install directory: {raw_install_dir}")
+PY
+}
+
 validate_archive() {
   local archive_path="$1"
   local expected_root="$2"
@@ -325,6 +350,7 @@ ARCHIVE_NAME="${ARCHIVE_ROOT_NAME}.${ARCHIVE_EXT}"
 if [[ -z "$RELEASE_BASE_URL" ]]; then
   RELEASE_BASE_URL="https://github.com/biwakonbu/lsharp/releases/download/${VERSION}"
 fi
+validate_stage0_install_dir "$STAGE0_DIR"
 validate_release_base_url "$RELEASE_BASE_URL"
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-stage0-fetch.XXXXXX")"
