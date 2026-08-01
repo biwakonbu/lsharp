@@ -1541,10 +1541,7 @@ def handle_request(program, request):
     if method == "tools/call":
         params = request.get("params", {})
         if not isinstance(params, dict):
-            return jsonrpc_result(
-                request_id,
-                {"content": [{"type": "text", "text": "params は object が必要です"}], "isError": True},
-            )
+            params = {}
         name = params.get("name")
         if not isinstance(name, str):
             name = ""

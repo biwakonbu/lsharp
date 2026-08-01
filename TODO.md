@@ -2155,3 +2155,10 @@ target の packaged provenance/rollback bytes parity の完了証拠ではない
 verified partial sliceである。MCP 全 error/semantic parity、package-install semantics、live provider API/auth acquisition・意味検証、
 current-source Linux runtime、Mac/Linux 両 target の packaged provenance/rollback bytes parity の完了証拠ではないため、関連項目は `[~]`
 のまま残す。Evidence: [`decisions-v0.3-native-mcp-tools-call-missing-name-envelope.md`](docs/adr/decisions-v0.3-native-mcp-tools-call-missing-name-envelope.md)。
+
+2026-08-02 に native selfhost MCP `tools/call` の non-object `params` envelope を Rust canonical transport と揃えた。`params: []` などの
+非 object 入力を Rust と同じ empty params として扱い、result-level `isError: true`・`content[0].text: "tool not found"` を返す RED→GREENを
+native 83 tests と Rust MCP 90 tests で確認した。これは non-object params boundaryの verified partial sliceであり、MCP 全 error/semantic
+parity、package-install semantics、live provider API/auth acquisition・意味検証、current-source Linux runtime、Mac/Linux 両 target の
+packaged provenance/rollback bytes parity の完了証拠ではないため、関連項目は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-tools-call-non-object-params-envelope.md`](docs/adr/decisions-v0.3-native-mcp-tools-call-non-object-params-envelope.md)。
