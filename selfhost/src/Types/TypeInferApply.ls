@@ -9,7 +9,7 @@
 ;; TypeInferApply.ls - lambda 式と関数適用の型推論
 ;;
 ;; infer-lambda: lambda 式の型推論
-;; infer-apply: 関数適用の型推論 (0-7 引数のアリティ分岐)
+;; infer-apply: 関数適用の型推論 (0-64 引数の bounded アリティ分岐)
 
 ;; lambda 式の型推論
 ;; [8, param-count, param-hash1, ..., body]
@@ -302,7 +302,7 @@
 
 ;; 関数適用の型推論
 ;; [5, func-node, arg-count, arg1, arg2, ...]
-;; compile-safe な covered slice として 0-7 引数を扱う
+;; compile-safe な covered slice として 0-64 引数を扱う
 (defn infer-apply-args-state [done next-idx payload arg-types]
   (vector-push-quad-rooted (vector-new 4) done next-idx payload arg-types))
 
@@ -667,7 +667,7 @@
     (if (= argc 2)
       (infer-apply-two-rooted node env subst counter)
       (if (>= argc 3)
-        (if (<= argc 7)
+        (if (<= argc 64)
           (infer-apply-many-rooted node env subst counter argc)
           (make-error-result))
         (infer-apply-legacy-raw node env subst counter)))))
