@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const INTENT_GRAPH_SCHEMA: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -53,6 +53,25 @@ fn review_provenance_schema_requires_canonical_timestamp_for_lifecycle_effective
         "#/$defs/canonical_utc_timestamp",
         "lifecycle.effective_at は non-empty string ではなく canonical UTC timestamp を要求するべき"
     );
+}
+
+#[test]
+fn review_provenance_schema_bounds_sequences_to_unsigned_64_bit_values() {
+    let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
+        .expect("review provenance schema は JSON であるべき");
+
+    for pointer in [
+        "/$defs/attestation/properties/sequence",
+        "/$defs/lifecycle/properties/sequence",
+    ] {
+        assert_eq!(
+            schema
+                .pointer(pointer)
+                .and_then(|value| value.get("maximum")),
+            Some(&json!(u64::MAX)),
+            "{pointer} は Rust wire parser の u64 境界を schema へ公開するべき"
+        );
+    }
 }
 
 #[test]

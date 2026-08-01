@@ -1,4 +1,4 @@
-use lsharp_types::intent::review_wire::{parse_review_wire, ReviewWireError};
+use lsharp_types::intent::review_wire::{ReviewWireError, parse_review_wire};
 
 const VALID_WIRE: &str = r#"
 {
@@ -183,6 +183,26 @@ fn wire_rejects_zero_attestation_sequence() {
                 sequence: 0
             }
         ))
+    ));
+}
+
+#[test]
+fn wire_rejects_attestation_sequence_overflow() {
+    let malformed = VALID_WIRE.replacen("\"sequence\": 1", "\"sequence\": 18446744073709551616", 1);
+
+    assert!(matches!(
+        parse_review_wire(&malformed),
+        Err(ReviewWireError::Schema { .. })
+    ));
+}
+
+#[test]
+fn wire_rejects_lifecycle_sequence_overflow() {
+    let malformed = VALID_WIRE.replacen("\"sequence\": 1", "\"sequence\": 18446744073709551616", 2);
+
+    assert!(matches!(
+        parse_review_wire(&malformed),
+        Err(ReviewWireError::Schema { .. })
     ));
 }
 
