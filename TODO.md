@@ -2162,3 +2162,13 @@ native 83 tests と Rust MCP 90 tests で確認した。これは non-object par
 parity、package-install semantics、live provider API/auth acquisition・意味検証、current-source Linux runtime、Mac/Linux 両 target の
 packaged provenance/rollback bytes parity の完了証拠ではないため、関連項目は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-tools-call-non-object-params-envelope.md`](docs/adr/decisions-v0.3-native-mcp-tools-call-non-object-params-envelope.md)。
+
+2026-08-02 に明示 provider lifecycle snapshot の caller-clock freshness preflightを追加した。recordの
+`effective_at` が identityの `now` より未来の場合を `review lifecycle effective_at is after identity now` で拒否する
+RED→GREENを `test-native-release-identity.py` で確認した。これは既存の snapshot regular-file / nonempty / digest、strict
+timestamp shape、同一 review内の effective_at ordering、attestation expiry、auth-context bindingを再実装しない verified
+partial sliceである。live provider API/auth取得・署名意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged
+provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux
+replay・stage regeneration・full buildは未実行である。Evidence:
+[`decisions-v0.3-provider-lifecycle-future-effective-at.md`](docs/adr/decisions-v0.3-provider-lifecycle-future-effective-at.md)。

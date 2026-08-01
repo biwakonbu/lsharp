@@ -80,7 +80,7 @@ def load_identity(path, manifest):
     return value
 
 
-def validate_review_lifecycle_snapshot(path):
+def validate_review_lifecycle_snapshot(path, identity_now):
     try:
         payload = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as error:
@@ -116,10 +116,17 @@ def validate_review_lifecycle_snapshot(path):
             raise IdentityError(
                 f"review lifecycle state must be one of {allowed}: {path}"
             )
-        if "effective_at" in record and not is_valid_utc_timestamp(record["effective_at"]):
-            raise IdentityError(
-                f"review lifecycle effective_at must be a strict UTC timestamp: {path}"
-            )
+        current_effective_at = record.get("effective_at")
+        if current_effective_at is not None:
+            if not is_valid_utc_timestamp(current_effective_at):
+                raise IdentityError(
+                    f"review lifecycle effective_at must be a strict UTC timestamp: {path}"
+                )
+            if current_effective_at > identity_now:
+                raise IdentityError(
+                    f"review lifecycle effective_at is after identity now: {path}: "
+                    f"effective_at={current_effective_at} now={identity_now}"
+                )
         if "sequence" not in record:
             raise IdentityError(
                 f"review lifecycle sequence is required: {path}"
@@ -194,7 +201,6 @@ def validate_review_lifecycle_snapshot(path):
                     f"review_id={review_id!r} previous={previous_sequence} current={sequence}"
                 )
             previous_effective_at = last_effective_ats.get(review_id)
-            current_effective_at = record.get("effective_at")
             if (
                 previous_effective_at is not None
                 and current_effective_at is not None
@@ -280,7 +286,7 @@ def validate_identity(
                 f"expected={expected_trust_store_digest} actual={identity['trust_store_digest']}"
             )
         expected_lifecycle_digest = digest_file(review_lifecycle, "review lifecycle")
-        validate_review_lifecycle_snapshot(review_lifecycle)
+        validate_review_lifecycle_snapshot(review_lifecycle, identity["now"])
         if identity["lifecycle_digest"] != expected_lifecycle_digest:
             raise IdentityError(
                 "lifecycle_digest mismatch: "
