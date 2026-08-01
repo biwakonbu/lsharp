@@ -68,6 +68,7 @@ python3 scripts/ci/semantic_fixture_rust_report.py \
   --source-commit 6943f488a213e63b5612eeabefe106357c922427 \
   --compiler "$ROOT/target/release/lsharp" \
   --wasmtime /Users/biwakonbu/.wasmtime/bin/wasmtime \
+  --wasm-tools /Users/biwakonbu/.cargo/bin/wasm-tools \
   --work-dir "$ROOT/ci-artifacts/v4-m1-01/6943f488a213e63b5612eeabefe106357c922427/aarch64-apple-darwin/oracle-work" \
   --runtime-dir "$ROOT/ci-artifacts/v4-m1-01/6943f488a213e63b5612eeabefe106357c922427/aarch64-apple-darwin/runtime" \
   --output "$ROOT/ci-artifacts/v4-m1-01/6943f488a213e63b5612eeabefe106357c922427/aarch64-apple-darwin/oracle-invalid.json"
