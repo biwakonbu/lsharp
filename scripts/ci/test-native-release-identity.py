@@ -409,6 +409,49 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("review lifecycle sequence is required", rejected.stderr)
 
+    def test_rejects_missing_review_lifecycle_review_id(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_text(
+                json.dumps(
+                    {
+                        "sequence": 1,
+                        "state": "proposed",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            identity_path = root / "identity.json"
+            identity = identity_for(
+                "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
+            self.write_identity(identity_path, identity)
+
+            rejected = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+                "--require-provider-input",
+            )
+
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("review lifecycle review_id is required", rejected.stderr)
+
     def test_rejects_review_lifecycle_terminal_state_reactivation(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

@@ -68,6 +68,16 @@ fn lifecycle_reduces_allowed_transitions_and_orders_events_deterministically() {
 fn lifecycle_rejects_invalid_first_event_and_empty_effective_time() {
     assert!(matches!(
         ReviewLifecycleEvent::new(
+            "",
+            1,
+            ReviewLifecycleState::Proposed,
+            "2026-08-01T00:00:00Z",
+            None::<String>,
+        ),
+        Err(LifecycleError::EmptyField { field: "review_id" })
+    ));
+    assert!(matches!(
+        ReviewLifecycleEvent::new(
             "review:orders/reviewer-001",
             0,
             ReviewLifecycleState::Proposed,

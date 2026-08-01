@@ -133,6 +133,10 @@ def validate_review_lifecycle_snapshot(path):
                 f"sequence={sequence!r}"
             )
         review_id = record.get("review_id")
+        if not isinstance(review_id, str) or not review_id:
+            raise IdentityError(
+                f"review lifecycle review_id is required: {path}"
+            )
         if isinstance(sequence, int) and not isinstance(sequence, bool) and isinstance(review_id, str):
             sequence_key = (review_id, sequence)
             if sequence_key in seen_sequences:

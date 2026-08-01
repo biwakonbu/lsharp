@@ -2091,3 +2091,11 @@ packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-0
 `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
 `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-provider-lifecycle-sequence-gap-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-sequence-gap-preflight.md)。
+
+2026-08-02 に native provider lifecycle snapshot の `review_id` required preflightを追加した。`review_id` を欠落させた
+`sequence: 1` / `proposed` recordを `review lifecycle review_id is required` で拒否する RED→GREENを `test-native-release-identity.py` で確認し、
+Rust `ReviewLifecycleEvent::new` の空 `review_id` 拒否も focused testで対応付けた。これは provider inputの required-field verified partial sliceであり、
+stable ID wire-format parity、完全な transition matrix/reducer、live provider API/auth、current-source Linux runtime、Mac/Linux両 targetの packaged
+provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが
+現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。Evidence:
+[`decisions-v0.3-provider-lifecycle-review-id-required.md`](docs/adr/decisions-v0.3-provider-lifecycle-review-id-required.md)。
