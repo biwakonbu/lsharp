@@ -3696,7 +3696,10 @@
   (do
     (p-advance pos-ref) ;; ( を消費
     (if (== (p-current spans pos-ref) 20)
-      (let [ctor-hash (current-symbol-hash-v3 spans pos-ref src)
+      (let [ctor-start (p-start spans pos-ref)
+        ctor-end (p-end spans pos-ref)
+        ctor-hash (current-symbol-hash-v3 spans pos-ref src)
+        dot-pos (symbol-dot-position src ctor-start ctor-end)
         result (vector-push-triple-rooted-v3 (vector-new 8) (ast-pat-constructor) ctor-hash 0)]
         (do
           (root_push result)
@@ -3705,7 +3708,14 @@
             arg-count (- (vector-length with-args) 3)]
             (do
               (root_push with-args)
-              (let [parsed (vector-set-at-rooted-v3 with-args 2 arg-count)]
+              (let [with-count (vector-set-at-rooted-v3 with-args 2 arg-count)
+                parsed
+                  (if (>= dot-pos 0)
+                    (vector-push-pair-rooted-v3
+                      with-count
+                      (name-hash src ctor-start dot-pos)
+                      (name-hash src (+ dot-pos 1) ctor-end))
+                    with-count)]
                 (do
                   (root_pop)
                   (root_pop)
@@ -3803,7 +3813,10 @@
 (defn parse-pattern-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 20)
     (let [name (current-symbol-text-v3 spans pos-ref src)
-      name-hash (current-symbol-hash-v3 spans pos-ref src)]
+      name-start (p-start spans pos-ref)
+      name-end (p-end spans pos-ref)
+      name-hash (current-symbol-hash-v3 spans pos-ref src)
+      dot-pos (symbol-dot-position src name-start name-end)]
       (if (string-eq name "_")
         (do
           (p-advance pos-ref)
@@ -3811,7 +3824,12 @@
         (if (= (symbol-starts-uppercase-v3 spans pos-ref src) 1)
           (do
             (p-advance pos-ref)
-            (vector-push-triple-rooted-v3 (vector-new 3) (ast-pat-constructor) name-hash 0))
+            (if (>= dot-pos 0)
+                (vector-push-pair-rooted-v3
+                  (vector-push-triple-rooted-v3 (vector-new 3) (ast-pat-constructor) name-hash 0)
+                (name-hash src name-start dot-pos)
+                (name-hash src (+ dot-pos 1) name-end))
+              (vector-push-triple-rooted-v3 (vector-new 3) (ast-pat-constructor) name-hash 0)))
           (do
             (p-advance pos-ref)
             (vector-push-pair-rooted-v3 (vector-new 2) (ast-pat-var) name-hash)))))

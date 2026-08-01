@@ -622,7 +622,27 @@ This verifies the source-file resolver, constructor export filtering, pattern bi
 generated artifact/runtime as one selfhost slice. Ftable import parity, qualified or alias-qualified
 constructor patterns, broad parametric/recursive ADT representation, nominal/exhaustiveness,
 WasmGC/linear-memory parity, and current-source native stage0 evidence on both supported targets
-remain incomplete. The test-only change does not broaden prior native producer evidence.
+remain incomplete at this initial open-import boundary; the alias-qualified source/compiler-mode
+slice is recorded below. The change does not broaden prior native producer evidence.
+
+### selfhost imported alias-qualified ADT constructor pattern runtime slice (2026-08-01)
+
+The same two-file compiler-mode fixture now covers `(import App.Shapes :as S :only [Just Nothing])`,
+`S.Just` / `S.Nothing` construction, and alias-qualified constructor patterns. The parser preserves
+the full constructor hash for type-environment lookup and stores the raw suffix after constructor
+children. The selfhost Wasm compiler uses that raw suffix only for the runtime ADT tag check, while
+legacy unqualified patterns continue to use their existing full hash fallback.
+
+Evidence: `test_e2e_selfhost_compiler_mode_imported_adt_constructor_pattern_runs` and
+`test_e2e_selfhost_compiler_mode_imported_alias_qualified_adt_constructor_pattern_runs` passed in
+one focused invocation (2 passed, 101.19s). Both open and alias-qualified forms executed generated
+Wasm and produced `41\n0\n`. This also exercises the alias registration in the CompilerMode prelude ftable.
+
+This closes the source-file/CompilerMode prelude-ftable alias-qualified ADT construction and pattern
+runtime slice. Flat ftable compiler import parity, multi-segment module-qualified names, broad
+parametric/recursive ADT representation, nominal/exhaustiveness, WasmGC/linear-memory parity,
+current-source native stage0 evidence on both supported targets, and `LEGACY-LANG-02` remain
+incomplete. The existing `[~]` TODO and Rust oracle/bootstrap boundary remain in force.
 
 ### legacy source compile boundary 更新 (2026-07-14)
 

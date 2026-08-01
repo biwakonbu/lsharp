@@ -345,9 +345,16 @@
           (compile-match-record-fields pat 0 count value-local scratch-base pattern-temp-base ftable seed)
           (compile-match-record-fields-with-seed pat 0 count value-local scratch-base pattern-temp-base ftable seed))))))
 
+(defn constructor-pattern-raw-hash-for-compiler [pat]
+  (let [field-count (vector-get pat 2)
+    raw-hash-slot (+ 4 field-count)]
+    (if (> (vector-length pat) raw-hash-slot)
+      (vector-get pat raw-hash-slot)
+      (vector-get pat 1))))
+
 (defn compile-match-constructor-tag-check [pat value-local scratch-base instrs]
   (let [map-op (+ scratch-base 1)
-    ctor-hash (vector-get pat 1)
+    ctor-hash (constructor-pattern-raw-hash-for-compiler pat)
     i1 (emit-to instrs (op-local-get) value-local)
     i2 (emit-to i1 (op-i64-const) (adt-constructor-tag-key))
     i3 (emit-to i2 (op-map-contains) map-op)

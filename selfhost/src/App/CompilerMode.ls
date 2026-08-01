@@ -3467,6 +3467,100 @@
           only-hashes
           ftable)))))
 
+(defn compiler-register-adt-variant-import-aliases-loop
+  [variants idx count target-module alias-hash only-hashes ftable]
+  (if (>= idx count)
+    ftable
+    (let [variant (vector-get variants idx)
+      constructor-hash (vector-get variant 0)
+      module-key (ast-qualified-name-hash target-module constructor-hash)
+      target-index (ftable-lookup ftable module-key)
+      alias-key (ast-qualified-name-hash alias-hash constructor-hash)]
+      (if (= (compiler-import-only-allows only-hashes constructor-hash) 1)
+        (if (= target-index 0)
+          (compiler-register-adt-variant-import-aliases-loop
+            variants
+            (+ idx 1)
+            count
+            target-module
+            alias-hash
+            only-hashes
+            ftable)
+          (let [next-ftable (ftable-register ftable alias-key target-index)]
+            (do
+              (root_push next-ftable)
+              (let [result
+                      (compiler-register-adt-variant-import-aliases-loop
+                        variants
+                        (+ idx 1)
+                        count
+                        target-module
+                        alias-hash
+                        only-hashes
+                        next-ftable)]
+                (do
+                  (root_pop)
+                  result)))))
+        (compiler-register-adt-variant-import-aliases-loop
+          variants
+          (+ idx 1)
+          count
+          target-module
+          alias-hash
+          only-hashes
+          ftable)))))
+
+(defn compiler-register-adt-import-aliases-for-decl
+  [decl target-module alias-hash only-hashes ftable]
+  (let [variants
+          (if (>= (vector-length decl) 4)
+            (vector-get decl 3)
+            (vector-get decl 2))]
+    (compiler-register-adt-variant-import-aliases-loop
+      variants
+      0
+      (vector-length variants)
+      target-module
+      alias-hash
+      only-hashes
+      ftable)))
+
+(defn compiler-register-adt-import-aliases-loop
+  [decls idx n target-module alias-hash only-hashes ftable]
+  (if (>= idx n)
+    ftable
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 21)
+        (let [next-ftable
+                (compiler-register-adt-import-aliases-for-decl
+                  decl
+                  target-module
+                  alias-hash
+                  only-hashes
+                  ftable)]
+          (do
+            (root_push next-ftable)
+            (let [result
+                    (compiler-register-adt-import-aliases-loop
+                      decls
+                      (+ idx 1)
+                      n
+                      target-module
+                      alias-hash
+                      only-hashes
+                      next-ftable)]
+              (do
+                (root_pop)
+                result))))
+        (compiler-register-adt-import-aliases-loop
+          decls
+          (+ idx 1)
+          n
+          target-module
+          alias-hash
+          only-hashes
+          ftable)))))
+
 (defn compiler-register-record-imports-loop [pairs decls idx n ftable]
   (do
     (root_push pairs)
@@ -3501,7 +3595,7 @@
                                 (vector-get target-pair 1))]
                         (do
                           (root_push target-decls)
-                          (let [registered-ftable
+                          (let [record-ftable
                                   (if (= target-pair 0)
                                     ftable
                                     (compiler-register-record-import-aliases-loop
@@ -3513,19 +3607,33 @@
                                       only-hashes
                                       ftable))]
                             (do
-                              (root_push registered-ftable)
-                              (let [next-result
+                              (root_push record-ftable)
+                              (let [registered-ftable
+                                      (if (= target-pair 0)
+                                        record-ftable
+                                        (compiler-register-adt-import-aliases-loop
+                                          target-decls
+                                          0
+                                          (vector-length target-decls)
+                                          target-module
+                                          alias-hash
+                                          only-hashes
+                                          record-ftable))]
+                                (do
+                                  (root_push registered-ftable)
+                                  (let [next-result
                                       (compiler-register-record-imports-loop
                                         pairs
                                         decls
                                         (+ idx 1)
                                         n
                                         registered-ftable)]
-                                (do
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  next-result))))))))
+                                    (do
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      next-result))))))))))
                   (compiler-register-record-imports-loop
                     pairs
                     decls

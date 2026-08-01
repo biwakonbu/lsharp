@@ -3554,7 +3554,7 @@
                         (root_pop)
                         result))))))))))))
 
-(defn register-adt-variants [variants idx count ftable func-idx functions]
+(defn register-adt-variants [variants idx count module-hash ftable func-idx functions]
   (if (>= idx count)
     (make-record-register-result ftable func-idx functions)
     (do
@@ -3565,39 +3565,58 @@
         (do
           (root_push variant)
           (let [constructor-hash (vector-get variant 0)
-            constructor-meta (make-adt-constructor-meta variant)]
+            constructor-meta (make-adt-constructor-meta variant)
+            module-qualified-hash
+              (if (= module-hash 0)
+                0
+                (ast-qualified-name-hash module-hash constructor-hash))]
             (do
               (root_push constructor-meta)
-              (let [next-ftable (ftable-register ftable constructor-hash func-idx)]
+              (let [with-raw (ftable-register ftable constructor-hash func-idx)]
                 (do
-                  (root_push next-ftable)
-                  (let [next-functions (push-object-vector functions constructor-meta)]
+                  (root_push with-raw)
+                  (let [next-ftable
+                          (if (= module-qualified-hash 0)
+                            with-raw
+                            (ftable-register with-raw module-qualified-hash func-idx))]
                     (do
-                      (root_push next-functions)
-                      (let [result
-                              (register-adt-variants
-                                variants
-                                (+ idx 1)
-                                count
-                                next-ftable
-                                (+ func-idx 1)
-                                next-functions)]
+                      (root_push next-ftable)
+                      (let [next-functions (push-object-vector functions constructor-meta)]
                         (do
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          result)))))))))))))
+                          (root_push next-functions)
+                          (let [result
+                                  (register-adt-variants
+                                    variants
+                                    (+ idx 1)
+                                    count
+                                    module-hash
+                                    next-ftable
+                                    (+ func-idx 1)
+                                    next-functions)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              result)))))))))))))))
 
-(defn register-adt-decl [decl ftable func-idx functions]
+(defn register-adt-decl [decl module-hash ftable func-idx functions]
   (let [variants
           (if (>= (vector-length decl) 4)
             (vector-get decl 3)
             (vector-get decl 2))]
-    (register-adt-variants variants 0 (vector-length variants) ftable func-idx functions)))
+    (register-adt-variants
+      variants
+      0
+      (vector-length variants)
+      module-hash
+      ftable
+      func-idx
+      functions)))
 
 (defn make-record-prelude-state [done next-idx ftable next-func-idx functions]
   (do
@@ -3658,7 +3677,7 @@
                     (root_pop)
                     result))))
             (if (= (vector-get decl 0) 21)
-              (let [adt-result (register-adt-decl decl ftable func-idx functions)]
+              (let [adt-result (register-adt-decl decl module-hash ftable func-idx functions)]
                 (do
                   (root_push adt-result)
                   (let [result (make-record-prelude-state 0 (+ idx 1) (vector-get adt-result 0) (vector-get adt-result 1) (vector-get adt-result 2))]

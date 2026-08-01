@@ -26,9 +26,38 @@ fn parse_printed_wasm_bytes(output: &str) -> Vec<u8> {
 
 #[test]
 fn test_e2e_selfhost_compiler_mode_imported_adt_constructor_pattern_runs() {
+    let output = run_imported_adt_fixture(
+        "(import App.Shapes :open :only [Just Nothing])",
+        "(defn unwrap [value] (match value [(Just x) x] [Nothing 0]))",
+        "(Just 41)",
+        "Nothing",
+        "open",
+    );
+    assert_eq!(output, "41\n0\n");
+}
+
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_adt_constructor_pattern_runs() {
+    let output = run_imported_adt_fixture(
+        "(import App.Shapes :as S :only [Just Nothing])",
+        "(defn unwrap [value] (match value [(S.Just x) x] [S.Nothing 0]))",
+        "(S.Just 41)",
+        "S.Nothing",
+        "alias",
+    );
+    assert_eq!(output, "41\n0\n");
+}
+
+fn run_imported_adt_fixture(
+    import_decl: &str,
+    unwrap_decl: &str,
+    just_expr: &str,
+    nothing_expr: &str,
+    suffix: &str,
+) -> String {
     let temp_root = std::env::temp_dir().join(format!(
-        "lsharp-selfhost-adt-import-runtime-{}",
-        std::process::id()
+        "lsharp-selfhost-adt-import-runtime-{}-{suffix}",
+        std::process::id(),
     ));
     let _ = std::fs::remove_dir_all(&temp_root);
     let app_dir = temp_root.join("src/App");
@@ -40,7 +69,9 @@ fn test_e2e_selfhost_compiler_mode_imported_adt_constructor_pattern_runs() {
     .expect("ADT import fixture の Shapes.ls を書けない");
     std::fs::write(
         app_dir.join("Main.ls"),
-        "(module App.Main)\n(import App.Shapes :open :only [Just Nothing])\n(defn unwrap [value] (match value [(Just x) x] [Nothing 0]))\n(defn main [] (do (print (unwrap (Just 41))) (print (unwrap Nothing)) 0))\n",
+        format!(
+            "(module App.Main)\n{import_decl}\n{unwrap_decl}\n(defn main [] (do (print (unwrap {just_expr})) (print (unwrap {nothing_expr})) 0))\n"
+        ),
     )
     .expect("ADT import fixture の Main.ls を書けない");
 
@@ -72,6 +103,6 @@ fn test_e2e_selfhost_compiler_mode_imported_adt_constructor_pattern_runs() {
         )
         .expect("import 先 ADT pattern を含む selfhost compiler-mode module should run");
 
-    assert_eq!(output, "41\n0\n");
     std::fs::remove_dir_all(&temp_root).expect("ADT import fixture を削除できない");
+    output
 }

@@ -1112,9 +1112,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `(import App.Shapes :open :only [Just Nothing])` を selfhost compiler-mode でコンパイルし、生成
   Wasm を実行して `41\n0\n` を確認した。これは source-file import、constructor export filtering、constructor
   pattern binder/fallback、生成 artifact/runtime を同じ fixtureで閉じる verified sliceである。
-  ftable の同じ import target、qualified/alias-qualified pattern、parametric/recursive ADT の広い形、
+  さらに `(import App.Shapes :as S :only [Just Nothing])` と `S.Just` / `S.Nothing` の construction・pattern
+  を同じ selfhost compiler-mode fixtureで実行し、alias-qualified 側も `41\n0\n` を確認した。Parserは
+  型推論用の full constructor hashを維持し、constructor childの後ろへ raw suffix hashを保持し、Wasm
+  tag checkだけが raw suffixを使う。open/alias-qualified の2 testsを同じ focused invocationで実行し、
+  2 passed（101.19s）となった。これは source-file importと CompilerMode prelude ftableの alias registration、
+  constructor call、pattern binder/fallback、生成 artifact/runtimeを閉じる verified sliceである。
+  flat ftable compilerの同じ import target、module-qualified multi-segment name、parametric/recursive ADT の広い形、
   nominal/exhaustiveness、両 supported target の current-source native stage0 parity、
-  `LEGACY-LANG-02` aggregateは残る。test-only変更のため既存の native producer evidence は拡大していない。
+  `LEGACY-LANG-02` aggregateは残る。selfhost sourceとtestの変更だが、既存の native producer evidence は拡大していない。
 - [~] `LEGACY-COMP-01` full-program compiler closure — 主要 CLI builder は full-program 化済み。
   `TypeInferBlock.ls` の大きな do/computation 子要素走査は 64 要素 bounded/rooted scanへ移行し、
   Linux x86_64 stage2/stage3 fixed-pointを確認した。full-program compiler closure、
