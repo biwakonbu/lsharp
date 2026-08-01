@@ -2108,3 +2108,13 @@ Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parity
 `[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux
 replay・stage regeneration・full buildは未実行である。Evidence:
 [`decisions-v0.3-provider-lifecycle-review-id-wire-format.md`](docs/adr/decisions-v0.3-provider-lifecycle-review-id-wire-format.md)。
+
+2026-08-02 に provider-required release identityの auth-context binding preflightを追加した。identityに trust-store / review-lifecycle の digestが
+埋め込まれていても、`--require-provider-input` に実ファイル pathが無い呼び出しを `provider auth context is required` で fail-closed に拒否する
+RED→GREENを `test-native-release-identity.py` で確認した。これは明示 snapshot input bindingの verified partial sliceであり、provider API/auth取得・
+意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityの完了証拠ではない。M3-04-N1 / M3-05-N2 /
+M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも
+稼働中のため Linux replay・stage regeneration・full buildは未実行である。blockerの再現 commandは
+`current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
+`find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-native-provider-auth-context-binding.md`](docs/adr/decisions-v0.3-native-provider-auth-context-binding.md)。

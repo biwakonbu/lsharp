@@ -52,7 +52,17 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             artifact = root / "program.native"
             artifact.write_bytes(b"native release program\n")
             artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
-            identity = identity_for(artifact_digest)
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_bytes(
+                b'{"review_id":"review:checkout/r1","sequence":1,"state":"active"}\n'
+            )
+            identity = identity_for(
+                artifact_digest,
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
             manifest = root / "manifest.json"
             manifest.write_text(
                 json.dumps(
@@ -73,6 +83,10 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                 str(artifact),
                 "--source-commit",
                 SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
                 "--require-provider-input",
             )
 
@@ -88,7 +102,17 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             artifact.write_bytes(b"native release program\n")
             artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
             identity_path = root / "identity.json"
-            identity = identity_for(artifact_digest)
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_bytes(
+                b'{"review_id":"review:checkout/r1","sequence":1,"state":"active"}\n'
+            )
+            identity = identity_for(
+                artifact_digest,
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
             self.write_identity(identity_path, identity)
 
             identity["artifact_digest"] = "sha256:" + "d" * 64
@@ -100,6 +124,10 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                 str(artifact),
                 "--source-commit",
                 SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
                 "--require-provider-input",
             )
             self.assertNotEqual(mismatch.returncode, 0)
@@ -118,6 +146,28 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             )
             self.assertEqual(missing_provider.returncode, 2)
             self.assertIn("provider", missing_provider.stderr)
+
+    def test_rejects_provider_identity_without_auth_context_files(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            identity_path = root / "identity.json"
+            artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+            self.write_identity(identity_path, identity_for(artifact_digest))
+
+            result = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--require-provider-input",
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("provider auth context", result.stderr)
 
     def test_rejects_field_order_and_identity_conflict(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -272,6 +272,12 @@ def validate_identity(
                 f"expected={expected_lifecycle_digest} actual={identity['lifecycle_digest']}"
             )
 
+    if require_provider and not has_trust_store:
+        raise UnverifiedIdentity(
+            "provider auth context is required; --trust-store and --review-lifecycle "
+            "must be supplied"
+        )
+
     if require_provider and (
         identity["trust_store_digest"] is None or identity["lifecycle_digest"] is None
     ):
