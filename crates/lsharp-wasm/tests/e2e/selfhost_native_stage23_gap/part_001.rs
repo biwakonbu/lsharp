@@ -470,8 +470,8 @@ fn test_native_codegen_x86_string_slice_concat_helper_emitters_return_executable
     assert_eq!(
         lines,
         vec![
-            145, 83, 65, 84, 65, 85, 65, 86, 65, 65, 94, 65, 93, 65, 92, 91, 195, 195, 72, 133,
-            201, 120, 18, 72, 129, 249, 93, 65, 92, 91, 195, 49, 192, 195,
+            145, 83, 65, 84, 65, 85, 65, 86, 65, 65, 94, 65, 93, 65, 92, 91, 195, 197, 72, 133,
+            201, 120, 18, 72, 129, 249, 92, 91, 49, 192, 195, 49, 192, 195,
         ],
         "x86_64 substring/string-concat helper emitters は実行可能な prologue/epilogue を持つ byte vector を返す必要がある"
     );

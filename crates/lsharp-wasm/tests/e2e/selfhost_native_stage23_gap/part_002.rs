@@ -224,6 +224,25 @@ fn test_native_codegen_x86_vector_push_growth_uses_bounded_heap_cursor() {
 }
 
 #[test]
+fn test_native_codegen_x86_string_concat_uses_bounded_heap_cursor() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-string-concat-bounded-heap",
+        r#"  (let [helper (emit-x86-selfhost-string-concat-helper)]
+    (do
+      (print (vector-length helper))
+      (print-bytes-loop helper 0 (vector-length helper))
+      0))"#,
+    );
+
+    assert!(
+        !lines
+            .windows(7)
+            .any(|window| window == [184, 9, 0, 0, 0, 15, 5]),
+        "x86_64 string-concat helper は per-allocation mmap syscall を発行せず、bounded native heap cursor を使うべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_vector_new_call_targets_executable_entry_after_prefix() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-vector-new-call-entry",

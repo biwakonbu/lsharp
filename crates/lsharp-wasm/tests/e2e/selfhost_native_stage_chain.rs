@@ -10877,7 +10877,7 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 569)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1547)"),
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1549)"),
         "x86 vector-new helper の拡張後は後続 runtime helper offset も +37 へ同期するべき"
     );
 }
@@ -10960,17 +10960,17 @@ fn test_native_codegen_x86_map_new_helper_adds_heap_base_before_header() {
         "x86 map-new helper の base 加算を含む実バイト長と trailer append 長は 75 bytes に同期するべき"
     );
     assert!(
-        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1364)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1381)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1485)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1547)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1624)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1708)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1712)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1763)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1775)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1962)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2217)"),
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1366)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1383)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1487)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1549)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1626)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1710)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1714)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1765)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1777)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1964)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2219)"),
         "x86 map-new helper の拡張後は map-remove を含む後続 runtime helper offset も同期するべき"
     );
 }
@@ -11128,8 +11128,8 @@ fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 633)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1485)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1547)"),
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1487)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1549)"),
         "x86 vector-get helper の短縮 tag guard 後は map-get/map-remove を含む後続 runtime helper offset と同期するべき"
     );
 }
@@ -13049,7 +13049,7 @@ fn test_native_codegen_x86_print_string_helper_resolves_static_data_offset() {
     );
     assert!(
         size_body.contains("\n  51)")
-            && proc_exit_offset_body.contains("1763")
+            && proc_exit_offset_body.contains("1765")
             && bundle_writer.contains(
                 "(append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)"
             ),

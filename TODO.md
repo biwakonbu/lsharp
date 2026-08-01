@@ -1302,6 +1302,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これは fetch package file-set と atomic rollbackの verified sliceであり、公開 release asset、実 Linux runtime、両 targetの rollback archive parity、
   `LEGACY-BOOT-01` 全体の完了証拠には数えない。ADR:
   `docs/adr/decisions-v0.3-native-stage0-fetch-atomic-install.md`。
+  さらに Linux x86 selfhost `emit-x86-selfhost-string-concat-helper` の per-allocation `mmap` を、materializer-owned
+  `r14` native heapのcursor/limitを使う16-byte aligned bump allocationへ置き換えた。REDでは
+  `test_native_codegen_x86_string_concat_uses_bounded_heap_cursor` が旧 `mov eax,9; syscall` byte sequenceを検出し、
+  GREENでは同テスト、197-byte helperのemitter回帰、slice/concat call-site、CLI/write-file trailer offsetの
+  focused testsが passした。helperは195→197 bytesとなり、後続helper offsetはsource contractと実測byte vectorで
+  `+2` に同期した。Lima `lsharp-linux-x86` の最小Linux x86_64実行では、dynamic tagged `"ab"` と `"Z"` を
+  `r14` heapへ渡し、連結結果長 `3` を exit code `3` として確認した。これは bounded string-concat allocation/copy/tagging
+  の verified sliceであり、full stage2/stage3 fixed-point、current-source Linux stage0 source-file smoke、package
+  acquisition/release/rollback、`substring` / `read-file` / `int-to-string` の残りの allocation contract、両 target
+  release parityの証拠には数えない。ADR:
+  `docs/adr/decisions-v0.3-native-linux-string-concat-bounded-heap.md`。
 
 ## ISSUES-derived quality and runtime work
 

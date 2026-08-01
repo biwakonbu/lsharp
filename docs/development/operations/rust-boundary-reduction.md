@@ -1555,6 +1555,27 @@ temporary packageと hidden previous backupの削除、partial replacementなし
 VM runtime、Mac/Linux rollback archiveの実 parity、provider/external release運用の証拠ではない。
 ADR: `docs/adr/decisions-v0.3-native-stage0-fetch-atomic-install.md`。
 
+### V2-16e / V2-13a-5 Linux x86 string-concat bounded heap allocation (2026-08-02)
+
+Linux x86 selfhostの `emit-x86-selfhost-string-concat-helper` は、連結結果ごとに `mmap` syscallを発行していた。
+current-source stage2 replayのメモリ境界を広げる前に、この局所的な per-allocation working-set要因を、materializerが
+所有する `r14` native heapへ移した。heap先頭のcursor/limitを読み、`8 + lhs_length + rhs_length` を16-byte境界へ
+alignしてbump allocateし、String header、lhs→rhs payload、high-bit tagを従来のABIのまま返す。cursorが未初期化の
+場合は既存data frontier `8192` を使い、limit超過はnullを返す。helperは195 bytesから197 bytesへ増えたため、後続の
+x86 trailer offsetとappend lengthはすべて実測byte vectorに合わせて `+2` へ同期した。
+
+REDは `test_native_codegen_x86_string_concat_uses_bounded_heap_cursor` で旧 `mov eax,9; syscall` byte sequenceを
+検出した。GREENは同テスト、197-byte slice/concat emitter回帰、call-site、CLI、write-file trailer offsetのfocused
+testsを通過した。さらにLinux x86_64 Lima VMで、`r14` heapを初期化した最小native programへdynamic tagged `"ab"`
+と `"Z"` を渡し、連結結果長 `3` を exit code `3` として確認した。Cargo target、VM一時ファイル、VMは検証後に回収・停止した。
+
+これは string-concatのbounded allocation/copy/tagging ABIを閉じる verified sliceであり、full current-source stage2/
+stage3 transport/materialize/fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
+`substring` / `read-file` / `int-to-string` の残りのallocation helper、Mac/Linux release parityの証拠ではない。同じ
+stage2 replayをこの局所修正だけで再実行せず、次は残りのallocation boundaryを一つずつRED化してから、必要なLinux
+stage2/stage3 gateを一回だけ実行する。ADR:
+`docs/adr/decisions-v0.3-native-linux-string-concat-bounded-heap.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
