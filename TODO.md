@@ -2118,3 +2118,12 @@ M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected
 `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
 `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-native-provider-auth-context-binding.md`](docs/adr/decisions-v0.3-native-provider-auth-context-binding.md)。
+
+2026-08-02 に native provider lifecycle snapshotの `effective_at` ordering parityを追加した。strict UTC/calendar shapeだけでなく、同じ reviewの sequence順で
+`effective_at` が過去へ戻る eventを `review lifecycle effective_at rollback` で fail-closed に拒否する RED→GREENを native identity testとRust reducer focused testで確認した。
+これは effective-at ordering parityの verified partial sliceであり、既存 sequence/state transition、provider API/auth取得・意味検証、current-source Linux runtime、
+Mac/Linux両 targetの packaged provenance/rollback bytes parityの完了証拠ではない。M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
+`find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-provider-lifecycle-effective-at-ordering-parity.md`](docs/adr/decisions-v0.3-provider-lifecycle-effective-at-ordering-parity.md)。

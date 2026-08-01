@@ -106,6 +106,7 @@ def validate_review_lifecycle_snapshot(path):
     seen_sequences = set()
     last_sequences = {}
     last_states = {}
+    last_effective_ats = {}
     for record in records:
         if not isinstance(record, dict):
             raise IdentityError(f"review lifecycle snapshot records must be JSON objects: {path}")
@@ -192,9 +193,23 @@ def validate_review_lifecycle_snapshot(path):
                     f"review lifecycle sequence gap: {path}: "
                     f"review_id={review_id!r} previous={previous_sequence} current={sequence}"
                 )
+            previous_effective_at = last_effective_ats.get(review_id)
+            current_effective_at = record.get("effective_at")
+            if (
+                previous_effective_at is not None
+                and current_effective_at is not None
+                and current_effective_at < previous_effective_at
+            ):
+                raise IdentityError(
+                    f"review lifecycle effective_at rollback: {path}: "
+                    f"review_id={review_id!r} previous={previous_effective_at} "
+                    f"current={current_effective_at}"
+                )
             seen_sequences.add(sequence_key)
             last_sequences[review_id] = sequence
             last_states[review_id] = state
+            if current_effective_at is not None:
+                last_effective_ats[review_id] = current_effective_at
 
     return records
 
