@@ -178,6 +178,52 @@ FORMAT_OUTPUT_SCHEMA = {
     "properties": {"formatted": {"type": "string"}},
 }
 
+
+def review_verification_receipt_schema():
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "review_id",
+            "state",
+            "provider",
+            "key_id",
+            "algorithm",
+            "attestation_digest",
+            "trust_store_digest",
+            "verification_now",
+        ],
+        "properties": {
+            "review_id": {
+                "type": "string",
+                "pattern": r"^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            },
+            "state": {"const": "verified"},
+            "provider": {"type": "string", "minLength": 1},
+            "key_id": {"type": "string", "minLength": 1},
+            "algorithm": {"const": "ed25519"},
+            "attestation_digest": {
+                "type": "string",
+                "pattern": r"^sha256:[0-9a-f]{64}$",
+            },
+            "trust_store_digest": {
+                "type": "string",
+                "pattern": r"^sha256:[0-9a-f]{64}$",
+            },
+            "verification_now": {
+                "type": "string",
+                "pattern": CANONICAL_UTC_TIMESTAMP_PATTERN,
+            },
+        },
+    }
+
+
+def manifest_review_registry_schema():
+    schema = review_registry_schema()
+    schema["items"]["properties"]["verification_receipt"] = review_verification_receipt_schema()
+    return schema
+
+
 MANIFEST_OUTPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -185,7 +231,7 @@ MANIFEST_OUTPUT_SCHEMA = {
     "properties": {
         "schema_version": {"type": "integer", "const": 1},
         "nodes": {"type": "array", "items": node_schema()},
-        "reviews": review_registry_schema(),
+        "reviews": manifest_review_registry_schema(),
         "review_evidence_identity": review_evidence_identity_schema(),
         "evidence": {"type": "array", "items": evidence_schema()},
         "edges": {"type": "array", "items": edge_schema()},
@@ -273,42 +319,7 @@ VALIDATE_OUTPUT_SCHEMA = {
                         "type": "string",
                         "enum": ["verified", "unverified", "stale", "revoked"],
                     },
-                    "receipt": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "required": [
-                            "review_id",
-                            "state",
-                            "provider",
-                            "key_id",
-                            "algorithm",
-                            "attestation_digest",
-                            "trust_store_digest",
-                            "verification_now",
-                        ],
-                        "properties": {
-                            "review_id": {
-                                "type": "string",
-                                "pattern": r"^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
-                            },
-                            "state": {"const": "verified"},
-                            "provider": {"type": "string", "minLength": 1},
-                            "key_id": {"type": "string", "minLength": 1},
-                            "algorithm": {"const": "ed25519"},
-                            "attestation_digest": {
-                                "type": "string",
-                                "pattern": r"^sha256:[0-9a-f]{64}$",
-                            },
-                            "trust_store_digest": {
-                                "type": "string",
-                                "pattern": r"^sha256:[0-9a-f]{64}$",
-                            },
-                            "verification_now": {
-                                "type": "string",
-                                "pattern": CANONICAL_UTC_TIMESTAMP_PATTERN,
-                            },
-                        },
-                    },
+                    "receipt": review_verification_receipt_schema(),
                 },
             },
         },
@@ -917,6 +928,7 @@ def validate_manifest_review(value, index):
         "provenance_digest",
         "visibility",
         "verification_state",
+        "verification_receipt",
     }
     unknown = sorted(set(value).difference(allowed))
     if unknown:
@@ -939,6 +951,13 @@ def validate_manifest_review(value, index):
         "revoked",
     ):
         raise ToolError(f"{label}.verification_state has invalid value")
+    if "verification_receipt" in value:
+        if value.get("verification_state") != "verified":
+            raise ToolError(f"{label}.verification_receipt requires verified state")
+        try:
+            validate_review_verification_receipt_value(value["verification_receipt"])
+        except ValueError as error:
+            raise ToolError(f"{label}.verification_receipt is invalid: {error}") from error
 
 
 def validate_manifest_id(value, label):
@@ -1430,6 +1449,22 @@ def verify_review_verification_receipt_projection(report, receipt):
         raise ToolError("native validate receipt projection mismatch")
 
 
+def verify_review_verification_receipt_manifest_projection(manifest, receipt):
+    if receipt is None:
+        return
+    review_id = receipt["review_id"]
+    namespace, key = review_id.removeprefix("review:").split("/", 1)
+    matches = [
+        review
+        for review in manifest.get("reviews", [])
+        if review.get("namespace") == namespace and review.get("key") == key
+    ]
+    if len(matches) != 1 or matches[0].get("verification_state") != "verified":
+        raise ToolError("native validate manifest receipt projection is missing or ambiguous")
+    if matches[0].get("verification_receipt") != receipt:
+        raise ToolError("native validate manifest receipt projection mismatch")
+
+
 def verify_identity_projection(
     report, expected_identity, include_manifest, allow_existing_manifest_identity
 ):
@@ -1502,6 +1537,7 @@ def call_validate(program, arguments, temporary_directory):
         except (OSError, json.JSONDecodeError, ValueError) as error:
             raise ToolError(f"native emitted manifest が不正です: {error}") from error
         validate_manifest_output(manifest)
+        verify_review_verification_receipt_manifest_projection(manifest, receipt)
         report["manifest"] = manifest
         validate_report_output(report)
     verify_identity_projection(

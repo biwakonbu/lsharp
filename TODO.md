@@ -1053,14 +1053,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   state、span、exit code の Rust/selfhost 同一 fixture parity は verified partial。JSON report の
   field order、nullable `expires_at`、canonical bytes、span と native source-file smoke の
   report/manifest fixture contract を追加検証した。Mac current-source stage0 producer/package/source-file
-  smoke は実行済みで、Linux current-source stage0、packaged artifact provenance、Mac/Linux runtime parityを
+  smoke は実行済みで、native MCP receipt の report→manifest review projectionも verified partial とした。
+  Linux current-source stage0、packaged artifact provenance、Mac/Linux runtime parityを
   `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
 - [~] `EC-M3-05` keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity
   projection、nullable field order、conflict rejection は verified partial。offline release identity
   verifier、native-only archive / packaged stage0 の optional projection、artifact/source mismatch の
   release smoke rejectionを追加した。native text/JSON/MCP と release gate の
   `verified/unverified/stale/revoked/invalid` ordering、provider adapter、両 target runtimeを
-  M3-05-N1/N2 で閉じる。official gate の task-owned cleanup path traversal (`.` / `..`) 拒否は
+  M3-05-N1/N2 で閉じる。native MCPの明示 receipt report→manifest exact projectionと
+  欠落/不一致 postflight rejectも verified partial とした。official gate の task-owned cleanup path traversal (`.` / `..`) 拒否は
   verified partial として追加したが、actual provider/auth、current-source/packaged runtime、
   rollback/Wasm parity は残る。ADR:
   `docs/adr/decisions-v0.3-native-official-cleanup-path.md`。
