@@ -100,6 +100,7 @@ def validate_review_lifecycle_snapshot(path):
 
     if not records:
         raise IdentityError(f"review lifecycle snapshot must contain at least one record: {path}")
+    seen_sequences = set()
     for record in records:
         if not isinstance(record, dict):
             raise IdentityError(f"review lifecycle snapshot records must be JSON objects: {path}")
@@ -109,6 +110,18 @@ def validate_review_lifecycle_snapshot(path):
             raise IdentityError(
                 f"review lifecycle state must be one of {allowed}: {path}"
             )
+        sequence = record.get("sequence")
+        review_id = record.get("review_id")
+        if isinstance(sequence, int) and not isinstance(sequence, bool) and isinstance(review_id, str):
+            sequence_key = (review_id, sequence)
+            if sequence_key in seen_sequences:
+                raise IdentityError(
+                    f"duplicate review lifecycle sequence: {path}: "
+                    f"review_id={review_id!r} sequence={sequence}"
+                )
+            seen_sequences.add(sequence_key)
+
+    return records
 
 
 def validate_digest(value, field, nullable):

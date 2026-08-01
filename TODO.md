@@ -1974,3 +1974,14 @@ manifest/expected replay lockが現HEADに一致せず、別セッション所�
 blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
 `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-provider-lifecycle-state-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-state-preflight.md)。
+
+2026-08-02 に明示 review-lifecycle snapshot の duplicate sequence preflightを追加した。integer `sequence` を持つ recordについて同じ
+`(review_id, sequence)` が複数回現れる入力を `duplicate review lifecycle sequence` で拒否する RED→GREENを
+`test-native-release-identity.py` で確認した。これは duplicate sequence の verified partial sliceであり、sequence必須化・ordering/reducer、
+provider snapshot regular-file/nonempty/digest/role binding、MCP semantic、署名/authenticationの完了証拠ではない。live provider API/auth取得・意味検証、
+current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は
+`[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage
+regeneration・full buildは未実行である。blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp
+/Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name
+'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-provider-lifecycle-sequence-duplicate-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-sequence-duplicate-preflight.md)。
