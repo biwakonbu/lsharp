@@ -6,13 +6,42 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ARCHIVE_PATH="${1:-}"
 ROLLBACK_ARCHIVE_PATH="${2:-}"
 WORK_DIR="${WORK_DIR:-$ROOT/target/ci/release-smoke}"
-EXTRACT_DIR="$WORK_DIR/extract"
-SMOKE_DIR="$WORK_DIR/smoke"
 MAX_ARCHIVE_BYTES="${LSHARP_RELEASE_SMOKE_MAX_ARCHIVE_BYTES:-536870912}"
 RELEASE_IDENTITY_VERIFIER="${RELEASE_IDENTITY_VERIFIER:-$ROOT/scripts/ci/verify-native-release-identity.py}"
 RELEASE_REVIEW_TRUST_STORE="${RELEASE_REVIEW_TRUST_STORE:-}"
 RELEASE_REVIEW_LIFECYCLE="${RELEASE_REVIEW_LIFECYCLE:-}"
 RELEASE_REVIEW_PROVIDER_ARGS=()
+
+validate_work_dir() {
+  WORK_DIR="$(python3 - "$WORK_DIR" <<'PY'
+import pathlib
+import sys
+
+print(pathlib.Path(sys.argv[1]).resolve())
+PY
+)"
+  python3 - "$ROOT" "$WORK_DIR" <<'PY'
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve()
+work_dir = pathlib.Path(sys.argv[2])
+unsafe_paths = {
+    pathlib.Path("/"),
+    pathlib.Path("/tmp"),
+    pathlib.Path("/private/tmp"),
+    root,
+    root / "target",
+    root / "target" / "ci",
+}
+if work_dir in unsafe_paths:
+    raise SystemExit(f"ERROR: unsafe release smoke work directory: {work_dir}")
+PY
+}
+
+validate_work_dir
+EXTRACT_DIR="$WORK_DIR/extract"
+SMOKE_DIR="$WORK_DIR/smoke"
 
 cleanup() {
   local exit_code=$?

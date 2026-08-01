@@ -1921,3 +1921,15 @@ commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwa
 manifest.json -path '*lsharp*'` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name
 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-native-stage0-release-output-boundary.md`](docs/adr/decisions-v0.3-native-stage0-release-output-boundary.md)。
+
+2026-08-02 に release smoke の cleanup work directory safetyを追加した。`WORK_DIR` が `/`、`/tmp`、repository root、
+repositoryの `target` または `target/ci` に解決される場合、archive/provider workへ進まず `unsafe release smoke work directory`
+で拒否する RED→GREENを `test-release-smoke-provider-snapshots.sh` で確認した。task-owned leaf directoryを使う既存の
+provider snapshot / rollback smoke は同じ harnessで維持した。これは cleanup ownershipの verified partial sliceであり、
+live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes
+parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay
+lockが現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage regeneration・
+full buildは未実行である。blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp
+/Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と `find /tmp
+/Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-release-smoke-workdir-safety.md`](docs/adr/decisions-v0.3-release-smoke-workdir-safety.md)。

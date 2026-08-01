@@ -146,6 +146,20 @@ grep -F "must be supplied together" <<<"$preflight_output" >/dev/null \
 [[ ! -e "$TMP_ROOT/preflight-work" ]] \
   || { echo "provider preflight created release smoke work before archive access" >&2; exit 1; }
 
+set +e
+unsafe_work_output="$(
+  WORK_DIR="$ROOT" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/missing-release.tar.gz" 2>&1
+)"
+unsafe_work_status=$?
+set -e
+[[ "$unsafe_work_status" -ne 0 ]] \
+  || { echo "release smoke accepted repository root as cleanup work directory" >&2; exit 1; }
+grep -F "unsafe release smoke work directory" <<<"$unsafe_work_output" >/dev/null \
+  || { echo "unsafe work directory rejection did not expose a stable diagnostic" >&2; exit 1; }
+! grep -F "archive not found" <<<"$unsafe_work_output" >/dev/null \
+  || { echo "unsafe work directory was checked after archive access" >&2; exit 1; }
+
 RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
 RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
   WORK_DIR="$TMP_ROOT/smoke-work" \
