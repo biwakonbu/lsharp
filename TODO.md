@@ -2095,7 +2095,16 @@ packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-0
 2026-08-02 に native provider lifecycle snapshot の `review_id` required preflightを追加した。`review_id` を欠落させた
 `sequence: 1` / `proposed` recordを `review lifecycle review_id is required` で拒否する RED→GREENを `test-native-release-identity.py` で確認し、
 Rust `ReviewLifecycleEvent::new` の空 `review_id` 拒否も focused testで対応付けた。これは provider inputの required-field verified partial sliceであり、
-stable ID wire-format parity、完全な transition matrix/reducer、live provider API/auth、current-source Linux runtime、Mac/Linux両 targetの packaged
+stable IDの selfhost/MCP全入力 route parity、完全な transition matrix/reducer、live provider API/auth、current-source Linux runtime、Mac/Linux両 targetの packaged
 provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが
 現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。Evidence:
 [`decisions-v0.3-provider-lifecycle-review-id-required.md`](docs/adr/decisions-v0.3-provider-lifecycle-review-id-required.md)。
+
+2026-08-02 に native provider lifecycle snapshot の stable `review_id` wire-format preflightを追加した。非空だが key segmentが欠けた
+`review:checkout` を Rust canonical と native providerの双方で拒否する RED→GREENを確認した。Rust lifecycle 6件、review wire 8件、native
+identity 27件と関連 offline harness、Python/Bash syntaxを通過した。これは native provider routeとRust canonical `ReviewId::parse` の
+形式 parity verified partial sliceであり、selfhost/MCPの全入力 route、完全な transition matrix/reducer、live provider API/auth、current-source
+Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は
+`[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux
+replay・stage regeneration・full buildは未実行である。Evidence:
+[`decisions-v0.3-provider-lifecycle-review-id-wire-format.md`](docs/adr/decisions-v0.3-provider-lifecycle-review-id-wire-format.md)。

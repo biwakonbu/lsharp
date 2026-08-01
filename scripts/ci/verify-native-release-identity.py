@@ -29,6 +29,7 @@ IDENTITY_KEYS = (
 )
 SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+REVIEW_ID_PATTERN = re.compile(r"^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 REVIEW_LIFECYCLE_STATES = frozenset(
     ("proposed", "active", "superseded", "revoked")
 )
@@ -136,6 +137,10 @@ def validate_review_lifecycle_snapshot(path):
         if not isinstance(review_id, str) or not review_id:
             raise IdentityError(
                 f"review lifecycle review_id is required: {path}"
+            )
+        if not REVIEW_ID_PATTERN.fullmatch(review_id):
+            raise IdentityError(
+                f"review lifecycle review_id must use review:<namespace>/<key>: {path}"
             )
         if isinstance(sequence, int) and not isinstance(sequence, bool) and isinstance(review_id, str):
             sequence_key = (review_id, sequence)

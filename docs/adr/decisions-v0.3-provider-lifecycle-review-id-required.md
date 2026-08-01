@@ -25,8 +25,8 @@ focused lifecycle testで確認し、typed canonical inputとnative required bou
 
 ## Boundary and follow-up
 
-これは provider lifecycle record の required `review_id` に限る verified partial sliceであり、full transition matrix/reducer、stable IDの
-`review:namespace/key` wire-format parity、live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの
+これは provider lifecycle record の required `review_id` に限る verified partial sliceであり、full transition matrix/reducer、selfhost/MCPの
+全入力 route、live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの
 packaged provenance/rollback bytes parityは未検証である。M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。
 
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働しているため、Linux replay・

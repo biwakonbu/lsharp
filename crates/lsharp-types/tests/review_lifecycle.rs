@@ -78,6 +78,16 @@ fn lifecycle_rejects_invalid_first_event_and_empty_effective_time() {
     ));
     assert!(matches!(
         ReviewLifecycleEvent::new(
+            "review:checkout",
+            1,
+            ReviewLifecycleState::Proposed,
+            "2026-08-01T00:00:00Z",
+            None::<String>,
+        ),
+        Err(LifecycleError::InvalidReviewId(_))
+    ));
+    assert!(matches!(
+        ReviewLifecycleEvent::new(
             "review:orders/reviewer-001",
             0,
             ReviewLifecycleState::Proposed,
