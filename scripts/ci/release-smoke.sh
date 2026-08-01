@@ -473,9 +473,16 @@ if [[ "$NATIVE_ONLY" == "1" ]]; then
   # native-only App.Cli smoke is limited to --version and --help.
   # The producer certifies the boot surface; host-launcher archives retain the
   # broader source-file command smoke below.
-  native_help_output="$("$LSHARP_BIN" --help)"
-  if [[ "$native_help_output" != *"Usage: lsharp"* ]]; then
+  native_help_stdout="$SMOKE_DIR/native-help.stdout"
+  native_help_stderr="$SMOKE_DIR/native-help.stderr"
+  "$LSHARP_BIN" --help >"$native_help_stdout" 2>"$native_help_stderr"
+  if ! grep -Fq "Usage: lsharp" "$native_help_stdout"; then
     echo "ERROR: native-only App.Cli help output is invalid" >&2
+    exit 1
+  fi
+  if [[ -s "$native_help_stderr" ]]; then
+    echo "ERROR: native-only App.Cli help must keep stderr empty" >&2
+    cat "$native_help_stderr" >&2
     exit 1
   fi
 else

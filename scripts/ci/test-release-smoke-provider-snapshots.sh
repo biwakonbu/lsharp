@@ -165,6 +165,65 @@ RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
   WORK_DIR="$TMP_ROOT/smoke-work" \
   bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" >/dev/null
 
+BAD_HELP_NAME="${STABLE_NAME}-bad-help"
+BAD_HELP_ROOT="$TMP_ROOT/$BAD_HELP_NAME"
+BAD_HELP_ARCHIVE="$TMP_ROOT/$BAD_HELP_NAME.tar.gz"
+cp -R "$STABLE_ROOT" "$BAD_HELP_ROOT"
+cat >"$BAD_HELP_ROOT/program.native" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  --version) printf '%s\n' 'lsharp 0.0.0-test' ;;
+  --help)
+    printf '%s\n' 'Usage: lsharp <command> [options]'
+    printf '%s\n' 'warning: help diagnostics leaked to stderr' >&2
+    ;;
+  *) printf 'unsupported command: %s\n' "${1:-}" >&2; exit 1 ;;
+esac
+SH
+chmod +x "$BAD_HELP_ROOT/program.native"
+cp "$BAD_HELP_ROOT/program.native" "$BAD_HELP_ROOT/lsharp"
+python3 - "$BAD_HELP_ROOT" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+program = root / "program.native"
+program_sha256 = hashlib.sha256(program.read_bytes()).hexdigest()
+identity_path = root / "review-evidence-identity.json"
+identity = json.loads(identity_path.read_text(encoding="utf-8"))
+identity["artifact_digest"] = "sha256:" + program_sha256
+identity_path.write_text(json.dumps(identity, separators=(",", ":")) + "\n", encoding="utf-8")
+manifest_path = root / "manifest.json"
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+manifest["review_evidence_identity"] = identity
+manifest["native_program_input"]["input_sha256"] = program_sha256
+manifest_path.write_text(json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
+native_manifest_path = root / "native-program-manifest.json"
+native_manifest = json.loads(native_manifest_path.read_text(encoding="utf-8"))
+native_manifest["program_sha256"] = program_sha256
+native_manifest_path.write_text(
+    json.dumps(native_manifest, separators=(",", ":")) + "\n", encoding="utf-8"
+)
+PY
+bash "$ROOT/scripts/checksum.sh" "$BAD_HELP_ROOT" >"$BAD_HELP_ROOT/checksums.txt"
+tar -czf "$BAD_HELP_ARCHIVE" -C "$TMP_ROOT" "$BAD_HELP_NAME"
+
+set +e
+packaged_help_output="$(
+  RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
+    RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
+    WORK_DIR="$TMP_ROOT/packaged-help-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$BAD_HELP_ARCHIVE" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" 2>&1
+)"
+packaged_help_status=$?
+set -e
+[[ "$packaged_help_status" -ne 0 ]] || { echo "packaged native-only help stderr leakage was accepted" >&2; exit 1; }
+grep -F "native-only App.Cli help must keep stderr empty" <<<"$packaged_help_output" >/dev/null \
+  || { echo "packaged native-only help stderr rejection did not expose a stable diagnostic" >&2; exit 1; }
+
 BAD_LSP_VERSION_NAME="${ROLLBACK_NAME}-bad-lsp-version"
 BAD_LSP_VERSION_ROOT="$TMP_ROOT/$BAD_LSP_VERSION_NAME"
 BAD_LSP_VERSION_ARCHIVE="$TMP_ROOT/$BAD_LSP_VERSION_NAME.tar.gz"

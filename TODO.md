@@ -1073,6 +1073,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   verified partial sliceであり、live provider/auth取得・署名意味検証、current-source Linux runtime、Mac/Linux両 targetの
   packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
   ADR: `docs/adr/decisions-v0.3-provider-identity-verification-clock.md`。
+  さらに native-only packaged App.Cli の `--help` を stdout/stderr 別々に収集し、成功・`Usage: lsharp` の stdout・空の
+  stderr を要求する boundaryを追加した。checksum-valid な fake packageが help warning を stderrへ漏らしても受理する
+  REDを、`native-only App.Cli help must keep stderr empty` で fail-closed にする GREENへ更新し、valid native/rollback fixture
+  の継続成功を `test-release-smoke-provider-snapshots.sh` で確認した。これは packaged help output の verified partial sliceであり、
+  native/LSP version、archive/rollback manifest・checksum、provider snapshot、live provider/auth取得・意味検証、current-source
+  Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは
+  `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-packaged-native-help-output.md`。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は
