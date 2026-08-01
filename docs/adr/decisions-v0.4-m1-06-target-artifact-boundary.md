@@ -20,9 +20,11 @@ or lets an index point at a report produced for the other target while its
 - The executable audit derives that namespace from the index's `source_commit`
   and `target`, then requires `oracle_report`, `native_report`, and
   `comparison` to be regular files below that exact directory.
-- The JSON Schema publishes the static `ci-artifacts/v4-m1-01/` prefix. The
-  dynamic source-commit and target binding remains executable semantics because
-  JSON Schema cannot compare a path to sibling property values in this version.
+- The JSON Schema publishes the static `ci-artifacts/v4-m1-01/` prefix and
+  conditionally constrains the target directory for both supported targets.
+  Exact source-commit binding, regular-file ownership, symlink rejection, and
+  current-source freshness remain executable semantics because JSON Schema
+  cannot compare a path to a sibling property's value or inspect the filesystem.
 - The source-commit freshness check runs before path resolution, so a stale
   index cannot be hidden behind a namespace mismatch.
 
@@ -38,7 +40,7 @@ two-target artifact/runtime parity remains pending, so V4-M1-06 stays `[~]`.
 
 - `python3 scripts/ci/test-semantic-fixture-evidence-audit.py` — passing
   target-mismatch, stale-source, in-namespace, and outside-namespace tests.
-- `python3 scripts/ci/test-semantic-fixture-evidence-schema.py` — static
-  versioned artifact prefix parity test.
+- `python3 scripts/ci/test-semantic-fixture-evidence-schema.py` — versioned
+  prefix and target-conditional artifact path parity tests.
 - `docs/development/operations/v4-m1-semantic-fixture-evidence.md` —
   target-scoped producer/diff/audit layout and cleanup procedure.
