@@ -574,6 +574,8 @@ focused batch and produced `41\n1\n7\n` as well.
 The bounded deep regression `test_e2e_selfhost_compiler_mode_deep_nested_parametric_record_pattern_runs`
 also passed for a four-record chain (`Root a -> Outer a -> Middle a -> Box a`) with the same
 output. It is evidence for recursive materialization at that depth, not an arbitrary-depth claim.
+The matching `test_e2e_selfhost_ftable_compiler_deep_nested_parametric_record_pattern_runs` passed
+in the same focused batch, so source and ftable lowering agree for this four-record shape.
 
 This is a verified nested parametric field-binding slice plus source/import/ftable runtime
 fixtures, not completion of record-pattern semantic parity. Greater depths, full

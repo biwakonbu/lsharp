@@ -44,6 +44,8 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
 - `test_e2e_selfhost_compiler_mode_deep_nested_parametric_record_pattern_runs` passed through a
   four-record chain (`Root a -> Outer a -> Middle a -> Box a`) with the same result. This is a
   bounded depth regression, not an arbitrary-depth completion claim.
+- `test_e2e_selfhost_ftable_compiler_deep_nested_parametric_record_pattern_runs` passed for the
+  same four-record chain; the source and ftable deep fixtures passed together in one focused batch.
 - Mac Apple Silicon native gate passed for source commit
   `fa97fa948489f635dc8888b5a269755a75776670`; the ignored native test passed and the artifact was
   4660 KiB.
@@ -53,8 +55,7 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
 
 ## Boundary
 
-This closes the nested parametric record field-binding slice, one source compiler-mode Wasm
-runtime fixture, and the corresponding imported/ftable fixtures. Arbitrarily deep patterns,
-depths beyond the four-record regression, complete record-pattern semantic parity, full
-ftable/linear-memory ABI parity, and the
+This closes the nested parametric record field-binding slice, source/import/ftable Wasm runtime
+fixtures, and the four-record recursion regression. Arbitrarily deep patterns, depths beyond the
+four-record regression, complete record-pattern semantic parity, full ftable/linear-memory ABI, and the
 `LEGACY-LANG-01` aggregate remain incomplete. `TODO.md` therefore keeps the aggregate as `[~]`.
