@@ -185,7 +185,24 @@ stale source/target、欠落した gate は fail closed になる。
 ## 6. Two-target と cleanup gate
 
 `TARGET` を2つの supported target それぞれで変えて 1〜5 を繰り返す。片方だけの結果を aggregate の
-完了証拠にしない。両 target の index、report、comparison を source commit ごとに棚卸しする。
+完了証拠にしない。両 target の index、report、comparison を source commit ごとに棚卸しし、
+`ci-artifacts/v4-m1-01/$SOURCE_COMMIT/aggregate/index.json` に両 target の index path を記録する。
+aggregate schema は2 targetを要求し、audit は各 target index を再監査する。
+
+```bash
+AGGREGATE_ROOT="$ROOT/ci-artifacts/v4-m1-01/$SOURCE_COMMIT/aggregate"
+AGGREGATE_INDEX="$AGGREGATE_ROOT/index.json"
+mkdir -p "$AGGREGATE_ROOT"
+
+python3 scripts/ci/semantic_fixture_evidence_aggregate.py \
+  --manifest scripts/ci/semantic-fixture-matrix.json \
+  --root "$ROOT" \
+  --index "$AGGREGATE_INDEX" \
+  > "$AGGREGATE_ROOT/evidence-index.json"
+```
+
+aggregate の終了値は per-target gate と同じく `pass=0`、`mismatch=1`、`pending=2` とする。
+片側でも pending/mismatch なら aggregate を成功扱いにしない。
 
 ```bash
 git status --short --branch

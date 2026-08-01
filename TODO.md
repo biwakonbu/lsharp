@@ -73,6 +73,11 @@ executable audit に追加した verified partial として記録する。実 Ru
 matrix は未接続のため v0.4 の完了項目には移さない。ADR:
 `docs/adr/decisions-v0.4-m1-06-index-artifact-boundary.md`。
 
+さらに Mac Apple Silicon と Linux x86_64 の target index を再監査して束ねる two-target aggregate
+audit/schema を追加した。片側 pending/mismatch や Mac-only pass を aggregate pass に昇格させない
+verified partial として記録する。実 target artifact/runtime、rollback、provider parity は未接続のため
+v0.4 の完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-06-two-target-aggregate.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。
