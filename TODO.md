@@ -1352,9 +1352,21 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `+2` に同期した。Lima `lsharp-linux-x86` の最小Linux x86_64実行では、dynamic tagged `"ab"` と `"Z"` を
   `r14` heapへ渡し、連結結果長 `3` を exit code `3` として確認した。これは bounded string-concat allocation/copy/tagging
   の verified sliceであり、full stage2/stage3 fixed-point、current-source Linux stage0 source-file smoke、package
-  acquisition/release/rollback、`substring` / `read-file` / `int-to-string` の残りの allocation contract、両 target
+  acquisition/release/rollback、`substring` / `read-file` の残りの allocation contract、両 target
   release parityの証拠には数えない。ADR:
   `docs/adr/decisions-v0.3-native-linux-string-concat-bounded-heap.md`。
+  続けて `emit-x86-selfhost-int-to-string-helper` の固定32-byte `mmap` allocationを、`r14` native heapのcursor
+  offset/limitを使うbounded allocationへ移行した。fallback `8192` はlimit確認前には保存せず、`cursor+32 <= limit`
+  の成功後だけcursorを更新し、object addressは `r14 + cursor` とする。REDでは
+  `test_native_codegen_x86_int_to_string_uses_bounded_heap_cursor` が `mov rax,9; syscall` byte sequenceを検出し、
+  GREENでは同テスト、既存のsigned decimal/header/callee-saved ABI回帰、import dispatch source contractが passした。
+  helperは169→160 bytes、int helperはtrailer末尾のため開始offset `base+2219`は維持し、size/append lengthを160へ
+  同期した。生成byte列とclangで再構成したobject bytesは160 bytesで一致した。Lima `lsharp-linux-x86` では
+  `-42` を `-42` として出力し、`limit=cursor+31` の `rax=0` / cursor不変と `+32` の成功を同じVM-side lockで確認した。
+  これは signed int-to-string bounded allocationとlimit boundaryのverified sliceであり、full stage2/stage3 fixed-point、
+  current-source Linux stage0 source-file smoke、package acquisition/release/rollback、`substring` / `read-file` の
+  残りのallocation contract、両 target release parityの証拠には数えない。ADR:
+  `docs/adr/decisions-v0.3-native-linux-int-to-string-bounded-heap.md`。
 
 ## ISSUES-derived quality and runtime work
 

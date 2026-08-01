@@ -23,9 +23,10 @@ object. A zero cursor falls back to the existing `8192` data frontier, and
 limit overflow returns zero. The helper grows from 195 to 197 bytes; all later
 x86 trailer offsets and the trailer append length are shifted by two bytes.
 
-This change is limited to `string-concat`. `substring`, `read-file`, and
-`int-to-string` still require separate allocation contracts and are not
-declared migrated by this ADR.
+This change is limited to `string-concat`. `substring` and `read-file` still
+require separate allocation contracts and are not declared migrated by this
+ADR. The separate `int-to-string` contract is recorded in
+`decisions-v0.3-native-linux-int-to-string-bounded-heap.md`.
 
 ## Evidence
 

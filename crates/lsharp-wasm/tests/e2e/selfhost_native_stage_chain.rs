@@ -9017,7 +9017,7 @@ fn test_native_codegen_routes_int_to_string_import_to_target_helpers() {
         source.contains("(defn emit-x86-selfhost-int-to-string-helper []")
             && source.contains("(defn x86-selfhost-int-to-string-helper-offset")
             && source.contains(
-                "(append-native-bytes-rooted result (emit-x86-selfhost-int-to-string-helper) 169)"
+                "(append-native-bytes-rooted result (emit-x86-selfhost-int-to-string-helper) 160)"
             )
             && x86_call_codegen.contains("(= (ref-get operand-ref) 6)")
             && x86_call_codegen.contains(

@@ -1571,10 +1571,34 @@ testsを通過した。さらにLinux x86_64 Lima VMで、`r14` heapを初期化
 
 これは string-concatのbounded allocation/copy/tagging ABIを閉じる verified sliceであり、full current-source stage2/
 stage3 transport/materialize/fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
-`substring` / `read-file` / `int-to-string` の残りのallocation helper、Mac/Linux release parityの証拠ではない。同じ
+`substring` / `read-file` の残りのallocation helper、Mac/Linux release parityの証拠ではない。同じ
 stage2 replayをこの局所修正だけで再実行せず、次は残りのallocation boundaryを一つずつRED化してから、必要なLinux
-stage2/stage3 gateを一回だけ実行する。ADR:
+	stage2/stage3 gateを一回だけ実行する。ADR:
 `docs/adr/decisions-v0.3-native-linux-string-concat-bounded-heap.md`。
+
+### V2-16e / V2-13a-5 Linux x86 int-to-string bounded heap allocation (2026-08-02)
+
+Linux x86 selfhostの `emit-x86-selfhost-int-to-string-helper` は、signed i64を最大20 bytesへ変換するたびに
+固定32-byte String objectを `mmap` していた。helper先頭だけを、materializer-owned `r14` native heapのcursor
+offset/limitへ置換した。cursorが0なら既存data frontier `8192` をレジスタへ置き、`cursor + 32 <= limit` を
+確認してから `[r14]` を更新する。成功後に `r14 + cursor` をobject addressとして従来の十進変換、String header、
+payload copy、high-bit tagへ渡し、失敗時は `rax=0` とcursor不変を保つ。`rbx` と `r14` のcallee-saved契約、import 6
+dispatch、helper開始offset `base+2219` は維持した。helper長とtrailer append lengthは169から160へ同期した。
+
+REDは `test_native_codegen_x86_int_to_string_uses_bounded_heap_cursor` で `48 c7 c0 09 00 00 00 0f 05`
+（`mov rax,9; syscall`）を検出した。GREENは同テスト、既存の signed decimal/header/callee-saved ABI回帰、
+`test_native_codegen_routes_int_to_string_import_to_target_helpers` を通過した。sourceのappend-encoded byte vectorと
+clangで再構成したLinux objectは160 bytesで一致した。
+
+Lima `lsharp-linux-x86` のVM-side lock下で最小native programを実行し、`r14` heapから `-42` を `-42` として出力した。
+同じ生成helperについて `limit=cursor+31` は `rax=0` / cursor不変、`+32` は成功する境界も確認した。Cargo target、VM側
+一時アセンブリ/実行ファイル/lockは検証後に回収し、VMは停止する。
+
+これは signed int-to-string bounded allocationとlimit boundaryのverified sliceであり、full current-source stage2/
+stage3 transport/materialize/fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
+`substring` / `read-file` の残りのallocation helper、Mac/Linux release parityの証拠ではない。次は同じRED→focused
+GREEN単位で残りのallocation境界を選び、full stage2/stage3 gateは複数の局所修正をまとめた一回だけ実行する。ADR:
+`docs/adr/decisions-v0.3-native-linux-int-to-string-bounded-heap.md`。
 
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
