@@ -1080,6 +1080,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   native/LSP version、archive/rollback manifest・checksum、provider snapshot、live provider/auth取得・意味検証、current-source
   Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは
   `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-packaged-native-help-output.md`。
+  さらに official release gate の provider input preflight に明示 `NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW` を接続し、4つの
+  target/stage0 identityへ caller clockを渡すようにした。App.Cli artifact identityには sibling `program.native` の bytesも渡し、
+  future identity `now` または artifact digest mismatch を release/package/fetch/smoke/Lima開始前に fail-closed とする
+  RED→GREENを `test-native-official-release-snapshots.sh` で確認した。これは provider snapshot input→identity freshness→source/artifact
+  binding を一つの official gate boundaryへ集約する verified partial sliceであり、live provider/auth取得・署名意味検証、current-source
+  Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
+  ADR: `docs/adr/decisions-v0.3-native-official-provider-freshness-binding.md`。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は

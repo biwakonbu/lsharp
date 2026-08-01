@@ -23,6 +23,8 @@ PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
 PROVIDER_IDENTITY_SMOKE_ROOT=""
 IDENTITY_SCHEMA_SMOKE_ROOT=""
+PROVIDER_CLOCK_SMOKE_ROOT=""
+PROVIDER_ARTIFACT_BINDING_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
 RUNNING_VM_SMOKE_ROOT=""
 CLEANUP_FAILURE_SMOKE_ROOT=""
@@ -36,6 +38,8 @@ cleanup() {
   [[ -z "$MISSING_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$MISSING_IDENTITY_SMOKE_ROOT"
   [[ -z "$PROVIDER_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$PROVIDER_IDENTITY_SMOKE_ROOT"
   [[ -z "$IDENTITY_SCHEMA_SMOKE_ROOT" ]] || rm -rf "$IDENTITY_SCHEMA_SMOKE_ROOT"
+  [[ -z "$PROVIDER_CLOCK_SMOKE_ROOT" ]] || rm -rf "$PROVIDER_CLOCK_SMOKE_ROOT"
+  [[ -z "$PROVIDER_ARTIFACT_BINDING_SMOKE_ROOT" ]] || rm -rf "$PROVIDER_ARTIFACT_BINDING_SMOKE_ROOT"
   [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
   [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
   [[ -z "$CLEANUP_FAILURE_SMOKE_ROOT" ]] || rm -rf "$CLEANUP_FAILURE_SMOKE_ROOT"
@@ -253,6 +257,77 @@ grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu eviden
 [[ -s "$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" ]] \
   || { echo 'Linux source smoke evidence was not retained' >&2; exit 1; }
 grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
+
+before_provider_clock_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+PROVIDER_CLOCK_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-provider-clock.XXXXXX)"
+set +e
+provider_clock_output="$(
+  FAKE_LOG="$LOG_PATH" \
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/provider-clock-dist" \
+  SMOKE_ROOT="$PROVIDER_CLOCK_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$PROVIDER_CLOCK_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW="2026-08-14T23:59:59Z" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+provider_clock_status=$?
+set -e
+[[ "$provider_clock_status" -ne 0 ]] \
+  || { echo 'future provider identity now was accepted by official release gate' >&2; exit 1; }
+grep -F 'identity now is after verification now' <<<"$provider_clock_output" >/dev/null \
+  || { echo 'provider identity freshness diagnostic was missing' >&2; echo "$provider_clock_output" >&2; exit 1; }
+after_provider_clock_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+[[ "$after_provider_clock_log_lines" == "$before_provider_clock_log_lines" ]] \
+  || { echo 'provider identity freshness failure reached a release or smoke boundary' >&2; exit 1; }
+
+ARTIFACT_BINDING_PROGRAM="$TMP_ROOT/artifact-aarch64-apple-darwin/program.native"
+ARTIFACT_BINDING_BACKUP="$TMP_ROOT/provider-artifact-binding-program.native"
+cp "$ARTIFACT_BINDING_PROGRAM" "$ARTIFACT_BINDING_BACKUP"
+printf '%s\n' 'tampered artifact bytes' >>"$ARTIFACT_BINDING_PROGRAM"
+before_artifact_binding_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+PROVIDER_ARTIFACT_BINDING_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-provider-artifact.XXXXXX)"
+set +e
+artifact_binding_output="$(
+  FAKE_LOG="$LOG_PATH" \
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/provider-artifact-binding-dist" \
+  SMOKE_ROOT="$PROVIDER_ARTIFACT_BINDING_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$PROVIDER_ARTIFACT_BINDING_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW="2026-08-15T00:00:00Z" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+artifact_binding_status=$?
+set -e
+cp "$ARTIFACT_BINDING_BACKUP" "$ARTIFACT_BINDING_PROGRAM"
+[[ "$artifact_binding_status" -ne 0 ]] \
+  || { echo 'provider identity artifact mismatch was accepted by official release gate' >&2; exit 1; }
+grep -F 'artifact_digest mismatch' <<<"$artifact_binding_output" >/dev/null \
+  || { echo 'provider identity artifact binding diagnostic was missing' >&2; echo "$artifact_binding_output" >&2; exit 1; }
+after_artifact_binding_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+[[ "$after_artifact_binding_log_lines" == "$before_artifact_binding_log_lines" ]] \
+  || { echo 'provider identity artifact mismatch reached a release or smoke boundary' >&2; exit 1; }
 
 RUNNING_VM_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-running-vm.XXXXXX)"
 RUNNING_VM_LOG="$TMP_ROOT/running-vm.log"

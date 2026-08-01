@@ -35,6 +35,7 @@ MACOS_ROLLBACK_ARCHIVE="${MACOS_ROLLBACK_ARCHIVE:-}"
 LINUX_ROLLBACK_ARCHIVE="${LINUX_ROLLBACK_ARCHIVE:-}"
 NATIVE_OFFICIAL_REVIEW_TRUST_STORE="${NATIVE_OFFICIAL_REVIEW_TRUST_STORE:-}"
 NATIVE_OFFICIAL_REVIEW_LIFECYCLE="${NATIVE_OFFICIAL_REVIEW_LIFECYCLE:-}"
+NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW="${NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW:-}"
 NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT:-}"
 SMOKE_ROOT="${LSHARP_NATIVE_RELEASE_SMOKE_ROOT:-/tmp/lsharp-native-official-release-smoke}"
 MAX_DIST_KIB="${LSHARP_NATIVE_RELEASE_MAX_DIST_KIB:-1048576}"
@@ -105,6 +106,8 @@ preflight_linux_hostgen_replay_lock
 
 validate_review_snapshots() {
   if [[ -z "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" && -z "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" ]]; then
+    [[ -z "${NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW}" ]] \
+      || { echo "ERROR: NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW requires provider snapshots" >&2; exit 1; }
     return 0
   fi
   if [[ -z "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" || -z "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" ]]; then
@@ -160,12 +163,24 @@ if actual_source_commit != expected_source_commit:
         f"expected={expected_source_commit} actual={actual_source_commit!r}: {identity_path}"
     )
 PY
+    verifier_args=(
+      --identity "${identity_path}"
+      --source-commit "${CURRENT_SOURCE_COMMIT}"
+      --trust-store "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}"
+      --review-lifecycle "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}"
+      --require-provider-input
+    )
+    artifact_path="$(dirname "${identity_path}")/program.native"
+    if [[ -e "${artifact_path}" ]]; then
+      verifier_args+=(--artifact "${artifact_path}")
+    fi
+    if [[ -n "${NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW}" ]]; then
+      verifier_args+=(
+        --verification-now "${NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW}"
+      )
+    fi
     python3 "${ROOT_DIR}/scripts/ci/verify-native-release-identity.py" \
-      --identity "${identity_path}" \
-      --source-commit "${CURRENT_SOURCE_COMMIT}" \
-      --trust-store "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" \
-      --review-lifecycle "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" \
-      --require-provider-input \
+      "${verifier_args[@]}" \
       >/dev/null
   done
 }
