@@ -367,6 +367,14 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   両 target packaged provenance/rollback bytes parityは未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。
   ADR: `docs/adr/decisions-v0.3-native-stage0-release-embedded-identity-provider-preflight.md`。
 
+  同日の最終監査で current `origin/main` / `HEAD` `c20ef6b0a24a6c02de1d504d20e072aebbed6a80` に一致する
+  Linux stage0 manifestと expected replay lockは見つからなかった。別セッション所有の Lima hostagentを変更せず、
+  Linux runtime replay / stage regenerationは未実行である。再現 commandは
+  `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -type f -name manifest.json -path '*lsharp*'`
+  と `find /tmp -maxdepth 3 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。current-source
+  Linux runtime、provider/auth acquisition、両 target packaged provenance/rollback bytes parityは残件のため、
+  M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま維持する。
+
   続けて同日、release smoke の `checksums.txt` target path を archive root 内の POSIX relative path に限定した。
   checksum-valid な `../../../outside-checksum-target.txt` fixture を拒否する RED→GREEN を provider snapshot
   harness で確認し、package 外部 file を checksum evidence として受理しない verified partial slice を追加した。
