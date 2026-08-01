@@ -29,6 +29,9 @@ pending while its Linux replay or packaged artifact is unavailable.
   closed.
 - The JSON Schema fixes the aggregate suite/task and two-entry shape; dynamic
   source-commit/target path binding remains executable semantics.
+- The recomputed stdout shape is fixed separately by
+  `docs/schemas/v4-m1-06-evidence-aggregate-result.schema.json`, including the
+  selected fixture IDs and per-target pending/mismatch summaries.
 
 ## Consequences
 
@@ -42,6 +45,9 @@ rollback evidence remain pending, so V4-M1-06 stays `[~]`.
 - `python3 scripts/ci/test-semantic-fixture-evidence-aggregate.py` — both-pass,
   pending, missing-target, status, cross-target, and stale-source contracts.
 - `python3 scripts/ci/test-semantic-fixture-evidence-aggregate-schema.py` —
-  aggregate schema field and safe-path shape contracts.
+  input aggregate and recomputed-result schema field and safe-path shape
+  contracts.
+- `docs/adr/decisions-v0.4-m1-06-aggregate-result-schema.md` — result schema
+  decision record.
 - `docs/development/operations/v4-m1-semantic-fixture-evidence.md` —
   per-target producer flow followed by aggregate audit.

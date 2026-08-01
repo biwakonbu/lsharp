@@ -21,6 +21,7 @@ SOURCE_COMMIT = subprocess.check_output(
 ).strip()
 MANIFEST = SCRIPTS_DIR / "semantic-fixture-matrix.json"
 AGGREGATE = SCRIPTS_DIR / "semantic_fixture_evidence_aggregate.py"
+RESULT_SCHEMA = ROOT / "docs/schemas/v4-m1-06-evidence-aggregate-result.schema.json"
 TARGETS = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 SELECTED_IDS = ["invalid/type-undefined-value", "valid/syntax-basic"]
 GATES = {
@@ -212,9 +213,14 @@ class SemanticFixtureEvidenceAggregateTest(unittest.TestCase):
             result = self.run_aggregate(index_path)
             self.assertEqual(result.returncode, 0, result.stderr)
             output = json.loads(result.stdout)
+            schema = json.loads(RESULT_SCHEMA.read_text(encoding="utf-8"))
             self.assertEqual(output["status"], "pass")
             self.assertEqual(output["fixture_ids"], SELECTED_IDS)
             self.assertEqual([item["target"] for item in output["targets"]], TARGETS)
+            self.assertEqual(set(output), set(schema["properties"]))
+            target_properties = schema["properties"]["targets"]["items"]["properties"]
+            for target_result in output["targets"]:
+                self.assertEqual(set(target_result), set(target_properties))
 
     def test_pending_target_keeps_aggregate_pending(self):
         with scenario((True, False), status="pending") as (index_path, _):

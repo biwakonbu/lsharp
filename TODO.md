@@ -76,7 +76,10 @@ matrix は未接続のため v0.4 の完了項目には移さない。ADR:
 さらに Mac Apple Silicon と Linux x86_64 の target index を再監査して束ねる two-target aggregate
 audit/schema を追加した。片側 pending/mismatch や Mac-only pass を aggregate pass に昇格させない
 verified partial として記録し、両 target の selected fixture IDs も一致させる。実 target artifact/runtime、rollback、provider parity は未接続のため
-v0.4 の完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-06-two-target-aggregate.md`。
+v0.4 の完了項目には移さない。さらに再計算された aggregate result の top-level/target 別 fixture IDs、
+fixture count、pending boundary、mismatch projection を JSON Schema に固定した。current source、target order、
+cross-target scope は executable audit のまま残る。ADR: `docs/adr/decisions-v0.4-m1-06-two-target-aggregate.md`、
+`docs/adr/decisions-v0.4-m1-06-aggregate-result-schema.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、

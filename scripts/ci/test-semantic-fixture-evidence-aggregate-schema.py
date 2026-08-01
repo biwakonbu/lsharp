@@ -11,6 +11,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCHEMA = ROOT / "docs/schemas/v4-m1-06-evidence-aggregate.schema.json"
+RESULT_SCHEMA = ROOT / "docs/schemas/v4-m1-06-evidence-aggregate-result.schema.json"
 
 
 class SemanticFixtureEvidenceAggregateSchemaTest(unittest.TestCase):
@@ -37,6 +38,39 @@ class SemanticFixtureEvidenceAggregateSchemaTest(unittest.TestCase):
             item["properties"]["index"]["pattern"],
             r"^ci-artifacts/v4-m1-01/(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\).+",
         )
+
+    def test_declares_recomputed_result_shape(self):
+        schema = json.loads(RESULT_SCHEMA.read_text(encoding="utf-8"))
+        self.assertEqual(
+            schema["required"],
+            [
+                "schema_version",
+                "suite",
+                "task",
+                "source_commit",
+                "status",
+                "fixture_ids",
+                "targets",
+            ],
+        )
+        self.assertEqual(schema["properties"]["suite"], {"const": "v4-m1-06-aggregate"})
+        self.assertEqual(schema["properties"]["task"], {"const": "V4-M1-01"})
+        self.assertTrue(schema["properties"]["fixture_ids"]["uniqueItems"])
+        target = schema["properties"]["targets"]["items"]
+        self.assertEqual(
+            target["required"],
+            [
+                "target",
+                "index",
+                "fixture_ids",
+                "status",
+                "fixture_count",
+                "pending_boundaries",
+                "mismatches",
+            ],
+        )
+        self.assertTrue(target["properties"]["fixture_ids"]["uniqueItems"])
+        self.assertEqual(target["properties"]["fixture_count"]["minimum"], 1)
 
 
 if __name__ == "__main__":

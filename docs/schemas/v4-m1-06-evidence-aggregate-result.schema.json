@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/biwakonbu/lsharp/blob/main/docs/schemas/v4-m1-06-evidence-aggregate-result.schema.json",
+  "title": "L# v0.4 M1-06 recomputed two-target evidence aggregate result",
+  "description": "Machine-readable result emitted after both target evidence indexes are re-audited.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "task",
+    "source_commit",
+    "status",
+    "fixture_ids",
+    "targets"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "suite": {"const": "v4-m1-06-aggregate"},
+    "task": {"const": "V4-M1-01"},
+    "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "status": {"enum": ["pass", "pending", "mismatch"]},
+    "fixture_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "index",
+          "fixture_ids",
+          "status",
+          "fixture_count",
+          "pending_boundaries",
+          "mismatches"
+        ],
+        "properties": {
+          "target": {
+            "enum": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+          },
+          "index": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/(?:aarch64-apple-darwin|x86_64-unknown-linux-gnu)/index\\.json$"
+          },
+          "fixture_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "status": {"enum": ["pass", "pending", "mismatch"]},
+          "fixture_count": {"type": "integer", "minimum": 1},
+          "pending_boundaries": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "mismatches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fixture", "field", "oracle", "native"],
+              "properties": {
+                "fixture": {"type": "string", "minLength": 1},
+                "field": {"type": "string", "minLength": 1},
+                "oracle": {},
+                "native": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
