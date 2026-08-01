@@ -1151,7 +1151,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `TypeInferBlock.ls` の大きな do/computation 子要素走査は 64 要素 bounded/rooted scanへ移行し、
   Linux x86_64 stage2/stage3 fixed-pointを確認した。full-program compiler closure、
   diagnostic-only legacy `lower`、no-arg pipeline runtime/native E2E、component sidecar の
-  artifact boundary を閉じる。
+  artifact boundary を閉じる。2026-08-02 に
+  `test_e2e_selfhost_cli_main_compile_and_build_output_actual_preview1_wasm` で actual `Cli`
+  bundleの `compile` / `build` が実 Preview1 Wasmを出力し、Wasm validationとstandalone runtimeを
+  通過することを確認した。`wasi-component` は外部 packaging未接続として exit `1`、artifactなしを
+  維持した。これは Rust-host actual artifact/runtime の verified sliceであり、native stage0の
+  full-program entrypoint、component sidecar、両 supported targetのartifact/runtimeは残る。
 - [~] `V2-16b` / `LEGACY-IO-01` native artifact I/O — bounded argv/file/raw-byte Preview1 と
   4096 bytes 超 read の slice は verified。`valid/io-read-file` は manifest の明示的な
   UTF-8 runtime input snapshot と task-owned preopen まで Rust oracle/native producer contract
@@ -1159,7 +1164,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `valid/io-read-file-missing` は明示的な空 directory と missing-path fd error の fail-closed 境界、
   `valid/io-read-stdin` は明示的な UTF-8 stdin snapshot と producer 境界を固定する。
   全 fd error semantics、dynamic root/data/heap layout、component sidecar、target 別
-  release artifact を閉じる。
+  release artifact を閉じる。2026-08-02 に actual `Cli` の `compile` / `build` output gateで
+  generated Preview1 Wasmの magic、validator、standalone runtimeを確認し、component targetの
+  external packaging拒否も確認した。これは Rust-host source bundleの artifact I/O verified sliceであり、
+  native stage0の output path、fd error semantics、component sidecar、両 supported targetの
+  release artifactは残る。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host

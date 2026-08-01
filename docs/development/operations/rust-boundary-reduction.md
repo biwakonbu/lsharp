@@ -1448,6 +1448,20 @@ Evidence: RED の `test_e2e_selfhost_property_runner_preserves_non_bool_precondi
 
 これは評価中に最初に non-Boolと判定した precondition predicateの source spanと、その JSON report forwardingに限定した verified sliceであり、text report、静的型診断と動的評価の全ケース parity、全 property failure の report forwarding、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-02 aggregateは残件である。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
 
+### V2-16b / LEGACY-COMP-01 actual selfhost CLI artifact boundary (2026-08-02)
+
+`test_e2e_selfhost_cli_main_compile_and_build_output_actual_preview1_wasm` は actual `Cli` bundleを
+一度 compileし、`compile` と `build` の `-o output.wasm` をそれぞれ生成した。各 outputについて
+Wasm magic、`wasmparser` validation、standalone WASI runtime、exit `0`、空 stdoutを確認した。
+同じ gateで `wasi-component` targetは external packaging未接続として exit `1`、component artifactなしを
+確認した。`1 passed`、`340.52s`。
+
+これは Rust-host actual source bundleの artifact/runtime boundaryに限定した verified sliceであり、
+native stage0の output-path、full-program entrypoint、component sidecar、fd error semantics、
+両 supported targetの release artifact/provenance は未検証である。`V2-16b` / `LEGACY-IO-01` /
+`LEGACY-COMP-01` と Rust oracle/bootstrap boundaryは維持する。ADR:
+`docs/adr/decisions-v0.3-native-cli-artifact-output-e2e.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
