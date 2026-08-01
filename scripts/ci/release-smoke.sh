@@ -292,6 +292,19 @@ if [[ -e "$ARCHIVE_ROOT/CHANGELOG.md" ]]; then
 fi
 
 echo "=== release-smoke: verify checksums ==="
+python3 - "$ARCHIVE_ROOT/checksums.txt" <<'PY'
+import pathlib
+import sys
+
+checksums_path = pathlib.Path(sys.argv[1])
+for line in checksums_path.read_text().splitlines():
+    fields = line.split()
+    if len(fields) < 2:
+        continue
+    relpath = pathlib.PurePosixPath(fields[1])
+    if relpath.is_absolute() or ".." in relpath.parts:
+        raise SystemExit(f"unsafe checksum target: {fields[1]}")
+PY
 while read -r expected relpath _; do
   [[ -n "${expected:-}" ]] || continue
   target="$ARCHIVE_ROOT/$relpath"
