@@ -161,8 +161,8 @@ python3 scripts/ci/semantic_fixture_diff.py \
 
 `INDEX` は [`v4-m1-06-evidence-index.schema.json`](../../schemas/v4-m1-06-evidence-index.schema.json)
 に従う project-relative path で作る。report と comparison の source commit / target / fixture IDs は
-index と一致させる。各 fixture の `command` は matrix に宣言されたものから一つ選び、4つの negative gate
-を全て `pass` と明示する。
+index と一致させる。oracle/native report と comparison の参照は必ず task-owned `ci-artifacts/` 配下に置く。
+各 fixture の `command` は matrix に宣言されたものから一つ選び、4つの negative gate を全て `pass` と明示する。
 
 ```bash
 INDEX="$EVIDENCE_ROOT/index.json"

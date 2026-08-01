@@ -14,6 +14,7 @@ import unittest
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 ROOT = SCRIPTS_DIR.parent.parent
+ARTIFACT_ROOT = ROOT / "ci-artifacts"
 MANIFEST = SCRIPTS_DIR / "semantic-fixture-matrix.json"
 AUDIT = SCRIPTS_DIR / "semantic_fixture_evidence_audit.py"
 TARGET = "aarch64-apple-darwin"
@@ -106,6 +107,16 @@ def index_for(root: pathlib.Path, status: str = "pass") -> dict:
 
 
 class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._created_artifact_root = not ARTIFACT_ROOT.exists()
+        ARTIFACT_ROOT.mkdir(exist_ok=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._created_artifact_root:
+            ARTIFACT_ROOT.rmdir()
+
     def run_audit(self, root: pathlib.Path, index: dict) -> subprocess.CompletedProcess[str]:
         index_path = root / "index.json"
         index_path.write_text(json.dumps(index), encoding="utf-8")
@@ -132,7 +143,7 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
         (root / "comparison.json").write_text(json.dumps(comparison_for(comparison_status)), encoding="utf-8")
 
     def test_emits_complete_evidence_index_for_passing_bundle(self):
-        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+        with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT, prefix=".semantic-evidence-") as directory:
             root = pathlib.Path(directory)
             self.write_bundle(root)
             result = self.run_audit(root, index_for(root))
@@ -149,7 +160,7 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             )
 
     def test_pending_bundle_returns_pending_without_claiming_verified(self):
-        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+        with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT, prefix=".semantic-evidence-") as directory:
             root = pathlib.Path(directory)
             self.write_bundle(root, observed=False, comparison_status="pending")
             result = self.run_audit(root, index_for(root, status="pending"))
@@ -159,7 +170,7 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             self.assertIn("valid/syntax-basic.artifact", evidence["pending_boundaries"])
 
     def test_rejects_verified_claim_for_pending_comparison(self):
-        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+        with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT, prefix=".semantic-evidence-") as directory:
             root = pathlib.Path(directory)
             self.write_bundle(root, observed=False, comparison_status="pending")
             result = self.run_audit(root, index_for(root, status="pass"))
@@ -167,7 +178,7 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             self.assertIn("status", result.stderr.lower())
 
     def test_rejects_shared_stale_source_commit(self):
-        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+        with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT, prefix=".semantic-evidence-") as directory:
             root = pathlib.Path(directory)
             stale = "b" * 40
             oracle = report_for("rust-oracle")
@@ -188,7 +199,7 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             self.assertIn("current", result.stderr.lower())
 
     def test_rejects_swapped_report_producer_roles(self):
-        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+        with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT, prefix=".semantic-evidence-") as directory:
             root = pathlib.Path(directory)
             (root / "oracle.json").write_text(
                 json.dumps(report_for("native-stage0")), encoding="utf-8"
@@ -206,7 +217,7 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             self.assertIn("producer", result.stderr.lower())
 
     def test_rejects_scope_mismatch_missing_gate_and_unsafe_path(self):
-        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+        with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT, prefix=".semantic-evidence-") as directory:
             root = pathlib.Path(directory)
             self.write_bundle(root)
             cases = []
@@ -235,7 +246,7 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
                     self.assertIn(expected_error, result.stderr.lower())
 
     def test_rejects_report_path_through_symlink(self):
-        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory, tempfile.TemporaryDirectory() as outside_directory:
+        with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT, prefix=".semantic-evidence-") as directory, tempfile.TemporaryDirectory() as outside_directory:
             root = pathlib.Path(directory)
             outside = pathlib.Path(outside_directory)
             self.write_bundle(root)
@@ -250,6 +261,16 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("symlink", result.stderr.lower())
+
+    def test_rejects_report_bundle_outside_ci_artifacts_namespace(self):
+        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+            root = pathlib.Path(directory)
+            self.write_bundle(root)
+
+            result = self.run_audit(root, index_for(root))
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("ci-artifacts", result.stderr.lower())
 
 
 if __name__ == "__main__":

@@ -42,9 +42,15 @@ REQUIRED_GATES = {
     "target-declared",
 }
 ALLOWED_STATUS = {"pass", "pending", "mismatch"}
+ARTIFACT_NAMESPACE = ("ci-artifacts",)
 
 
-def safe_relative_file(value: Any, label: str, root: pathlib.Path) -> Tuple[str, pathlib.Path]:
+def safe_relative_file(
+    value: Any,
+    label: str,
+    root: pathlib.Path,
+    namespace: Tuple[str, ...] = (),
+) -> Tuple[str, pathlib.Path]:
     relative_value = require_string(value, label)
     relative = pathlib.PurePosixPath(relative_value)
     if (
@@ -55,6 +61,9 @@ def safe_relative_file(value: Any, label: str, root: pathlib.Path) -> Tuple[str,
         or "\\" in relative_value
     ):
         raise ObservationError(f"{label} must be a safe project-relative path")
+    if namespace and relative.parts[: len(namespace)] != namespace:
+        prefix = "/".join(namespace)
+        raise ObservationError(f"{label} must be under {prefix}/")
     path = root.joinpath(*relative.parts)
     candidate = root
     for part in relative.parts:
@@ -128,9 +137,15 @@ def load_index(path: pathlib.Path, root: pathlib.Path, manifest: Mapping[str, An
     adr_path = pathlib.PurePosixPath(adr)
     if adr_path.parts[:2] != ("docs", "adr") or adr_path.suffix != ".md":
         raise ObservationError("evidence index.adr must reference a Markdown file under docs/adr")
-    oracle_report, oracle_path = safe_relative_file(index["oracle_report"], "evidence index.oracle_report", root)
-    native_report, native_path = safe_relative_file(index["native_report"], "evidence index.native_report", root)
-    comparison, comparison_path = safe_relative_file(index["comparison"], "evidence index.comparison", root)
+    oracle_report, oracle_path = safe_relative_file(
+        index["oracle_report"], "evidence index.oracle_report", root, ARTIFACT_NAMESPACE
+    )
+    native_report, native_path = safe_relative_file(
+        index["native_report"], "evidence index.native_report", root, ARTIFACT_NAMESPACE
+    )
+    comparison, comparison_path = safe_relative_file(
+        index["comparison"], "evidence index.comparison", root, ARTIFACT_NAMESPACE
+    )
 
     entries = index["fixtures"]
     if not isinstance(entries, list) or not entries:

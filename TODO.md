@@ -56,6 +56,11 @@ artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目
 partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には
 移さない。ADR: `docs/adr/decisions-v0.4-m1-06-task-schema-boundary.md`。
 
+さらに evidence index の oracle/native report と comparison の参照を task-owned `ci-artifacts/`
+配下に限定する artifact-namespace boundary を schema と executable audit に揃えた verified partial
+として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には
+移さない。ADR: `docs/adr/decisions-v0.4-m1-06-artifact-namespace-boundary.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。

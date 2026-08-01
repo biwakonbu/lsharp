@@ -56,6 +56,10 @@ class SemanticFixtureEvidenceSchemaTest(unittest.TestCase):
         for field in ("oracle_report", "native_report", "comparison"):
             self.assertEqual(properties[field]["type"], "string")
             self.assertIn("pattern", properties[field])
+            self.assertEqual(
+                properties[field]["pattern"],
+                r"^ci-artifacts/(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\).+$",
+            )
 
     def test_declares_fixture_command_and_required_negative_gates(self):
         schema = self.load_schema()
