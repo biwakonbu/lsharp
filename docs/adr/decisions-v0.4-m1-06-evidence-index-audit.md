@@ -58,5 +58,7 @@ reports and comparison result as authoritative and recompute the comparison.
 - `python3 scripts/ci/test-semantic-fixture-evidence-schema.py` — schema
   required-field, status/target, reference, command, and negative-gate contract
   tests.
+- `docs/development/operations/v4-m1-semantic-fixture-evidence.md` — target別の
+  producer → diff → evidence audit → cleanup 手順。実 target の結果そのものではない。
 - `python3 -m py_compile scripts/ci/semantic_fixture_evidence_audit.py
   scripts/ci/test-semantic-fixture-evidence-audit.py` — syntax gate.
