@@ -773,6 +773,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   bounded/rooted continuationへ移行し、tokenizerが生成した64要素超のvectorで setter と
   signature presence の chunk境界を確認した。`selfhost_parser_collection_scanners` の
   3 tests、parser forms 22 tests、metadata forms 29 tests、Linux x86_64 fixed-pointを確認した。
+  Parser の structural/recovery scan (`parse-skip-bracket-v3`、`parse-skip-brace-v3`、
+  `scan-defn-param-form-end-v3`、delimiter balance、`recover-to-next`) も 64 要素
+  bounded/rooted continuationへ移行し、129 token の bracket/brace skip、parameter span end、
+  未閉鎖 delimiter code、recovery cursor を `selfhost_parser_structural_scanners` で確認した。
+  parser forms 22 tests、metadata forms 29 tests、Linux x86_64 fixed-pointも通過した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。

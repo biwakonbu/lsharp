@@ -2716,3 +2716,34 @@ verified sliceである。parser recovery/metadata全体、Parser.lsの大規模
 pattern semantic parity、全 pattern/import target、ftable/linear-memory/runtime ABI、Mac Apple
 Siliconのこの変更後 current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を
 意味しない。Rust oracle / bootstrap / host integration境界と TODOの `[~]` は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser structural/recovery scans (2026-08-01)
+
+`Syntax.Parser.ls` に残っていた `parse-skip-bracket-v3`、`parse-skip-brace-v3`、
+`scan-defn-param-form-end-v3`、`parse-delimiter-balance-loop`、`recover-to-next` の直接再帰
+token/span scanを、64要素単位の bounded loopとchunk境界の rooted continuationへ移行した。
+bracket/brace depth、parameter formの終了index、最初のdelimiter diagnostic code、recovery cursorの
+既存契約を状態ベクタへ分離して保持する。`collect-example-expression-spans` は result vectorの
+ownershipが異なるため、このbatchには含めず次のREDへ残した。
+
+Evidence: `selfhost_parser_structural_scanners` の2 tests、129 tokenのcross-chunk runtime、
+`selfhost_parser_forms` の22 tests、`selfhost_parser_metadata_forms` の29 tests、
+`selfhost_type_parser_parity` の22 tests、Rust fixtureの `rustfmt --edition 2021 --check` と
+`git diff --check` が passした。`selfhost_type_parser_parity` の
+`nested_module_decl` は `origin/main` の detached baseline `58122df8` でも `left "3" right "1"`
+となる既存 failureであり、変更起因ではない。
+
+source commit `14b9ad0e` に対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、
+host-generated stage1 x86 payloadが Linux x86_64 VM内でstage2/stage3 native self-regenerationを
+完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/14b9ad0e-parser-structural/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11253431`、stdout SHA-256は双方
+`33c3d63945792d23d4026b0f052846ff20267aa283c5b98dbf7c87a7ee188085` で一致した。VMは停止し、
+stage debug、stdout、stage1中間物、local Cargo targetは回収して summaryだけを残した。
+
+これは parser structural/recovery bounded scanと Linux x86_64 stage2/stage3 fixed-pointだけを
+閉じる verified sliceである。`collect-example-expression-spans`、parser recovery/metadata全体、
+Parser.lsの大規模ファイル分割、record schema pattern semantic parity、全 pattern/import target、
+ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後 current-source gate、全公開
+surface、`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration
+境界と TODOの `[~]` は維持する。
