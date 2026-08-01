@@ -412,10 +412,13 @@ boundaryを固定した。native MCP 79 tests、Python compile、docs audit、di
 
 - [~] `EC-M2-01` intent AST と stable ID — Rust canonical model、source の
   `:intent` / `:claim` / `:assumption` / `:open-question`、`motivates` /
-  `constrained-by` / `tested-by`、fail-closed な typed ID は verified。ID 省略時の命名規則、
-  project-level duplicate 検査、selfhost/native parity を閉じる。selfhost parser の ADT/record
-  定義 metadata 保持と `IntentSource` の node/typed-edge projection は Rust-host actual Wasm
-  の verified slice として ADR に記録したが、native stage0 parity は残る。
+  `constrained-by` / `tested-by`、fail-closed な typed ID は verified。ID 省略時は自動命名せず
+  fail-closed とする。nested `module` / `private` / `impl` をまたぐ project-level duplicate 検査は
+  shared fixture、Rust source suite、selfhost E2E、Mac Apple Silicon / Linux x86_64 native source-file
+  smokeで verified partial slice として ADR に記録した。project graph 全体の aggregate、manifest/MCP/
+  公開 surface、全 selfhost/native parity は残る。selfhost parser の ADT/record 定義 metadata 保持と
+  `IntentSource` の node/typed-edge projection は Rust-host actual Wasm の verified slice として
+  ADR に記録したが、EC-M2-01 全体の完了条件は満たしていない。
 - [~] `EC-M2-02` evidence graph — required provenance を持つ evidence record、
   `supports` / `contradicts` の registry closure、source の `shrinks` / `coverage`、
   canonical manifest と MCP input/output schema の coverage bucket 名 non-blank 境界、
@@ -1502,3 +1505,14 @@ undefinedで停止する既存 blockerを解消した。RED→GREEN の selfhost
 の `validate_cli` 32件、`validate_review_registry` 2件、`manifest_input_cli` 8件が passした verified
 sliceである。native stage0 current-source/runtime、MCP、Mac/Linux matrix、EC-M2-03 aggregate は残件。
 Evidence: `docs/adr/decisions-v0.2-selfhost-stale-parser-import.md`。
+
+2026-08-01 に EC-M2-01 の project-level duplicate 検査を shared fixtureへ統合した。nested `module` /
+`private` / `impl` の同一 typed IDを Rust source adapter と selfhost/native source adapter の両方で
+stable duplicate-node code `2`、最初の declaration span、現在の declaration span、IDを保持して拒否する。
+Rust `validation_source` 62件、selfhost source-adapter E2E 41件、Mac Apple Silicon current-source
+stage0 producer（App.Cli E2E 829.28秒）と source-file smoke、Linux x86_64 actual stage1→stage2→stage3
+fixed-point（stage2/stage3 SHA-256一致、code length 11,332,908）と packaged stage0 source-file smokeを
+通過した verified partial sliceである。native packageの実行証跡は source commit `197ce48d` に束縛し、
+その後の doc/schema-only fast-forward `ed72cb59` の後も selfhost source treeは変更されていない。
+project graph aggregate、ID省略の全仕様、manifest/MCP/公開 surface、EC-M2-01全体の completion evidence
+は残る。Evidence: `docs/adr/decisions-v0.2-native-validation-project-duplicate.md`。
