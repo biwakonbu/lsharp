@@ -1550,28 +1550,78 @@
             (vector-new 0)))))
     (vector-new 0)))
 
-(defn parse-defn-meta-case-loop-rooted-v3 [spans pos-ref src expectations]
+(defn parse-defn-meta-case-step-v3 [spans pos-ref src expectations]
   (if (== (p-current spans pos-ref) 3)
     (do
       (p-advance pos-ref)
-      expectations)
+      (make-parse-loop-state 1 expectations))
     (if (== (p-current spans pos-ref) 99)
-      expectations
+      (make-parse-loop-state 1 expectations)
       (do
         (root_push expectations)
         (let [pair (parse-defn-meta-case-expectation-v3 spans pos-ref src)]
           (do
             (root_push pair)
-            (let [next-expectations (vector-push-single-rooted-v3 expectations pair)]
+            (let [pair-present (> (vector-length pair) 0)
+              next-expectations (if pair-present
+                (vector-push-single-rooted-v3 expectations pair)
+                expectations)]
               (do
                 (root_push next-expectations)
-                (let [parsed (parse-defn-meta-case-loop-rooted-v3
-                  spans pos-ref src next-expectations)]
+                (let [state (make-parse-loop-state
+                    (if pair-present 0 1)
+                    next-expectations)]
                   (do
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    parsed))))))))))
+                    state))))))))))
+
+(defn parse-defn-meta-case-step-64-loop-bounded
+  [spans pos-ref src expectations remaining]
+  (do
+    (root_push expectations)
+    (let [step (parse-defn-meta-case-step-v3 spans pos-ref src expectations)]
+      (do
+        (root_push step)
+        (let [next-expectations (vector-get step 1)]
+          (do
+            (root_push next-expectations)
+            (let [parsed
+                    (if (= (vector-get step 0) 1)
+                      step
+                      (if (<= remaining 1)
+                        step
+                        (parse-defn-meta-case-step-64-loop-bounded
+                          spans
+                          pos-ref
+                          src
+                          next-expectations
+                          (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-defn-meta-case-loop-rooted-v3 [spans pos-ref src expectations]
+  (let [step
+          (parse-defn-meta-case-step-64-loop-bounded
+            spans pos-ref src expectations 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-expectations (vector-get step 1)]
+          (do
+            (root_push next-expectations)
+            (let [parsed
+                    (parse-defn-meta-case-loop-rooted-v3
+                      spans pos-ref src next-expectations)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-defn-meta-case-loop-v3 [spans pos-ref src expectations]
   (do
@@ -1612,13 +1662,13 @@
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
 
 ;; :assert [predicate ...] — canonical Bool predicate vector を保持する。
-(defn parse-defn-meta-assert-loop-v3 [spans pos-ref src predicates]
+(defn parse-defn-meta-assert-step-v3 [spans pos-ref src predicates]
   (if (== (p-current spans pos-ref) 3)
     (do
       (p-advance pos-ref)
-      predicates)
+      (make-parse-loop-state 1 predicates))
     (if (== (p-current spans pos-ref) 99)
-      predicates
+      (make-parse-loop-state 1 predicates)
       (do
         (root_push predicates)
         (let [predicate (parse-expr-v3 spans pos-ref src)]
@@ -1627,13 +1677,70 @@
             (let [next-predicates (vector-push-single-rooted-v3 predicates predicate)]
               (do
                 (root_push next-predicates)
-                (let [parsed (parse-defn-meta-assert-loop-v3
-                  spans pos-ref src next-predicates)]
+                (let [state (make-parse-loop-state 0 next-predicates)]
                   (do
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    parsed))))))))))
+                    state))))))))))
+
+(defn parse-defn-meta-assert-step-64-loop-bounded
+  [spans pos-ref src predicates remaining]
+  (do
+    (root_push predicates)
+    (let [step (parse-defn-meta-assert-step-v3 spans pos-ref src predicates)]
+      (do
+        (root_push step)
+        (let [next-predicates (vector-get step 1)]
+          (do
+            (root_push next-predicates)
+            (let [parsed
+                    (if (= (vector-get step 0) 1)
+                      step
+                      (if (<= remaining 1)
+                        step
+                        (parse-defn-meta-assert-step-64-loop-bounded
+                          spans
+                          pos-ref
+                          src
+                          next-predicates
+                          (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-defn-meta-assert-loop-rooted-v3 [spans pos-ref src predicates]
+  (let [step
+          (parse-defn-meta-assert-step-64-loop-bounded
+            spans pos-ref src predicates 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-predicates (vector-get step 1)]
+          (do
+            (root_push next-predicates)
+            (let [parsed
+                    (parse-defn-meta-assert-loop-rooted-v3
+                      spans pos-ref src next-predicates)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-defn-meta-assert-loop-v3 [spans pos-ref src predicates]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (let [parsed (parse-defn-meta-assert-loop-rooted-v3 spans pos-ref src predicates)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn parse-defn-meta-assert-v3 [spans pos-ref src meta]
   (if (== (p-current spans pos-ref) 2)
