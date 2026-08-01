@@ -75,6 +75,24 @@ class SemanticFixtureEvidenceSchemaTest(unittest.TestCase):
         for gate in gates["required"]:
             self.assertEqual(gates["properties"][gate], {"const": "pass"})
 
+    def test_binds_report_paths_to_the_declared_target_namespace(self):
+        schema = self.load_schema()
+        branches = schema["allOf"]
+        self.assertEqual(len(branches), 2)
+        expected_targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+        for branch, target in zip(branches, expected_targets):
+            self.assertEqual(
+                branch["if"],
+                {"properties": {"target": {"const": target}}, "required": ["target"]},
+            )
+            expected_pattern = (
+                rf"^ci-artifacts/v4-m1-01/[0-9a-f]{{40}}/{target}/.+$"
+            )
+            for field in ("oracle_report", "native_report", "comparison"):
+                self.assertEqual(
+                    branch["then"]["properties"][field]["pattern"], expected_pattern
+                )
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

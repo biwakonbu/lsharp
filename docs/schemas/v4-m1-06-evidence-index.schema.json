@@ -76,5 +76,45 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"target": {"const": "aarch64-apple-darwin"}},
+        "required": ["target"]
+      },
+      "then": {
+        "properties": {
+          "oracle_report": {
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/aarch64-apple-darwin/.+$"
+          },
+          "native_report": {
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/aarch64-apple-darwin/.+$"
+          },
+          "comparison": {
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/aarch64-apple-darwin/.+$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"target": {"const": "x86_64-unknown-linux-gnu"}},
+        "required": ["target"]
+      },
+      "then": {
+        "properties": {
+          "oracle_report": {
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/x86_64-unknown-linux-gnu/.+$"
+          },
+          "native_report": {
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/x86_64-unknown-linux-gnu/.+$"
+          },
+          "comparison": {
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/x86_64-unknown-linux-gnu/.+$"
+          }
+        }
+      }
+    }
+  ]
 }
