@@ -31,9 +31,13 @@ oracle lane.
   `Tools.Validation.ManifestInput` module marker.
 - `test_e2e_selfhost_cli_main_no_args_shows_help` executes the same actual bundle without argv and
   returns the `Usage: lsharp <command>` and `Commands:` help markers with exit success.
+- `test_e2e_selfhost_cli_main_batched_version_and_parse_argv` compiles the bundle once, then
+  verifies `--version` and `-v` return `lsharp 0.1.0`, and `parse input.ls` returns the expected
+  `decls:1` / `diagnostics:0` summary.
 
 ## Boundary
 
-This is a Rust-host actual Wasm source-bundle slice. It does not prove native stage0 `check` or
-no-arg parity, the remaining public commands, external helper parity, release provenance, or both
-supported target artifacts. `V2-16c` and `LEGACY-TOOL-01` remain `[~]` in `TODO.md`.
+This is a Rust-host actual Wasm source-bundle slice. It does not prove native stage0 `check`,
+no-arg/version/parse parity, the remaining public commands, external helper parity, release
+provenance, or both supported target artifacts. `V2-16c` and `LEGACY-TOOL-01` remain `[~]` in
+`TODO.md`.

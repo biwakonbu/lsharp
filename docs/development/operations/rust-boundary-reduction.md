@@ -1469,6 +1469,13 @@ Evidence: `test_e2e_selfhost_cli_main_with_args_check_file` は actual `Cli` Was
 serialization の Rust-host evidenceを追加したが、native stage0の no-arg parity、他の公開 command、
 external helper、両 supported targetの release/provenance evidenceは引き続き未検証である。
 
+同日、`test_e2e_selfhost_cli_main_batched_version_and_parse_argv` を追加し、同じ actual `Cli` bundleを
+一度だけ compileして `--version`、`-v`、`parse input.ls` の3 argvケースを実行した。versionは
+`lsharp 0.1.0`、parseは `decls:1` / `diagnostics:0`、全体は `1 passed`、`459.57s` だった。
+この batch gate は長時間の bundle compile をケースごとに重複させない運用契約を示すが、native
+stage0の version/parse parity、他の公開 command、external helper、両 supported targetの
+release/provenance evidenceは未検証である。
+
 ### EC-M1-02 EmbeddedCli property diagnostic report forwarding slice (2026-07-20)
 
 EmbeddedCli の実 argv `test input.ls --format json` について、non-Bool property precondition の failure boundary を Cli と同じ structured report へ転送することを追加検証した。stdout は JSON report 1 行、終了値は diagnostic failure の `2` とし、`implementation_conformance.status=fail`、`firstErrorCode=2`、`firstErrorSpan` は同一 fixtureを Rust canonical checkerへ渡して得た spanと比較した。

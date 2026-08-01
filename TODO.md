@@ -1178,6 +1178,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `447.61s` で確認した。これは no-arg dispatch と help serialization の Rust-host verified sliceであり、
   native stage0の no-arg parity、他の公開 command、両 supported targetのrelease evidence、
   `LEGACY-TOOL-01` aggregateは残る。
+  さらに `test_e2e_selfhost_cli_main_batched_version_and_parse_argv` で、同じ actual bundleから
+  `--version` / `-v` の `lsharp 0.1.0` と `parse input.ls` の `decls:1` / `diagnostics:0` を
+  1回の compile と複数 argv 実行にまとめ、`459.57s` で確認した。これは version alias と
+  parse file routingの Rust-host verified sliceであり、native stage0、他の公開 command、
+  両 supported targetのrelease evidence、`LEGACY-TOOL-01` aggregateは残る。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、

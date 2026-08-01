@@ -233,6 +233,44 @@ fn test_e2e_selfhost_cli_main_compile_and_build_output_actual_preview1_wasm() {
     });
 }
 
+/// TEST-CLI-02-AF-BATCH: actual Cli bundle は一度の compile で version/parse argv を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_batched_version_and_parse_argv() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let wasm = compile_only(selfhost_cli_runtime_bundle());
+
+        for args in [["--version"].as_slice(), &["-v"]] {
+            let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+                &wasm, None, args, "",
+            )
+            .expect("Cli main version argv 実行に失敗");
+            assert_eq!(output.exit_code, 0, "version argv は成功終了するべき");
+            assert_eq!(output.stdout.trim(), "lsharp 0.1.0");
+        }
+
+        let dir = cli_main_args_fixture_dir("parse_batched");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("parse fixture directory の作成に失敗");
+        std::fs::write(dir.join("input.ls"), "(defn main [] 42)")
+            .expect("parse fixture input.ls の書き込みに失敗");
+        let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &wasm,
+            Some(&dir),
+            &["parse", "input.ls"],
+            "",
+        )
+        .expect("Cli main parse argv 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(output.exit_code, 0, "parse argv は成功終了するべき");
+        assert_output_lines(
+            &output_lines(output.stdout),
+            &["decls:1", "first-decl:defn", "first-body:int", "diagnostics:0"],
+            "parse argv は既存の summary contract を返すべき",
+        );
+    });
+}
+
 /// TEST-CLI-02-AP: actual Cli main は argv 経由で check file command を処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_args_check_file() {
