@@ -57,6 +57,7 @@ impl Parser {
                     let end_span = self.advance().span;
                     let ret = types.pop().ok_or(ParseError::UnexpectedEof {
                         expected: "戻り値型".to_string(),
+                        span: self.peek_span(),
                     })?;
                     Ok(TypeExpr::Fun(
                         start_span.merge(end_span),
@@ -78,13 +79,14 @@ impl Parser {
                     ))
                 }
             }
+            Some(TokenKind::Eof) | None => Err(ParseError::UnexpectedEof {
+                expected: "型".to_string(),
+                span: self.peek_span(),
+            }),
             Some(kind) => Err(ParseError::Unexpected {
                 expected: "型".to_string(),
                 found: kind.to_string(),
                 span: self.peek_span(),
-            }),
-            None => Err(ParseError::UnexpectedEof {
-                expected: "型".to_string(),
             }),
         }
     }

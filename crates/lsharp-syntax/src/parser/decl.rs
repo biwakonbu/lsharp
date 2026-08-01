@@ -21,16 +21,17 @@ impl Parser {
             Some(TokenKind::Private) => self.parse_private(start_span)?,
             Some(TokenKind::ComputationBuilder) => self.parse_computation_builder(start_span)?,
             Some(TokenKind::DefMacro) => self.parse_defmacro(start_span)?,
+            Some(TokenKind::Eof) | None => {
+                return Err(ParseError::UnexpectedEof {
+                    expected: "宣言".to_string(),
+                    span: self.peek_span(),
+                });
+            }
             Some(kind) => {
                 let span = self.peek_span();
                 return Err(ParseError::UnknownForm {
                     name: kind.to_string(),
                     span,
-                });
-            }
-            None => {
-                return Err(ParseError::UnexpectedEof {
-                    expected: "宣言".to_string(),
                 });
             }
         };

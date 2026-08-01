@@ -5,6 +5,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use lsharp_syntax::span::Span;
+
 mod mutation;
 #[cfg(test)]
 mod mutation_tests;
@@ -58,6 +60,13 @@ pub enum ModuleGraphError {
     #[error("モジュール '{name}' が見つかりません ('{from}' からインポート)")]
     ModuleNotFound { name: String, from: String },
 
+    #[error("モジュール '{name}' が見つかりません ('{from}' からインポート) ({span})")]
+    ModuleNotFoundAt {
+        name: String,
+        from: String,
+        span: Span,
+    },
+
     #[error(
         "モジュール '{name}' は package '{package}' から公開されていません ('{from}' からインポート)"
     )]
@@ -76,9 +85,16 @@ impl ModuleGraphError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::CyclicDependency { .. } => "LS3101",
-            Self::ModuleNotFound { .. } => "LS3102",
+            Self::ModuleNotFound { .. } | Self::ModuleNotFoundAt { .. } => "LS3102",
             Self::ModuleNotExported { .. } => "LS3103",
             Self::DuplicateModule { .. } => "LS3104",
+        }
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::ModuleNotFoundAt { span, .. } => Some(*span),
+            _ => None,
         }
     }
 }

@@ -20,8 +20,8 @@ pub enum ParseError {
         span: Span,
     },
 
-    #[error("予期しない入力終端 (期待: {expected})")]
-    UnexpectedEof { expected: String },
+    #[error("予期しない入力終端 (期待: {expected}) ({span})")]
+    UnexpectedEof { expected: String, span: Span },
 
     #[error("不明なフォーム: {name} ({span})")]
     UnknownForm { name: String, span: Span },
@@ -42,12 +42,27 @@ impl ParseError {
     }
 
     /// 診断に対応する source span を返す。
-    /// EOF は現在の AST/API が位置を保持していないため `None` になる。
     pub fn span(&self) -> Option<Span> {
         match self {
             Self::Unexpected { span, .. } | Self::UnknownForm { span, .. } => Some(*span),
-            Self::UnexpectedEof { .. } => None,
+            Self::UnexpectedEof { span, .. } => Some(*span),
             Self::Multiple(errors) => errors.first().and_then(Self::span),
+        }
+    }
+
+    fn with_fallback_span(self, fallback: Span) -> Self {
+        match self {
+            Self::UnexpectedEof { expected, span } => Self::UnexpectedEof {
+                expected,
+                span: span.merge(fallback),
+            },
+            Self::Multiple(errors) => Self::Multiple(
+                errors
+                    .into_iter()
+                    .map(|error| error.with_fallback_span(fallback))
+                    .collect(),
+            ),
+            other => other,
         }
     }
 }
@@ -59,7 +74,19 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(mut tokens: Vec<Token>) -> Self {
+        // EOF の位置は末尾の空白・改行ではなく、最後の意味のある token の直後に固定する。
+        // これにより入力終端診断がソース行を越えず、再現可能な source span を持つ。
+        let eof_end = tokens
+            .iter()
+            .rev()
+            .find_map(|token| (!matches!(&token.kind, TokenKind::Eof)).then_some(token.span.end))
+            .unwrap_or(0);
+        if let Some(eof) = tokens.last_mut()
+            && matches!(&eof.kind, TokenKind::Eof)
+        {
+            eof.span = Span::new(eof_end, eof_end);
+        }
         Self { tokens, pos: 0 }
     }
 
@@ -84,10 +111,11 @@ impl Parser {
         let mut errors = Vec::new();
 
         while !self.is_eof() {
+            let declaration_start = self.peek_span();
             match self.parse_decl() {
                 Ok(decl) => decls.push(decl),
                 Err(e) => {
-                    errors.push(e);
+                    errors.push(e.with_fallback_span(declaration_start));
                     self.recover_to_next_decl();
                 }
             }
@@ -145,6 +173,7 @@ impl Parser {
             }),
             None => Err(ParseError::UnexpectedEof {
                 expected: expected.to_string(),
+                span: self.peek_span(),
             }),
         }
     }
@@ -187,11 +216,18 @@ impl Parser {
                 .peek_kind()
                 .map(|k| k.to_string())
                 .unwrap_or("EOF".to_string());
-            Err(ParseError::Unexpected {
-                expected: kind.to_string(),
-                found,
-                span: self.peek_span(),
-            })
+            if matches!(self.peek_kind(), Some(TokenKind::Eof) | None) {
+                Err(ParseError::UnexpectedEof {
+                    expected: kind.to_string(),
+                    span: self.peek_span(),
+                })
+            } else {
+                Err(ParseError::Unexpected {
+                    expected: kind.to_string(),
+                    found,
+                    span: self.peek_span(),
+                })
+            }
         }
     }
 
@@ -210,11 +246,18 @@ impl Parser {
                     .peek_kind()
                     .map(|k| k.to_string())
                     .unwrap_or("EOF".to_string());
-                Err(ParseError::Unexpected {
-                    expected: "シンボル".to_string(),
-                    found,
-                    span: self.peek_span(),
-                })
+                if matches!(self.peek_kind(), Some(TokenKind::Eof) | None) {
+                    Err(ParseError::UnexpectedEof {
+                        expected: "シンボル".to_string(),
+                        span: self.peek_span(),
+                    })
+                } else {
+                    Err(ParseError::Unexpected {
+                        expected: "シンボル".to_string(),
+                        found,
+                        span: self.peek_span(),
+                    })
+                }
             }
         }
     }

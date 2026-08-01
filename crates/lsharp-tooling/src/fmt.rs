@@ -19,7 +19,7 @@ pub enum FmtResult {
 /// パースで妥当性だけを確認し、source-aware formatter で文字列リテラルを保持したまま整形する。
 /// 末尾改行を付与して返す。
 pub fn format_source(source: &str) -> Result<String, String> {
-    lsharp_syntax::parse(source).map_err(|e| format!("{e}"))?;
+    lsharp_syntax::parse(source).map_err(|e| format!("[{}] {e}", e.code()))?;
     Ok(lsharp_lsp::format_source(source))
 }
 

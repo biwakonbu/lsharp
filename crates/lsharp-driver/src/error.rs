@@ -58,6 +58,7 @@ mod tests {
     fn test_from_parse_error() {
         let err = lsharp_syntax::parser::ParseError::UnexpectedEof {
             expected: "expression".to_string(),
+            span: Span::new(0, 0),
         };
         let unified: LsharpError = err.into();
         assert!(matches!(unified, LsharpError::Parse(_)));

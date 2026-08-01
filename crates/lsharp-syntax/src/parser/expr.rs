@@ -88,13 +88,14 @@ impl Parser {
                 let span = tok.span.merge(inner.span());
                 Ok(Expr::UnquoteSplice(span, Box::new(inner)))
             }
+            Some(TokenKind::Eof) | None => Err(ParseError::UnexpectedEof {
+                expected: "式".to_string(),
+                span: self.peek_span(),
+            }),
             Some(kind) => Err(ParseError::Unexpected {
                 expected: "式".to_string(),
                 found: kind.to_string(),
                 span: self.peek_span(),
-            }),
-            None => Err(ParseError::UnexpectedEof {
-                expected: "式".to_string(),
             }),
         }
     }

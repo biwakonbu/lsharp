@@ -486,6 +486,7 @@ mod tests {
     use super::*;
 
     include!("compile_tests_cache.rs");
+    include!("compile_tests_diagnostics.rs");
     include!("compile_tests_wasmgc_a.rs");
     include!("compile_tests_wasmgc_b.rs");
     include!("compile_tests_outputs.rs");

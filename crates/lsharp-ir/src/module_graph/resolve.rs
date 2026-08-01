@@ -257,9 +257,12 @@ impl ModuleGraph {
                     {
                         queue.push_back((imp.clone(), imp_path));
                     } else {
-                        return Err(ModuleGraphError::ModuleNotFound {
+                        let span = Self::find_import_span(&mod_path, Some(source_overrides), imp)
+                            .unwrap_or_else(|| lsharp_syntax::span::Span::dummy());
+                        return Err(ModuleGraphError::ModuleNotFoundAt {
                             name: imp.clone(),
                             from: mod_name.clone(),
+                            span,
                         });
                     }
                 }
@@ -323,6 +326,28 @@ impl ModuleGraph {
             }
         }
         Ok(imports)
+    }
+
+    fn find_import_span(
+        path: &std::path::Path,
+        source_overrides: Option<&HashMap<PathBuf, String>>,
+        module: &str,
+    ) -> Option<lsharp_syntax::span::Span> {
+        let source = Self::read_source(path, source_overrides).ok()?;
+        let program = lsharp_syntax::parse(&source).ok()?;
+        program.decls.iter().find_map(|decl| {
+            if let lsharp_syntax::ast::Decl::ImportDecl {
+                module: imported,
+                span,
+                ..
+            } = decl
+                && imported == module
+            {
+                Some(*span)
+            } else {
+                None
+            }
+        })
     }
 
     /// snake_case を PascalCase に変換

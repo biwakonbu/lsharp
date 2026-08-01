@@ -196,6 +196,7 @@ impl Parser {
             if self.is_eof() {
                 return Err(ParseError::UnexpectedEof {
                     expected: "]:evidence shrinks".to_string(),
+                    span: self.peek_span(),
                 });
             }
             let token = self.advance();
@@ -238,6 +239,7 @@ impl Parser {
             if self.is_eof() {
                 return Err(ParseError::UnexpectedEof {
                     expected: "]:evidence coverage".to_string(),
+                    span: self.peek_span(),
                 });
             }
             self.expect(TokenKind::LParen)?;
