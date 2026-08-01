@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/biwakonbu/lsharp/blob/main/docs/schemas/v4-m1-06-evidence-index.schema.json",
+  "title": "L# v0.4 M1-06 evidence index",
+  "description": "Machine-readable declaration for a fixture evidence audit. Referenced reports remain authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "task",
+    "target",
+    "source_commit",
+    "status",
+    "adr",
+    "oracle_report",
+    "native_report",
+    "comparison",
+    "fixtures"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "suite": {"const": "v4-m1-06"},
+    "task": {"type": "string", "pattern": "^V4-M1-[0-9]{2}$"},
+    "target": {
+      "enum": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+    },
+    "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "status": {"enum": ["pass", "pending", "mismatch"]},
+    "adr": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "oracle_report": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "native_report": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "comparison": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "command", "negative_gates"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "command": {"enum": ["check", "compile", "test", "build"]},
+          "negative_gates": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fallback-forbidden",
+              "network-forbidden",
+              "source-commit-bound",
+              "target-declared"
+            ],
+            "properties": {
+              "fallback-forbidden": {"const": "pass"},
+              "network-forbidden": {"const": "pass"},
+              "source-commit-bound": {"const": "pass"},
+              "target-declared": {"const": "pass"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

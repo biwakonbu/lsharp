@@ -18,6 +18,12 @@ reports and comparison result as authoritative and recompute the comparison.
 - Use a version-1 `v4-m1-06` evidence index with a V4 task, target,
   source commit, ADR path, Rust/native report paths, comparison path, overall
   status, and a lexicographically sorted fixture list.
+- Publish the input shape as
+  `docs/schemas/v4-m1-06-evidence-index.schema.json`. The JSON Schema fixes
+  required fields, supported targets/statuses, safe relative reference shape,
+  fixture command shape, and the four required negative-gate values; semantic
+  path existence, ordering, and report parity remain the executable audit's
+  responsibility.
 - Each fixture entry names one command declared by the fixture matrix and
   explicitly records four required negative gates:
   `fallback-forbidden`, `network-forbidden`, `source-commit-bound`, and
@@ -49,5 +55,8 @@ reports and comparison result as authoritative and recompute the comparison.
 
 - `python3 scripts/ci/test-semantic-fixture-evidence-audit.py` — passing,
   pending, verified-claim rejection, scope, gate, and safe-path contract tests.
+- `python3 scripts/ci/test-semantic-fixture-evidence-schema.py` — schema
+  required-field, status/target, reference, command, and negative-gate contract
+  tests.
 - `python3 -m py_compile scripts/ci/semantic_fixture_evidence_audit.py
   scripts/ci/test-semantic-fixture-evidence-audit.py` — syntax gate.
