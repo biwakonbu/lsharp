@@ -101,6 +101,7 @@ def validate_review_lifecycle_snapshot(path):
     if not records:
         raise IdentityError(f"review lifecycle snapshot must contain at least one record: {path}")
     seen_sequences = set()
+    last_sequences = {}
     for record in records:
         if not isinstance(record, dict):
             raise IdentityError(f"review lifecycle snapshot records must be JSON objects: {path}")
@@ -119,7 +120,14 @@ def validate_review_lifecycle_snapshot(path):
                     f"duplicate review lifecycle sequence: {path}: "
                     f"review_id={review_id!r} sequence={sequence}"
                 )
+            previous_sequence = last_sequences.get(review_id)
+            if previous_sequence is not None and sequence < previous_sequence:
+                raise IdentityError(
+                    f"review lifecycle sequence rollback: {path}: "
+                    f"review_id={review_id!r} previous={previous_sequence} current={sequence}"
+                )
             seen_sequences.add(sequence_key)
+            last_sequences[review_id] = sequence
 
     return records
 
