@@ -2148,3 +2148,10 @@ notificationだけを無応答とし、明示 `id: null` は response の `id: n
 parity、package-install semantics、live provider API/auth acquisition・意味検証、current-source Linux runtime、Mac/Linux 両
 target の packaged provenance/rollback bytes parity の完了証拠ではない。関連項目は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-null-request-id-envelope.md`](docs/adr/decisions-v0.3-native-mcp-null-request-id-envelope.md)。
+
+2026-08-02 に native selfhost MCP `tools/call` の missing-name error envelope を Rust canonical transport と揃えた。`params.name` が
+欠落または非文字列の場合も、Rust と同じ result-level `isError: true`・`content[0].text: "tool not found"` を返す RED→GREENを native
+82 tests と Rust MCP 89 tests で確認した。明示的な unknown tool name の既存契約は再実装せず、今回は missing-name boundaryだけを固定した
+verified partial sliceである。MCP 全 error/semantic parity、package-install semantics、live provider API/auth acquisition・意味検証、
+current-source Linux runtime、Mac/Linux 両 target の packaged provenance/rollback bytes parity の完了証拠ではないため、関連項目は `[~]`
+のまま残す。Evidence: [`decisions-v0.3-native-mcp-tools-call-missing-name-envelope.md`](docs/adr/decisions-v0.3-native-mcp-tools-call-missing-name-envelope.md)。

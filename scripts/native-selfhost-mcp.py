@@ -1547,10 +1547,7 @@ def handle_request(program, request):
             )
         name = params.get("name")
         if not isinstance(name, str):
-            return jsonrpc_result(
-                request_id,
-                {"content": [{"type": "text", "text": "tool name が必要です"}], "isError": True},
-            )
+            name = ""
         return jsonrpc_result(request_id, call_tool(program, name, params.get("arguments", {})))
     return jsonrpc_error(request_id, -32601, f"Method not found: {method}")
 

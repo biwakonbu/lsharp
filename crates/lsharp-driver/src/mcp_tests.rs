@@ -146,6 +146,27 @@ mod tests {
     }
 
     #[test]
+    fn test_tools_call_missing_name_uses_unknown_tool_result_envelope() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call"
+        }));
+
+        assert_eq!(
+            response,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [{"type": "text", "text": "tool not found"}],
+                    "isError": true
+                }
+            })
+        );
+    }
+
+    #[test]
     fn test_validate_tool_declares_source_input_and_report_output_schema() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",
