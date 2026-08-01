@@ -898,6 +898,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `source-evidence-seen-new-v3-loop`、required-field check、`source-review-attestation-seen-new-loop` は
   このbatchの対象外として残る。gate後に `origin/main` へ入った差分はMCP専用で、gate時の
   `7f1e21d8` と統合後の対象3ファイルは byte-for-byte 一致したため、同じLinux replayは重複実行していない。
+  evidence/review metadataの fixed-size seen vector初期化と evidence required-field 判定も、各要素を一つ処理する
+  step、64要素 bounded loop、rooted continuationへ移行した。evidence seen length `17`、空seenの required 判定
+  `0`、required fieldを全て埋めた判定 `1`、review seen length `12` を
+  `selfhost_parser_metadata_initializers` のstatic/runtime 2 testsで確認し、`selfhost_parser_` grouped filter
+  72 tests、scoped rustfmt、`git diff --check`、Linux x86_64 stage2/stage3 fixed-pointを通過した。summaryは
+  `ci-artifacts/native-linux-x86-hostgen-vm/0064a5bb-parser-metadata-initializers/actual-selfregen-summary.json` に保存し、
+  stage2/stage3 code lengthは双方 `11332908`、stdout SHA-256は双方
+  `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad` で一致した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
