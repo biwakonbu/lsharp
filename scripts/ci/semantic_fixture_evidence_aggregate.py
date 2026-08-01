@@ -111,17 +111,23 @@ def load_aggregate(
 
 def aggregate(index: Mapping[str, Any], manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[str, Any]:
     target_results = []
+    selected_ids: List[str] = None
     for entry in index["indexes"]:
         target_index = load_target_index(entry["path"], root, manifest, index["source_commit"])
         if target_index["target"] != entry["target"]:
             raise ObservationError(
                 f"target index target does not match aggregate entry: expected {entry['target']}"
             )
+        if selected_ids is None:
+            selected_ids = target_index["selected_ids"]
+        elif target_index["selected_ids"] != selected_ids:
+            raise ObservationError("target indexes must select the same fixture scope")
         result = audit_target(target_index, manifest)
         target_results.append(
             {
                 "target": entry["target"],
                 "index": entry["index"],
+                "fixture_ids": target_index["selected_ids"],
                 "status": result["status"],
                 "fixture_count": result["fixture_count"],
                 "pending_boundaries": result["pending_boundaries"],
@@ -145,6 +151,7 @@ def aggregate(index: Mapping[str, Any], manifest: Mapping[str, Any], root: pathl
         "task": index["task"],
         "source_commit": index["source_commit"],
         "status": status,
+        "fixture_ids": selected_ids,
         "targets": target_results,
     }
 

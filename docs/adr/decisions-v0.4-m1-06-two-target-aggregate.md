@@ -18,6 +18,8 @@ pending while its Linux replay or packaged artifact is unavailable.
   `ci-artifacts/v4-m1-01/<source_commit>/aggregate/index.json`.
 - The aggregate must list exactly the two supported targets, in canonical
   order, and reference each target's exact `index.json` namespace.
+- Both target indexes must select the same lexicographically ordered fixture
+  IDs; otherwise a target-specific subset cannot be mistaken for parity.
 - `semantic_fixture_evidence_aggregate.py` re-runs the existing per-target
   audit for both raw indexes. It does not trust target or aggregate `status`
   declarations.

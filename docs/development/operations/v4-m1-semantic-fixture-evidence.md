@@ -188,6 +188,7 @@ stale source/target、欠落した gate は fail closed になる。
 完了証拠にしない。両 target の index、report、comparison を source commit ごとに棚卸しし、
 `ci-artifacts/v4-m1-01/$SOURCE_COMMIT/aggregate/index.json` に両 target の index path を記録する。
 aggregate schema は2 targetを要求し、audit は各 target index を再監査する。
+各 target index の selected fixture IDs も一致していなければ aggregate は失敗する。
 
 ```bash
 AGGREGATE_ROOT="$ROOT/ci-artifacts/v4-m1-01/$SOURCE_COMMIT/aggregate"

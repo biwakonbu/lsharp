@@ -108,6 +108,23 @@ def target_index(target: str, observed: bool) -> dict:
     }
 
 
+def rewrite_target_to_single_fixture(index_path: pathlib.Path) -> None:
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["fixtures"] = index["fixtures"][:1]
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+    for field in ("oracle_report", "native_report"):
+        report_path = ROOT / index[field]
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        report["fixtures"] = report["fixtures"][:1]
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+    comparison_path = ROOT / index["comparison"]
+    comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    comparison["fixture_count"] = 1
+    comparison["pending_boundaries"] = []
+    comparison["mismatches"] = []
+    comparison_path.write_text(json.dumps(comparison), encoding="utf-8")
+
+
 @contextmanager
 def scenario(observed: tuple[bool, bool] = (True, True), status: str = "pass"):
     source_root = ARTIFACT_ROOT / "v4-m1-01" / SOURCE_COMMIT
@@ -196,6 +213,7 @@ class SemanticFixtureEvidenceAggregateTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             output = json.loads(result.stdout)
             self.assertEqual(output["status"], "pass")
+            self.assertEqual(output["fixture_ids"], SELECTED_IDS)
             self.assertEqual([item["target"] for item in output["targets"]], TARGETS)
 
     def test_pending_target_keeps_aggregate_pending(self):
@@ -229,6 +247,13 @@ class SemanticFixtureEvidenceAggregateTest(unittest.TestCase):
             result = self.run_aggregate(index_path)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("target", result.stderr.lower())
+
+    def test_rejects_different_fixture_scope_between_targets(self):
+        with scenario() as (index_path, index_paths):
+            rewrite_target_to_single_fixture(ROOT / index_paths[1])
+            result = self.run_aggregate(index_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("fixture", result.stderr.lower())
 
     def test_rejects_stale_source_commit_before_namespace_resolution(self):
         with scenario() as (index_path, _):
