@@ -55,11 +55,21 @@ def safe_relative_file(value: Any, label: str, root: pathlib.Path) -> Tuple[str,
     ):
         raise ObservationError(f"{label} must be a safe project-relative path")
     path = root.joinpath(*relative.parts)
+    candidate = root
+    for part in relative.parts:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise ObservationError(f"{label} must not traverse symlinks")
     try:
-        path.relative_to(root)
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(root)
     except ValueError as error:
         raise ObservationError(f"{label} escapes the project root") from error
-    if path.is_symlink() or not path.is_file():
+    except OSError as error:
+        raise ObservationError(f"{label} must reference a regular file: {relative.as_posix()}") from error
+    if resolved != path:
+        raise ObservationError(f"{label} must not traverse symlinks")
+    if not path.is_file():
         raise ObservationError(f"{label} must reference a regular file: {relative.as_posix()}")
     return relative.as_posix(), path
 

@@ -184,6 +184,23 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(expected_error, result.stderr.lower())
 
+    def test_rejects_report_path_through_symlink(self):
+        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory, tempfile.TemporaryDirectory() as outside_directory:
+            root = pathlib.Path(directory)
+            outside = pathlib.Path(outside_directory)
+            self.write_bundle(root)
+            (outside / "oracle.json").write_text(
+                (root / "oracle.json").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (root / "linked-reports").symlink_to(outside, target_is_directory=True)
+            index = index_for(root)
+            index["oracle_report"] = str(root.relative_to(ROOT) / "linked-reports" / "oracle.json")
+
+            result = self.run_audit(root, index)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("symlink", result.stderr.lower())
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

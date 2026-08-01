@@ -30,7 +30,7 @@ reports and comparison result as authoritative and recompute the comparison.
   `target-declared`. Every gate must have the value `pass`; missing or unknown
   gates fail closed.
 - `scripts/ci/semantic_fixture_evidence_audit.py` validates project-relative
-  regular-file references, revalidates both reports through the V4-M1-01
+  regular-file references without symlink traversal, revalidates both reports through the V4-M1-01
   report contract, recomputes `semantic_fixture_diff.py`'s comparison, and
   rejects any index status or comparison JSON that differs from the recomputed
   result. It emits a deterministic enriched evidence projection containing
