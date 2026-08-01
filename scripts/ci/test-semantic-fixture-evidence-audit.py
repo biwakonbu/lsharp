@@ -222,6 +222,9 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             check_for_artifact = index_for(root)
             check_for_artifact["fixtures"][1]["command"] = "check"
             cases.append(("command", check_for_artifact, "artifact command"))
+            adr_outside_scope = index_for(root)
+            adr_outside_scope["adr"] = "docs/README.md"
+            cases.append(("adr", adr_outside_scope, "docs/adr"))
             unsafe_path = index_for(root)
             unsafe_path["oracle_report"] = "../outside.json"
             cases.append(("path", unsafe_path, "relative"))

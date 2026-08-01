@@ -45,7 +45,10 @@ role (`rust-oracle` / `native-stage0`) の取り違えを拒否する producer-s
 `source_commit` を指定 root の current `HEAD` に束縛し、同じ stale commit を全入力へコピーしても
 pass しない current-source boundary を verified partial として追加した。実 Rust/native artifact、runtime、
 Mac/Linux matrix は未接続のため v0.4 の完了項目には移さない。ADR:
-`docs/adr/decisions-v0.4-m1-06-current-source-boundary.md`。
+`docs/adr/decisions-v0.4-m1-06-current-source-boundary.md`。さらに evidence index の `adr` を
+`docs/adr/*.md` に限定する ADR-reference boundary を verified partial として追加した。実 Rust/native
+artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には移さない。ADR:
+`docs/adr/decisions-v0.4-m1-06-adr-reference-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、

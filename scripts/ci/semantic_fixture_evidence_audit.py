@@ -125,6 +125,9 @@ def load_index(path: pathlib.Path, root: pathlib.Path, manifest: Mapping[str, An
     if status not in ALLOWED_STATUS:
         raise ObservationError("evidence index.status must be pass, pending, or mismatch")
     adr, _ = safe_relative_file(index["adr"], "evidence index.adr", root)
+    adr_path = pathlib.PurePosixPath(adr)
+    if adr_path.parts[:2] != ("docs", "adr") or adr_path.suffix != ".md":
+        raise ObservationError("evidence index.adr must reference a Markdown file under docs/adr")
     oracle_report, oracle_path = safe_relative_file(index["oracle_report"], "evidence index.oracle_report", root)
     native_report, native_path = safe_relative_file(index["native_report"], "evidence index.native_report", root)
     comparison, comparison_path = safe_relative_file(index["comparison"], "evidence index.comparison", root)
