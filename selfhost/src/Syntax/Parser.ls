@@ -1220,7 +1220,7 @@
 (defn parse-defn-metadata-v3 [spans pos-ref src]
   (parse-defn-metadata-loop-v3 spans pos-ref src (make-empty-defn-metadata-v3)))
 
-(defn parse-defn-metadata-loop-rooted-v3 [spans pos-ref src meta]
+(defn parse-defn-metadata-step-v3 [spans pos-ref src meta]
   (if (== (colon-directive-v3 spans pos-ref src) 1)
     (do
       (root_push meta)
@@ -1258,12 +1258,58 @@
                                     (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind))))
                                 (do
                                   (skip-directive-payload-v3 spans pos-ref)
-                                  (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))))))]
+                                  meta)))))))))))]
             (do
-              (root_pop)
-              (root_pop)
-              result)))))
-    meta))
+              (root_push result)
+              (let [state (make-parse-loop-state 0 result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))
+    (make-parse-loop-state 1 meta)))
+
+(defn parse-defn-metadata-step-64-loop-bounded
+  [spans pos-ref src meta remaining]
+  (do
+    (root_push meta)
+    (let [step (parse-defn-metadata-step-v3 spans pos-ref src meta)
+      done (vector-get step 0)
+      next-meta (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-meta)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-defn-metadata-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-meta
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-defn-metadata-loop-rooted-v3 [spans pos-ref src meta]
+  (let [step (parse-defn-metadata-step-64-loop-bounded spans pos-ref src meta 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-meta (vector-get step 1)]
+          (do
+            (root_push next-meta)
+            (let [parsed (parse-defn-metadata-loop-rooted-v3 spans pos-ref src next-meta)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-defn-metadata-loop-v3 [spans pos-ref src meta]
   (do
@@ -1286,10 +1332,10 @@
       updated (vector-set-at-rooted-v3 meta 0 doc-text)]
       (do
         (p-advance pos-ref)
-        (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+        updated))
     (do
       (skip-directive-payload-v3 spans pos-ref)
-      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+      meta)))
 
 ;; :example [...] — ブラケット内の式テキストを抽出
 (defn append-defn-example-text-v3 [meta example-text]
@@ -1304,7 +1350,7 @@
       (do
         (p-advance pos-ref)
         (if (== (p-current spans pos-ref) 3)
-          (do (p-advance pos-ref) (parse-defn-metadata-loop-v3 spans pos-ref src meta))
+          (do (p-advance pos-ref) meta)
           (let [content-start (p-start spans pos-ref)
             expression-spans (collect-example-expression-spans-v3
               spans
@@ -1330,10 +1376,10 @@
                     (do
                       (root_pop)
                       (root_pop)
-                      (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))))
+                      with-form)))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
-      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+      meta)))
 
 ;; :params [(x "left") ...] — [name-hash, doc-string] の vector を抽出
 (defn make-defn-param-metadata-entry [name-hash doc-text]
@@ -1450,10 +1496,10 @@
             updated (vector-set-at-rooted-v3 meta 2 params)]
             (do
               (root_pop)
-              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+              updated)))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
-      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+      meta)))
 
 ;; :returns "sum" — 戻り値説明文字列を抽出
 (defn parse-defn-meta-returns-v3 [spans pos-ref src meta]
@@ -1464,10 +1510,10 @@
       updated (vector-set-at-rooted-v3 meta 3 returns-text)]
       (do
         (p-advance pos-ref)
-        (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+        updated))
     (do
       (skip-directive-payload-v3 spans pos-ref)
-      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+      meta)))
 
 ;; :invariant expr — 事後条件 AST を保持する
 (defn parse-defn-meta-invariant-v3 [spans pos-ref src meta]
@@ -1497,7 +1543,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))))
+                  with-form)))))))))
 
 ;; :case [(expect actual expected) ...] — actual / expected と個別 span を保持する。
 (defn parse-defn-meta-case-expectation-v3 [spans pos-ref src]
@@ -1656,10 +1702,10 @@
                   (do
                     (root_pop)
                     (root_pop)
-                    (parse-defn-metadata-loop-v3 spans pos-ref src updated)))))))))
+                    updated))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
-      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+      meta)))
 
 ;; :assert [predicate ...] — canonical Bool predicate vector を保持する。
 (defn parse-defn-meta-assert-step-v3 [spans pos-ref src predicates]
@@ -1770,10 +1816,10 @@
                         (root_pop)
                         (root_pop)
                         (root_pop)
-                        (parse-defn-metadata-loop-v3 spans pos-ref src updated)))))))))))
+                        updated))))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
-      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+      meta)))
 
 ;; canonical :property payload を bracket-aware に lossless 保存する。
 ;; typed binder / sampling への projection は後続の selfhost contract slice で行う。
@@ -1791,7 +1837,7 @@
               ""
               directive-start
               (metadata-directive-end-v3 spans pos-ref))]
-              (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+              updated))
           (let [content-start (p-start spans pos-ref)]
             (do
               (parse-skip-bracket-v3 spans pos-ref 1)
@@ -1806,14 +1852,13 @@
                   (metadata-directive-end-v3 spans pos-ref))]
                 (do
                   (root_push updated)
-                  (let [result
-                    (parse-defn-metadata-loop-v3 spans pos-ref src updated)]
+                  (let [result updated]
                     (do
                       (root_pop)
                       result)))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
-      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+      meta)))
 
 ;; M2 source node/edge form: valid な2つの文字列を
 ;; [wire-id, text-or-endpoint] として保持する。typed graph 投影は後段の境界で行う。
@@ -2223,7 +2268,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))))
+                  updated)))))))))
 
 ;; v0.3 review attestation の named-field payload。
 ;; payload: [review-id, subject-digest, source-commit, provenance-digest,
@@ -2342,7 +2387,7 @@
             (do
               (root_pop)
               (root_pop)
-              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+              updated)))))))
 
 (defn parse-defn-meta-source-pair-v3 [spans pos-ref src meta form-kind]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
@@ -2370,7 +2415,7 @@
             (do
               (root_pop)
               (root_pop)
-              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+              updated)))))))
 
 (defn parse-defn-meta-source-triple-v3 [spans pos-ref src meta form-kind]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
@@ -2398,7 +2443,7 @@
             (do
               (root_pop)
               (root_pop)
-              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+              updated)))))))
 
 (defn defn-metadata-present-v3 [meta]
   (if (> (string-length (vector-get meta 0)) 0)
