@@ -64,6 +64,29 @@ def assert_format_rejects_invalid_arguments_before_native(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_format_rejects_blank_source_before_native(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        cases = ("", " \t\n")
+        payload = b"".join(
+            request(
+                index,
+                "tools/call",
+                {"name": "lsharp_format", "arguments": {"source": source}},
+            )
+            for index, source in enumerate(cases, 1)
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        test.assertEqual(len(responses), len(cases))
+        for response in responses:
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn("空でない", response["result"]["content"][0]["text"])
+        test.assertFalse((root / "native.log").exists())
+
+
 def assert_check_format_input_schemas_are_closed(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

@@ -65,3 +65,52 @@ def assert_check_rejects_invalid_arguments_before_native(test):
             test.assertTrue(response["result"]["isError"])
             test.assertIn(expected_message, response["result"]["content"][0]["text"])
         test.assertFalse((root / "native.log").exists())
+
+
+def assert_source_input_schema_requires_non_empty_strings(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(program, request(1, "tools/list"), root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        tools = {
+            tool["name"]: tool
+            for tool in test.responses(result.stdout)[0]["result"]["tools"]
+        }
+        source_tools = (
+            "lsharp_hover",
+            "lsharp_definition",
+            "lsharp_references",
+            "lsharp_completion",
+            "lsharp_check",
+            "lsharp_validate",
+            "lsharp_format",
+            "lsharp_compile_run",
+        )
+        for name in source_tools:
+            source_schema = tools[name]["inputSchema"]["properties"]["source"]
+            test.assertEqual(source_schema["type"], "string")
+            test.assertEqual(source_schema["minLength"], 1)
+
+
+def assert_check_rejects_blank_source_before_native(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        cases = ("", " \t\n")
+        payload = b"".join(
+            request(
+                index,
+                "tools/call",
+                {"name": "lsharp_check", "arguments": {"source": source}},
+            )
+            for index, source in enumerate(cases, 1)
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        test.assertEqual(len(responses), len(cases))
+        for response in responses:
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn("空でない", response["result"]["content"][0]["text"])
+        test.assertFalse((root / "native.log").exists())

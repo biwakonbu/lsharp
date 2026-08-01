@@ -276,7 +276,7 @@ VALIDATE_OUTPUT_SCHEMA = {
     },
 }
 SOURCE_PROPERTIES = {
-    "source": {"type": "string"},
+    "source": {"type": "string", "minLength": 1},
     "file": {"type": "string", "minLength": 1},
 }
 VALIDATE_ARGUMENT_NAMES = frozenset(

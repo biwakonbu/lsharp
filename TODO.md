@@ -243,6 +243,11 @@ target runtime と Rust/native full parity は残る。
 preflight を closed-world に揃え、未知引数・source/file 同時指定を native 実行前に拒否する contract を
 native MCP 65 tests で確認した。ADR:
 `docs/adr/decisions-v0.3-native-mcp-check-format-input.md`。target runtime と Rust/native full parity は残る。
+さらに共通 `source` input schema に `minLength: 1` を設定し、native LSP 4 tools、`check`、`validate`、
+`format`、`compile_run` の `tools/list` と runtime preflight の非空契約を揃えた。空文字・空白のみの
+`source` は native 実行前に拒否し、native MCP 68 tests と Python compile を通過した verified partial
+である。ADR: `docs/adr/decisions-v0.3-native-mcp-source-input-schema.md`。target runtime、provider semantics、
+Rust/native full parity は残る。
 
 ## Current priority — v0.2 Milestone 2
 
