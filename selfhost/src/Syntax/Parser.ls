@@ -2275,28 +2275,125 @@
         (root_pop)
         parsed))))
 
-(defn source-evidence-seen-new-v3-loop [idx seen]
+(defn source-evidence-seen-new-v3-step [idx seen]
   (if (>= idx 17)
-    seen
-    (source-evidence-seen-new-v3-loop
-      (+ idx 1)
-      (vector-push-single-rooted-v3 seen 0))))
+    (do
+      (root_push seen)
+      (let [state (vector-push-triple-rooted-v3 (vector-new 3) 1 idx seen)]
+        (do
+          (root_pop)
+          state)))
+    (do
+      (root_push seen)
+      (let [next-seen (vector-push-single-rooted-v3 seen 0)]
+        (do
+          (root_push next-seen)
+          (let [state
+            (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) next-seen)]
+            (do
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn source-evidence-seen-new-v3-step-64-loop-bounded
+  [idx seen remaining]
+  (do
+    (root_push seen)
+    (let [step (source-evidence-seen-new-v3-step idx seen)]
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-seen (vector-get step 2)]
+          (do
+            (root_push next-seen)
+            (let [parsed
+              (if (= (vector-get step 0) 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (source-evidence-seen-new-v3-step-64-loop-bounded
+                    next-idx next-seen (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn source-evidence-seen-new-v3-rooted-v3 [seen]
+  (let [step (source-evidence-seen-new-v3-step-64-loop-bounded 0 seen 64)]
+    (if (= (vector-get step 0) 1)
+      step
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-seen (vector-get step 2)]
+          (do
+            (root_push next-seen)
+            (let [parsed (source-evidence-seen-new-v3-rooted-v3 next-seen)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn source-evidence-seen-new-v3 []
   ;; vector-new は capacity だけを確保するため、field 数分の 0 を明示的に詰める。
-  (source-evidence-seen-new-v3-loop 0 (vector-new 17)))
+  (let [seen (vector-new 17)]
+    (do
+      (root_push seen)
+      (let [step (source-evidence-seen-new-v3-rooted-v3 seen)]
+        (do
+          (root_pop)
+          (vector-get step 2))))))
 
-(defn source-evidence-required-fields-present-loop-v3 [seen idx]
+(defn source-evidence-required-fields-present-step-v3 [seen idx]
   (if (>= idx 17)
-    1
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 1)
     (if (or (= idx 11) (= idx 12))
-      (source-evidence-required-fields-present-loop-v3 seen (+ idx 1))
+      (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) 1)
       (if (= (vector-get seen idx) 1)
-        (source-evidence-required-fields-present-loop-v3 seen (+ idx 1))
-        0))))
+        (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) 1)
+        (vector-push-triple-rooted-v3 (vector-new 3) 1 idx 0)))))
+
+(defn source-evidence-required-fields-present-step-64-loop-bounded
+  [seen idx remaining]
+  (do
+    (root_push seen)
+    (let [step (source-evidence-required-fields-present-step-v3 seen idx)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (source-evidence-required-fields-present-step-64-loop-bounded
+                seen (vector-get step 1) (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn source-evidence-required-fields-present-rooted-v3 [seen idx]
+  (let [step
+    (source-evidence-required-fields-present-step-64-loop-bounded seen idx 64)]
+    (if (= (vector-get step 0) 1)
+      step
+      (do
+        (root_push step)
+        (let [parsed
+          (source-evidence-required-fields-present-rooted-v3
+            seen (vector-get step 1))]
+          (do
+            (root_pop)
+            parsed))))))
 
 (defn source-evidence-required-fields-present-v3 [seen]
-  (source-evidence-required-fields-present-loop-v3 seen 1))
+  (do
+    (root_push seen)
+    (let [step (source-evidence-required-fields-present-rooted-v3 seen 1)]
+      (do
+        (root_pop)
+        (vector-get step 2)))))
 
 (defn make-empty-source-evidence-payload-v3 [id]
   (do
@@ -2358,15 +2455,74 @@
                     (if (string-eq name "expires-at") 10
                       (if (string-eq name "sequence") 11 0))))))))))))
 
-(defn source-review-attestation-seen-new-loop-v3 [idx seen]
+(defn source-review-attestation-seen-new-v3-step [idx seen]
   (if (>= idx 12)
-    seen
-    (source-review-attestation-seen-new-loop-v3
-      (+ idx 1)
-      (vector-push-single-rooted-v3 seen 0))))
+    (do
+      (root_push seen)
+      (let [state (vector-push-triple-rooted-v3 (vector-new 3) 1 idx seen)]
+        (do
+          (root_pop)
+          state)))
+    (do
+      (root_push seen)
+      (let [next-seen (vector-push-single-rooted-v3 seen 0)]
+        (do
+          (root_push next-seen)
+          (let [state
+            (vector-push-triple-rooted-v3 (vector-new 3) 0 (+ idx 1) next-seen)]
+            (do
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn source-review-attestation-seen-new-v3-step-64-loop-bounded
+  [idx seen remaining]
+  (do
+    (root_push seen)
+    (let [step (source-review-attestation-seen-new-v3-step idx seen)]
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-seen (vector-get step 2)]
+          (do
+            (root_push next-seen)
+            (let [parsed
+              (if (= (vector-get step 0) 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (source-review-attestation-seen-new-v3-step-64-loop-bounded
+                    next-idx next-seen (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn source-review-attestation-seen-new-v3-rooted-v3 [seen]
+  (let [step
+    (source-review-attestation-seen-new-v3-step-64-loop-bounded 0 seen 64)]
+    (if (= (vector-get step 0) 1)
+      step
+      (do
+        (root_push step)
+        (let [next-seen (vector-get step 2)]
+          (do
+            (root_push next-seen)
+            (let [parsed (source-review-attestation-seen-new-v3-rooted-v3 next-seen)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn source-review-attestation-seen-new-v3 []
-  (source-review-attestation-seen-new-loop-v3 0 (vector-new 12)))
+  (let [seen (vector-new 12)]
+    (do
+      (root_push seen)
+      (let [step (source-review-attestation-seen-new-v3-rooted-v3 seen)]
+        (do
+          (root_pop)
+          (vector-get step 2))))))
 
 (defn make-empty-source-review-attestation-payload-v3 []
   (let [first (vector-push-quad-rooted-v3 (vector-new 0) "" "" "" "")
