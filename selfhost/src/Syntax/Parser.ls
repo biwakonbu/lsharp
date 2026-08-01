@@ -3481,11 +3481,11 @@
         (root_pop)
         result))))
 
-(defn collect-example-expression-spans-v3-loop [spans idx end result]
+(defn collect-example-expression-spans-v3-step [spans idx end result]
   (if (>= idx end)
-    result
+    (vector-push-triple-rooted-v3 (vector-new 3) 1 idx result)
     (if (== (span-kind spans idx) 3)
-      result
+      (vector-push-triple-rooted-v3 (vector-new 3) 1 idx result)
       (let [kind (span-kind spans idx)
         next-idx (if (== kind 0)
           (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)
@@ -3498,18 +3498,70 @@
           (let [next-result (vector-push-pair-rooted-v3 result expression-start expression-end)]
             (do
               (root_push next-result)
-              (let [parsed (collect-example-expression-spans-v3-loop
-                  spans
+              (let [state (vector-push-triple-rooted-v3
+                  (vector-new 3)
+                  0
                   next-idx
-                  end
                   next-result)]
                 (do
                   (root_pop)
                   (root_pop)
-                  parsed)))))))))
+                  state)))))))))
+
+(defn collect-example-expression-spans-v3-step-64-loop-bounded
+  [spans idx end result remaining]
+  (do
+    (root_push spans)
+    (root_push result)
+    (let [step (collect-example-expression-spans-v3-step spans idx end result)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= (vector-get step 0) 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (collect-example-expression-spans-v3-step-64-loop-bounded
+                      spans
+                      (vector-get step 1)
+                      end
+                      (vector-get step 2)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn collect-example-expression-spans-v3-rooted [spans idx end result]
+  (let [step
+          (collect-example-expression-spans-v3-step-64-loop-bounded
+            spans idx end result 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [parsed
+                (collect-example-expression-spans-v3-rooted
+                  spans
+                  (vector-get step 1)
+                  end
+                  (vector-get step 2))]
+          (do
+            (root_pop)
+            parsed))))))
 
 (defn collect-example-expression-spans-v3 [spans idx end]
-  (collect-example-expression-spans-v3-loop spans idx end (vector-new 0)))
+  (do
+    (root_push spans)
+    (let [result (vector-new 0)]
+      (do
+        (root_push result)
+        (let [parsed (collect-example-expression-spans-v3-rooted spans idx end result)]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
 
 (defn parse-defn-param-signature-append-v3 [spans idx end src signature type-expr next-idx]
   (do
