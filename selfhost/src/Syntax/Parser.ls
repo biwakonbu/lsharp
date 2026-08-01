@@ -2133,7 +2133,7 @@
       updated (vector-set-at-rooted-v3 payload field-kind value)]
       (do
         (root_pop)
-        (parse-source-evidence-fields-loop-v3 spans pos-ref src updated seen-ref)))))
+        updated))))
 
 (defn parse-source-evidence-string-field-v3 [spans pos-ref src payload field-kind seen-ref]
   (do
@@ -2145,7 +2145,7 @@
           (do
             (root_pop)
             (root_pop)
-            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated seen-ref)))))))
+            updated))))))
 
 (defn parse-source-evidence-vector-field-v3 [spans pos-ref src payload field-kind seen-ref]
   (do
@@ -2159,9 +2159,9 @@
           (do
             (root_pop)
             (root_pop)
-            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated seen-ref)))))))
+            updated))))))
 
-(defn parse-source-evidence-fields-loop-v3 [spans pos-ref src payload seen-ref]
+(defn parse-source-evidence-fields-step-v3 [spans pos-ref src payload seen-ref]
   (if (== (p-current spans pos-ref) 50)
     (do
       ;; seen-ref は named field の存在を保持し、同じ field の上書きを許さない。
@@ -2187,21 +2187,93 @@
                     (parse-source-evidence-int-field-v3 spans pos-ref src payload field-kind seen-ref)
                     (if (or (= field-kind 11) (= field-kind 12))
                       (parse-source-evidence-vector-field-v3 spans pos-ref src payload field-kind seen-ref)
-                      (parse-source-evidence-string-field-v3 spans pos-ref src payload field-kind seen-ref)))
-                    result (if (= duplicate 1)
-                      (vector-push-single-rooted-v3 parsed -1)
-                      parsed)]
+                    (parse-source-evidence-string-field-v3 spans pos-ref src payload field-kind seen-ref)))]
+                    (do
+                      (root_push parsed)
+                      (let [result (if (= duplicate 1)
+                        (vector-push-single-rooted-v3 parsed -1)
+                        parsed)]
+                        (do
+                          (root_push result)
+                          (let [state (make-parse-loop-state 0 result)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              state)))))))
+                (do
+                  (let [state (make-parse-loop-state 1 payload)]
                     (do
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      result)))
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  payload)))))))
-    payload))
+                      state)))))))))
+    (make-parse-loop-state 1 payload)))
+
+(defn parse-source-evidence-fields-step-64-loop-bounded
+  [spans pos-ref src payload seen-ref remaining]
+  (do
+    (root_push payload)
+    (let [step (parse-source-evidence-fields-step-v3 spans pos-ref src payload seen-ref)]
+      (do
+        (root_push step)
+        (let [next-payload (vector-get step 1)]
+          (do
+            (root_push next-payload)
+            (let [parsed
+              (if (= (vector-get step 0) 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (parse-source-evidence-fields-step-64-loop-bounded
+                    spans
+                    pos-ref
+                    src
+                    next-payload
+                    seen-ref
+                    (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-source-evidence-fields-loop-rooted-v3
+  [spans pos-ref src payload seen-ref]
+  (let [step
+    (parse-source-evidence-fields-step-64-loop-bounded
+      spans pos-ref src payload seen-ref 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-payload (vector-get step 1)]
+          (do
+            (root_push next-payload)
+            (let [parsed
+              (parse-source-evidence-fields-loop-rooted-v3
+                spans pos-ref src next-payload seen-ref)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-source-evidence-fields-loop-v3 [spans pos-ref src payload seen-ref]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (root_push seen-ref)
+    (let [parsed
+      (parse-source-evidence-fields-loop-rooted-v3 spans pos-ref src payload seen-ref)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn source-evidence-seen-new-v3-loop [idx seen]
   (if (>= idx 17)
@@ -2313,8 +2385,7 @@
           (do
             (root_pop)
             (root_pop)
-            (parse-source-review-attestation-fields-loop-v3
-              spans pos-ref src updated seen-ref)))))))
+            updated))))))
 
 (defn parse-source-review-attestation-sequence-field-v3
   [spans pos-ref src payload seen-ref]
@@ -2324,9 +2395,10 @@
       updated (vector-set-at-rooted-v3 payload 10 value)]
       (do
         (root_pop)
-        (parse-source-review-attestation-fields-loop-v3 spans pos-ref src updated seen-ref)))))
+        updated))))
 
-(defn parse-source-review-attestation-fields-loop-v3 [spans pos-ref src payload seen-ref]
+(defn parse-source-review-attestation-fields-step-v3
+  [spans pos-ref src payload seen-ref]
   (if (== (p-current spans pos-ref) 50)
     (do
       (root_push seen-ref)
@@ -2351,21 +2423,97 @@
                     (parse-source-review-attestation-sequence-field-v3
                       spans pos-ref src payload seen-ref)
                     (parse-source-review-attestation-string-field-v3
-                      spans pos-ref src payload field-kind seen-ref))
-                    result (if (= duplicate 1)
-                      (vector-push-single-rooted-v3 parsed -1)
-                      parsed)]
+                      spans pos-ref src payload field-kind seen-ref))]
+                    (do
+                      (root_push parsed)
+                      (let [result (if (= duplicate 1)
+                        (vector-push-single-rooted-v3 parsed -1)
+                        parsed)]
+                        (do
+                          (root_push result)
+                          (let [state (make-parse-loop-state 0 result)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              state)))))))
+                (do
+                  (let [state (make-parse-loop-state 1 payload)]
                     (do
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      result)))
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  payload)))))))
-    payload))
+                      state)))))))))
+    (make-parse-loop-state 1 payload)))
+
+(defn parse-source-review-attestation-fields-step-64-loop-bounded
+  [spans pos-ref src payload seen-ref remaining]
+  (do
+    (root_push payload)
+    (let [step
+      (parse-source-review-attestation-fields-step-v3
+        spans pos-ref src payload seen-ref)]
+      (do
+        (root_push step)
+        (let [next-payload (vector-get step 1)]
+          (do
+            (root_push next-payload)
+            (let [parsed
+              (if (= (vector-get step 0) 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (parse-source-review-attestation-fields-step-64-loop-bounded
+                    spans
+                    pos-ref
+                    src
+                    next-payload
+                    seen-ref
+                    (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-source-review-attestation-fields-loop-rooted-v3
+  [spans pos-ref src payload seen-ref]
+  (let [step
+    (parse-source-review-attestation-fields-step-64-loop-bounded
+      spans pos-ref src payload seen-ref 64)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-payload (vector-get step 1)]
+          (do
+            (root_push next-payload)
+            (let [parsed
+              (parse-source-review-attestation-fields-loop-rooted-v3
+                spans pos-ref src next-payload seen-ref)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-source-review-attestation-fields-loop-v3
+  [spans pos-ref src payload seen-ref]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (root_push seen-ref)
+    (let [parsed
+      (parse-source-review-attestation-fields-loop-rooted-v3
+        spans pos-ref src payload seen-ref)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn parse-defn-meta-review-attestation-v3 [spans pos-ref src meta]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)

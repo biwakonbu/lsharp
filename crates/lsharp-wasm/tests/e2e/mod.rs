@@ -48,6 +48,7 @@ mod selfhost_parser_metadata_scanners;
 mod selfhost_parser_metadata_sequences;
 mod selfhost_parser_signature_scanners;
 mod selfhost_parser_metadata_outer_scanners;
+mod selfhost_parser_metadata_fields;
 mod selfhost_parser_metadata_forms;
 mod selfhost_private_record_compiler;
 mod selfhost_assertion_spans;
