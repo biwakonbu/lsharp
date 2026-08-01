@@ -513,6 +513,55 @@ def parse_json_output(completed):
         raise ToolError(f"malformed native JSON: {error}") from error
 
 
+def validate_check_position(value, label):
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    for name in ("line", "character"):
+        if name not in value:
+            raise ToolError(f"{label} is missing field: {name}")
+        coordinate = value[name]
+        if isinstance(coordinate, bool) or not isinstance(coordinate, int) or coordinate < 0:
+            raise ToolError(f"{label}.{name} must be a non-negative integer")
+
+
+def validate_check_migration_diagnostic(value, index):
+    label = f"native check migrationDiagnostics[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    required = ("code", "owner", "selectedSemantics", "disposition", "range")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+
+    code = value["code"]
+    if code not in ("LS2001", "LS2002", "LS2003"):
+        raise ToolError(f"{label}.code must be one of LS2001, LS2002, LS2003")
+    if not isinstance(value["owner"], str):
+        raise ToolError(f"{label}.owner must be a string")
+    if value["selectedSemantics"] not in (
+        "legacy-example-truthiness",
+        "legacy-invariant-deterministic-smoke",
+    ):
+        raise ToolError(f"{label}.selectedSemantics has an invalid value")
+    if value["disposition"] not in (
+        "docs-only-example",
+        "assertion",
+        "property-postcondition",
+        "manual-review",
+    ):
+        raise ToolError(f"{label}.disposition has an invalid value")
+
+    range_value = value["range"]
+    if not isinstance(range_value, dict):
+        raise ToolError(f"{label}.range must be an object")
+    for name in ("start", "end"):
+        if name not in range_value:
+            raise ToolError(f"{label}.range is missing field: {name}")
+        validate_check_position(range_value[name], f"{label}.range.{name}")
+    if "message" in value and not isinstance(value["message"], str):
+        raise ToolError(f"{label}.message must be a string")
+
+
 def validate_check_output(value):
     if not isinstance(value, dict):
         raise ToolError("native check report root must be a JSON object")
@@ -528,6 +577,8 @@ def validate_check_output(value):
     for name in ("diagnostics", "migrationDiagnostics"):
         if not isinstance(value[name], list):
             raise ToolError(f"native check report {name} must be an array")
+    for index, diagnostic in enumerate(value["migrationDiagnostics"]):
+        validate_check_migration_diagnostic(diagnostic, index)
 
 
 def require_string(arguments, name):

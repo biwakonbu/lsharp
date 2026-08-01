@@ -248,6 +248,11 @@ native MCP 65 tests で確認した。ADR:
 `source` は native 実行前に拒否し、native MCP 68 tests と Python compile を通過した verified partial
 である。ADR: `docs/adr/decisions-v0.3-native-mcp-source-input-schema.md`。target runtime、provider semantics、
 Rust/native full parity は残る。
+さらに native MCP `lsharp_check` の `migrationDiagnostics` item を postflight 検証し、required field、
+code/semantics/disposition enum、range、非負 position、optional message の不正値を native 成功として
+返さない contract を追加した。完全な item はそのまま通し、native MCP 69 tests と Python compile を
+通過した verified partial である。ADR: `docs/adr/decisions-v0.3-native-mcp-check-output-items.md`。
+target runtime、provider semantics、Rust/native full parity は残る。
 
 ## Current priority — v0.2 Milestone 2
 

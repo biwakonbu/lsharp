@@ -19,6 +19,10 @@ def assert_check_rejects_invalid_output(test):
         ("unknown", "unknown field"),
         ("ok-type", "ok must be a boolean"),
         ("diagnostics-type", "diagnostics must be an array"),
+        ("migration-missing", "missing field: code"),
+        ("migration-code", "code must be one of"),
+        ("migration-range", "range must be an object"),
+        ("migration-position", "line must be a non-negative integer"),
     )
     for check_mode, expected_message in cases:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -43,6 +47,42 @@ def assert_check_rejects_invalid_output(test):
             test.assertTrue(response["result"]["isError"])
             test.assertIn(expected_message, response["result"]["content"][0]["text"])
             test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
+
+
+def assert_check_accepts_valid_migration_diagnostics(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_check",
+                    "arguments": {"source": "(defn main [] true)"},
+                },
+            ),
+            root,
+            check_mode="migration-valid",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        test.assertEqual(
+            response["result"]["structuredContent"]["migrationDiagnostics"][0],
+            {
+                "code": "LS2001",
+                "owner": "main",
+                "selectedSemantics": "legacy-example-truthiness",
+                "disposition": "assertion",
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": 1},
+                },
+                "message": "legacy example",
+            },
+        )
 
 
 def assert_check_rejects_invalid_arguments_before_native(test):

@@ -16,7 +16,7 @@ from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_na
 from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_native_result, assert_completion_projects_native_lsp, assert_completion_rejects_invalid_arguments_before_native, assert_completion_rejects_native_failures, assert_completion_supports_file_and_col_alias, assert_definition_projects_native_lsp, assert_definition_rejects_invalid_arguments_before_native, assert_definition_rejects_native_failures, assert_definition_supports_file_and_col_alias, assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias, assert_lsp_position_alias_schema_is_exclusive, assert_lsp_rejects_both_position_aliases, assert_references_projects_empty_native_result, assert_references_projects_native_lsp, assert_references_rejects_invalid_arguments_before_native, assert_references_rejects_native_failures, assert_references_supports_file_and_col_alias
 from native_selfhost_mcp_manifest_tests import assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
 from native_selfhost_mcp_validate_tests import assert_validate_rejects_invalid_report
-from native_selfhost_mcp_check_tests import assert_check_rejects_blank_source_before_native, assert_check_rejects_invalid_arguments_before_native, assert_check_rejects_invalid_output, assert_source_input_schema_requires_non_empty_strings
+from native_selfhost_mcp_check_tests import assert_check_accepts_valid_migration_diagnostics, assert_check_rejects_blank_source_before_native, assert_check_rejects_invalid_arguments_before_native, assert_check_rejects_invalid_output, assert_source_input_schema_requires_non_empty_strings
 from native_selfhost_mcp_format_tests import assert_check_format_input_schemas_are_closed, assert_format_output_schema_is_closed, assert_format_rejects_blank_source_before_native, assert_format_rejects_invalid_arguments_before_native, assert_format_rejects_native_failures
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
@@ -57,6 +57,41 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                         check_output = json.dumps({{"ok": "yes", "diagnostics": [], "migrationDiagnostics": []}})
                     elif check_mode == "diagnostics-type":
                         check_output = json.dumps({{"ok": True, "diagnostics": {{}}, "migrationDiagnostics": []}})
+                    elif check_mode == "migration-missing":
+                        check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": [{{}}]}})
+                    elif check_mode == "migration-code":
+                        check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": [{{
+                            "code": "LS9999",
+                            "owner": "main",
+                            "selectedSemantics": "legacy-example-truthiness",
+                            "disposition": "assertion",
+                            "range": {{"start": {{"line": 0, "character": 0}}, "end": {{"line": 0, "character": 1}}}},
+                        }}]}})
+                    elif check_mode == "migration-range":
+                        check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": [{{
+                            "code": "LS2001",
+                            "owner": "main",
+                            "selectedSemantics": "legacy-example-truthiness",
+                            "disposition": "assertion",
+                            "range": [],
+                        }}]}})
+                    elif check_mode == "migration-position":
+                        check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": [{{
+                            "code": "LS2001",
+                            "owner": "main",
+                            "selectedSemantics": "legacy-example-truthiness",
+                            "disposition": "assertion",
+                            "range": {{"start": {{"line": -1, "character": 0}}, "end": {{"line": 0, "character": 1}}}},
+                        }}]}})
+                    elif check_mode == "migration-valid":
+                        check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": [{{
+                            "code": "LS2001",
+                            "owner": "main",
+                            "selectedSemantics": "legacy-example-truthiness",
+                            "disposition": "assertion",
+                            "range": {{"start": {{"line": 0, "character": 0}}, "end": {{"line": 0, "character": 1}}}},
+                            "message": "legacy example",
+                        }}]}})
                     else:
                         check_output = json.dumps({{"ok": True, "diagnostics": [], "migrationDiagnostics": []}})
                     print(check_output)
@@ -522,6 +557,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_check_rejects_invalid_output(self):
         assert_check_rejects_invalid_output(self)
+    def test_check_accepts_valid_migration_diagnostics(self):
+        assert_check_accepts_valid_migration_diagnostics(self)
     def test_check_rejects_invalid_arguments_before_native(self):
         assert_check_rejects_invalid_arguments_before_native(self)
     def test_source_input_schema_requires_non_empty_strings(self):
