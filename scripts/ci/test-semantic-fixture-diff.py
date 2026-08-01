@@ -114,6 +114,24 @@ class SemanticFixtureDiffTest(unittest.TestCase):
         self.assertFalse(projected["pending_boundaries"])
         self.assertFalse(projected["mismatches"])
 
+    def test_rejects_observed_empty_artifact(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        fixture_id = next(item["id"] for item in manifest["fixtures"] if item["kind"] == "valid")
+        for report in (oracle, native):
+            fixture = next(item for item in report["fixtures"] if item["id"] == fixture_id)
+            fixture["artifact"] = {
+                "status": "observed",
+                "sha256": "sha256:" + "b" * 64,
+                "size": 0,
+            }
+
+        result = self.run_diff(oracle, native)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("positive", result.stderr.lower())
+
     def test_reports_expose_observable_mismatch(self):
         oracle = report_for("rust-oracle")
         native = report_for("native-stage0")

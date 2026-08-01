@@ -97,8 +97,8 @@ def validate_artifact(value: Any, kind: str, label: str) -> Dict[str, Any]:
     if not SHA256.fullmatch(digest):
         raise ObservationError(f"{label}.sha256 must use sha256:<64 lowercase hex>")
     size = artifact["size"]
-    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
-        raise ObservationError(f"{label}.size must be a non-negative integer")
+    if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+        raise ObservationError(f"{label}.size must be a positive integer")
     if kind != "valid":
         raise ObservationError(f"{label} invalid fixture cannot produce an artifact")
     return {"status": status, "sha256": digest, "size": size}
