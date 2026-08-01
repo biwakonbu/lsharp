@@ -2775,3 +2775,33 @@ host-generated stage1 x86 payloadが Linux x86_64 VM内でstage2/stage3 native s
 ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後 current-source gate、全公開 surface、
 `LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration境界と
 TODOの `[~]` は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser metadata list scans (2026-08-01)
+
+`Syntax.Parser.ls` の `parse-defn-meta-case-loop-v3` と `parse-defn-meta-assert-loop-v3` を、
+metadata item 一つを返す step、64要素 bounded loop、rooted continuation、public wrapperへ移行した。
+`:case` の expectation pair と個別 expression span、`:assert` の predicate vector、RBracket/EOF cursorを
+既存 contract のまま保持する。case の不正 payloadは item が進行しない場合に done stateへ移し、metadata
+loopが同じ cursorを再帰し続けないようにした。
+
+Evidence: `selfhost_parser_metadata_scanners` の static/runtime 2 tests、
+`selfhost_parser_metadata_forms` の29 tests、`selfhost_parser_forms` の22 tests、
+`selfhost_assertion_spans` の4 tests、`selfhost_case_spans` の5 tests、fixtureの
+`rustfmt --edition 2021 --check`、`git diff --check` が passした。既知の
+`test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms` は current sourceでも
+`left "7"` / `right "5"` で、expression-span batch前の baselineと同じだった。
+
+source commit `5dad0498` に対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、
+host-generated stage1 x86 payloadが Linux x86_64 VM内でstage2/stage3 native self-regenerationを
+完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/5dad0498-parser-metadata-loops/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11274770`、stdout SHA-256は双方
+`aba2a41334336c9490d04e4812dba0a947e6d45fdbd26207347a342d58e7cbb3` で一致した。VMは停止し、
+中間 stage、stdout、local Cargo targetは回収して481Bのsummaryだけを残した。
+
+これは parser metadata `:case` / `:assert` list の bounded scan と Linux x86_64 stage2/stage3
+fixed-pointだけを閉じる verified sliceである。parser recovery/metadata全体、Parser.lsの大規模
+ファイル分割、record schema pattern semantic parity、全 pattern/import target、ftable/linear-memory/
+runtime ABI、Mac Apple Siliconのこの変更後 current-source gate、全公開 surface、
+`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration境界と
+TODOの `[~]` は維持する。

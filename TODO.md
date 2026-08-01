@@ -782,6 +782,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   129 expression の `(start,end)` 順序と bracket boundary を
   `selfhost_parser_expression_spans` の2 testsで確認した。parser forms 22 tests、metadata forms
   29 tests、Linux x86_64 stage2/stage3 fixed-pointも通過した。
+  `parse-defn-meta-case-loop-v3` と `parse-defn-meta-assert-loop-v3` も 64 要素
+  bounded/rooted continuationへ移行し、65 case / 65 assert の件数と EOF cursorを
+  `selfhost_parser_metadata_scanners` で確認した。metadata scanner 2 tests、metadata forms 29 tests、
+  parser forms 22 tests、assertion span 4 tests、case span 5 tests、Linux x86_64 fixed-pointも通過した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
