@@ -124,6 +124,18 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 機能を置換する単位は、`RED → selfhost 実装 → focused GREEN → Rust differential lane → native stage0 dogfooding lane → artifact/runtime → 対応2 target → docs/ADR/TODO → commit/push` とする。未対応機能はまず明示診断または明示 external boundary で止め、その後に同じ observable contract を保った native 実装へ置換する。
 
+### semantic batch と build cadence
+
+長時間の selfhost build が進捗を隠さないよう、作業は細かな関数単位ではなく、同じ意味論と failure boundary を持つ一つの semantic family 単位でまとめる。
+
+- 一つの batch の開始時に、対象 feature、失敗値、診断/span、exit code、artifact/runtime boundary、対応 target、再現 command を一つの RED contract に固定する。無関係な feature を同じ batch に混ぜない。
+- RED は static contract と最小 runtime/E2E fixtureを同じ focused test lane にまとめる。実装後は同じ fixtureを使って GREEN、Rust oracle/differential、native stage0 dogfoodingを順に確認し、期待値を実装に合わせて変更しない。
+- Cargo target と生成 artifact は batch 専用の場所を一度だけ作り、focused test の filter を変える場合も同じ target を再利用する。各関数修正のたびに `cargo build` や全 workspace test を繰り返さず、意味論 family の RED/GREEN が揃ってから必要な gate をまとめて実行する。
+- Linux x86_64 の stage regeneration / VM replay は同じ仮説につき一回だけ実行する。既存の current-source artifact、VM-side lock、保守的な chunk/timeout を再利用し、重複 replayを進捗として数えない。Mac Apple Silicon の native gateも同じ batch の最終 evidence としてまとめる。
+- heavy gate の待機中は、対象 artifact・VM・lockを共有しない parser/type/runtime test、diagnostic、fixture、docs audit、次 batch の候補調査を進める。完了後に結果を統合し、仮説が棄却されたら実装を残さず次の REDへ移る。
+- batch の検証済み境界に到達したら、task-relevant codeとtestを commit/pushし、native evidence取得後に docs/TODOを更新して再度 commit/pushする。各 push 後に `HEAD == origin/main`、worktree、VM、artifact、TODO残件を確認する。
+- 停止・中断時は、次の RED、failure value、対象 target、再現 command、blocker、残る evidence、artifact/VMの所有とcleanup状態を current docs または TODO に残す。未検証のまま「完了」と書かず、再開時は必ず status refresh から始める。
+
 ### Git worktree の配置と片付け
 
 - 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。
