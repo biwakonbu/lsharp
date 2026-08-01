@@ -4,7 +4,8 @@
 - Date: 2026-08-01
 - Scope: `selfhost/src/Backend/Wasm/Compiler.ls`, `selfhost/src/Backend/Wasm/CompilerSplit.ls`,
   `crates/lsharp-wasm/tests/e2e/strings_patterns_compiler_integration.rs`,
-  `crates/lsharp-wasm/tests/e2e/selfhost_pattern_scratch_contract.rs`
+  `crates/lsharp-wasm/tests/e2e/selfhost_pattern_scratch_contract.rs`,
+  `crates/lsharp-wasm/tests/e2e/selfhost_adt_import_runtime.rs`
 - Related: `LEGACY-LANG-02`, `LEGACY-ROOT-01`
 
 ## Context
@@ -34,10 +35,13 @@ child. Do not change the existing result, outer scratch, or arm-binder layout.
   `test_e2e_selfhost_ftable_pattern_scratch_survives_deep_branching_constructor` both produced
   `42\n`.
 - `test_e2e_selfhost_ftable_compiler_alias_qualified_record_pattern_runs` remained green.
+- `test_e2e_selfhost_compiler_mode_imported_same_name_adt_aliases_run` generated and executed
+  file-imported `App.Left` / `App.Right` Wasm with `41\n5\n` through `compile-file-mode`.
 
 ## Boundary
 
-This is an actual Wasm source/ftable compiler slice. It does not establish file-import ftable
+This is an actual Wasm source/ftable compiler slice, including the CompilerMode source-file
+prelude ftable alias boundary. It does not establish flat `program-functions-base` file-import
 parity, multi-segment module-qualified names, broad parametric or recursive ADT semantics,
 nominal/exhaustiveness, WasmGC/linear-memory ABI parity, or current-source native stage0 evidence
 on both supported targets. `LEGACY-LANG-02` and `LEGACY-ROOT-01` remain `[~]` in `TODO.md`.

@@ -684,6 +684,13 @@ representation, nominal/exhaustiveness, WasmGC/linear-memory parity, current-sou
 stage0 evidence on both supported targets, and the `LEGACY-LANG-02` / `LEGACY-ROOT-01`
 aggregates remain incomplete. The existing `[~]` TODO and Rust oracle/bootstrap boundary remain.
 
+The companion source-file boundary now has an actual runtime regression:
+`test_e2e_selfhost_compiler_mode_imported_same_name_adt_aliases_run` writes `App.Left` and
+`App.Right` files with same-name `Thing` constructors, imports them as `L` and `R`, and runs
+`App.Main` through `compile-file-mode`. The generated Wasm produces `41\n5\n`. This verifies
+CompilerMode's import prelude ftable alias target selection for separate files; it does not close
+the flat `program-functions-base` file-import transport or the broader ADT/native target boundaries.
+
 ### legacy source compile boundary 更新 (2026-07-14)
 
 `App.Cli`、`EmbeddedCli`、`SmokeCli`、`PipelineSmoke` の source/full helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`PipelineSmoke` は Rust host compile と Wasm validate まで確認した。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `run-main-smoke` の単一 AST `lower` は診断用として残り、App.Cli / EmbeddedCli の component sidecar、no-arg pipeline entrypoint の full-program runtime/native E2E は別の未完了 surface である。

@@ -48,6 +48,63 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_adt_constructor_patt
     assert_eq!(output, "41\n0\n");
 }
 
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_same_name_adt_aliases_run() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-adt-import-runtime-{}-same-name",
+        std::process::id(),
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir).expect("same-name ADT fixture の directory を作れない");
+    std::fs::write(
+        app_dir.join("Left.ls"),
+        "(module App.Left)\n(type LeftValue (Thing Int))\n",
+    )
+    .expect("same-name ADT fixture の Left.ls を書けない");
+    std::fs::write(
+        app_dir.join("Right.ls"),
+        "(module App.Right)\n(type RightValue (Thing Int Int))\n",
+    )
+    .expect("same-name ADT fixture の Right.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Left :as L :only [Thing])\n(import App.Right :as R :only [Thing])\n(defn main [] (let [left (L.Thing 41) right (R.Thing 2 3)] (do (print (match left [(L.Thing x) x] [_ 0])) (print (match right [(R.Thing x y) (+ x y)] [_ 0])) 0)))\n",
+    )
+    .expect("same-name ADT fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main [] (compile-file-mode))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output =
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+            &wasm_bytes,
+            &temp_root,
+            &[],
+        )
+        .expect("same-name ADT alias import を含む selfhost compiler-mode module should run");
+
+    std::fs::remove_dir_all(&temp_root).expect("same-name ADT fixture を削除できない");
+    assert_eq!(output, "41\n5\n");
+}
+
 fn run_imported_adt_fixture(
     import_decl: &str,
     unwrap_decl: &str,

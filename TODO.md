@@ -1139,6 +1139,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   WasmGC/linear-memory ABI、両 supported targetの current-source native stage0、
   `LEGACY-LANG-02` aggregateは残る。selfhost source/actual Wasm E2Eの証拠であり、native producer
   evidenceや Rust-free aggregateを拡大しない。
+  2026-08-01 に `test_e2e_selfhost_compiler_mode_imported_same_name_adt_aliases_run` を追加し、
+  実ファイル `App.Left` / `App.Right` の同名 `Thing` constructorを `L` / `R` aliasで importした
+  `App.Main` を `compile-file-mode` から生成・実行して `41\n5\n` を確認した。これは source-file
+  importと CompilerMode の prelude ftable alias registrationが、同名 constructorの function targetを
+  混同しない verified sliceである。flat `program-functions-base` の file-import transport、
+  module-qualified multi-segment name、parametric/recursive ADT全体、nominal/exhaustiveness、
+  両 supported targetの current-source native stage0 parity、`LEGACY-LANG-02` aggregateは残る。
 - [~] `LEGACY-COMP-01` full-program compiler closure — 主要 CLI builder は full-program 化済み。
   `TypeInferBlock.ls` の大きな do/computation 子要素走査は 64 要素 bounded/rooted scanへ移行し、
   Linux x86_64 stage2/stage3 fixed-pointを確認した。full-program compiler closure、
