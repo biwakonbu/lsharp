@@ -23,6 +23,7 @@ class SemanticFixtureEvidenceSchemaTest(unittest.TestCase):
         self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
         self.assertEqual(schema["properties"]["schema_version"], {"const": 1})
         self.assertEqual(schema["properties"]["suite"], {"const": "v4-m1-06"})
+        self.assertEqual(schema["properties"]["task"], {"const": "V4-M1-01"})
         self.assertTrue(schema["additionalProperties"] is False)
         self.assertEqual(
             schema["required"],

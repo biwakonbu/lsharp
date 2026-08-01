@@ -52,6 +52,9 @@ artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目
 同じ `docs/adr/*.md` path shape を JSON Schema にも反映する schema-parity boundary を verified partial
 として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には
 移さない。ADR: `docs/adr/decisions-v0.4-m1-06-adr-schema-boundary.md`。
+さらに JSON Schema の `task` を `V4-M1-01` constant に固定する task-schema parity boundary を verified
+partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には
+移さない。ADR: `docs/adr/decisions-v0.4-m1-06-task-schema-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
