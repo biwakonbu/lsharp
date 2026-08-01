@@ -355,6 +355,7 @@ TOOLS = [
         SOURCE_PROPERTIES,
         [["source"], ["file"]],
         CHECK_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
     ),
     tool_descriptor(
         "lsharp_validate",
@@ -418,6 +419,7 @@ TOOLS = [
         SOURCE_PROPERTIES,
         [["source"], ["file"]],
         FORMAT_OUTPUT_SCHEMA,
+        {"additionalProperties": False},
     ),
     tool_descriptor(
         "lsharp_compile_run",
@@ -801,6 +803,7 @@ def verify_identity_projection(
 
 
 def call_check(program, arguments, temporary_directory):
+    reject_unknown_arguments(arguments, {"source", "file"}, "lsharp_check")
     path = input_file(arguments, temporary_directory)
     completed = run_native(program, ["check", str(path), "--format", "json"])
     value = parse_json_output(completed)
@@ -845,6 +848,7 @@ def call_validate(program, arguments, temporary_directory):
 
 
 def call_format(program, arguments, temporary_directory):
+    reject_unknown_arguments(arguments, {"source", "file"}, "lsharp_format")
     path = input_file(arguments, temporary_directory)
     completed = run_native(program, ["fmt", str(path)])
     if completed.returncode:

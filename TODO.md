@@ -239,6 +239,10 @@ offline relay の verified partial slice であり、target runtime と Rust/nat
 native LSP 実行前に拒否する contract を native MCP 62 tests で確認した。ADR:
 `docs/adr/decisions-v0.3-native-mcp-lsp-position-alias.md`。単独 `col` alias は互換性のため維持し、
 target runtime と Rust/native full parity は残る。
+さらに native MCP `lsharp_check` / `lsharp_format` の `source`/`file` input schema と runtime
+preflight を closed-world に揃え、未知引数・source/file 同時指定を native 実行前に拒否する contract を
+native MCP 65 tests で確認した。ADR:
+`docs/adr/decisions-v0.3-native-mcp-check-format-input.md`。target runtime と Rust/native full parity は残る。
 
 ## Current priority — v0.2 Milestone 2
 
