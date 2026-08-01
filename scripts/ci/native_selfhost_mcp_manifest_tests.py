@@ -93,6 +93,14 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
         ("evidence-sampling", "evidence[0].execution.sampling.cases must be a non-negative integer"),
         ("evidence-provenance", "evidence[0].provenance.producer must be a non-empty string"),
         ("evidence-extra", "evidence[0] has unknown field: extra"),
+        ("closure-duplicate-node", "nodes[1] duplicates ID: demo/claim-1"),
+        ("closure-duplicate-evidence", "evidence[1] duplicates ID: demo/evidence-1"),
+        ("closure-duplicate-review", "reviews[1] duplicates ID: demo/review-1"),
+        ("closure-evidence-subject", "evidence[0].subject references missing node: demo/claim-1"),
+        ("closure-edge-node", "edges[0].intent references missing node: demo/intent-1"),
+        ("closure-edge-kind", "edges[0].claim references node kind intent, expected claim: demo/intent-1"),
+        ("closure-edge-evidence", "edges[0].observation references missing evidence: demo/evidence-1"),
+        ("closure-edge-review", "edges[0].review references missing review: demo/review-1"),
     )
     for manifest_mode, expected_message in cases:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -174,7 +182,18 @@ def assert_validate_accepts_valid_emitted_manifest_edges(test):
         response = test.responses(result.stdout)[0]
         test.assertFalse(response["result"]["isError"])
         edges = response["result"]["structuredContent"]["manifest"]["edges"]
-        test.assertEqual([edge["relation"] for edge in edges], ["motivates", "supports", "evaluates"])
+        test.assertEqual(
+            [edge["relation"] for edge in edges],
+            [
+                "motivates",
+                "supports",
+                "constrained-by",
+                "tested-by",
+                "contradicts",
+                "evaluates",
+                "invalidates",
+            ],
+        )
 
 
 def assert_validate_accepts_valid_emitted_manifest_evidence(test):
@@ -203,3 +222,38 @@ def assert_validate_accepts_valid_emitted_manifest_evidence(test):
         evidence = response["result"]["structuredContent"]["manifest"]["evidence"][0]
         test.assertEqual(evidence["method"], "example")
         test.assertEqual(evidence["execution"]["sampling"]["coverage"], {"branch": 1})
+
+
+def assert_validate_accepts_opaque_manifest_references(test):
+    cases = (
+        ("closure-opaque-review-valid", "evaluates"),
+        ("closure-contract-subject-valid", "evidence"),
+    )
+    for manifest_mode, expected_field in cases:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = test.write_fake_program(root)
+            result = test.run_shim(
+                program,
+                request(
+                    1,
+                    "tools/call",
+                    {
+                        "name": "lsharp_validate",
+                        "arguments": {
+                            "source": "(defn main [] true)",
+                            "include_manifest": True,
+                        },
+                    },
+                ),
+                root,
+                manifest_mode=manifest_mode,
+            )
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertFalse(response["result"]["isError"])
+            manifest = response["result"]["structuredContent"]["manifest"]
+            if expected_field == "evaluates":
+                test.assertEqual(manifest["edges"][0]["relation"], "evaluates")
+            else:
+                test.assertEqual(manifest["evidence"][0]["subject"]["kind"], "contract")

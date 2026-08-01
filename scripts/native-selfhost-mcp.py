@@ -791,6 +791,7 @@ def validate_manifest_output(value):
         validate_manifest_edge(edge, index)
     for index, evidence in enumerate(value["evidence"]):
         validate_manifest_evidence(evidence, index)
+    validate_manifest_referential_integrity(value)
 
 
 def validate_manifest_non_empty_string(value, label):
@@ -1062,6 +1063,122 @@ def validate_manifest_evidence(value, index):
         "external-observation",
     ):
         raise ToolError(f"{label}.independence has invalid value")
+
+
+def validate_manifest_referential_integrity(value):
+    """emitted manifest の typed graph endpoint を同じ manifest 内へ閉じ込める。"""
+    nodes = {}
+    for index, node in enumerate(value["nodes"]):
+        identifier = (node["namespace"], node["key"])
+        if identifier in nodes:
+            raise ToolError(
+                f"native emitted manifest nodes[{index}] duplicates ID: "
+                f"{format_manifest_identifier(identifier)}"
+            )
+        nodes[identifier] = node["kind"]
+
+    evidence = {}
+    for index, item in enumerate(value["evidence"]):
+        identifier = (item["namespace"], item["key"])
+        if identifier in evidence:
+            raise ToolError(
+                f"native emitted manifest evidence[{index}] duplicates ID: "
+                f"{format_manifest_identifier(identifier)}"
+            )
+        evidence[identifier] = True
+
+    reviews = None
+    if "reviews" in value:
+        reviews = {}
+        for index, review in enumerate(value["reviews"]):
+            identifier = (review["namespace"], review["key"])
+            if identifier in reviews:
+                raise ToolError(
+                    f"native emitted manifest reviews[{index}] duplicates ID: "
+                    f"{format_manifest_identifier(identifier)}"
+                )
+            reviews[identifier] = True
+
+    for index, item in enumerate(value["evidence"]):
+        subject = item["subject"]
+        if subject["kind"] in ("intent", "claim"):
+            require_manifest_node_reference(
+                nodes,
+                subject,
+                subject["kind"],
+                f"native emitted manifest evidence[{index}].subject",
+            )
+
+    for index, edge in enumerate(value["edges"]):
+        label = f"native emitted manifest edges[{index}]"
+        relation = edge["relation"]
+        if relation == "motivates":
+            require_manifest_node_reference(nodes, edge["intent"], "intent", f"{label}.intent")
+            require_manifest_node_reference(nodes, edge["claim"], "claim", f"{label}.claim")
+        elif relation == "constrained-by":
+            require_manifest_node_reference(nodes, edge["claim"], "claim", f"{label}.claim")
+            require_manifest_node_reference(
+                nodes, edge["assumption"], "assumption", f"{label}.assumption"
+            )
+        elif relation == "tested-by":
+            require_manifest_node_reference(nodes, edge["claim"], "claim", f"{label}.claim")
+        elif relation in ("supports", "contradicts"):
+            require_manifest_evidence_reference(
+                evidence, edge["observation"], f"{label}.observation"
+            )
+            require_manifest_node_reference(nodes, edge["claim"], "claim", f"{label}.claim")
+        elif relation == "evaluates":
+            if reviews is not None:
+                require_manifest_review_reference(reviews, edge["review"], f"{label}.review")
+            require_manifest_subject_reference(nodes, evidence, edge["subject"], f"{label}.subject")
+        elif relation == "invalidates":
+            require_manifest_subject_reference(nodes, evidence, edge["subject"], f"{label}.subject")
+            if reviews is not None and edge["subject"]["kind"] == "review":
+                require_manifest_review_reference(
+                    reviews, edge["subject"], f"{label}.subject"
+                )
+
+
+def format_manifest_identifier(identifier):
+    return f"{identifier[0]}/{identifier[1]}"
+
+
+def require_manifest_node_reference(nodes, reference, expected_kind, label):
+    identifier = (reference["namespace"], reference["key"])
+    actual_kind = nodes.get(identifier)
+    if actual_kind is None:
+        raise ToolError(
+            f"{label} references missing node: {format_manifest_identifier(identifier)}"
+        )
+    if actual_kind != expected_kind:
+        raise ToolError(
+            f"{label} references node kind {actual_kind}, expected {expected_kind}: "
+            f"{format_manifest_identifier(identifier)}"
+        )
+
+
+def require_manifest_evidence_reference(evidence, reference, label):
+    identifier = (reference["namespace"], reference["key"])
+    if identifier not in evidence:
+        raise ToolError(
+            f"{label} references missing evidence: {format_manifest_identifier(identifier)}"
+        )
+
+
+def require_manifest_review_reference(reviews, reference, label):
+    identifier = (reference["namespace"], reference["key"])
+    if identifier not in reviews:
+        raise ToolError(
+            f"{label} references missing review: {format_manifest_identifier(identifier)}"
+        )
+
+
+def require_manifest_subject_reference(nodes, evidence, subject, label):
+    kind = subject["kind"]
+    if kind in ("intent", "claim"):
+        require_manifest_node_reference(nodes, subject, kind, label)
+    elif kind == "evidence":
+        require_manifest_evidence_reference(evidence, subject, label)
 
 
 def validate_trace_gap(value, index):

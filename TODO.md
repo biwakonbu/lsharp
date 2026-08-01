@@ -284,6 +284,15 @@ valid evidence record は保持し、malformed record は native 成功として
 `docs/adr/decisions-v0.3-native-mcp-manifest-evidence.md`。referential integrity、target runtime、provider
 semantics、Rust/native full parity は残る。
 
+さらに native MCP emitted manifest の referential integrity を postflight 検証し、node/evidence/explicit
+review の duplicate ID、evidence subject、全 edge relation の graph-owned endpoint、node kind mismatch を
+fail-closed にした。explicit `reviews` registry がある場合だけ review endpoint を閉じ、contract/change と
+省略された review registry は opaque external boundary として保持する。全7 relation variant と opaque
+boundary の valid fixture を保持し、malformed closure を拒否することを native MCP 76 tests と Python
+compile で確認した verified partial である。ADR:
+`docs/adr/decisions-v0.3-native-mcp-manifest-referential-closure.md`。target runtime、provider semantics、
+Rust/native full parity は残る。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:
