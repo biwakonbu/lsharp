@@ -228,12 +228,14 @@ def audit(index: Dict[str, Any], manifest: Mapping[str, Any]) -> Dict[str, Any]:
         "oracle report",
         manifest_fixtures,
         selected_ids,
+        "rust-oracle",
     )
     native = validate_report(
         load_json(paths["native"], "native report"),
         "native report",
         manifest_fixtures,
         selected_ids,
+        "native-stage0",
     )
     if oracle["target"] != index["target"] or native["target"] != index["target"]:
         raise ObservationError("evidence index target does not match both reports")

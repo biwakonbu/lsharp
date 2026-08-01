@@ -115,6 +115,7 @@ def validate_report(
     label: str,
     manifest_fixtures: Mapping[str, Mapping[str, Any]],
     required_ids: List[str] = None,
+    expected_producer: str = None,
 ) -> Dict[str, Any]:
     report = require_object(value, label)
     expect_keys(report, ("schema_version", "suite", "producer", "target", "source_commit", "fixtures"), label)
@@ -123,6 +124,8 @@ def validate_report(
     producer = require_string(report["producer"], f"{label}.producer")
     if producer not in REPORT_PRODUCERS:
         raise ObservationError(f"{label}.producer is unsupported: {producer}")
+    if expected_producer is not None and producer != expected_producer:
+        raise ObservationError(f"{label}.producer must be {expected_producer}")
     target = require_string(report["target"], f"{label}.target")
     if target not in SUPPORTED_TARGETS:
         raise ObservationError(f"{label}.target is unsupported: {target}")
@@ -278,12 +281,14 @@ def main() -> int:
             "oracle report",
             manifest_fixtures,
             selected_ids,
+            "rust-oracle",
         )
         native = validate_report(
             load_json(arguments.native, "native report"),
             "native report",
             manifest_fixtures,
             selected_ids,
+            "native-stage0",
         )
         selected_manifest = dict(projected_manifest)
         selected_manifest["fixtures"] = [

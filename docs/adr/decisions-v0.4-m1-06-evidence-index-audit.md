@@ -35,6 +35,9 @@ reports and comparison result as authoritative and recompute the comparison.
 - If the selected fixture requires an artifact, its evidence command must be
   `compile` or `build`; a `check` selection cannot claim artifact/runtime
   evidence even when `check` is listed in the fixture's command set.
+- The report referenced as `oracle` must declare `producer=rust-oracle`, and
+  the report referenced as `native` must declare `producer=native-stage0`.
+  Producer identity is checked before differential comparison.
 - `scripts/ci/semantic_fixture_evidence_audit.py` validates project-relative
   regular-file references without symlink traversal, revalidates both reports through the V4-M1-01
   report contract, recomputes `semantic_fixture_diff.py`'s comparison, and

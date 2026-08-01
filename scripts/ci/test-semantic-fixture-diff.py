@@ -164,6 +164,15 @@ class SemanticFixtureDiffTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(label, result.stderr.lower())
 
+    def test_rejects_swapped_report_producer_roles(self):
+        oracle = report_for("native-stage0")
+        native = report_for("rust-oracle")
+
+        result = self.run_diff(oracle, native)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("producer", result.stderr.lower())
+
     def test_selected_fixture_can_close_one_boundary_without_false_pending(self):
         oracle = report_for("rust-oracle")
         native = report_for("native-stage0")

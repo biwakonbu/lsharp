@@ -164,6 +164,24 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("status", result.stderr.lower())
 
+    def test_rejects_swapped_report_producer_roles(self):
+        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+            root = pathlib.Path(directory)
+            (root / "oracle.json").write_text(
+                json.dumps(report_for("native-stage0")), encoding="utf-8"
+            )
+            (root / "native.json").write_text(
+                json.dumps(report_for("rust-oracle")), encoding="utf-8"
+            )
+            (root / "comparison.json").write_text(
+                json.dumps(comparison_for()), encoding="utf-8"
+            )
+
+            result = self.run_audit(root, index_for(root))
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("producer", result.stderr.lower())
+
     def test_rejects_scope_mismatch_missing_gate_and_unsafe_path(self):
         with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
             root = pathlib.Path(directory)
