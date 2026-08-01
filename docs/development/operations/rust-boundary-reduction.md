@@ -1462,6 +1462,22 @@ native stage0の output-path、full-program entrypoint、component sidecar、fd 
 `LEGACY-COMP-01` と Rust oracle/bootstrap boundaryは維持する。ADR:
 `docs/adr/decisions-v0.3-native-cli-artifact-output-e2e.md`。
 
+### V2-16e / LEGACY-BOOT-01 Mac current-source App.Cli native release (2026-08-02)
+
+`test_e2e_native_macos_aarch64_actual_app_cli_release_program` を current checkoutで実行し、
+stage2/stage3 fixed-pointから `aarch64-apple-darwin` の actual App.Cli `program.native` を生成した。
+gateは `1 passed`、`945.94s`。manifestは `source_commit=0dc6d67348195ad23575913841459cdf2e6a36b2`、
+`selfhost_fixed_point=true`、program SHA-256
+`a1dac9ff7146fbfd012c6e299df786c3c6c00680e3849cfb98abdeb1efcd76de`、4,327,168 bytesを記録し、
+Mach-O arm64と `--version` の `lsharp 0.1.0`、stderr 0 bytesを確認した。
+
+同じ生成 artifactを単体 postflightし、引数なし helpと `parse` fileがともに exit `0` / stderr `0`となる
+ことを確認した。parse outputは `decls:1`、`first-decl:defn`、`first-body:int`、`diagnostics:0`。
+これは Mac current-source native releaseの verified sliceであり、Linux x86_64 native regeneration、
+packaged stage0 acquisition/release/rollback、全公開 command、component sidecar、両 targetの
+artifact/provenance parityは未検証である。専用 Cargo targetと `/tmp` artifactは検証後に削除する。
+ADR: `docs/adr/decisions-v0.3-native-macos-app-cli-release-e2e.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。

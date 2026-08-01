@@ -1157,6 +1157,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   通過することを確認した。`wasi-component` は外部 packaging未接続として exit `1`、artifactなしを
   維持した。これは Rust-host actual artifact/runtime の verified sliceであり、native stage0の
   full-program entrypoint、component sidecar、両 supported targetのartifact/runtimeは残る。
+  同日、Mac Apple Silicon current-source native release gateから `App.Cli` の `program.native` を
+  生成し、manifestの `target=aarch64-apple-darwin`、`source_commit=0dc6d673...`、
+  `selfhost_fixed_point=true`、program SHA-256、4,327,168 bytesを確認した。artifact単体の
+  no-arg helpと `parse` file postflightも exit `0` / stderr `0` で通過した。Linux x86_64 native
+  entrypoint、component sidecar、両 targetの full-program parityは残る。
 - [~] `V2-16b` / `LEGACY-IO-01` native artifact I/O — bounded argv/file/raw-byte Preview1 と
   4096 bytes 超 read の slice は verified。`valid/io-read-file` は manifest の明示的な
   UTF-8 runtime input snapshot と task-owned preopen まで Rust oracle/native producer contract
@@ -1192,10 +1197,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   1回の compile と複数 argv 実行にまとめ、`459.57s` で確認した。これは version alias と
   parse file routingの Rust-host verified sliceであり、native stage0、他の公開 command、
   両 supported targetのrelease evidence、`LEGACY-TOOL-01` aggregateは残る。
+  Mac Apple Siliconの current-source `program.native` でも no-arg helpと `parse` fileを postflight
+  実行し、exit `0` / stderr `0` を確認した。ただしこれは単一 release artifactの smokeであり、
+  Linux x86_64 stage0の `check` / `parse`、全公開 commandの native matrix、release provenanceは残る。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
-  Rust oracle/host integration の隔離を閉じる。
+  Rust oracle/host integration の隔離を閉じる。2026-08-02 に current `main` の Mac Apple Silicon
+  native App.Cli releaseを再生成し、stage2/stage3 fixed-point、source commit、target、artifact
+  digest、`--version` smokeを確認した。Linux x86_64のcurrent-source package/acquisition、
+  release archive、rollback実行、両 targetのprovenance parityは残る。
 
 ## ISSUES-derived quality and runtime work
 
