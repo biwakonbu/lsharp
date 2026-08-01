@@ -1944,3 +1944,14 @@ regeneration・full buildは未実行である。blockerの再現 commandは `cu
 /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と `find /tmp
 /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-fetch-stage0-install-directory-safety.md`](docs/adr/decisions-v0.3-fetch-stage0-install-directory-safety.md)。
+
+2026-08-02 に `scripts/release.sh` の release version safetyを追加した。`VERSION` を archive directory、archive filename、
+manifest metadataへ流す前に ASCII letters、digits、dot、underscore、hyphenだけへ限定し、`v1/unsafe` を release output作成前に
+拒否する RED→GREENを `test-native-release-identity.py` で確認した。これは release version namespaceの verified partial sliceであり、
+live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは
+未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが
+現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage regeneration・full buildは
+未実行である。blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp
+/Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と `find /tmp
+/Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-release-version-path-safety.md`](docs/adr/decisions-v0.3-release-version-path-safety.md)。

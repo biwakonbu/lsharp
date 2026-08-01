@@ -489,6 +489,31 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertNotEqual(partial_identity.returncode, 0)
             self.assertIn("require NATIVE_ONLY_REVIEW_EVIDENCE_IDENTITY", partial_identity.stderr)
 
+    def test_rejects_unsafe_release_version_before_output_directory(self):
+        project_root = SCRIPTS_DIR.parent.parent
+        release_script = project_root / "scripts" / "release.sh"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            dist = root / "dist"
+            result = subprocess.run(
+                ["bash", str(release_script)],
+                cwd=project_root,
+                env={
+                    **os.environ,
+                    "VERSION": "v1/unsafe",
+                    "TARGET": "aarch64-apple-darwin",
+                    "SOURCE_COMMIT": SOURCE_COMMIT,
+                    "DIST_DIR": str(dist),
+                    "NATIVE_ONLY_RELEASE": "1",
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("version must contain only", result.stderr)
+            self.assertFalse(dist.exists())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

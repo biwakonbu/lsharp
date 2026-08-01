@@ -52,6 +52,13 @@ case "$TARGET" in
     ;;
 esac
 
+case "$VERSION" in
+  *[!A-Za-z0-9._-]*|"")
+    echo "ERROR: version must contain only ASCII letters, digits, dot, underscore, or hyphen: ${VERSION}" >&2
+    exit 1
+    ;;
+esac
+
 echo "=== L# Release Build ==="
 echo "Version: ${VERSION}"
 echo "Target:  ${TARGET}"
