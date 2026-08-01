@@ -45,14 +45,18 @@ class UnverifiedIdentity(IdentityError):
     """An identity that cannot be treated as verified without provider input."""
 
 
-def digest_file(path, field):
+def read_regular_file(path, field):
     try:
         file_stat = path.lstat()
         if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
             raise IdentityError(f"{field} must be a regular non-symlink file: {path}")
-        payload = path.read_bytes()
+        return path.read_bytes()
     except OSError as error:
         raise IdentityError(f"{field} cannot be read: {path}: {error}") from error
+
+
+def digest_file(path, field):
+    payload = read_regular_file(path, field)
     if not payload and field in ("trust store", "review lifecycle"):
         raise IdentityError(f"{field} must be non-empty: {path}")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -307,10 +311,7 @@ def validate_identity(
         )
 
     if artifact is not None:
-        try:
-            artifact_bytes = artifact.read_bytes()
-        except OSError as error:
-            raise IdentityError(f"release artifact cannot be read: {artifact}: {error}") from error
+        artifact_bytes = read_regular_file(artifact, "artifact")
         actual_artifact_digest = "sha256:" + hashlib.sha256(artifact_bytes).hexdigest()
         if identity["artifact_digest"] != actual_artifact_digest:
             raise IdentityError(

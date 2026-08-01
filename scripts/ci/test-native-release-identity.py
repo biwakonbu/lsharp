@@ -147,6 +147,34 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertEqual(missing_provider.returncode, 2)
             self.assertIn("provider", missing_provider.stderr)
 
+    def test_rejects_symlinked_release_artifact_path(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            outside_artifact = root / "outside-program.native"
+            outside_artifact.write_bytes(b"native release program\n")
+            artifact.symlink_to(outside_artifact)
+            artifact_digest = "sha256:" + hashlib.sha256(
+                outside_artifact.read_bytes()
+            ).hexdigest()
+            identity_path = root / "identity.json"
+            self.write_identity(identity_path, identity_for(artifact_digest))
+
+            result = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(
+                "artifact must be a regular non-symlink file",
+                result.stderr,
+            )
+
     def test_rejects_provider_identity_without_auth_context_files(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

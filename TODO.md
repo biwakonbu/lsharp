@@ -1055,6 +1055,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   verified partial として追加したが、actual provider/auth、current-source/packaged runtime、
   rollback/Wasm parity は残る。ADR:
   `docs/adr/decisions-v0.3-native-official-cleanup-path.md`。
+  さらに offline release identity verifier の明示 `--artifact` 入力を regular fileかつ非symlinkに限定し、
+  期待 digestと同じ bytesを持つ外部 artifact symlinkを `artifact must be a regular non-symlink file` で
+  fail-closedにする RED→GREENを `test-native-release-identity.py` で確認した。これは artifact path provenance
+  の verified partial sliceであり、provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux
+  両 targetの packaged provenance/rollback bytes parityは未検証であるため、EC-M3-05と関連 milestoneは
+  `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-release-identity-artifact-regular-file.md`。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は
