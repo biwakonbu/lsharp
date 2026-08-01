@@ -31,4 +31,6 @@ focused harnessで維持した。
 これは packaged stage0 artifact provenanceの partial sliceである。current-source Linux runtime、provider
 API/auth取得・意味検証、Mac/Linux両 targetの packaged bytes parity、rollback parityは未検証のため、
 M3-05-N2 / M3-05-N7 / M3-05-N9 と M3-04-N1 は `[~]` のまま残す。current-source manifest/expected replay lockが
-揃わない状態と別セッション所有のLinux replayは変更しない。
+揃わない状態と別セッション所有のLinux replayは変更しない。再現 command は
+`current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
+`find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)` である。
