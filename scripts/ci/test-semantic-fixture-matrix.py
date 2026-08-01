@@ -107,6 +107,28 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
             {"required": False, "status": "not-applicable"},
         )
 
+    def test_r1_map_collections_fixture_declares_runtime_contract(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/map-collections"
+        )
+        self.assertEqual(fixture["kind"], "valid")
+        self.assertEqual(
+            fixture["layers"],
+            ["syntax", "types", "ir", "codegen", "runtime"],
+        )
+        self.assertEqual(
+            fixture["observables"],
+            ["ast", "type", "ir", "wasm", "runtime", "report"],
+        )
+        self.assertEqual(fixture["commands"], ["check", "compile", "build"])
+        self.assertEqual(fixture["expected"]["runtime"]["stdout"], "3\n1\n0\n")
+        self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
+
     def test_r2_closure_allocation_fixture_declares_runtime_contract(self):
         result = self.run_validator()
         self.assertEqual(result.returncode, 0, result.stderr)

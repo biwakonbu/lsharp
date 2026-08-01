@@ -56,6 +56,7 @@ FIXTURES=(
   --fixture-id valid/closure-allocation
   --fixture-id valid/free-list-growth
   --fixture-id valid/io-read-file
+  --fixture-id valid/map-collections
   --fixture-id valid/module-import
   --fixture-id valid/nested-record-pattern
   --fixture-id valid/record-accessor
