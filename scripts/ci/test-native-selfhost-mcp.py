@@ -17,6 +17,7 @@ from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_nativ
 from native_selfhost_mcp_manifest_tests import assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
 from native_selfhost_mcp_validate_tests import assert_validate_rejects_invalid_report
 from native_selfhost_mcp_check_tests import assert_check_rejects_invalid_output
+from native_selfhost_mcp_format_tests import assert_format_output_schema_is_closed, assert_format_rejects_native_failures
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 SHIM = SCRIPTS_DIR / "native-selfhost-mcp.py"
 def request(request_id, method, params=None):
@@ -151,6 +152,11 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     print(report_output)
                     raise SystemExit(2)
                 if args[:1] == ["fmt"]:
+                    format_mode = os.environ.get("FAKE_NATIVE_FORMAT_MODE", "success")
+                    if format_mode == "nonzero":
+                        print("(formatted)")
+                        sys.stderr.write("format diagnostic\\n")
+                        raise SystemExit(7)
                     print("(formatted)")
                     raise SystemExit(0)
                 if args[:1] == ["doc"]:
@@ -169,7 +175,7 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         os.chmod(program, 0o755)
         return program
 
-    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None, wasmtime_path=None, manifest_mode=None, report_mode=None, check_mode=None):
+    def run_shim(self, program, payload, root, identity_mode=None, doc_output=None, stdlib_api_path=None, stdlib_path=None, wasmtime_path=None, manifest_mode=None, report_mode=None, check_mode=None, format_mode=None):
         environment = os.environ.copy()
         environment["FAKE_NATIVE_LOG"] = str(root / "native.log")
         environment["FAKE_WASMTIME_LOG"] = str(root / "wasmtime.log")
@@ -190,6 +196,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             environment["FAKE_NATIVE_REPORT_MODE"] = report_mode
         if check_mode is not None:
             environment["FAKE_NATIVE_CHECK_MODE"] = check_mode
+        if format_mode is not None:
+            environment["FAKE_NATIVE_FORMAT_MODE"] = format_mode
         return subprocess.run(
             [sys.executable, str(SHIM), "--program", str(program)],
             input=payload,
@@ -510,6 +518,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
 
     def test_check_rejects_invalid_output(self):
         assert_check_rejects_invalid_output(self)
+    def test_format_output_schema_is_closed(self):
+        assert_format_output_schema_is_closed(self)
+    def test_format_rejects_native_failures(self):
+        assert_format_rejects_native_failures(self)
     def test_package_api_projects_local_api_json_without_native_execution(self):
         assert_package_api_projects_local_api_json(self)
     def test_package_api_rejects_invalid_arguments_before_native_execution(self):

@@ -166,6 +166,14 @@ CHECK_OUTPUT_SCHEMA = {
     },
 }
 
+FORMAT_OUTPUT_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["formatted"],
+    "properties": {"formatted": {"type": "string"}},
+}
+
 MANIFEST_OUTPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -409,12 +417,7 @@ TOOLS = [
         "L# source を整形する (native selfhost subset)",
         SOURCE_PROPERTIES,
         [["source"], ["file"]],
-        {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "object",
-            "required": ["formatted"],
-            "properties": {"formatted": {"type": "string"}},
-        },
+        FORMAT_OUTPUT_SCHEMA,
     ),
     tool_descriptor(
         "lsharp_compile_run",
@@ -844,6 +847,12 @@ def call_validate(program, arguments, temporary_directory):
 def call_format(program, arguments, temporary_directory):
     path = input_file(arguments, temporary_directory)
     completed = run_native(program, ["fmt", str(path)])
+    if completed.returncode:
+        detail = completed.stderr.strip()
+        raise ToolError(
+            f"native format exited with status {completed.returncode}"
+            + (f": {detail}" if detail else "")
+        )
     return {"formatted": completed.stdout}
 
 

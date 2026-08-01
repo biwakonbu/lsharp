@@ -229,6 +229,11 @@ semantics、target runtime、manifest runtime validation の全 surface は [~] 
 docs/adr/decisions-v0.3-native-mcp-subset-shim.md。
 compile/run boundary の判断は
 `docs/adr/decisions-v0.3-native-mcp-compile-run-boundary.md` に記録した。
+さらに native `lsharp_format` の出力を `formatted` だけの closed-world schema に固定し、native `fmt`
+が stdout を返しても non-zero exit なら stderr/status 付き MCP error とする fail-closed boundary を
+native MCP 60 tests で確認した。ADR:
+`docs/adr/decisions-v0.3-native-mcp-format-output.md`。これは source text の意味を解釈しない
+offline relay の verified partial slice であり、target runtime と Rust/native full parity は残る。
 
 ## Current priority — v0.2 Milestone 2
 
