@@ -105,3 +105,8 @@ look stronger than its evidence.
   `aarch64-apple-darwin` — 14 valid artifact/runtime observations plus the
   explicit `LS3001` invalid observation; details and hashes are in the batch
   ADR.
+- A second current-source Rust-oracle run at
+  `3b6039fcd3f91e5d5c266aaeaa2f87af7c349948` observed two additional invalid
+  fixtures (`LS3001` and `LS1001`) and kept three code/span-missing diagnostics
+  rejected; the classification is recorded in the
+  [`Mac Rust-oracle invalid batch ADR`](decisions-v0.4-m1-01-rust-oracle-invalid-batch.md).

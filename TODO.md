@@ -94,6 +94,14 @@ ADR: `docs/adr/decisions-v0.4-m1-01-source-symlink-boundary.md`。
 x86_64、full invalid、Rust/native differential、aggregate は未接続のため v0.4 の完了項目には移さない。
 ADR: `docs/adr/decisions-v0.4-m1-01-rust-oracle-valid-batch.md`。
 
+さらに current source commit `3b6039fcd3f91e5d5c266aaeaa2f87af7c349948` の Mac Rust-oracle invalid laneを
+5 fixture 個別実行し、`invalid/record-field-pattern-literal` (`LS3001`, line 8 columns 19–21) と
+`invalid/type-undefined-value` (`LS1001`, line 1 columns 16–29) の code/span/exit/no-artifact boundaryを
+確認した。lexer unexpected character、module-not-found、parser unexpected EOF は code または span が
+欠落するため producer が synthetic に補完せず拒否し、pending のまま残す verified partial である。
+native stage0、Linux x86_64、full invalid parity、Rust/native differential、aggregate は未接続のため
+v0.4 の完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-01-rust-oracle-invalid-batch.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。
