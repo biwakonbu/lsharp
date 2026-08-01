@@ -1448,6 +1448,21 @@ Evidence: RED の `test_e2e_selfhost_property_runner_preserves_non_bool_precondi
 
 これは評価中に最初に non-Boolと判定した precondition predicateの source spanと、その JSON report forwardingに限定した verified sliceであり、text report、静的型診断と動的評価の全ケース parity、全 property failure の report forwarding、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-02 aggregateは残件である。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
 
+### V2-16c actual selfhost CLI check file boundary (2026-08-02)
+
+`App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
+REDでは bundle parse が `Cli.ls` の `run-test-source-json` と validation option loopの defn境界で
+閉じ括弧不足により次の `defn` を `(` として拒否し、修正後は `Tools.Validation.ManifestInput`
+の importが runtime bundle inventoryに欠けて `UndefinedVar` になった。CLI sourceの括弧を補正し、
+support bundleの source-path / embedded source / module listを同期した。
+
+Evidence: `test_e2e_selfhost_cli_main_with_args_check_file` は actual `Cli` Wasmを
+`check input.ls` argvで実行し、stdout `Int` / `diagnostics:0`、exit successを `491.23s` で確認した。
+`test_support_selfhost_cli_runtime_bundle_cached` では module marker、`ManifestInput`収録、cache identityを
+確認した。これは Rust host compile/run の source bundle contractに限定され、native stage0 の
+`check`、実 stage0の全公開 command、external tool、両 supported targetの release/provenance evidenceは
+残る。`V2-16c` / `LEGACY-TOOL-01` と Rust oracle/bootstrap boundaryは維持する。
+
 ### EC-M1-02 EmbeddedCli property diagnostic report forwarding slice (2026-07-20)
 
 EmbeddedCli の実 argv `test input.ls --format json` について、non-Bool property precondition の failure boundary を Cli と同じ structured report へ転送することを追加検証した。stdout は JSON report 1 行、終了値は diagnostic failure の `2` とし、`implementation_conformance.status=fail`、`firstErrorCode=2`、`firstErrorSpan` は同一 fixtureを Rust canonical checkerへ渡して得た spanと比較した。

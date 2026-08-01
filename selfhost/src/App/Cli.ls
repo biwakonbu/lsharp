@@ -1134,7 +1134,7 @@
               (root_pop)
               (root_pop)
               (root_pop)
-              status))))))
+              status)))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -2153,7 +2153,7 @@
               trust
               lifecycle
               now))
-          (validate-options-result (validate-option-invalid) manifest-path flag source-path)))))
+          (validate-options-result (validate-option-invalid) manifest-path flag source-path))))))
 (defn parse-validate-cli-options [argc]
   (parse-validate-cli-options-loop 1 argc "" "" 0 0 "" "" "" "" "" ""))
 (defn parse-validate-cli-option [argc]

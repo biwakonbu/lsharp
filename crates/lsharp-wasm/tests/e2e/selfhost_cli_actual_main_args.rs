@@ -235,7 +235,6 @@ fn test_e2e_selfhost_cli_main_compile_and_build_output_actual_preview1_wasm() {
 
 /// TEST-CLI-02-AP: actual Cli main は argv 経由で check file command を処理できること
 #[test]
-#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_check_file() {
     let lines = run_cli_main_with_input_file("check", "(defn main [] 42)", &["check", "input.ls"]);
 

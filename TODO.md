@@ -1165,7 +1165,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
   `lsharp` fallback 不使用まで integration test で確認した。実 stage0 と外部 tool の E2E、
   Rust-only flag/target の明示境界、target 別 release evidence を閉じる。ADR:
-  `docs/adr/decisions-v0.3-native-install-runner-e2e.md`。
+  `docs/adr/decisions-v0.3-native-install-runner-e2e.md`。2026-08-02 に
+  `test_e2e_selfhost_cli_main_with_args_check_file` の ignoreを外し、actual `Cli` Wasm bundleを
+  `check input.ls` argvで実行して `Int` / `diagnostics:0` を `491.23s` で確認した。前段で
+  `Cli.ls` の JSON test / validation option formに不足していた閉じ括弧2箇所を修正し、
+  `Tools.Validation.ManifestInput` の source path・embedded module・bundle inventoryを揃えた。
+  これは Rust hostが生成・実行する actual CLI source bundle の verified sliceであり、native
+  stage0 の `check`、install/repl/lsp/doc/componentの実stage0 E2E、Rust-only flag/target境界、
+  両 supported targetのrelease evidence、`LEGACY-TOOL-01` aggregateは残る。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、

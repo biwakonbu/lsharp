@@ -785,6 +785,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "Whitespace.ls" => "selfhost/src/Tools/Validation/Whitespace.ls",
         "IntentSource.ls" => "selfhost/src/Tools/Validation/IntentSource.ls",
         "ReviewIdentity.ls" => "selfhost/src/Tools/Validation/ReviewIdentity.ls",
+        "ManifestInput.ls" => "selfhost/src/Tools/Validation/ManifestInput.ls",
         "Evidence.ls" => "selfhost/src/Tools/Validation/Evidence.ls",
         "Stale.ls" => "selfhost/src/Tools/Validation/Stale.ls",
         "GC.ls" => "selfhost/src/Runtime/GC.ls",
@@ -891,6 +892,9 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "LspServer.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServer.ls"),
         "Whitespace.ls" => {
             include_str!("../../../../selfhost/src/Tools/Validation/Whitespace.ls")
+        }
+        "ManifestInput.ls" => {
+            include_str!("../../../../selfhost/src/Tools/Validation/ManifestInput.ls")
         }
         "NativeTarget.ls" => {
             include_str!("../../../../selfhost/src/Backend/Native/NativeTarget.ls")
@@ -1596,6 +1600,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "Whitespace.ls",
             "IntentSource.ls",
             "ReviewIdentity.ls",
+            "ManifestInput.ls",
             "Evidence.ls",
             "Stale.ls",
             "Cli.ls",
@@ -1846,7 +1851,9 @@ mod tests {
         let second = selfhost_cli_runtime_bundle();
         assert_eq!(first, second);
         assert_eq!(first.as_ptr(), second.as_ptr());
-        assert!(first.contains(selfhost_module("Cli.ls").trim()));
+        assert!(first.contains("(module App.Cli)"));
+        assert!(first.contains("(defn main []"));
+        assert!(first.contains("(module Tools.Validation.ManifestInput)"));
         assert!(first.contains(selfhost_module("CompilerSplit.ls").trim()));
     }
 
