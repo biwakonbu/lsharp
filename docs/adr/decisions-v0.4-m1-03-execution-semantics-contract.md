@@ -151,7 +151,8 @@ observations as pending rather than overloading `stdout` or a debug log.
   AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
 - The matrix RED→GREEN contract is covered by
   `python3 scripts/ci/test-semantic-fixture-matrix.py` (5 tests). The Rust
-  oracle producer, with source commit `f963412fc137971faee50d81803abb8731152512`
+  oracle producer, with fixture implementation commit
+  `4790bb3e647d03b2ccfa883bc502e40d2385865f`
   and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
   `41\n1\n7\n`, Wasm size `6822`, and digest
   `sha256:370c8ea8332a147ab5614c4062421c3dcad2957c0004d022678c51f2e762e7a`.
@@ -163,7 +164,9 @@ observations as pending rather than overloading `stdout` or a debug log.
   remain follow-up work.
 - This is Rust-oracle evidence only. Native stage0 execution, Linux x86_64,
   ftable/import byte parity, resource metrics, and the two-target completion
-  audit remain pending, so R1 and V4-M1-03 stay `[~]`.
+  audit remain pending, so R1 and V4-M1-03 stay `[~]`. The report was captured
+  before this follow-up docs-only annotation; regenerate it at the final main
+  SHA before attaching it to the evidence index.
 
 ## Evidence and remaining work
 
