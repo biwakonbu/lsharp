@@ -382,6 +382,12 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   rollback bytes parityは未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。ADR:
   `docs/adr/decisions-v0.3-provider-snapshot-nonempty-preflight.md`。
 
+  続けて、trust-store と review-lifecycle に同じ lexical-normalized pathを渡す provider adapterの誤配線を
+  `must be different files` として producer / verifierの両方で拒否した。same-path RED→GREENと producer output
+  未生成を確認した verified partial sliceである。live provider/auth acquisition、署名意味検証、current-source Linux
+  runtime、両 target packaged provenance/rollback bytes parityは未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は
+  `[~]` のまま残る。ADR: `docs/adr/decisions-v0.3-provider-snapshot-role-binding.md`。
+
   続けて同日、release smoke の `checksums.txt` target path を archive root 内の POSIX relative path に限定した。
   checksum-valid な `../../../outside-checksum-target.txt` fixture を拒否する RED→GREEN を provider snapshot
   harness で確認し、package 外部 file を checksum evidence として受理しない verified partial slice を追加した。

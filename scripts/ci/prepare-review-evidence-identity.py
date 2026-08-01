@@ -67,6 +67,12 @@ def build_identity(arguments: argparse.Namespace) -> dict[str, str | None]:
         raise IdentityInputError(
             "--trust-store and --review-lifecycle must be supplied together"
         )
+    if has_trust_store and os.path.abspath(arguments.trust_store) == os.path.abspath(
+        arguments.review_lifecycle
+    ):
+        raise IdentityInputError(
+            "--trust-store and --review-lifecycle must be different files"
+        )
 
     artifact_digest = digest_file(arguments.artifact, "artifact")
     trust_store_digest = (

@@ -200,6 +200,36 @@ class PrepareReviewEvidenceIdentityTest(unittest.TestCase):
             self.assertIn("must be non-empty", result.stderr)
             self.assertFalse(output.exists())
 
+    def test_rejects_one_path_for_both_provider_roles(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            snapshot = root / "provider-snapshot.json"
+            snapshot.write_bytes(b'{"snapshot":"shared"}\n')
+            output = root / "identity.json"
+
+            result = self.run_preparer(
+                "--subject-digest",
+                "sha256:" + "c" * 64,
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--artifact",
+                str(artifact),
+                "--trust-store",
+                str(snapshot),
+                "--review-lifecycle",
+                str(snapshot),
+                "--now",
+                "2026-08-15T00:00:00Z",
+                "--output",
+                str(output),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must be different files", result.stderr)
+            self.assertFalse(output.exists())
+
     def test_matches_rust_calendar_timestamp_boundary(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

@@ -10,6 +10,7 @@ command never fills them from the environment, network, or current checkout.
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import re
 import stat
@@ -126,6 +127,10 @@ def validate_identity(
     if has_trust_store != has_lifecycle:
         raise IdentityError(
             "--trust-store and --review-lifecycle must be supplied together"
+        )
+    if has_trust_store and os.path.abspath(trust_store) == os.path.abspath(review_lifecycle):
+        raise IdentityError(
+            "--trust-store and --review-lifecycle must be different files"
         )
     if has_trust_store:
         expected_trust_store_digest = digest_file(trust_store, "trust store")
