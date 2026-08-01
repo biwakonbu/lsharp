@@ -1173,6 +1173,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これは Rust hostが生成・実行する actual CLI source bundle の verified sliceであり、native
   stage0 の `check`、install/repl/lsp/doc/componentの実stage0 E2E、Rust-only flag/target境界、
   両 supported targetのrelease evidence、`LEGACY-TOOL-01` aggregateは残る。
+  同日、`test_e2e_selfhost_cli_main_no_args_shows_help` の ignoreを外し、actual `Cli` bundleを
+  引数なしで実行して `Usage: lsharp <command>` / `Commands:` の help surface と成功終了を
+  `447.61s` で確認した。これは no-arg dispatch と help serialization の Rust-host verified sliceであり、
+  native stage0の no-arg parity、他の公開 command、両 supported targetのrelease evidence、
+  `LEGACY-TOOL-01` aggregateは残る。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、

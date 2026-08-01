@@ -14533,7 +14533,6 @@ fn test_e2e_selfhost_cli_main_dispatch_command_surface() {
 
 /// TEST-CLI-02-AD: actual Cli main は引数なし実行で help surface を返すこと
 #[test]
-#[ignore]
 fn test_e2e_selfhost_cli_main_no_args_shows_help() {
     let output = compile_and_run(selfhost_cli_runtime_bundle());
 

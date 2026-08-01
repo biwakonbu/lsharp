@@ -1463,6 +1463,12 @@ Evidence: `test_e2e_selfhost_cli_main_with_args_check_file` は actual `Cli` Was
 `check`、実 stage0の全公開 command、external tool、両 supported targetの release/provenance evidenceは
 残る。`V2-16c` / `LEGACY-TOOL-01` と Rust oracle/bootstrap boundaryは維持する。
 
+同日、`test_e2e_selfhost_cli_main_no_args_shows_help` の ignoreを外し、同じ actual `Cli` bundleを
+引数なしで実行する gateを追加した。stdoutに `Usage: lsharp <command>` と `Commands:` が含まれ、
+成功終了することを `447.61s` で確認した。これにより `main` の no-arg dispatch と help surface
+serialization の Rust-host evidenceを追加したが、native stage0の no-arg parity、他の公開 command、
+external helper、両 supported targetの release/provenance evidenceは引き続き未検証である。
+
 ### EC-M1-02 EmbeddedCli property diagnostic report forwarding slice (2026-07-20)
 
 EmbeddedCli の実 argv `test input.ls --format json` について、non-Bool property precondition の failure boundary を Cli と同じ structured report へ転送することを追加検証した。stdout は JSON report 1 行、終了値は diagnostic failure の `2` とし、`implementation_conformance.status=fail`、`firstErrorCode=2`、`firstErrorSpan` は同一 fixtureを Rust canonical checkerへ渡して得た spanと比較した。

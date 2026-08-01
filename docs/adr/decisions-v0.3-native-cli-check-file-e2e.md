@@ -4,6 +4,7 @@
 - Date: 2026-08-02
 - Scope: `selfhost/src/App/Cli.ls`,
   `crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs`,
+  `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`,
   `crates/lsharp-wasm/tests/e2e/support.rs`
 - Related: `V2-16c`, `LEGACY-TOOL-01`
 
@@ -28,9 +29,11 @@ oracle lane.
   `Int` / `diagnostics:0` with exit success.
 - `test_support_selfhost_cli_runtime_bundle_cached` verifies the cached bundle identity and
   `Tools.Validation.ManifestInput` module marker.
+- `test_e2e_selfhost_cli_main_no_args_shows_help` executes the same actual bundle without argv and
+  returns the `Usage: lsharp <command>` and `Commands:` help markers with exit success.
 
 ## Boundary
 
-This is a Rust-host actual Wasm source-bundle slice. It does not prove native stage0 `check`,
-the remaining public commands, external helper parity, release provenance, or both supported
-target artifacts. `V2-16c` and `LEGACY-TOOL-01` remain `[~]` in `TODO.md`.
+This is a Rust-host actual Wasm source-bundle slice. It does not prove native stage0 `check` or
+no-arg parity, the remaining public commands, external helper parity, release provenance, or both
+supported target artifacts. `V2-16c` and `LEGACY-TOOL-01` remain `[~]` in `TODO.md`.
