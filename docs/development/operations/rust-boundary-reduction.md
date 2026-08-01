@@ -2805,3 +2805,33 @@ fixed-pointだけを閉じる verified sliceである。parser recovery/metadata
 runtime ABI、Mac Apple Siliconのこの変更後 current-source gate、全公開 surface、
 `LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle / bootstrap / host integration境界と
 TODOの `[~]` は維持する。
+
+### LEGACY-LANG-01 selfhost bounded parser evidence sequence scans (2026-08-01)
+
+`Syntax.Parser.ls` の `parse-source-evidence-shrinks-loop-v3` と
+`parse-source-evidence-coverage-loop-v3` を、item一つを返す step、64要素 bounded loop、rooted
+continuation、public wrapperへ移行した。`:evidence` payloadの shrinks integer list と coverage
+bucket/count list の RBracket/EOF停止、順序、既存 vector payload は変更しない。
+
+Evidence: `selfhost_parser_metadata_sequences` の static/runtime 2 tests、65 shrinks / 65 coverage
+entriesのcross-chunk cursor/count、`selfhost_parser_` filterの114 tests、
+`selfhost_evidence_registry` filterの59 tests、fixtureの `rustfmt --edition 2021 --check`、
+`git diff --check` が passした。parser filterに含まれる
+`test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms` は current sourceでも
+`left "7"` / `right "5"` となる既知の detached baseline failureであり、今回の変更起因ではない。
+
+source commit `30eaff32` に対する local Lima `lsharp-linux-x86` gateは一度だけ実行し、
+host-generated stage1 x86 payloadが Linux x86_64 VM内でstage2/stage3 native self-regenerationを
+完走した。summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/30eaff32-parser-metadata-sequence/actual-selfregen-summary.json`
+に保存し、`status=pass`、stage2/stage3 code lengthは双方 `11292130`、stdout SHA-256は双方
+`9dce4fddbb6cd6473a2d85fd40368432592169688e566bcd9eaeec311371edae` で一致した。VMは
+`4 CPU / 16 GiB RAM / 12 GiB disk` の既存設定を使用し、完了後に停止した。stage debug、stdout、
+stage intermediate、local Cargo targetは回収して小さいsummaryだけを残す運用とする。
+
+これは parser evidence の shrinks / coverage bounded scan と Linux x86_64 stage2/stage3 fixed-point
+だけを閉じる verified sliceである。metadata outer directive loop、review/evidence field schema全体、
+parser recovery/metadata全体、Parser.lsの大規模ファイル分割、record schema pattern semantic parity、
+全 pattern/import target、ftable/linear-memory/runtime ABI、Mac Apple Siliconのこの変更後
+current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。Rust oracle /
+bootstrap / host integration境界と TODOの `[~]` は維持する。
