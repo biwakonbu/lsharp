@@ -353,6 +353,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   parity は未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。ADR:
   `docs/adr/decisions-v0.3-native-official-provider-source-commit-binding.md`。
 
+  続けて、provider snapshot 指定時の4つの identityを既存 `verify-native-release-identity.py` へ接続し、
+  canonical schema、provider digest、strict timestamp、source commitを packaging 前に検査した。current
+  `source_commit` だけの不完全 JSONを拒否し、fake two-target harnessで invocation log 不変を確認した
+  verified partial sliceである。provider API/auth acquisition、current-source Linux runtime、両 targetの
+  packaged provenance/rollback bytes parity は未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。ADR:
+  `docs/adr/decisions-v0.3-native-official-provider-identity-schema-preflight.md`。
+
   続けて同日、release smoke の `checksums.txt` target path を archive root 内の POSIX relative path に限定した。
   checksum-valid な `../../../outside-checksum-target.txt` fixture を拒否する RED→GREEN を provider snapshot
   harness で確認し、package 外部 file を checksum evidence として受理しない verified partial slice を追加した。

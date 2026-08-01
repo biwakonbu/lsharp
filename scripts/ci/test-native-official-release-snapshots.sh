@@ -15,6 +15,7 @@ SOURCE_SMOKE_EVIDENCE_ROOT="$TMP_ROOT/source-smoke-evidence"
 PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
 PROVIDER_IDENTITY_SMOKE_ROOT=""
+IDENTITY_SCHEMA_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
 RUNNING_VM_SMOKE_ROOT=""
 CLEANUP_FAILURE_SMOKE_ROOT=""
@@ -27,6 +28,7 @@ cleanup() {
   [[ -z "$PARTIAL_SMOKE_ROOT" ]] || rm -rf "$PARTIAL_SMOKE_ROOT"
   [[ -z "$MISSING_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$MISSING_IDENTITY_SMOKE_ROOT"
   [[ -z "$PROVIDER_IDENTITY_SMOKE_ROOT" ]] || rm -rf "$PROVIDER_IDENTITY_SMOKE_ROOT"
+  [[ -z "$IDENTITY_SCHEMA_SMOKE_ROOT" ]] || rm -rf "$IDENTITY_SCHEMA_SMOKE_ROOT"
   [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
   [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
   [[ -z "$CLEANUP_FAILURE_SMOKE_ROOT" ]] || rm -rf "$CLEANUP_FAILURE_SMOKE_ROOT"
@@ -43,6 +45,8 @@ printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
 printf '%s\n' '{"review_id":"review:orchestrator/r1","state":"active"}' >"$LIFECYCLE"
 
 cp "$ROOT/scripts/ci/native-official-release-local.sh" "$FAKE_ROOT/scripts/ci/"
+cp "$ROOT/scripts/ci/verify-native-release-identity.py" "$FAKE_ROOT/scripts/ci/"
+cp "$ROOT/scripts/ci/review_identity_timestamp.py" "$FAKE_ROOT/scripts/ci/"
 
 cat >"$FAKE_ROOT/scripts/ci/native-selfhost-dev-source-file-smoke.sh" <<'SH'
 #!/usr/bin/env bash
@@ -161,13 +165,30 @@ git -C "$FAKE_ROOT" config user.name fixture
 git -C "$FAKE_ROOT" add .
 git -C "$FAKE_ROOT" -c commit.gpgSign=false commit -qm 'native official release fixture'
 SOURCE_COMMIT="$(git -C "$FAKE_ROOT" rev-parse HEAD)"
-for identity_path in \
-  "$TMP_ROOT/artifact-aarch64-apple-darwin/review-evidence-identity.json" \
-  "$TMP_ROOT/artifact-x86_64-unknown-linux-gnu/review-evidence-identity.json" \
-  "$TMP_ROOT/stage0-aarch64-apple-darwin/review-evidence-identity.json" \
-  "$TMP_ROOT/stage0-x86_64-unknown-linux-gnu/review-evidence-identity.json"; do
-  printf '{"source_commit":"%s"}\n' "$SOURCE_COMMIT" >"$identity_path"
-done
+python3 - "$SOURCE_COMMIT" "$TRUST_STORE" "$LIFECYCLE" "$TMP_ROOT" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+source_commit, trust_store, lifecycle, tmp_root = map(pathlib.Path, sys.argv[1:])
+artifact = tmp_root / "artifact-aarch64-apple-darwin" / "program.native"
+identity = {
+    "subject_digest": "sha256:" + "c" * 64,
+    "source_commit": str(source_commit),
+    "artifact_digest": "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest(),
+    "trust_store_digest": "sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+    "lifecycle_digest": "sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+    "now": "2026-08-15T00:00:00Z",
+}
+for identity_path in (
+    tmp_root / "artifact-aarch64-apple-darwin" / "review-evidence-identity.json",
+    tmp_root / "artifact-x86_64-unknown-linux-gnu" / "review-evidence-identity.json",
+    tmp_root / "stage0-aarch64-apple-darwin" / "review-evidence-identity.json",
+    tmp_root / "stage0-x86_64-unknown-linux-gnu" / "review-evidence-identity.json",
+):
+    identity_path.write_text(json.dumps(identity, separators=(",", ":")) + "\n", encoding="utf-8")
+PY
 
 FAKE_LOG="$LOG_PATH" \
 PATH="$PATH_PREFIX:$PATH" \
@@ -320,6 +341,41 @@ grep -F 'review evidence identity source_commit mismatch' <<<"$provider_identity
 after_provider_identity_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 [[ "$after_provider_identity_log_lines" == "$before_provider_identity_log_lines" ]] \
   || { echo 'provider identity source_commit mismatch reached a release or smoke boundary' >&2; exit 1; }
+
+identity_schema_path="$TMP_ROOT/artifact-aarch64-apple-darwin/review-evidence-identity.json"
+identity_schema_backup="$TMP_ROOT/provider-identity-schema.json"
+IDENTITY_SCHEMA_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-provider-schema.XXXXXX)"
+mv "$identity_schema_path" "$identity_schema_backup"
+printf '{"source_commit":"%s"}\n' "$SOURCE_COMMIT" >"$identity_schema_path"
+before_identity_schema_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+set +e
+identity_schema_output="$(
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FAKE_ROOT/provider-schema-dist" \
+  SMOKE_ROOT="$IDENTITY_SCHEMA_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$IDENTITY_SCHEMA_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+)"
+identity_schema_status=$?
+set -e
+mv "$identity_schema_backup" "$identity_schema_path"
+[[ "$identity_schema_status" -ne 0 ]] \
+  || { echo 'provider identity schema mismatch was accepted' >&2; exit 1; }
+grep -F 'review_evidence_identity fields must be exactly' <<<"$identity_schema_output" >/dev/null
+after_identity_schema_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+[[ "$after_identity_schema_log_lines" == "$before_identity_schema_log_lines" ]] \
+  || { echo 'provider identity schema mismatch reached a release or smoke boundary' >&2; exit 1; }
 
 missing_identity_path="$TMP_ROOT/artifact-aarch64-apple-darwin/review-evidence-identity.json"
 missing_identity_backup="$TMP_ROOT/missing-review-evidence-identity.json"

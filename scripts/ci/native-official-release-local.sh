@@ -135,6 +135,13 @@ if actual_source_commit != expected_source_commit:
         f"expected={expected_source_commit} actual={actual_source_commit!r}: {identity_path}"
     )
 PY
+    python3 "${ROOT_DIR}/scripts/ci/verify-native-release-identity.py" \
+      --identity "${identity_path}" \
+      --source-commit "${CURRENT_SOURCE_COMMIT}" \
+      --trust-store "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" \
+      --review-lifecycle "${NATIVE_OFFICIAL_REVIEW_LIFECYCLE}" \
+      --require-provider-input \
+      >/dev/null
   done
 }
 
