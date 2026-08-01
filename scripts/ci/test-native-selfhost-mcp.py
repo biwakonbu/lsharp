@@ -706,6 +706,24 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 responses[0]["result"]["serverInfo"],
                 {"name": "lsharp", "version": "0.1.0"},
             )
+            self.assertEqual(
+                [tool["name"] for tool in responses[1]["result"]["tools"]],
+                [
+                    "lsharp_check",
+                    "lsharp_validate",
+                    "lsharp_hover",
+                    "lsharp_completion",
+                    "lsharp_format",
+                    "lsharp_definition",
+                    "lsharp_references",
+                    "lsharp_project_context",
+                    "lsharp_package_api",
+                    "lsharp_stdlib_api",
+                    "lsharp_compile_run",
+                    "lsharp_errors",
+                    "lsharp_search",
+                ],
+            )
             tool_names = {tool["name"] for tool in responses[1]["result"]["tools"]}
             self.assertEqual(
                 tool_names,

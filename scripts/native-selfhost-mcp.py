@@ -479,6 +479,22 @@ TOOLS = [
         {"additionalProperties": False},
     ),
 ]
+CANONICAL_TOOL_ORDER = (
+    "lsharp_check",
+    "lsharp_validate",
+    "lsharp_hover",
+    "lsharp_completion",
+    "lsharp_format",
+    "lsharp_definition",
+    "lsharp_references",
+    "lsharp_project_context",
+    "lsharp_package_api",
+    "lsharp_stdlib_api",
+    "lsharp_compile_run",
+    "lsharp_errors",
+    "lsharp_search",
+)
+TOOLS = sorted(TOOLS, key=lambda tool: CANONICAL_TOOL_ORDER.index(tool["name"]))
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 def validate_program(program_value):
     program = pathlib.Path(program_value)

@@ -2134,3 +2134,10 @@ route testで確認した。これは MCP JSON-RPC envelope metadata の verifie
 全tool parity、package-install semantics、live provider API/auth acquisition・意味検証、current-source Linux runtime、
 Mac/Linux 両 target の packaged provenance/rollback bytes parity の完了証拠ではない。関連項目は `[~]` のまま残す。
 Evidence: [`decisions-v0.3-native-mcp-initialize-server-identity-parity.md`](docs/adr/decisions-v0.3-native-mcp-initialize-server-identity-parity.md)。
+
+2026-08-02 に native selfhost MCP `tools/list` の descriptor order を Rust canonical `list_tools()` と揃えた。同じ
+13 routeを LSP-first で返していた native shimを、Rustの check→validate→LSP→offline/package→compile/run→errors/search
+順へ explicit canonical tupleで並べ、全配列順を focused test の RED→GREEN で固定した。これは MCP route envelope の
+deterministic order verified partial parity sliceであり、Rust MCP 全semantic parity、package-install semantics、live provider
+API/auth acquisition・意味検証、current-source Linux runtime、Mac/Linux 両 targetの packaged provenance/rollback bytes parity
+の完了証拠ではない。関連項目は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-mcp-tools-list-order-parity.md`](docs/adr/decisions-v0.3-native-mcp-tools-list-order-parity.md)。
