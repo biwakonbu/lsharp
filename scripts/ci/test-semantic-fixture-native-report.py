@@ -128,6 +128,41 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                 {"status": "observed", "exit_code": 0, "stdout": "42\n", "stderr": ""},
             )
 
+    def test_runner_cannot_mutate_manifest_source(self):
+        source_path = ROOT / "examples/types.ls"
+        original_source = source_path.read_bytes()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                runner = root / "mutating-native-runner.py"
+                wasmtime = root / "fake-wasmtime.py"
+                stage0_manifest = write_stage0_manifest(root)
+                work_dir = root / "work"
+                work_dir.mkdir()
+                output = root / "report.json"
+                make_executable(
+                    runner,
+                    "#!/usr/bin/env python3\n"
+                    "import pathlib, sys\n"
+                    "source = pathlib.Path(sys.argv[2])\n"
+                    "source.write_text('(defn main [] 99)\\n', encoding='utf-8')\n"
+                    "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'native-wasm')\n",
+                )
+                make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+                result = self.run_producer(
+                    root,
+                    runner,
+                    wasmtime,
+                    stage0_manifest,
+                    output,
+                    work_dir,
+                    fixture_id="valid/adt-pattern",
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(source_path.read_bytes(), original_source)
+        finally:
+            source_path.write_bytes(original_source)
+
     def test_materializes_declared_runtime_input_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
