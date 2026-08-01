@@ -17,7 +17,9 @@ ROOT = SCRIPTS_DIR.parent.parent
 MANIFEST = SCRIPTS_DIR / "semantic-fixture-matrix.json"
 AUDIT = SCRIPTS_DIR / "semantic_fixture_evidence_audit.py"
 TARGET = "aarch64-apple-darwin"
-SOURCE_COMMIT = "a" * 40
+SOURCE_COMMIT = subprocess.check_output(
+    ["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"], text=True
+).strip()
 SELECTED_IDS = ["invalid/type-undefined-value", "valid/syntax-basic"]
 GATES = {
     "fallback-forbidden": "pass",
@@ -163,6 +165,27 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             result = self.run_audit(root, index_for(root, status="pass"))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("status", result.stderr.lower())
+
+    def test_rejects_shared_stale_source_commit(self):
+        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:
+            root = pathlib.Path(directory)
+            stale = "b" * 40
+            oracle = report_for("rust-oracle")
+            native = report_for("native-stage0")
+            oracle["source_commit"] = stale
+            native["source_commit"] = stale
+            comparison = comparison_for()
+            comparison["source_commit"] = stale
+            (root / "oracle.json").write_text(json.dumps(oracle), encoding="utf-8")
+            (root / "native.json").write_text(json.dumps(native), encoding="utf-8")
+            (root / "comparison.json").write_text(json.dumps(comparison), encoding="utf-8")
+            index = index_for(root)
+            index["source_commit"] = stale
+
+            result = self.run_audit(root, index)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("current", result.stderr.lower())
 
     def test_rejects_swapped_report_producer_roles(self):
         with tempfile.TemporaryDirectory(dir=ROOT, prefix=".semantic-evidence-") as directory:

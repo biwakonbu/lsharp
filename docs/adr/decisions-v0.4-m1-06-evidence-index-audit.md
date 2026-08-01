@@ -38,6 +38,9 @@ reports and comparison result as authoritative and recompute the comparison.
 - The report referenced as `oracle` must declare `producer=rust-oracle`, and
   the report referenced as `native` must declare `producer=native-stage0`.
   Producer identity is checked before differential comparison.
+- Both report source commits, and the evidence index source commit, must equal
+  `git rev-parse --verify HEAD` in the supplied project root. Matching a stale
+  commit across all inputs is not current-source evidence.
 - `scripts/ci/semantic_fixture_evidence_audit.py` validates project-relative
   regular-file references without symlink traversal, revalidates both reports through the V4-M1-01
   report contract, recomputes `semantic_fixture_diff.py`'s comparison, and

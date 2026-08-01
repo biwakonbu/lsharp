@@ -21,6 +21,7 @@ from semantic_fixture_diff import (
     ObservationError,
     compare_reports,
     load_json,
+    read_current_source_commit,
     validate_report,
 )
 from semantic_fixture_matrix import (
@@ -282,6 +283,11 @@ def main() -> int:
         raw_manifest = load_json(arguments.manifest, "fixture matrix")
         manifest = project_manifest(require_object(raw_manifest, "manifest"), root)
         index = load_index(arguments.index, root, manifest)
+        current_source_commit = read_current_source_commit(root)
+        if index["source_commit"] != current_source_commit:
+            raise ObservationError(
+                "evidence index source_commit does not match current checkout HEAD"
+            )
         result = audit(index, manifest)
     except (OSError, json.JSONDecodeError, ManifestError, ObservationError) as error:
         print(f"error: {error}", file=sys.stderr)

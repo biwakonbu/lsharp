@@ -12,6 +12,7 @@ import argparse
 import json
 import pathlib
 import re
+import subprocess
 import sys
 from typing import Any, Dict, List, Mapping
 
@@ -35,6 +36,22 @@ REPORT_PRODUCERS = {"rust-oracle", "native-stage0"}
 
 class ObservationError(ValueError):
     """A report cannot be compared under the matrix contract."""
+
+
+def read_current_source_commit(root: pathlib.Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ObservationError("unable to resolve current source commit") from error
+    source_commit = result.stdout.strip()
+    if not SOURCE_COMMIT.fullmatch(source_commit):
+        raise ObservationError("current source commit is not a 40-character lowercase commit")
+    return source_commit
 
 
 def load_json(path: pathlib.Path, label: str) -> Any:
@@ -290,6 +307,12 @@ def main() -> int:
             selected_ids,
             "native-stage0",
         )
+        current_source_commit = read_current_source_commit(arguments.root.resolve())
+        if (
+            oracle["source_commit"] != current_source_commit
+            or native["source_commit"] != current_source_commit
+        ):
+            raise ObservationError("report source_commit does not match current checkout HEAD")
         selected_manifest = dict(projected_manifest)
         selected_manifest["fixtures"] = [
             fixture for fixture in projected_manifest["fixtures"] if fixture["id"] in set(selected_ids)

@@ -41,7 +41,11 @@ partial として追加した。実 Rust/native artifact、runtime、Mac/Linux m
 `docs/adr/decisions-v0.4-m1-06-command-scope-boundary.md`。さらに oracle/native report の producer
 role (`rust-oracle` / `native-stage0`) の取り違えを拒否する producer-scope boundary を verified partial
 として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には
-移さない。ADR: `docs/adr/decisions-v0.4-m1-06-report-producer-boundary.md`。
+移さない。ADR: `docs/adr/decisions-v0.4-m1-06-report-producer-boundary.md`。さらに report/index の
+`source_commit` を指定 root の current `HEAD` に束縛し、同じ stale commit を全入力へコピーしても
+pass しない current-source boundary を verified partial として追加した。実 Rust/native artifact、runtime、
+Mac/Linux matrix は未接続のため v0.4 の完了項目には移さない。ADR:
+`docs/adr/decisions-v0.4-m1-06-current-source-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、

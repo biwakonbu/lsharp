@@ -18,7 +18,9 @@ ROOT = SCRIPTS_DIR.parent.parent
 MANIFEST = SCRIPTS_DIR / "semantic-fixture-matrix.json"
 DIFF = SCRIPTS_DIR / "semantic_fixture_diff.py"
 TARGET = "aarch64-apple-darwin"
-SOURCE_COMMIT = "a" * 40
+SOURCE_COMMIT = subprocess.check_output(
+    ["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"], text=True
+).strip()
 
 
 def report_for(producer):
@@ -163,6 +165,17 @@ class SemanticFixtureDiffTest(unittest.TestCase):
                 result = self.run_diff(oracle, changed)
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(label, result.stderr.lower())
+
+    def test_rejects_shared_stale_source_commit(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        oracle["source_commit"] = "b" * 40
+        native["source_commit"] = "b" * 40
+
+        result = self.run_diff(oracle, native)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("current", result.stderr.lower())
 
     def test_rejects_swapped_report_producer_roles(self):
         oracle = report_for("native-stage0")

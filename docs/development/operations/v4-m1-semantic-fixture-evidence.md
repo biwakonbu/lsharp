@@ -37,7 +37,8 @@ python3 scripts/ci/semantic_fixture_matrix.py \
 ```
 
 `SOURCE_COMMIT` は report、stage0 manifest、comparison、evidence index の全てで同一でなければ
-ならない。作業中に source が変わった場合は report を再利用せず、preflight からやり直す。
+ならない。diff/audit はさらに専用 worktree の `git rev-parse --verify HEAD` と一致することを
+検証する。作業中に source が変わった場合は report を再利用せず、preflight からやり直す。
 
 ## 1. Fixture set の固定
 
