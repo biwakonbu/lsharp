@@ -29,6 +29,9 @@ IDENTITY_KEYS = (
 )
 SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+REVIEW_LIFECYCLE_STATES = frozenset(
+    ("proposed", "active", "superseded", "revoked")
+)
 
 
 class IdentityError(ValueError):
@@ -72,6 +75,40 @@ def load_identity(path, manifest):
     if not isinstance(value, dict):
         raise IdentityError("review_evidence_identity must be an object")
     return value
+
+
+def validate_review_lifecycle_snapshot(path):
+    try:
+        payload = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise IdentityError(f"review lifecycle snapshot is not valid UTF-8: {path}: {error}") from error
+
+    try:
+        parsed = json.loads(payload)
+        records = parsed if isinstance(parsed, list) else [parsed]
+    except json.JSONDecodeError:
+        records = []
+        for line_number, line in enumerate(payload.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as error:
+                raise IdentityError(
+                    f"review lifecycle snapshot record is invalid JSON: {path}:{line_number}: {error}"
+                ) from error
+
+    if not records:
+        raise IdentityError(f"review lifecycle snapshot must contain at least one record: {path}")
+    for record in records:
+        if not isinstance(record, dict):
+            raise IdentityError(f"review lifecycle snapshot records must be JSON objects: {path}")
+        state = record.get("state")
+        if state not in REVIEW_LIFECYCLE_STATES:
+            allowed = ", ".join(sorted(REVIEW_LIFECYCLE_STATES))
+            raise IdentityError(
+                f"review lifecycle state must be one of {allowed}: {path}"
+            )
 
 
 def validate_digest(value, field, nullable):
@@ -140,6 +177,7 @@ def validate_identity(
                 f"expected={expected_trust_store_digest} actual={identity['trust_store_digest']}"
             )
         expected_lifecycle_digest = digest_file(review_lifecycle, "review lifecycle")
+        validate_review_lifecycle_snapshot(review_lifecycle)
         if identity["lifecycle_digest"] != expected_lifecycle_digest:
             raise IdentityError(
                 "lifecycle_digest mismatch: "

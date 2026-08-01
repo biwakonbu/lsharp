@@ -1963,3 +1963,14 @@ Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証の�
 現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage regeneration・full buildは未実行である。blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp
 /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-native-official-source-smoke-evidence-root-safety.md`](docs/adr/decisions-v0.3-native-official-source-smoke-evidence-root-safety.md)。
+
+2026-08-02 に明示 review-lifecycle snapshot の semantic state preflightを追加した。`verify-native-release-identity.py` は
+UTF-8のJSON object、object array、またはJSONL recordの各 `state` を `proposed` / `active` / `superseded` / `revoked` に限定し、
+未知state・壊れたJSON・非object recordを fail-closed に拒否する RED→GREENを `test-native-release-identity.py` で確認した。これは
+lifecycle state allowlistの verified partial sliceであり、provider snapshot regular-file/nonempty/digest/role binding、MCP semantic、
+署名/authentication、sequence reducerの完了証拠ではない。live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの
+packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source
+manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage regeneration・full buildは未実行である。
+blockerの再現 commandは `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
+`find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-provider-lifecycle-state-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-state-preflight.md)。
