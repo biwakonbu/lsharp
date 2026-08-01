@@ -56,6 +56,20 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
             self.assertEqual(fixture["execution"]["stage0"], "current-source")
             self.assertEqual(fixture["execution"]["network"], "forbidden")
 
+    def test_module_import_fixture_runtime_matches_source_contract(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/module-import"
+        )
+        source = (ROOT / fixture["source"]).read_text(encoding="utf-8")
+        self.assertIn("(print (add (mul 3 4) 5))", source)
+        self.assertEqual(fixture["expected"]["runtime"]["stdout"], "17\n")
+        self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
+
     def test_r1_nested_record_pattern_fixture_declares_end_to_end_observables(self):
         result = self.run_validator()
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -352,7 +352,7 @@
         "diagnostics": [],
         "exit_code": 0,
         "artifact": {"required": true, "status": "pending"},
-        "runtime": {"status": "expected", "exit_code": 0, "stdout": "41\n", "stderr": ""}
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "17\n", "stderr": ""}
       }
     },
     {

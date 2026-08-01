@@ -69,6 +69,11 @@ look stronger than its evidence.
 - Validate the contract with the standalone Python helper and focused unittest;
   the matrix projector emits the deterministic input and the diff helper emits
   a deterministic comparison result.
+- Execute the Rust-oracle lane against the current source before treating a
+  fixture expectation as evidence. The Mac valid-fixture batch, including the
+  corrected `valid/module-import` output, is recorded in
+  [`Mac Rust-oracle valid batch ADR`](decisions-v0.4-m1-01-rust-oracle-valid-batch.md);
+  native-stage0, Linux, full invalid, and differential evidence remain pending.
 
 ## Consequences
 
@@ -95,3 +100,8 @@ look stronger than its evidence.
   refusal, sorted batch, per-fixture isolation, and duplicate-ID rejection tests.
 - `python3 scripts/ci/semantic_fixture_matrix.py --manifest scripts/ci/semantic-fixture-matrix.json --root .`
   — deterministic manifest projection.
+- `python3 scripts/ci/semantic_fixture_rust_report.py` with source commit
+  `ed72cb59987dfb8523886f775ab9170ecc436cc6` and target
+  `aarch64-apple-darwin` — 14 valid artifact/runtime observations plus the
+  explicit `LS3001` invalid observation; details and hashes are in the batch
+  ADR.

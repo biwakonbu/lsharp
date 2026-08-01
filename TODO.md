@@ -87,6 +87,12 @@ ADR: `docs/adr/decisions-v0.4-m1-06-two-target-aggregate.md`、
 が所有する regular `.ls` file のみを受け付ける source-ownership boundary を verified partial として
 追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には移さない。
 ADR: `docs/adr/decisions-v0.4-m1-01-source-symlink-boundary.md`。
+さらに current source commit `ed72cb59987dfb8523886f775ab9170ecc436cc6` の Mac Apple Silicon Rust-oracle
+で14件の valid fixtureを実行し、regular Wasm artifact、digest/size、Wasmtime runtime stdout/stderr、exit `0`
+を確認した。`examples/module.ls` の実際の式 `3 * 4 + 5` に合わせ、`valid/module-import` の stale な期待値
+`41\n` を `17\n` へ修正し、matrix contract testで固定した verified partial である。native stage0、Linux
+x86_64、full invalid、Rust/native differential、aggregate は未接続のため v0.4 の完了項目には移さない。
+ADR: `docs/adr/decisions-v0.4-m1-01-rust-oracle-valid-batch.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
