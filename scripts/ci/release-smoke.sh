@@ -336,6 +336,8 @@ expected_version = sys.argv[6]
 anchor = manifest.get("rollback_anchor", {})
 if expected_version and manifest.get("version") != expected_version:
     raise SystemExit("native-only manifest version mismatch")
+if anchor.get("kind") != "rollback compatibility":
+    raise SystemExit("rollback compatibility anchor kind mismatch")
 if anchor.get("asset") != rollback_name:
     raise SystemExit("rollback compatibility asset name mismatch")
 if anchor.get("rollback_sha256") != rollback_sha256:

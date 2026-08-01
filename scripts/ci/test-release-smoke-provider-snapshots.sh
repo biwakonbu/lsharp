@@ -208,4 +208,34 @@ set -e
 grep -F "entry_binary" <<<"$rollback_manifest_output" >/dev/null \
   || { echo "rollback manifest payload mismatch did not expose entry_binary diagnostic" >&2; exit 1; }
 
+python3 - "$STABLE_ROOT/manifest.json" "$ROLLBACK_NAME.tar.gz" "$rollback_sha256" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+manifest = json.loads(manifest_path.read_text())
+manifest["rollback_anchor"] = {
+    "kind": "unexpected rollback kind",
+    "asset": sys.argv[2],
+    "rollback_sha256": sys.argv[3],
+}
+manifest_path.write_text(json.dumps(manifest) + "\n")
+PY
+bash "$ROOT/scripts/checksum.sh" "$STABLE_ROOT" >"$STABLE_ROOT/checksums.txt"
+tar -czf "$TMP_ROOT/$STABLE_NAME.tar.gz" -C "$TMP_ROOT" "$STABLE_NAME"
+
+set +e
+rollback_anchor_output="$(
+  RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
+    RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
+    WORK_DIR="$TMP_ROOT/rollback-anchor-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" 2>&1
+)"
+rollback_anchor_status=$?
+set -e
+[[ "$rollback_anchor_status" -ne 0 ]] || { echo "rollback anchor kind mismatch was accepted" >&2; exit 1; }
+grep -F "anchor kind" <<<"$rollback_anchor_output" >/dev/null \
+  || { echo "rollback anchor kind mismatch did not expose diagnostic" >&2; exit 1; }
+
 echo "release-smoke provider snapshot tests: OK"

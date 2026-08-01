@@ -331,6 +331,15 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   の packaged provenance/rollback bytes parity は未検証のため、M3-04-N1 / M3-05-N2 は `[~]` のまま残る。ADR:
   `docs/adr/decisions-v0.3-rollback-archive-manifest-payload-parity.md`。
 
+  続けて同日、native-only primary manifest の `rollback_anchor.kind` を supplied rollback archive の
+  `archive_kind` と照合する binding boundary を追加した。primary checksum、asset/SHA、nested rollback identity
+  が正しくても kind が異なる archive を拒否する RED→GREEN を provider snapshot harness で確認した verified
+  partial sliceである。live provider/auth、current-source Linux runtime、両 target の packaged provenance/
+  rollback bytes parity は未検証のため、M3-04-N1 / M3-05-N2 は `[~]` のまま残る。current-source blocker の
+  再現 command は `git rev-parse --verify HEAD` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f
+  -name manifest.json -path '*lsharp*'`。ADR:
+  `docs/adr/decisions-v0.3-rollback-anchor-kind-parity.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。
