@@ -3631,6 +3631,54 @@ fn test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_literal_p
     assert_eq!(output, "41\n");
 }
 
+/// selfhost ftable compiler: alias-qualified nested parametric record pattern を実行できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_nested_parametric_record_pattern_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type (Box a) (record (: value a))) (type (Outer a) (record (: inner (Box a)))) (import App.Shapes :as S :only [Box Outer]) (defn main [] (let [p {S.Outer inner {S.Box value 41}}] (do (print (match p [{S.Outer inner {S.Box value x}} x] [_ 0])) (print (match p [{S.Outer inner {S.Box value 41}} 1] [_ 0])) (print (match p [{S.Outer inner {S.Box value 42}} 1] [_ 7])) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost ftable nested parametric record pattern module should run");
+    assert_eq!(output, "41\n1\n7\n");
+}
+
 /// selfhost ftable compiler: alias-qualified parametric record を複数の concrete 型で実行できること
 #[test]
 fn test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_multiple_instantiations_run() {
@@ -4073,6 +4121,59 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_parametric_record_li
     .expect("alias-qualified parametric record literal pattern を含む selfhost compiler-mode module should run");
     assert_eq!(output, "41\n");
     std::fs::remove_dir_all(&temp_root).expect("parametric record literal import fixture を削除できない");
+}
+
+/// selfhost compiler-mode: imported nested parametric record pattern を実行できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_nested_parametric_record_pattern_runs() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-nested-parametric-record-import-runtime-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir)
+        .expect("nested parametric record import fixture の directory を作れない");
+    std::fs::write(
+        app_dir.join("Shapes.ls"),
+        "(module App.Shapes)\n(type (Box a) (record (: value a)))\n(type (Outer a) (record (: inner (Box a))))\n",
+    )
+    .expect("nested parametric record import fixture の Shapes.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Shapes :as S :only [Box Outer])\n(defn read-inner [o] (match o [{S.Outer inner {S.Box value x}} x] [_ 0]))\n(defn read-literal [o] (match o [{S.Outer inner {S.Box value 41}} 1] [_ 0]))\n(defn read-literal-miss [o] (match o [{S.Outer inner {S.Box value 42}} 1] [_ 7]))\n(defn main [] (let [p {S.Outer inner {S.Box value 41}}] (do (print (read-inner p)) (print (read-literal p)) (print (read-literal-miss p)) 0)))\n",
+    )
+    .expect("nested parametric record import fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main [] (compile-file-mode))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+        &wasm_bytes,
+        &temp_root,
+        &[],
+    )
+    .expect("imported nested parametric record pattern module should run");
+    assert_eq!(output, "41\n1\n7\n");
+    std::fs::remove_dir_all(&temp_root)
+        .expect("nested parametric record import fixture を削除できない");
 }
 
 /// selfhost compiler-mode: 異なる module の同名 record constructor を alias-qualified に分離できること

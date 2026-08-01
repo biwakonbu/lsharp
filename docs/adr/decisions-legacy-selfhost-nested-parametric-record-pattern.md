@@ -38,6 +38,9 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
 - `test_e2e_selfhost_compiler_mode_nested_parametric_record_pattern_runs` passed through the
   selfhost compiler-mode Wasm runtime and produced `41\n1\n7\n` for binder, literal, and fallback
   arms. This test-only addition does not change the native source producer.
+- `test_e2e_selfhost_compiler_mode_imported_nested_parametric_record_pattern_runs` and
+  `test_e2e_selfhost_ftable_compiler_nested_parametric_record_pattern_runs` passed with the same
+  `41\n1\n7\n` result, covering imported qualified schemas and the ftable compiler path.
 - Mac Apple Silicon native gate passed for source commit
   `fa97fa948489f635dc8888b5a269755a75776670`; the ignored native test passed and the artifact was
   4660 KiB.
@@ -47,7 +50,7 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
 
 ## Boundary
 
-This closes the nested parametric record field-binding slice and one source compiler-mode Wasm
-runtime fixture. Import visibility, arbitrarily deep patterns, complete record-pattern semantic
-parity, ftable/linear-memory ABI parity, and the `LEGACY-LANG-01` aggregate remain incomplete.
-`TODO.md` therefore keeps the aggregate as `[~]`.
+This closes the nested parametric record field-binding slice, one source compiler-mode Wasm
+runtime fixture, and the corresponding imported/ftable fixtures. Arbitrarily deep patterns,
+complete record-pattern semantic parity, full ftable/linear-memory ABI parity, and the
+`LEGACY-LANG-01` aggregate remain incomplete. `TODO.md` therefore keeps the aggregate as `[~]`.

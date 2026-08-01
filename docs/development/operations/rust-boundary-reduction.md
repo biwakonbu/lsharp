@@ -566,9 +566,14 @@ Linux x86_64 hostgen/VM gate also passed for that source commit; stage2/stage3 c
 both `11332908` and their stdout SHA-256 values matched at
 `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad`.
 
-This is a verified nested parametric field-binding slice plus one source compiler-mode runtime
-fixture, not completion of record-pattern semantic parity. Import/deep pattern coverage,
-ftable/linear-memory ABI, and the `LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise
+The imported source compiler-mode and ftable alias-qualified fixtures,
+`test_e2e_selfhost_compiler_mode_imported_nested_parametric_record_pattern_runs` and
+`test_e2e_selfhost_ftable_compiler_nested_parametric_record_pattern_runs`, passed in the same
+focused batch and produced `41\n1\n7\n` as well.
+
+This is a verified nested parametric field-binding slice plus source/import/ftable runtime
+fixtures, not completion of record-pattern semantic parity. Arbitrarily deep pattern coverage,
+full ftable/linear-memory ABI, and the `LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise
 incomplete boundaries.
 
 ### legacy source compile boundary 更新 (2026-07-14)
