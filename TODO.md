@@ -808,6 +808,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   bounded loop、rooted continuation、public wrapperへ移行し、65 typed paramsの先頭/末尾/return typeと
   signature countを `selfhost_parser_signature_scanners` で確認した。signature scanner 2 tests、metadata
   forms 29 tests、parser forms 22 tests、Linux x86_64 fixed-pointも通過した。
+  `parse-defn-metadata-loop-v3` の各 directive handler も一 directive の metadata を返す single-step に分離し、
+  outer loopを64 directive bounded/rooted continuationへ移行した。65個の `:property []` で metadata form
+  件数65とEOF cursorを `selfhost_parser_metadata_outer_scanners` のstatic/runtime 2 testsで確認し、
+  `selfhost_parser_` grouped filter 68 tests、Linux x86_64 stage2/stage3 fixed-pointを通過した。summaryは
+  `ci-artifacts/native-linux-x86-hostgen-vm/7b7a4f24-parser-metadata-outer/actual-selfregen-summary.json` に保存し、
+  stage2/stage3 code lengthは双方 `11297622`、stdout SHA-256は双方
+  `6082b4494b46a2244b1d1e84c4faf3824f9b6ff664ca6859785acc8c73240a3c` で一致した。
   record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
   actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
   の `1` vs `0` は変更前 baseline と同じで残件。
