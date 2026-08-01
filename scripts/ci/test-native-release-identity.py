@@ -339,11 +339,16 @@ class NativeReleaseIdentityTest(unittest.TestCase):
                 {
                     "review_id": "review:checkout/r1",
                     "sequence": 2,
-                    "state": "revoked",
+                    "state": "active",
                 },
                 {
                     "review_id": "review:checkout/r1",
                     "sequence": 3,
+                    "state": "revoked",
+                },
+                {
+                    "review_id": "review:checkout/r1",
+                    "sequence": 4,
                     "state": "active",
                 },
             ]
@@ -419,6 +424,55 @@ class NativeReleaseIdentityTest(unittest.TestCase):
 
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("review lifecycle initial state", rejected.stderr)
+
+    def test_rejects_review_lifecycle_terminal_transition_before_active(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle_records = [
+                {
+                    "review_id": "review:checkout/r1",
+                    "sequence": 1,
+                    "state": "proposed",
+                },
+                {
+                    "review_id": "review:checkout/r1",
+                    "sequence": 2,
+                    "state": "revoked",
+                },
+            ]
+            lifecycle.write_text(
+                "".join(json.dumps(record) + "\n" for record in lifecycle_records),
+                encoding="utf-8",
+            )
+            identity_path = root / "identity.json"
+            identity = identity_for(
+                "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
+            self.write_identity(identity_path, identity)
+
+            rejected = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+                "--require-provider-input",
+            )
+
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("review lifecycle terminal transition requires active", rejected.stderr)
 
     def test_rejects_duplicate_review_lifecycle_sequence(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

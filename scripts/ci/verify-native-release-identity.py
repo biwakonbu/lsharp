@@ -134,6 +134,11 @@ def validate_review_lifecycle_snapshot(path):
                     f"review_id={review_id!r} state={state}"
                 )
             previous_state = last_states.get(review_id)
+            if previous_state == "proposed" and state in TERMINAL_REVIEW_LIFECYCLE_STATES:
+                raise IdentityError(
+                    f"review lifecycle terminal transition requires active: {path}: "
+                    f"review_id={review_id!r} previous={previous_state} current={state}"
+                )
             if previous_state in TERMINAL_REVIEW_LIFECYCLE_STATES:
                 raise IdentityError(
                     f"review lifecycle terminal state reactivation: {path}: "
