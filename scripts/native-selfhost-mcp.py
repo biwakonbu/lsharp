@@ -1523,7 +1523,7 @@ def handle_request(program, request):
     method = request.get("method")
     if not isinstance(method, str):
         raise ShimError("MCP request method must be a string")
-    if request_id is None:
+    if "id" not in request:
         return None
     if method == "initialize":
         return jsonrpc_result(

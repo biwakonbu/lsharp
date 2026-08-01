@@ -965,6 +965,18 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertEqual(calls[1][0:2], ["validate", "--source"])
             self.assertEqual(calls[2][0], "fmt")
 
+    def test_jsonrpc_null_request_id_is_preserved_in_response_envelope(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            result = self.run_shim(program, request(None, "ping"), root)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            self.assertEqual(
+                self.responses(result.stdout),
+                [{"jsonrpc": "2.0", "id": None, "result": {}}],
+            )
+            self.assertFalse((root / "native.log").exists())
+
     def test_errors_lookup_projects_canonical_table_without_native_execution(self):
         assert_errors_lookup(self)
     def test_errors_rejects_missing_or_unknown_arguments_before_native_execution(self):

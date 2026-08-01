@@ -2141,3 +2141,10 @@ Evidence: [`decisions-v0.3-native-mcp-initialize-server-identity-parity.md`](doc
 deterministic order verified partial parity sliceであり、Rust MCP 全semantic parity、package-install semantics、live provider
 API/auth acquisition・意味検証、current-source Linux runtime、Mac/Linux 両 targetの packaged provenance/rollback bytes parity
 の完了証拠ではない。関連項目は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-mcp-tools-list-order-parity.md`](docs/adr/decisions-v0.3-native-mcp-tools-list-order-parity.md)。
+
+2026-08-02 に native selfhost MCP の JSON-RPC request id envelope を Rust canonical transport と揃えた。id field が欠落した
+notificationだけを無応答とし、明示 `id: null` は response の `id: null` として保持する RED→GREENを focused route testで
+確認した。これは MCP envelope の null/missing distinction verified partial parity sliceであり、MCP 全 error envelope/semantic
+parity、package-install semantics、live provider API/auth acquisition・意味検証、current-source Linux runtime、Mac/Linux 両
+target の packaged provenance/rollback bytes parity の完了証拠ではない。関連項目は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-null-request-id-envelope.md`](docs/adr/decisions-v0.3-native-mcp-null-request-id-envelope.md)。
