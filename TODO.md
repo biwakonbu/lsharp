@@ -20,6 +20,11 @@
 [`v0.4-lsharp-next-shape.md`](docs/development/planning/v0.4-lsharp-next-shape.md)、
 [`v0.4-milestone-01.md`](docs/development/planning/v0.4-milestone-01.md)。
 
+v0.4 M1-01 の semantic fixture matrix では、artifact を要求する fixture が `compile` または
+`build` を commands に宣言しない場合を validator が拒否する command/artifact scope boundary を
+verified partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため
+v0.4 の完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-01-artifact-command-boundary.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。

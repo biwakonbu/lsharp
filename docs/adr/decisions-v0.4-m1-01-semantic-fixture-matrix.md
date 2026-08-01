@@ -27,6 +27,9 @@ look stronger than its evidence.
 - Require the execution policy `current-source`, `fallback=forbidden`, and
   `network=forbidden` at both manifest and fixture scope. The inventory cannot
   claim evidence for stale stage0 or implicit host/provider execution.
+- Require every fixture whose expected artifact is required to name `compile`
+  or `build` in its command list. A `check`-only fixture cannot claim an
+  artifact or runtime boundary.
 - Keep artifact and target/runtime results explicitly `pending` or `not-run`
   until the corresponding Rust differential, native, Wasm, and target gates
   produce evidence. The validator must not promote pending data to success.

@@ -271,6 +271,13 @@ def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[st
         fixture_execution = validate_execution(fixture["execution"], f"{label}.execution")
         if fixture_execution != execution:
             raise ManifestError(f"{label}.execution must match manifest.execution")
+        expected = validate_expected(fixture["expected"], kind, f"{label}.expected")
+        if expected["artifact"]["required"] and not set(commands).intersection(
+            {"compile", "build"}
+        ):
+            raise ManifestError(
+                f"{label}.commands must include an artifact command (compile or build)"
+            )
         projected_fixture = {
             "id": identifier,
             "source": validate_source(root, fixture["source"], f"{label}.source"),
@@ -280,7 +287,7 @@ def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[st
             "targets": fixture_targets,
             "commands": commands,
             "execution": fixture_execution,
-            "expected": validate_expected(fixture["expected"], kind, f"{label}.expected"),
+            "expected": expected,
         }
         if "runtime_inputs" in fixture:
             if kind != "valid":

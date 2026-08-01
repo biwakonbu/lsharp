@@ -325,6 +325,24 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(field, result.stderr.lower())
 
+    def test_rejects_runtime_fixture_without_artifact_command(self):
+        original = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        fixture_index = next(
+            index
+            for index, fixture in enumerate(original["fixtures"])
+            if fixture["kind"] == "valid" and "runtime" in fixture["observables"]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = pathlib.Path(directory) / "manifest.json"
+            payload = json.loads(json.dumps(original))
+            payload["fixtures"][fixture_index]["commands"] = ["check"]
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+            result = self.run_validator(manifest)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("artifact command", result.stderr.lower())
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main())
