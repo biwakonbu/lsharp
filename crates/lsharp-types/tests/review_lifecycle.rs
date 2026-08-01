@@ -148,14 +148,14 @@ fn lifecycle_rejects_duplicate_or_rollback_sequences_and_invalid_transitions() {
     let mut gap_registry = ReviewLifecycleRegistry::default();
     gap_registry
         .add_event(event(
-            "review:orders/reviewer-002",
+            "review:checkout/r1",
             1,
             ReviewLifecycleState::Proposed,
         ))
         .expect("initial proposed state is allowed");
     assert!(matches!(
         gap_registry.add_event(event(
-            "review:orders/reviewer-002",
+            "review:checkout/r1",
             3,
             ReviewLifecycleState::Active,
         )),
@@ -163,7 +163,7 @@ fn lifecycle_rejects_duplicate_or_rollback_sequences_and_invalid_transitions() {
             review_id,
             previous: 1,
             next: 3,
-        }) if review_id == "review:orders/reviewer-002"
+        }) if review_id == "review:checkout/r1"
     ));
 }
 
