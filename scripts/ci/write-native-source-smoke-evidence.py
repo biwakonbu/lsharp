@@ -8,12 +8,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import tempfile
 from typing import NoReturn
 
 
 TARGETS = {"aarch64-apple-darwin", "x86_64-unknown-linux-gnu"}
+SOURCE_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 
 def fail(message: str) -> NoReturn:
@@ -55,12 +57,10 @@ def load_stage0_manifest(path: Path, target: str) -> tuple[dict[str, object], st
             f"manifest={manifest.get('target')!r} target={target!r}"
         )
     source_commit = manifest.get("source_commit")
-    if not isinstance(source_commit, str) or len(source_commit) != 40:
-        fail("stage0 manifest source_commit is invalid")
-    try:
-        int(source_commit, 16)
-    except ValueError:
-        fail("stage0 manifest source_commit is not hexadecimal")
+    if not isinstance(source_commit, str) or not SOURCE_COMMIT.fullmatch(source_commit):
+        fail(
+            "stage0 manifest source_commit must be 40 lowercase hexadecimal characters"
+        )
     return manifest, sha256(path)
 
 

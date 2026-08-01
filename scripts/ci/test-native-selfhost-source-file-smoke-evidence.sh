@@ -74,6 +74,27 @@ assert manifest["exit_code"] == 7
 assert manifest["artifacts"]["compile.wasm"]["size"] == len(b"compile-bytes")
 PY
 
+UPPER_MANIFEST="$TMP_ROOT/stage0-manifest-uppercase.json"
+UPPER_EVIDENCE_DIR="$TMP_ROOT/uppercase-evidence"
+python3 - "$STAGE0_MANIFEST" "$UPPER_MANIFEST" <<'PY'
+import json
+import pathlib
+import sys
+
+source = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+source["source_commit"] = "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+pathlib.Path(sys.argv[2]).write_text(json.dumps(source), encoding="utf-8")
+PY
+if python3 "$WRITER" \
+  --evidence-dir "$UPPER_EVIDENCE_DIR" \
+  --work-dir "$WORK_DIR" \
+  --stage0-manifest "$UPPER_MANIFEST" \
+  --target aarch64-apple-darwin \
+  --exit-code 0; then
+  fail "evidence writer accepted an uppercase source_commit"
+fi
+[[ ! -e "$UPPER_EVIDENCE_DIR" ]] || fail "uppercase source_commit created evidence output"
+
 if python3 "$WRITER" \
   --evidence-dir "$EVIDENCE_DIR" \
   --work-dir "$WORK_DIR" \

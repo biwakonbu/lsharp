@@ -50,6 +50,9 @@
   named-field attestation、期限付き/期限なし canonical bytes、`unverified`、directive span、invalid
   source error code `8`、stdout/stderr、exit code、Wasm digest/sizeの一致を確認した。Linux x86_64
   current-source runtime、fetch後の packaged provenance と両 target matrixは残る。
+  source-file evidence writer は stage0 manifest の `source_commit` を小文字40桁 hexadecimal に限定し、
+  uppercase input を証跡作成前に拒否する contract test を追加した。これは provenance input boundary の
+  verified partial sliceであり、Linux current-source runtime、packaged provenance、両 target matrixは残る。
 - [~] `EC-M3-05` release / evidence gate — Rust CLI/MCP と manifest の入出力 roundtrip が、明示した
   subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
   として deterministic JSON/text/MCP/manifest へ投影し、競合を fail-closed に拒否する verified partial
