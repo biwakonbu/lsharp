@@ -296,6 +296,12 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   evidence は残る。ADR:
   `docs/adr/decisions-v0.3-native-validation-boundary-followups.md`。
 
+  2026-08-02 に Linux source-file smoke の stage0 input preflight を、非 symlink の regular directory かつ
+  配下に symlink がない provenance-safe inputへ限定した。root symlink と nested symlink を fake Lima harness
+  で RED→GREEN にし、拒否前の `limactl` 未呼び出しも確認した。これは stage0 input safety の verified
+  partial sliceであり、current-source Linux runtime、fetch後の packaged provenance、provider/auth、両 target
+  runtime は残る。ADR: `docs/adr/decisions-v0.3-native-linux-stage0-source-directory-provenance.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。

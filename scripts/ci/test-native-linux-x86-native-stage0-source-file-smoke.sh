@@ -32,6 +32,22 @@ expect_reject() {
   [[ -n "$output" ]] || fail "$label did not report an error"
 }
 
+expect_reject_with_message() {
+  local label="$1"
+  local expected_message="$2"
+  shift 2
+
+  local output
+  local exit_code
+  set +e
+  output="$($@ 2>&1)"
+  exit_code=$?
+  set -e
+  [[ "$exit_code" -ne 0 ]] || fail "$label unexpectedly succeeded"
+  grep -F -- "$expected_message" <<<"$output" >/dev/null \
+    || fail "$label did not report: $expected_message"
+}
+
 [[ -x "$SMOKE" ]] || fail "Linux native stage0 source-file smoke is missing: $SMOKE"
 [[ -x "$SOURCE_SMOKE" ]] || fail "native selfhost source-file smoke is missing: $SOURCE_SMOKE"
 
@@ -363,6 +379,7 @@ export LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR="$HOSTGEN_REPLAY_LOCK_PATH"
 LOG_PATH="$TMP_ROOT/running-vm.log"
 STOPPED_LOG="$TMP_ROOT/stopped-vm.log"
 STOP_FAILURE_LOG="$TMP_ROOT/stop-failure.log"
+SYMLINK_LOG="$TMP_ROOT/symlink.log"
 
 STAGE0_DIR="$TMP_ROOT/stage0"
 BIN_DIR="$TMP_ROOT/bin"
@@ -427,13 +444,19 @@ esac
 SH
 chmod 0755 "$BIN_DIR/limactl"
 
-run_smoke() {
+run_smoke_with_stage0_dir() {
+  local stage0_dir="$1"
+  local log_path="$2"
   PATH="$BIN_DIR:$PATH" \
     FAKE_LIMA_RUNNING=1 \
-    FAKE_LOG="$LOG_PATH" \
-    LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="$STAGE0_DIR" \
+    FAKE_LOG="$log_path" \
+    LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="$stage0_dir" \
     LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR=1 \
     "$SMOKE"
+}
+
+run_smoke() {
+  run_smoke_with_stage0_dir "$STAGE0_DIR" "$LOG_PATH"
 }
 
 run_smoke
@@ -463,6 +486,18 @@ with open(path, "w", encoding="utf-8") as handle:
     json.dump(manifest, handle)
     handle.write("\n")
 PY
+
+ln -s "$STAGE0_DIR" "$TMP_ROOT/stage0-root-link"
+expect_reject_with_message "root stage0 symlink" 'regular directory without symlinks' \
+  run_smoke_with_stage0_dir "$TMP_ROOT/stage0-root-link" "$SYMLINK_LOG"
+[[ ! -s "$SYMLINK_LOG" ]] || fail 'root stage0 symlink invoked Lima before rejection'
+rm "$TMP_ROOT/stage0-root-link"
+
+ln -s "$STAGE0_DIR/bin/compiler" "$STAGE0_DIR/bin/compiler-link"
+expect_reject_with_message "nested stage0 symlink" 'contains a symlink' \
+  run_smoke_with_stage0_dir "$STAGE0_DIR" "$SYMLINK_LOG"
+[[ ! -s "$SYMLINK_LOG" ]] || fail 'nested stage0 symlink invoked Lima before rejection'
+rm "$STAGE0_DIR/bin/compiler-link"
 
 run_stopped_vm_smoke() {
   PATH="$BIN_DIR:$PATH" \

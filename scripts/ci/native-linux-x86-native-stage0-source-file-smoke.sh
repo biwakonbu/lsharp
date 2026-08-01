@@ -136,6 +136,20 @@ else
   STAGE0_DIR="${ROOT_DIR}/${STAGE0_DIR_INPUT}"
 fi
 
+require_provenance_safe_stage0_dir() {
+  local path="$1"
+  [[ -d "${path}" && ! -L "${path}" ]] \
+    || die "Linux native stage0 input must be a regular directory without symlinks: ${path}"
+
+  local symlink
+  if ! symlink="$(find -P "${path}" -type l -print -quit)"; then
+    die "could not inspect Linux native stage0 directory for symlinks: ${path}"
+  fi
+  [[ -z "${symlink}" ]] \
+    || die "Linux native stage0 input contains a symlink: ${symlink}"
+}
+
+require_provenance_safe_stage0_dir "${STAGE0_DIR}"
 require_file "${STAGE0_DIR}/manifest.json" "Linux native stage0 manifest"
 require_file "${ROOT_DIR}/selfhost/src/App/Cli.ls" "native selfhost App.Cli source"
 require_file "${ROOT_DIR}/scripts/native-selfhost-dev.sh" "native selfhost runner"
