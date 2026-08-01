@@ -150,7 +150,8 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   canonical bytes、signature encoding boundary、canonical base64url schema/parser parity、
   `sequence` の `1..=u64::MAX` schema/parser boundary、required string と optional `reason_digest` の
   non-blank schema/parser parity、`sequence >= 1` の Rust/selfhost source parity、retired/active
-  trust-key rotation と active key の Rust/native preflight parity は verified partial slice。
+  trust-key rotation と active key の Rust/native preflight parity、verified signature receipt の
+  Rust/native canonical handoff は verified partial slice。
   source/native producer、trust store、署名検証、両対応 target の runtime
   evidence は残る。ADR:
   `docs/adr/decisions-v0.3-review-attestation-sequence-boundary.md`、
@@ -1028,7 +1029,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   required string と optional `reason_digest` の non-blank schema/parser parity、
   `trust_store` exact duplicate の `uniqueItems`/Rust parser parity、
   `trust_store` の retired/active key rotation と provider/algorithm ごとの active key 一意選択を
-  Rust wire/native preflight で fail-closed にする parityも verified partial とした。
+  Rust wire/native preflight で fail-closed にする parity、Rust の verified signature から
+  attestation/trust-store digest と verification clock を束ねる receipt の Rust/native canonical
+  handoff も verified partial とした。
   current subject/source/provenance binding と explicit report、および
   `reviews[].verification_state` manifest projection を Rust canonical model で検証する。
   attestation input wiring、selfhost/native parity、両 supported target の artifact/runtime evidence
