@@ -89,6 +89,29 @@ fn review_wire_schema_rejects_impossible_base64url_length() {
 }
 
 #[test]
+fn review_wire_schema_rejects_duplicate_trust_store_entries() {
+    let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
+        .expect("review wire schema は JSON であるべき");
+    let validator = jsonschema::draft202012::new(&schema)
+        .expect("review wire schema の validator を構築できるべき");
+
+    let mut duplicate = valid_wire("AAECAw", VALID_PUBLIC_KEY);
+    let entry = duplicate["trust_store"][0].clone();
+    duplicate["trust_store"] = json!([entry.clone(), entry]);
+
+    assert!(
+        !validator.is_valid(&duplicate),
+        "同一 trust-store entry の重複は schema で拒否するべき"
+    );
+    assert!(matches!(
+        parse_review_wire(&serde_json::to_string(&duplicate).unwrap()),
+        Err(ReviewWireError::TrustStore(
+            lsharp_types::intent::review_trust_store::TrustStoreError::DuplicateKey { .. }
+        ))
+    ));
+}
+
+#[test]
 fn review_wire_schema_rejects_whitespace_only_required_fields() {
     let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
         .expect("review wire schema は JSON であるべき");

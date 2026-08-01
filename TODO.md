@@ -910,6 +910,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 - [~] `EC-M3-01` attestation の canonical bytes、strict UTC timestamp、Ed25519 signature、
   canonical base64url schema/parser parity、`sequence` の `1..=u64::MAX` schema/parser boundary、
   required string と optional `reason_digest` の non-blank schema/parser parity、
+  `trust_store` exact duplicate の `uniqueItems`/Rust parser parity、
   current subject/source/provenance binding と explicit report、および
   `reviews[].verification_state` manifest projection を Rust canonical model で検証する。
   attestation input wiring、selfhost/native parity、両 supported target の artifact/runtime evidence

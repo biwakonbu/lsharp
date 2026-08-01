@@ -92,6 +92,18 @@ fn review_provenance_schema_declares_nonblank_required_strings() {
 }
 
 #[test]
+fn review_provenance_schema_declares_unique_trust_store_entries() {
+    let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
+        .expect("review provenance schema は JSON であるべき");
+
+    assert_eq!(
+        schema["properties"]["trust_store"]["uniqueItems"],
+        json!(true),
+        "trust_store は同一の key entry を重複させない schema boundary を公開するべき"
+    );
+}
+
+#[test]
 fn intent_graph_schema_declares_optional_review_verification_state() {
     let schema: Value =
         serde_json::from_str(INTENT_GRAPH_SCHEMA).expect("intent graph schema は JSON であるべき");

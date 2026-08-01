@@ -23,6 +23,7 @@
     },
     "trust_store": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/trust_key"
       }
