@@ -32,6 +32,7 @@ SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 REVIEW_LIFECYCLE_STATES = frozenset(
     ("proposed", "active", "superseded", "revoked")
 )
+INITIAL_REVIEW_LIFECYCLE_STATES = frozenset(("proposed", "active"))
 TERMINAL_REVIEW_LIFECYCLE_STATES = frozenset(("superseded", "revoked"))
 
 
@@ -125,6 +126,12 @@ def validate_review_lifecycle_snapshot(path):
                 raise IdentityError(
                     f"duplicate review lifecycle sequence: {path}: "
                     f"review_id={review_id!r} sequence={sequence}"
+                )
+            if review_id not in last_states and state not in INITIAL_REVIEW_LIFECYCLE_STATES:
+                allowed = ", ".join(sorted(INITIAL_REVIEW_LIFECYCLE_STATES))
+                raise IdentityError(
+                    f"review lifecycle initial state must be one of {allowed}: {path}: "
+                    f"review_id={review_id!r} state={state}"
                 )
             previous_state = last_states.get(review_id)
             if previous_state in TERMINAL_REVIEW_LIFECYCLE_STATES:

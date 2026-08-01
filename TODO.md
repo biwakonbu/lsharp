@@ -2015,3 +2015,13 @@ current-source manifest/expected replay lockが現HEADに一致せず、別セ�
 `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
 `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-provider-lifecycle-terminal-state-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-terminal-state-preflight.md)。
+
+2026-08-02 に明示 review-lifecycle snapshot の initial state preflightを追加した。同じ reviewの最初の sequenced eventが `revoked` / `superseded` の場合を
+`review lifecycle initial state must be one of active, proposed` で拒否する RED→GREENを `test-native-release-identity.py` で確認した。これは sequenced provider inputの
+initial-state rule verified partial sliceであり、既存のstate allowlist・terminal reactivation・sequence rollback/duplicate・effective_at以外の完全な transition matrix、payload reducer、
+provider snapshot regular-file/nonempty/digest/role binding、MCP semantic、署名/authenticationの完了証拠ではない。live provider API/auth取得・意味検証、current-source Linux runtime、
+Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが
+現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage regeneration・full buildは未実行である。blockerの再現 commandは
+`current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
+`find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-provider-lifecycle-initial-state-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-initial-state-preflight.md)。
