@@ -3653,6 +3653,145 @@
     (compiler-unprivate-decl (vector-get decl 1))
     decl))
 
+;; flat ftable compiler の ADT import alias は、prelude が全 constructor を
+;; module-qualified keyへ登録した後に alias-qualified keyへ写す。
+(defn compiler-import-only-contains-loop [only-hashes idx n target-hash]
+  (if (>= idx n)
+    0
+    (if (= (vector-get only-hashes idx) target-hash)
+      1
+      (compiler-import-only-contains-loop only-hashes (+ idx 1) n target-hash))))
+
+(defn compiler-import-only-allows [only-hashes target-hash]
+  (if (= only-hashes 0)
+    1
+    (if (= (vector-length only-hashes) 0)
+      1
+      (compiler-import-only-contains-loop
+        only-hashes
+        0
+        (vector-length only-hashes)
+        target-hash))))
+
+(defn compiler-register-flat-adt-variant-import-aliases-loop
+  [variants idx count target-module alias-hash only-hashes ftable]
+  (if (>= idx count)
+    ftable
+    (let [variant (vector-get variants idx)
+      constructor-hash (vector-get variant 0)
+      module-key (ast-qualified-name-hash target-module constructor-hash)
+      target-index (ftable-lookup ftable module-key)
+      alias-key (ast-qualified-name-hash alias-hash constructor-hash)]
+      (if (= (compiler-import-only-allows only-hashes constructor-hash) 1)
+        (if (= target-index 0)
+          (compiler-register-flat-adt-variant-import-aliases-loop
+            variants
+            (+ idx 1)
+            count
+            target-module
+            alias-hash
+            only-hashes
+            ftable)
+          (let [next-ftable (ftable-register ftable alias-key target-index)]
+            (do
+              (root_push next-ftable)
+              (let [result
+                      (compiler-register-flat-adt-variant-import-aliases-loop
+                        variants
+                        (+ idx 1)
+                        count
+                        target-module
+                        alias-hash
+                        only-hashes
+                        next-ftable)]
+                (do
+                  (root_pop)
+                  result)))))
+        (compiler-register-flat-adt-variant-import-aliases-loop
+          variants
+          (+ idx 1)
+          count
+          target-module
+          alias-hash
+          only-hashes
+          ftable)))))
+
+(defn compiler-register-flat-adt-import-aliases-for-decl
+  [decl decl-module target-module alias-hash only-hashes ftable]
+  (if (= decl-module target-module)
+    (let [variants
+            (if (>= (vector-length decl) 4)
+              (vector-get decl 3)
+              (vector-get decl 2))]
+      (compiler-register-flat-adt-variant-import-aliases-loop
+        variants
+        0
+        (vector-length variants)
+        target-module
+        alias-hash
+        only-hashes
+        ftable))
+    ftable))
+
+(defn compiler-register-flat-adt-import-aliases-loop
+  [decls idx n target-module alias-hash only-hashes ftable]
+  (if (>= idx n)
+    ftable
+    (do
+      (root_push decls)
+      (root_push ftable)
+      (let [decl (compiler-unprivate-decl (vector-get decls idx))
+        decl-module (record-prelude-module-hash-loop decls (- idx 1))]
+        (do
+          (root_push decl)
+          (let [next-ftable
+                  (if (= (vector-get decl 0) (ast-type-decl))
+                    (compiler-register-flat-adt-import-aliases-for-decl
+                      decl
+                      decl-module
+                      target-module
+                      alias-hash
+                      only-hashes
+                      ftable)
+                    ftable)]
+            (do
+              (root_push next-ftable)
+              (let [result
+                      (compiler-register-flat-adt-import-aliases-loop
+                        decls
+                        (+ idx 1)
+                        n
+                        target-module
+                        alias-hash
+                        only-hashes
+                        next-ftable)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn compiler-register-flat-adt-import-aliases-for-import [decls n decl ftable]
+  (let [target-module (vector-get decl 1)
+    parsed-alias
+      (if (> (vector-length decl) 4)
+        (vector-get decl 4)
+        0)
+    alias-hash (if (= parsed-alias 0) target-module parsed-alias)
+    only-hashes
+      (if (> (vector-length decl) 5)
+        (vector-get decl 5)
+        0)]
+    (compiler-register-flat-adt-import-aliases-loop
+      decls
+      0
+      n
+      target-module
+      alias-hash
+      only-hashes
+      ftable)))
+
 (defn record-prelude-step [decls idx n ftable func-idx functions]
   (if (>= idx n)
     (make-record-prelude-state 1 idx ftable func-idx functions)
@@ -3688,13 +3827,36 @@
                       (root_pop)
                       (root_pop)
                       result))))
-              (let [result (make-record-prelude-state 0 (+ idx 1) ftable func-idx functions)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+              (if (= (vector-get decl 0) (ast-import-decl))
+                (let [aliased-ftable
+                        (compiler-register-flat-adt-import-aliases-for-import
+                          decls
+                          n
+                          decl
+                          ftable)]
+                  (do
+                    (root_push aliased-ftable)
+                    (let [result
+                            (make-record-prelude-state
+                              0
+                              (+ idx 1)
+                              aliased-ftable
+                              func-idx
+                              functions)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))
+                (let [result (make-record-prelude-state 0 (+ idx 1) ftable func-idx functions)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 
 (defn continue-record-prelude-step [decls n state]
   (if (= (vector-get state 0) 1)

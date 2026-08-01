@@ -3250,6 +3250,53 @@ fn test_e2e_selfhost_ftable_compiler_adt_constructor_pattern_runs() {
     assert_eq!(output, "41\n7\n42\n");
 }
 
+/// selfhost ftable compiler: alias-qualified ADT constructor の同名衝突を分離できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_imported_alias_qualified_same_name_adt_constructors_run() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(module Left) (type LeftValue (Thing Int)) (module Right) (type RightValue (Thing Int Int)) (module Main) (import Left :as L :only [Thing]) (import Right :as R :only [Thing]) (defn main [] (let [left (L.Thing 41) right (R.Thing 2 3)] (do (print (match left [(L.Thing x) x] [_ 0])) (print (match right [(R.Thing x y) (+ x y)] [_ 0])) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost ftable alias-qualified same-name ADT module should run");
+    assert_eq!(output, "41\n5\n");
+}
+
 /// selfhost compiler-mode: record constructor と static accessor を actual Wasm で実行できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_record_constructor_and_static_accessor_run() {

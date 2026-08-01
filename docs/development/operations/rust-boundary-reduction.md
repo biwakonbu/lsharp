@@ -661,6 +661,29 @@ inference visibility slice; flat ftable import parity, multi-segment names, broa
 standalone native stage0 producer parity on both supported targets, and `LEGACY-LANG-02` remain
 incomplete.
 
+### selfhost flat ftable ADT alias target and recursive pattern scratch slice (2026-08-01)
+
+The flat ftable compiler now registers imported ADT variants through the target module's qualified
+constructor key before writing the alias-qualified key. A single fixture defines `Thing Int` in
+`Left` and `Thing Int Int` in `Right`, imports them as `L` and `R`, and constructs/matches both
+variants without allowing the later raw `Thing` registration to overwrite the earlier call target.
+The generated Wasm produces `41\n5\n`.
+
+Evidence: `test_e2e_selfhost_ftable_compiler_imported_alias_qualified_same_name_adt_constructors_run`,
+`test_e2e_selfhost_ftable_compiler_adt_constructor_pattern_runs`, and
+`test_e2e_selfhost_compiler_mode_adt_nested_constructor_pattern_runs` passed after the change.
+The source-aware and ftable deep scratch regressions in
+`selfhost_pattern_scratch_contract` also passed and produced `42\n`. `pattern-temp-base` now
+advances by the six locals used by `map-get` / `map-contains`, so recursive child checks and
+binders do not overlap the parent scratch or arm binder locals. The existing
+`test_e2e_selfhost_ftable_compiler_alias_qualified_record_pattern_runs` remained green.
+
+This closes only the flat ftable same-name alias target and recursive pattern scratch slices.
+File-import ftable parity, multi-segment qualified names, broad parametric/recursive ADT
+representation, nominal/exhaustiveness, WasmGC/linear-memory parity, current-source native
+stage0 evidence on both supported targets, and the `LEGACY-LANG-02` / `LEGACY-ROOT-01`
+aggregates remain incomplete. The existing `[~]` TODO and Rust oracle/bootstrap boundary remain.
+
 ### legacy source compile boundary 更新 (2026-07-14)
 
 `App.Cli`、`EmbeddedCli`、`SmokeCli`、`PipelineSmoke` の source/full helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`PipelineSmoke` は Rust host compile と Wasm validate まで確認した。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `run-main-smoke` の単一 AST `lower` は診断用として残り、App.Cli / EmbeddedCli の component sidecar、no-arg pipeline entrypoint の full-program runtime/native E2E は別の未完了 surface である。

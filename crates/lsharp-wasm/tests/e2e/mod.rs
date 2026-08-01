@@ -51,6 +51,7 @@ mod selfhost_parser_metadata_outer_scanners;
 mod selfhost_parser_metadata_fields;
 mod selfhost_parser_metadata_initializers;
 mod selfhost_parser_metadata_forms;
+mod selfhost_pattern_scratch_contract;
 mod selfhost_private_record_compiler;
 mod selfhost_assertion_spans;
 mod selfhost_typeinfer_adt_scanners;
