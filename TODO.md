@@ -1081,8 +1081,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   source commit `fa97fa948489f635dc8888b5a269755a75776670` の 1 test pass（artifact 4660 KiB）、
   Linux x86_64 hostgen/VM gateも status `pass` で、stage2/stage3 code length 各 `11332908`、
   stdout SHA-256 は両方 `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad`
-  で一致した。これは nested parametric pattern の verified sliceであり、import/deep pattern、
-  runtime/ftable/linear-memory ABI、`LEGACY-LANG-01` aggregateは残る。
+  で一致した。追加の `test_e2e_selfhost_compiler_mode_nested_parametric_record_pattern_runs`
+  は selfhost compiler-mode の実 Wasm runtime で binder/literal/fallback の `41\n1\n7\n` を
+  確認した（test-only追加のため native source producerは不変）。これは nested parametric
+  pattern と一つの source runtime fixtureの verified sliceであり、import/deep pattern、
+  ftable/linear-memory ABI、`LEGACY-LANG-01` aggregateは残る。
 - [~] `LEGACY-LANG-02` ADT/GADT execution parity — ordinary ADT の direct/nested constructor と
   GADT parser/type refinement は verified。2026-07-31 に selfhost
   `Types.TypeInferAdt` の type parameter、constructor field、variant、type declaration scan を

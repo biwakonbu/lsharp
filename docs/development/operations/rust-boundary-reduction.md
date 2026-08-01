@@ -558,15 +558,18 @@ pattern field boundary, while the existing constructor-scheme visibility guard r
 
 Evidence: `test_nested_parametric_record_pattern_propagates_field_type`,
 `test_e2e_selfhost_typeinfer_nested_parametric_record_pattern_binds_field_type`, and the complete
-`selfhost_typeinfer_quote_patterns` group (15 passed). The Mac Apple Silicon native gate passed for
+`selfhost_typeinfer_quote_patterns` group (15 passed). The source compiler-mode Wasm runtime test
+`test_e2e_selfhost_compiler_mode_nested_parametric_record_pattern_runs` also passed and produced
+`41\n1\n7\n` for binder, literal, and fallback arms. The Mac Apple Silicon native gate passed for
 source commit `fa97fa948489f635dc8888b5a269755a75776670` (1 native test, 4660 KiB artifact). The
 Linux x86_64 hostgen/VM gate also passed for that source commit; stage2/stage3 code lengths were
 both `11332908` and their stdout SHA-256 values matched at
 `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad`.
 
-This is a verified nested parametric field-binding slice, not completion of record-pattern
-semantic parity. Import/deep pattern coverage, runtime/ftable/linear-memory ABI, and the
-`LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise incomplete boundaries.
+This is a verified nested parametric field-binding slice plus one source compiler-mode runtime
+fixture, not completion of record-pattern semantic parity. Import/deep pattern coverage,
+ftable/linear-memory ABI, and the `LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise
+incomplete boundaries.
 
 ### legacy source compile boundary 更新 (2026-07-14)
 

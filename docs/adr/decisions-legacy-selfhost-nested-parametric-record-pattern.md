@@ -6,7 +6,8 @@
   `crates/lsharp-types/src/infer/expr.rs`,
   `selfhost/src/Types/TypeInferPattern.ls`,
   `crates/lsharp-types/src/infer_tests.rs`,
-  `crates/lsharp-wasm/tests/e2e/selfhost_typeinfer_quote_patterns.rs`
+  `crates/lsharp-wasm/tests/e2e/selfhost_typeinfer_quote_patterns.rs`,
+  `crates/lsharp-wasm/tests/e2e/strings_patterns_compiler_integration.rs`
 - Related: `LEGACY-LANG-01`,
   `docs/adr/decisions-legacy-selfhost-record-pattern-visibility.md`
 
@@ -34,6 +35,9 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
 - Rust focused regression `test_nested_parametric_record_pattern_propagates_field_type` passed.
 - `test_e2e_selfhost_typeinfer_nested_parametric_record_pattern_binds_field_type` passed.
 - The complete `selfhost_typeinfer_quote_patterns` group passed: 15 tests, 0 failures.
+- `test_e2e_selfhost_compiler_mode_nested_parametric_record_pattern_runs` passed through the
+  selfhost compiler-mode Wasm runtime and produced `41\n1\n7\n` for binder, literal, and fallback
+  arms. This test-only addition does not change the native source producer.
 - Mac Apple Silicon native gate passed for source commit
   `fa97fa948489f635dc8888b5a269755a75776670`; the ignored native test passed and the artifact was
   4660 KiB.
@@ -43,7 +47,7 @@ inference paths disagree at `Type::App` versus `Type::Record` unification.
 
 ## Boundary
 
-This closes only the nested parametric record-pattern field-binding slice. Import visibility,
-arbitrarily deep patterns, complete record-pattern semantic parity, runtime/ftable/linear-memory
-ABI parity, and the `LEGACY-LANG-01` aggregate remain incomplete. `TODO.md` therefore keeps the
-aggregate as `[~]`.
+This closes the nested parametric record field-binding slice and one source compiler-mode Wasm
+runtime fixture. Import visibility, arbitrarily deep patterns, complete record-pattern semantic
+parity, ftable/linear-memory ABI parity, and the `LEGACY-LANG-01` aggregate remain incomplete.
+`TODO.md` therefore keeps the aggregate as `[~]`.
