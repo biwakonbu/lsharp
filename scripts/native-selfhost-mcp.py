@@ -823,6 +823,35 @@ def validate_review_verification(value, index):
         raise ToolError(f"{label}.state must be one of verified, unverified, stale, revoked")
 
 
+def validate_review_evidence_identity(value):
+    label = "native validate report review_evidence_identity"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    required = (
+        "subject_digest",
+        "source_commit",
+        "artifact_digest",
+        "trust_store_digest",
+        "lifecycle_digest",
+        "now",
+    )
+    allowed = set(required)
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    for name in required:
+        identity_value = value[name]
+        if name in ("trust_store_digest", "lifecycle_digest") and identity_value is None:
+            continue
+        if not isinstance(identity_value, str) or len(identity_value) < 1:
+            if name in ("trust_store_digest", "lifecycle_digest"):
+                raise ToolError(f"{label}.{name} must be a string or null")
+            raise ToolError(f"{label}.{name} must be a non-empty string")
+
+
 def validate_report_output(value):
     if not isinstance(value, dict):
         raise ToolError("native validate report root must be a JSON object")
@@ -862,6 +891,8 @@ def validate_report_output(value):
             raise ToolError(f"native validate report {name} must be a non-negative integer")
     if "review_evidence_identity" in value and not isinstance(value["review_evidence_identity"], dict):
         raise ToolError("native validate report review_evidence_identity must be an object")
+    if "review_evidence_identity" in value:
+        validate_review_evidence_identity(value["review_evidence_identity"])
     if "manifest" in value:
         validate_manifest_output(value["manifest"])
 

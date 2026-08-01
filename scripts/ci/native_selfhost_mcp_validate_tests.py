@@ -80,3 +80,63 @@ def assert_validate_accepts_valid_nested_report(test):
             report["review_verifications"],
             [{"review_id": "review:team/one", "state": "verified"}],
         )
+
+
+def assert_validate_rejects_invalid_report_identity(test):
+    cases = (
+        ("identity-missing", "missing field: source_commit"),
+        ("identity-extra", "unknown field: extra"),
+        ("identity-type", "trust_store_digest must be a string or null"),
+    )
+    manifest = {"schema_version": 1, "nodes": [], "evidence": [], "edges": []}
+    for report_mode, expected_message in cases:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = test.write_fake_program(root)
+            result = test.run_shim(
+                program,
+                request(
+                    1,
+                    "tools/call",
+                    {"name": "lsharp_validate", "arguments": {"manifest": manifest}},
+                ),
+                root,
+                report_mode=report_mode,
+            )
+
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn(expected_message, response["result"]["content"][0]["text"])
+            test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
+
+
+def assert_validate_accepts_valid_report_identity(test):
+    manifest = {"schema_version": 1, "nodes": [], "evidence": [], "edges": []}
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {"name": "lsharp_validate", "arguments": {"manifest": manifest}},
+            ),
+            root,
+            report_mode="identity-valid",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        test.assertEqual(
+            response["result"]["structuredContent"]["review_evidence_identity"],
+            {
+                "subject_digest": "sha256:subject",
+                "source_commit": "a" * 40,
+                "artifact_digest": "sha256:artifact",
+                "trust_store_digest": None,
+                "lifecycle_digest": None,
+                "now": "2026-08-01T00:00:00Z",
+            },
+        )

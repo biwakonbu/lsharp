@@ -15,7 +15,7 @@ from native_selfhost_mcp_compile_tests import assert_compile_run_fails_closed_an
 from native_selfhost_mcp_stdlib_tests import assert_stdlib_api_generates_from_native_doc, assert_stdlib_api_projects_generated_metadata, assert_stdlib_api_rejects_invalid_arguments, assert_stdlib_api_rejects_malformed_native_doc
 from native_selfhost_mcp_lsp_tests import assert_completion_projects_empty_native_result, assert_completion_projects_native_lsp, assert_completion_rejects_invalid_arguments_before_native, assert_completion_rejects_native_failures, assert_completion_supports_file_and_col_alias, assert_definition_projects_native_lsp, assert_definition_rejects_invalid_arguments_before_native, assert_definition_rejects_native_failures, assert_definition_supports_file_and_col_alias, assert_hover_projects_native_lsp, assert_hover_rejects_invalid_arguments_before_native, assert_hover_rejects_native_failures, assert_hover_supports_file_and_col_alias, assert_lsp_position_alias_schema_is_exclusive, assert_lsp_rejects_both_position_aliases, assert_references_projects_empty_native_result, assert_references_projects_native_lsp, assert_references_rejects_invalid_arguments_before_native, assert_references_rejects_native_failures, assert_references_supports_file_and_col_alias
 from native_selfhost_mcp_manifest_tests import assert_validate_rejects_invalid_emitted_manifest, assert_validate_rejects_non_object_manifest_before_native, assert_validate_rejects_non_object_manifest_file_before_native
-from native_selfhost_mcp_validate_tests import assert_validate_accepts_valid_nested_report, assert_validate_rejects_invalid_report
+from native_selfhost_mcp_validate_tests import assert_validate_accepts_valid_nested_report, assert_validate_accepts_valid_report_identity, assert_validate_rejects_invalid_report, assert_validate_rejects_invalid_report_identity
 from native_selfhost_mcp_check_tests import assert_check_accepts_valid_migration_diagnostics, assert_check_rejects_blank_source_before_native, assert_check_rejects_invalid_arguments_before_native, assert_check_rejects_invalid_output, assert_source_input_schema_requires_non_empty_strings
 from native_selfhost_mcp_format_tests import assert_check_format_input_schemas_are_closed, assert_format_output_schema_is_closed, assert_format_rejects_blank_source_before_native, assert_format_rejects_invalid_arguments_before_native, assert_format_rejects_native_failures
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -186,6 +186,38 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                             "review_id": "review:team/one",
                             "state": "verified",
                         }}]
+                    elif report_mode == "identity-missing":
+                        report["review_evidence_identity"] = {{
+                            "subject_digest": "sha256:subject",
+                        }}
+                    elif report_mode == "identity-extra":
+                        report["review_evidence_identity"] = {{
+                            "subject_digest": "sha256:subject",
+                            "source_commit": "a" * 40,
+                            "artifact_digest": "sha256:artifact",
+                            "trust_store_digest": None,
+                            "lifecycle_digest": None,
+                            "now": "2026-08-01T00:00:00Z",
+                            "extra": True,
+                        }}
+                    elif report_mode == "identity-type":
+                        report["review_evidence_identity"] = {{
+                            "subject_digest": "sha256:subject",
+                            "source_commit": "a" * 40,
+                            "artifact_digest": "sha256:artifact",
+                            "trust_store_digest": 42,
+                            "lifecycle_digest": None,
+                            "now": "2026-08-01T00:00:00Z",
+                        }}
+                    elif report_mode == "identity-valid":
+                        report["review_evidence_identity"] = {{
+                            "subject_digest": "sha256:subject",
+                            "source_commit": "a" * 40,
+                            "artifact_digest": "sha256:artifact",
+                            "trust_store_digest": None,
+                            "lifecycle_digest": None,
+                            "now": "2026-08-01T00:00:00Z",
+                        }}
                     if report_identity is not None:
                         report["review_evidence_identity"] = report_identity
                     if "--emit-manifest" in args:
@@ -590,6 +622,10 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         assert_validate_rejects_invalid_report(self)
     def test_validate_accepts_valid_nested_report(self):
         assert_validate_accepts_valid_nested_report(self)
+    def test_validate_rejects_invalid_report_identity(self):
+        assert_validate_rejects_invalid_report_identity(self)
+    def test_validate_accepts_valid_report_identity(self):
+        assert_validate_accepts_valid_report_identity(self)
 
     def test_check_rejects_invalid_output(self):
         assert_check_rejects_invalid_output(self)

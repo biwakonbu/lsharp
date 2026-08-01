@@ -258,6 +258,12 @@ required field、closed field、trace-gap code、review ID pattern、lifecycle s
 として返さない contract を追加した。完全な nested report はそのまま通し、native MCP 70 tests と
 Python compile を通過した verified partial である。ADR: `docs/adr/decisions-v0.3-native-mcp-validate-output-items.md`。
 identity、manifest runtime、target runtime、provider semantics、Rust/native full parity は残る。
+さらに native MCP `lsharp_validate` の `review_evidence_identity` report object を postflight 検証し、
+required field、unknown field、非 nullable string、nullable provider digest の型境界を揃えた。manifest
+input 経由の malformed identity を native 成功として返さず、完全な identity は保持することを native
+MCP 72 tests と Python compile で確認した verified partial である。ADR:
+`docs/adr/decisions-v0.3-native-mcp-review-identity-output.md`。manifest nested runtime、target runtime、
+provider semantics、Rust/native full parity は残る。
 
 ## Current priority — v0.2 Milestone 2
 
