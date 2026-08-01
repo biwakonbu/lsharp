@@ -227,6 +227,26 @@ elif [[ -n "$REVIEW_TRUST_STORE" || -n "$REVIEW_LIFECYCLE" ]]; then
   die "review snapshots require --review-evidence-identity"
 fi
 
+if [[ -s "$EMBEDDED_REVIEW_EVIDENCE_IDENTITY" && -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then
+  python3 - "$EMBEDDED_REVIEW_EVIDENCE_IDENTITY" "$REVIEW_EVIDENCE_IDENTITY_JSON" <<'PY'
+import json
+import pathlib
+import sys
+
+embedded_path = pathlib.Path(sys.argv[1])
+projected_identity = json.loads(sys.argv[2])
+try:
+    embedded_identity = json.loads(embedded_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(
+        "embedded review evidence identity is invalid: "
+        f"{embedded_path}: {error}"
+    )
+if embedded_identity != projected_identity:
+    raise SystemExit("embedded review evidence identity conflicts with explicit input")
+PY
+fi
+
 ARCHIVE_ROOT_NAME="lsharp-stage0-${VERSION}-${TARGET}"
 ARCHIVE_NAME="${ARCHIVE_ROOT_NAME}.tar.gz"
 mkdir -p "$OUTPUT_DIR"

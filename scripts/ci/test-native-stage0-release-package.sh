@@ -233,6 +233,46 @@ grep -F "artifact_digest" <<<"$artifact_mismatch_output" >/dev/null \
 [[ ! -e "$ARTIFACT_MISMATCH_DIST_DIR/lsharp-stage0-${VERSION}-artifact-mismatch-${TARGET}.tar.gz" ]] \
   || fail "stage0 artifact digest mismatch left a release archive"
 
+EMBEDDED_CONFLICT_STAGE0="$TMP_ROOT/embedded-conflict-stage0"
+EMBEDDED_CONFLICT_DIST_DIR="$TMP_ROOT/embedded-conflict-dist"
+CONFLICT_IDENTITY_PATH="$TMP_ROOT/conflicting-identity.json"
+cp -pR "$STAGE0_DIR" "$EMBEDDED_CONFLICT_STAGE0"
+cp "$IDENTITY_PATH" "$EMBEDDED_CONFLICT_STAGE0/review-evidence-identity.json"
+cp "$IDENTITY_PATH" "$CONFLICT_IDENTITY_PATH"
+python3 - "$CONFLICT_IDENTITY_PATH" <<'PY'
+import json
+import pathlib
+import sys
+
+identity_path = pathlib.Path(sys.argv[1])
+identity = json.loads(identity_path.read_text(encoding="utf-8"))
+identity["subject_digest"] = "sha256:" + "e" * 64
+identity_path.write_text(json.dumps(identity, separators=(",", ":")) + "\n", encoding="utf-8")
+PY
+set +e
+embedded_conflict_output="$(
+  NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
+    PATH="$HOST_BIN:$PATH" \
+    "$RELEASE_PACKAGE" \
+      --target "$TARGET" \
+      --version "${VERSION}-embedded-conflict" \
+      --stage0-dir "$EMBEDDED_CONFLICT_STAGE0" \
+      --source-commit "$SOURCE_COMMIT" \
+      --review-evidence-identity "$CONFLICT_IDENTITY_PATH" \
+      --review-trust-store "$TRUST_STORE_PATH" \
+      --review-lifecycle "$LIFECYCLE_PATH" \
+      --output-dir "$EMBEDDED_CONFLICT_DIST_DIR" 2>&1
+)"
+embedded_conflict_status=$?
+set -e
+[[ "$embedded_conflict_status" -ne 0 ]] \
+  || fail "embedded and explicit stage0 identities were silently replaced"
+grep -F "embedded review evidence identity conflicts with explicit input" \
+  <<<"$embedded_conflict_output" >/dev/null \
+  || fail "embedded identity conflict did not expose a stable diagnostic"
+[[ ! -e "$EMBEDDED_CONFLICT_DIST_DIR/lsharp-stage0-${VERSION}-embedded-conflict-${TARGET}.tar.gz" ]] \
+  || fail "embedded identity conflict left a release archive"
+
 RELATIVE_ROOT="$TMP_ROOT/relative-output"
 mkdir -p "$RELATIVE_ROOT"
 cp -pR "$STAGE0_DIR" "$RELATIVE_ROOT/stage0"
