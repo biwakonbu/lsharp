@@ -970,10 +970,19 @@ def validate_manifest_sampling(value, label):
         coverage = value["coverage"]
         if not isinstance(coverage, dict):
             raise ToolError(f"{label}.coverage must be an object")
+        covered = 0
         for name, count in coverage.items():
             if re.search(r"\S", name) is None:
                 raise ToolError(f"{label}.coverage has an invalid property name")
             validate_manifest_integer(count, f"{label}.coverage[{name}]")
+            if covered > 18446744073709551615 - count:
+                raise ToolError(f"{label}.coverage total exceeds u64 range")
+            covered += count
+        if coverage and covered != value["cases"]:
+            raise ToolError(
+                f"{label}.coverage total must equal cases: "
+                f"cases={value['cases']}, covered={covered}"
+            )
 
 
 def validate_manifest_execution(value, label):

@@ -91,6 +91,14 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
         ("evidence-subject", "evidence[0].subject.kind has invalid value"),
         ("evidence-execution", "evidence[0].execution is missing field: runner"),
         ("evidence-sampling", "evidence[0].execution.sampling.cases must be a non-negative integer"),
+        (
+            "evidence-coverage-mismatch",
+            "evidence[0].execution.sampling.coverage total must equal cases: cases=1, covered=2",
+        ),
+        (
+            "evidence-coverage-overflow",
+            "evidence[0].execution.sampling.coverage total exceeds u64 range",
+        ),
         ("evidence-provenance", "evidence[0].provenance.producer must be a non-empty string"),
         ("evidence-extra", "evidence[0] has unknown field: extra"),
         ("closure-duplicate-node", "nodes[1] duplicates ID: demo/claim-1"),
@@ -257,3 +265,30 @@ def assert_validate_accepts_opaque_manifest_references(test):
                 test.assertEqual(manifest["edges"][0]["relation"], "evaluates")
             else:
                 test.assertEqual(manifest["evidence"][0]["subject"]["kind"], "contract")
+
+
+def assert_validate_accepts_empty_sampling_coverage(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "include_manifest": True,
+                    },
+                },
+            ),
+            root,
+            manifest_mode="evidence-coverage-empty-valid",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        sampling = response["result"]["structuredContent"]["manifest"]["evidence"][0]["execution"]["sampling"]
+        test.assertEqual(sampling["coverage"], {})
