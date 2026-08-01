@@ -1121,6 +1121,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   flat ftable compilerの同じ import target、module-qualified multi-segment name、parametric/recursive ADT の広い形、
   nominal/exhaustiveness、両 supported target の current-source native stage0 parity、
   `LEGACY-LANG-02` aggregateは残る。selfhost sourceとtestの変更だが、既存の native producer evidence は拡大していない。
+  2026-08-01 に `test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructor_pattern` を追加し、
+  `(import Lib :as L :only [Some])` の `L.Some` pattern を selected `0` diagnostics、除外された
+  `L.Other` pattern を `1` diagnostic として selfhost TypeInfer bundle で確認した。Rust oracle の
+  `Pattern::Constructor` も式と同じ alias/`:only` qualified resolution を使うように揃え、selected を受理し、
+  excluded を拒否することを確認した。これは parser/type-infer の alias visibility sliceであり、native
+  stage0 producer、flat ftable、Wasm runtime、両 supported target の parity evidenceは広げない。
 - [~] `LEGACY-COMP-01` full-program compiler closure — 主要 CLI builder は full-program 化済み。
   `TypeInferBlock.ls` の大きな do/computation 子要素走査は 64 要素 bounded/rooted scanへ移行し、
   Linux x86_64 stage2/stage3 fixed-pointを確認した。full-program compiler closure、

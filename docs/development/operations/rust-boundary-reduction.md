@@ -644,6 +644,23 @@ parametric/recursive ADT representation, nominal/exhaustiveness, WasmGC/linear-m
 current-source native stage0 evidence on both supported targets, and `LEGACY-LANG-02` remain
 incomplete. The existing `[~]` TODO and Rust oracle/bootstrap boundary remain in force.
 
+### selfhost alias-qualified ADT pattern type-inference visibility slice (2026-08-01)
+
+The selfhost TypeInfer bundle now applies the same alias and `:only` visibility contract to ADT
+constructor patterns that it already applies to qualified constructor expressions. The parser stores
+the canonical `ast-qualified-name-hash(alias, constructor)` in the constructor pattern's type-inference
+slot while retaining the raw constructor suffix metadata for the runtime tag boundary. Rust's
+`Pattern::Constructor` oracle lookup also resolves an alias through the module import table before
+looking up the injected module-qualified scheme.
+
+Evidence: `test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructor_pattern`
+passed with selected `L.Some` at `0` diagnostics and excluded `L.Other` at `1` diagnostic. The Rust
+oracle accepted the selected pattern and rejected the excluded `:only` pattern. The two source-file
+compiler-mode runtime regressions remain green in the same validation batch. This is a parser/type
+inference visibility slice; flat ftable import parity, multi-segment names, broad ADT semantics,
+standalone native stage0 producer parity on both supported targets, and `LEGACY-LANG-02` remain
+incomplete.
+
 ### legacy source compile boundary 更新 (2026-07-14)
 
 `App.Cli`、`EmbeddedCli`、`SmokeCli`、`PipelineSmoke` の source/full helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`PipelineSmoke` は Rust host compile と Wasm validate まで確認した。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `run-main-smoke` の単一 AST `lower` は診断用として残り、App.Cli / EmbeddedCli の component sidecar、no-arg pipeline entrypoint の full-program runtime/native E2E は別の未完了 surface である。

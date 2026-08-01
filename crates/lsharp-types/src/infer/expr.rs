@@ -510,7 +510,13 @@ impl Infer {
                 Ok((ty, Vec::new()))
             }
             Pattern::Constructor(span, name, sub_pats) => {
-                if let Some(scheme) = env.get(name) {
+                let resolved_name = name
+                    .find('.')
+                    .and_then(|dot_pos| {
+                        self.resolve_qualified_name(&name[..dot_pos], &name[dot_pos + 1..])
+                    })
+                    .unwrap_or_else(|| name.clone());
+                if let Some(scheme) = env.get(&resolved_name) {
                     let ctor_ty = self.instantiate(scheme);
 
                     match ctor_ty {

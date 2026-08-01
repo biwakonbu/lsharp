@@ -3700,7 +3700,13 @@
         ctor-end (p-end spans pos-ref)
         ctor-hash (current-symbol-hash-v3 spans pos-ref src)
         dot-pos (symbol-dot-position src ctor-start ctor-end)
-        result (vector-push-triple-rooted-v3 (vector-new 8) (ast-pat-constructor) ctor-hash 0)]
+        constructor-hash
+          (if (>= dot-pos 0)
+            (ast-qualified-name-hash
+              (name-hash src ctor-start dot-pos)
+              (name-hash src (+ dot-pos 1) ctor-end))
+            ctor-hash)
+        result (vector-push-triple-rooted-v3 (vector-new 8) (ast-pat-constructor) constructor-hash 0)]
         (do
           (root_push result)
           (p-advance pos-ref)
@@ -3816,6 +3822,7 @@
       name-start (p-start spans pos-ref)
       name-end (p-end spans pos-ref)
       name-hash (current-symbol-hash-v3 spans pos-ref src)
+      constructor-hash (current-type-name-hash-v3 spans pos-ref src)
       dot-pos (symbol-dot-position src name-start name-end)]
       (if (string-eq name "_")
         (do
@@ -3826,7 +3833,7 @@
             (p-advance pos-ref)
             (if (>= dot-pos 0)
                 (vector-push-pair-rooted-v3
-                  (vector-push-triple-rooted-v3 (vector-new 3) (ast-pat-constructor) name-hash 0)
+                  (vector-push-triple-rooted-v3 (vector-new 3) (ast-pat-constructor) constructor-hash 0)
                 (name-hash src name-start dot-pos)
                 (name-hash src (+ dot-pos 1) name-end))
               (vector-push-triple-rooted-v3 (vector-new 3) (ast-pat-constructor) name-hash 0)))
