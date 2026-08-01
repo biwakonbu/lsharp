@@ -43,6 +43,15 @@ look stronger than its evidence.
   spans to one-based line/column points, but refuses to synthesize a report when
   a diagnostic code or span is missing. Native producer, full invalid coverage,
   and target/runtime execution remain explicit follow-up boundaries.
+- Add `scripts/ci/semantic_fixture_native_report.py` as the native-stage0 lane.
+  It requires an explicit stage0 manifest, native runner, Wasmtime executable,
+  source commit, target, and task-owned work directory. The manifest kind,
+  target, source commit, and safe relative executable paths are checked before
+  execution. The runner environment does not inherit `LSHARP_PATH` or the
+  embedded-component disable flag, so the native runner owns its explicit
+  stage0 boundary rather than silently delegating to a host compiler. Invalid
+  output is reported only when an `LS####` code and source byte span are both
+  present; missing fields fail closed.
 - Validate the contract with the standalone Python helper and focused unittest;
   the matrix projector emits the deterministic input and the diff helper emits
   a deterministic comparison result.
@@ -65,5 +74,9 @@ look stronger than its evidence.
 - `python3 scripts/ci/test-semantic-fixture-rust-report.py` — explicit compiler/
   Wasmtime paths, artifact digest, runtime output, fallback guard, invalid
   code/span conversion, and missing-diagnostic-field refusal tests.
+- `python3 scripts/ci/test-semantic-fixture-native-report.py` — stage0 manifest
+  provenance, explicit native runner/Wasmtime paths, fallback environment guard,
+  artifact/runtime observation, invalid code/span conversion, and missing-field
+  refusal tests.
 - `python3 scripts/ci/semantic_fixture_matrix.py --manifest scripts/ci/semantic-fixture-matrix.json --root .`
   — deterministic manifest projection.
