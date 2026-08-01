@@ -111,6 +111,15 @@ verified partial sliceであり、native stage0、Linux x86_64、Rust/native dif
 未接続のため `[~]` を維持する。ADR:
 `docs/adr/decisions-v0.4-m1-01-rust-oracle-invalid-diagnostic-parity.md`。
 
+さらに current source commit
+`8af9af3c30b8260700ca6b7b05030a56c42805e3` の Mac Rust-oracle で semantic fixture matrix の 19件を
+一括実行した。valid 14件は全て Wasm artifact を生成し、`wasm-tools validate`、Wasmtime exit `0`、
+期待 stdout/stderr、artifact digest/size を確認した。invalid 5件は期待する `LS0001` / `LS3102` /
+`LS0102` / `LS3001` / `LS1001` の code/span、exit `1`、no-artifact、runtime-not-run を確認した。
+これにより Mac Rust-oracle の current-source full matrix は verified partial になったが、native
+stage0、Linux x86_64、Rust/native differential、aggregate は未接続のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.4-m1-01-rust-oracle-current-source-full-batch.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。

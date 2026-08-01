@@ -6,6 +6,9 @@ Accepted for the verified partial evidence slice (2026-08-01, source commit
 `ed72cb59987dfb8523886f775ab9170ecc436cc6`). This ADR does not complete
 V4-M1-01, native stage0 parity, or either-target completion gate.
 
+This is the historical valid-only run. The current-source full-matrix result
+is recorded in [`Mac Rust-oracle current-source full batch ADR`](decisions-v0.4-m1-01-rust-oracle-current-source-full-batch.md).
+
 ## Context
 
 The semantic fixture matrix and producer contract were previously tested only

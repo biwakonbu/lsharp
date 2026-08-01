@@ -119,3 +119,12 @@ look stronger than its evidence.
   runtime execution. The implementation and evidence are recorded in the
   [`Rust-oracle invalid diagnostic parity ADR`](decisions-v0.4-m1-01-rust-oracle-invalid-diagnostic-parity.md);
   native stage0, Linux, differential, and aggregate gates remain pending.
+- The current-source full batch at commit
+  `8af9af3c30b8260700ca6b7b05030a56c42805e3` reran all 19 manifest fixtures in
+  one Mac `aarch64-apple-darwin` Rust-oracle report. Fourteen valid fixtures
+  produced expected Wasm/runtime observations and passed `wasm-tools validate`;
+  the five invalid fixtures produced the expected code/span/exit/no-artifact
+  observations. This unified run supersedes the split valid/invalid source
+  commits for current evidence and is recorded in the
+  [`Mac Rust-oracle current-source full batch ADR`](decisions-v0.4-m1-01-rust-oracle-current-source-full-batch.md).
+  Native stage0, Linux, differential, and aggregate gates remain pending.
