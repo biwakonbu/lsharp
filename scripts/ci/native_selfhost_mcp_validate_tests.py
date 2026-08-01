@@ -21,6 +21,7 @@ def assert_validate_rejects_invalid_report(test):
         ("count-bool", "open_questions"),
         ("count-overflow", "stale_evidence must be a non-negative integer"),
         ("duplicate", "duplicate JSON object key: status"),
+        ("nonstandard", "non-standard JSON constant: NaN"),
         ("trace-gap-missing", "missing field: code"),
         ("trace-gap-code", "code must be one of"),
         ("trace-gap-extra", "unknown field: extra"),

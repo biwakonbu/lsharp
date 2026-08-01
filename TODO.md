@@ -321,6 +321,12 @@ compile、docs audit、diff checkで確認した verified partial である。pr
 Rust/native full parity は残る。ADR:
 `docs/adr/decisions-v0.3-native-mcp-json-relays.md`。
 
+さらに shared strict JSON decoder の `parse_constant` で `NaN` / `Infinity` / `-Infinity` を拒否し、
+JSON-RPC、native report、LSP、package/stdlib artifact の非標準 JSON constant を成功値として返さない
+boundaryを固定した。native MCP 79 tests、Python compile、docs audit、diff checkで確認した verified partial
+である。provider semantics、target runtime、Rust/native full parity は残る。ADR:
+`docs/adr/decisions-v0.3-native-mcp-json-constants.md`。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:

@@ -548,6 +548,12 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                             '"independent_reviews":0,"contradicting_observations":0,'
                             '"stale_reviews":0,"stale_evidence":0}}'
                         )
+                    elif report_mode == "nonstandard":
+                        report_output = (
+                            '{{"status":"unknown","trace_gaps":[],"open_questions":NaN,'
+                            '"independent_reviews":0,"contradicting_observations":0,'
+                            '"stale_reviews":0,"stale_evidence":0}}'
+                        )
                     else:
                         report_output = json.dumps(report)
                     print(report_output)
@@ -1441,6 +1447,15 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             self.assertNotEqual(duplicate_request.returncode, 0)
             self.assertIn(b"duplicate JSON object key: id", duplicate_request.stderr)
             self.assertEqual(duplicate_request.stdout, b"")
+
+            nonstandard_request = self.run_shim(
+                program,
+                b'{"jsonrpc":"2.0","id":Infinity,"method":"ping"}\n',
+                root,
+            )
+            self.assertNotEqual(nonstandard_request.returncode, 0)
+            self.assertIn(b"non-standard JSON constant: Infinity", nonstandard_request.stderr)
+            self.assertEqual(nonstandard_request.stdout, b"")
 
             missing = self.run_shim(root / "missing", request(1, "ping"), root)
             self.assertNotEqual(missing.returncode, 0)

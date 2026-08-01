@@ -4,7 +4,7 @@ import json
 
 
 def strict_json_loads(content):
-    """Decode JSON while rejecting duplicate object keys at every nesting level."""
+    """Decode JSON while rejecting duplicate keys and non-standard constants."""
 
     def reject_duplicate_keys(pairs):
         value = {}
@@ -14,4 +14,11 @@ def strict_json_loads(content):
             value[key] = item
         return value
 
-    return json.loads(content, object_pairs_hook=reject_duplicate_keys)
+    def reject_nonstandard_constant(value):
+        raise ValueError(f"non-standard JSON constant: {value}")
+
+    return json.loads(
+        content,
+        object_pairs_hook=reject_duplicate_keys,
+        parse_constant=reject_nonstandard_constant,
+    )
