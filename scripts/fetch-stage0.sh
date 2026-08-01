@@ -66,6 +66,41 @@ extract_archive() {
   esac
 }
 
+validate_release_base_url() {
+  local base_url="$1"
+  python3 - "$base_url" <<'PY'
+from urllib.parse import urlsplit
+import sys
+
+raw_url = sys.argv[1]
+try:
+    parsed = urlsplit(raw_url)
+except ValueError:
+    raise SystemExit("ERROR: native stage0 release URL is invalid")
+
+if parsed.username is not None or parsed.password is not None:
+    raise SystemExit("ERROR: native stage0 release URL must not include credentials")
+if parsed.query or parsed.fragment:
+    raise SystemExit(
+        "ERROR: native stage0 release URL must not include a query or fragment"
+    )
+
+scheme = parsed.scheme.lower()
+if scheme == "https":
+    if not parsed.netloc:
+        raise SystemExit("ERROR: native stage0 release URL must include an HTTPS host")
+elif scheme == "file":
+    if parsed.netloc not in ("", "localhost") or not parsed.path:
+        raise SystemExit(
+            "ERROR: native stage0 release URL must use https:// or local file://"
+        )
+else:
+    raise SystemExit(
+        "ERROR: native stage0 release URL must use https:// or local file://"
+    )
+PY
+}
+
 validate_archive() {
   local archive_path="$1"
   local expected_root="$2"
@@ -284,6 +319,7 @@ ARCHIVE_NAME="${ARCHIVE_ROOT_NAME}.${ARCHIVE_EXT}"
 if [[ -z "$RELEASE_BASE_URL" ]]; then
   RELEASE_BASE_URL="https://github.com/biwakonbu/lsharp/releases/download/${VERSION}"
 fi
+validate_release_base_url "$RELEASE_BASE_URL"
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-stage0-fetch.XXXXXX")"
 cleanup() {

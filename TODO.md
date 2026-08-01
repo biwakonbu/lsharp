@@ -310,6 +310,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 -type f -name manifest.json -path '*lsharp*'`。
   ADR: `docs/adr/decisions-v0.3-stage0-fetch-archive-entry-provenance.md`。
 
+  同日、`STAGE0_RELEASE_BASE_URL` の provider URL preflight を追加し、HTTPS host または local `file://`
+  のみを許可し、HTTP・埋め込み credentials・query/fragment を `curl` 前に明示拒否した。
+  fake `curl` が呼ばれない RED→GREEN と、既存 local fetch/install の継続を focused harness で確認した。
+  これは provider URL input の verified partial sliceであり、live provider API/auth、current-source Linux
+  runtime、packaged target parity、rollback parity は残る。M3-05-N9 は `[~]` のまま維持する。ADR:
+  `docs/adr/decisions-v0.3-stage0-fetch-provider-url-boundary.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。
