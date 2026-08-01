@@ -19,6 +19,7 @@ def assert_validate_rejects_invalid_report(test):
         ("unknown", "unknown field"),
         ("status", "status"),
         ("count-bool", "open_questions"),
+        ("count-overflow", "stale_evidence must be a non-negative integer"),
         ("trace-gap-missing", "missing field: code"),
         ("trace-gap-code", "code must be one of"),
         ("trace-gap-extra", "unknown field: extra"),

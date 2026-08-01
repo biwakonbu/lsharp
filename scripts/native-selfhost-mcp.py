@@ -33,6 +33,7 @@ import sys
 import tempfile
 
 from native_selfhost_mcp_schema import (
+    U64_MAX,
     edge_schema,
     evidence_schema,
     node_schema,
@@ -1260,6 +1261,11 @@ def validate_review_evidence_identity(value):
             raise ToolError(f"{label}.{name} must be a non-empty string")
 
 
+def validate_report_counter(value, name):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > U64_MAX:
+        raise ToolError(f"native validate report {name} must be a non-negative integer")
+
+
 def validate_report_output(value):
     if not isinstance(value, dict):
         raise ToolError("native validate report root must be a JSON object")
@@ -1295,8 +1301,7 @@ def validate_report_output(value):
         "stale_reviews",
         "stale_evidence",
     ):
-        if isinstance(value[name], bool) or not isinstance(value[name], int) or value[name] < 0:
-            raise ToolError(f"native validate report {name} must be a non-negative integer")
+        validate_report_counter(value[name], name)
     if "review_evidence_identity" in value and not isinstance(value["review_evidence_identity"], dict):
         raise ToolError("native validate report review_evidence_identity must be an object")
     if "review_evidence_identity" in value:

@@ -152,6 +152,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                         report["status"] = "maybe"
                     elif report_mode == "count-bool":
                         report["open_questions"] = True
+                    elif report_mode == "count-overflow":
+                        report["stale_evidence"] = 18446744073709551616
                     elif report_mode == "trace-gap-missing":
                         report["trace_gaps"] = [{{}}]
                     elif report_mode == "trace-gap-code":
@@ -800,6 +802,17 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             )
             validate_output_schema = validate_tool["outputSchema"]
             self.assertFalse(validate_output_schema["additionalProperties"])
+            for field in (
+                "open_questions",
+                "independent_reviews",
+                "contradicting_observations",
+                "stale_reviews",
+                "stale_evidence",
+            ):
+                self.assertEqual(
+                    validate_output_schema["properties"][field]["maximum"],
+                    18446744073709551615,
+                )
             trace_gap_schema = validate_output_schema["properties"]["trace_gaps"]["items"]
             self.assertEqual(trace_gap_schema["required"], ["code", "subject_id"])
             self.assertEqual(

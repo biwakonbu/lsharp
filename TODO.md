@@ -299,6 +299,14 @@ canonical、mismatch、overflow、empty coverage の fixture を native MCP 77 t
 verified partial である。ADR: `docs/adr/decisions-v0.3-native-mcp-manifest-sampling.md`。provider semantics、
 target runtime、Rust/native full parity は残る。
 
+さらに native MCP `lsharp_validate` report の5つの counter
+（`open_questions` / `independent_reviews` / `contradicting_observations` / `stale_reviews` /
+`stale_evidence`）を共有 `U64_MAX` 境界まで postflight 検証し、`u64::MAX + 1` を native 成功として
+返さない contract を追加した。schema の maximum assertion と overflow fixture を native MCP 77 tests、
+Python compile、docs audit、diff check で確認した verified partial である。provider semantics、target runtime、
+Rust/native full parity は残る。ADR:
+`docs/adr/decisions-v0.3-native-mcp-validate-report-counters.md`。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:
