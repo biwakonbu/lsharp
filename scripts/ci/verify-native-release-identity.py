@@ -144,6 +144,11 @@ def validate_review_lifecycle_snapshot(path):
                     f"review lifecycle active state regression: {path}: "
                     f"review_id={review_id!r} previous={previous_state} current={state}"
                 )
+            if previous_state == "proposed" and state == "proposed":
+                raise IdentityError(
+                    f"review lifecycle proposed state self-transition: {path}: "
+                    f"review_id={review_id!r} previous={previous_state} current={state}"
+                )
             if previous_state == "proposed" and state in TERMINAL_REVIEW_LIFECYCLE_STATES:
                 raise IdentityError(
                     f"review lifecycle terminal transition requires active: {path}: "

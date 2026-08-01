@@ -2052,3 +2052,12 @@ M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-so
 `current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
 `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
 [`decisions-v0.3-provider-lifecycle-active-state-self-transition-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-active-state-self-transition-preflight.md)。
+
+2026-08-02 に明示 review-lifecycle snapshot の proposed self-transition preflightを追加した。`proposed → proposed`（sequence `1 → 2`）eventを
+`review lifecycle proposed state self-transition` で拒否する RED→GREENを `test-native-release-identity.py` で確認した。これは sequenced provider inputの proposed self-transition verified partial sliceであり、
+既存の active self-transition/regression・proposed terminal・initial state・terminal reactivation・effective_at・sequence rollback/duplicate以外の完全な transition matrix、payload reducer、provider snapshot regular-file/nonempty/digest/role binding、
+MCP semantic、署名/authenticationの完了証拠ではない。live provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/cargo/replay processも変更していないため Linux replay・stage regeneration・full buildは未実行である。blockerの再現 commandは
+`current_head="$(git rev-parse --verify HEAD)"; find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json -path '*lsharp*'` と
+`find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 \( -name 'lsharp-native-linux-x86-hostgen-vm-*' -o -name '*.lock' \)`。Evidence:
+[`decisions-v0.3-provider-lifecycle-proposed-state-self-transition-preflight.md`](docs/adr/decisions-v0.3-provider-lifecycle-proposed-state-self-transition-preflight.md)。
