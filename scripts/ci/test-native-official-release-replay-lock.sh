@@ -21,7 +21,7 @@ printf '%s\n' "$$" >"$LOCK_DIR/pid"
 printf '%s\n' "$TMP_ROOT/artifact" >"$LOCK_DIR/artifact_dir"
 printf '%s\n' '/tmp/lsharp-native-official-replay-lock-vm' >"$LOCK_DIR/vm_work_dir"
 printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
-printf '%s\n' '{"review_id":"review:orchestrator/r1","state":"active"}' >"$LIFECYCLE"
+printf '%s\n' '{"review_id":"review:orchestrator/r1","sequence":1,"state":"active"}' >"$LIFECYCLE"
 
 set +e
 output="$({

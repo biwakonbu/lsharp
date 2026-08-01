@@ -184,7 +184,7 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             trust_store = root / "trust-store.json"
             trust_store.write_bytes(b'{"keys":["key-1"]}\n')
             lifecycle = root / "review-lifecycle.jsonl"
-            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"active"}\n')
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","sequence":1,"state":"active"}\n')
             artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
             identity = identity_for(
                 artifact_digest,
@@ -222,7 +222,7 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertIn("trust_store_digest", mismatch.stderr)
 
             trust_store.write_bytes(b'{"keys":["key-1"]}\n')
-            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"revoked"}\n')
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","sequence":1,"state":"proposed"}\n')
             lifecycle_mismatch = self.run_verifier(
                 "--identity",
                 str(identity_path),
@@ -251,7 +251,7 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             trust_store = root / "trust-store.json"
             trust_store.write_bytes(b'{"keys":["key-1"]}\n')
             lifecycle = root / "review-lifecycle.jsonl"
-            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"pending"}\n')
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","sequence":1,"state":"pending"}\n')
             identity_path = root / "identity.json"
             identity = identity_for(
                 "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest(),
@@ -365,6 +365,49 @@ class NativeReleaseIdentityTest(unittest.TestCase):
 
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("review lifecycle sequence must be a positive integer", rejected.stderr)
+
+    def test_rejects_missing_review_lifecycle_sequence(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_text(
+                json.dumps(
+                    {
+                        "review_id": "review:checkout/r1",
+                        "state": "proposed",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            identity_path = root / "identity.json"
+            identity = identity_for(
+                "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
+            self.write_identity(identity_path, identity)
+
+            rejected = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+                "--require-provider-input",
+            )
+
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("review lifecycle sequence is required", rejected.stderr)
 
     def test_rejects_review_lifecycle_terminal_state_reactivation(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -843,7 +886,7 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             trust_store = root / "trust-store.json"
             trust_store.write_bytes(b'{"keys":["key-1"]}\n')
             lifecycle = root / "review-lifecycle.jsonl"
-            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"active"}\n')
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","sequence":1,"state":"active"}\n')
             trust_store_link = root / "trust-store-link.json"
             lifecycle_link = root / "review-lifecycle-link.jsonl"
             trust_store_link.symlink_to(trust_store)
@@ -936,7 +979,7 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             trust_store = root / "trust-store.json"
             trust_store.write_bytes(b'{"keys":["release-key"]}\n')
             lifecycle = root / "review-lifecycle.jsonl"
-            lifecycle.write_bytes(b'{"review_id":"review:release/r1","state":"active"}\n')
+            lifecycle.write_bytes(b'{"review_id":"review:release/r1","sequence":1,"state":"active"}\n')
             identity = identity_for(
                 program_digest,
                 trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),

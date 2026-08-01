@@ -118,8 +118,12 @@ def validate_review_lifecycle_snapshot(path):
             raise IdentityError(
                 f"review lifecycle effective_at must be a strict UTC timestamp: {path}"
             )
-        sequence = record.get("sequence")
-        if "sequence" in record and (
+        if "sequence" not in record:
+            raise IdentityError(
+                f"review lifecycle sequence is required: {path}"
+            )
+        sequence = record["sequence"]
+        if (
             not isinstance(sequence, int)
             or isinstance(sequence, bool)
             or sequence < 1

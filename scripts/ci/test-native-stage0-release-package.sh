@@ -57,7 +57,7 @@ raise SystemExit(0)
 PY
 
 printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE_PATH"
-printf '%s\n' '{"review_id":"review:stage0/r1","state":"active"}' >"$LIFECYCLE_PATH"
+printf '%s\n' '{"review_id":"review:stage0/r1","sequence":1,"state":"active"}' >"$LIFECYCLE_PATH"
 python3 - "$IDENTITY_PATH" "$TRUST_STORE_PATH" "$LIFECYCLE_PATH" "$SOURCE_COMMIT" <<'PY'
 import hashlib
 import json

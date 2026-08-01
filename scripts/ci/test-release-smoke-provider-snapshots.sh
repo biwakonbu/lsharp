@@ -17,7 +17,7 @@ LIFECYCLE="$TMP_ROOT/review-lifecycle.jsonl"
 
 mkdir -p "$STABLE_ROOT" "$ROLLBACK_ROOT"
 printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
-printf '%s\n' '{"review_id":"review:release-smoke/r1","state":"active"}' >"$LIFECYCLE"
+printf '%s\n' '{"review_id":"review:release-smoke/r1","sequence":1,"state":"active"}' >"$LIFECYCLE"
 
 cat >"$STABLE_ROOT/program.native" <<'SH'
 #!/usr/bin/env bash

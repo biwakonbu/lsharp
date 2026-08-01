@@ -49,7 +49,7 @@ export LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR="$HOSTGEN_REPLAY_LOCK_PATH"
 mkdir -p "$FAKE_ROOT/scripts/ci" "$PATH_PREFIX" "$FAKE_ROOT/dist"
 FAKE_ROOT_CANONICAL="$(cd "$FAKE_ROOT" && pwd)"
 printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
-printf '%s\n' '{"review_id":"review:orchestrator/r1","state":"active"}' >"$LIFECYCLE"
+printf '%s\n' '{"review_id":"review:orchestrator/r1","sequence":1,"state":"active"}' >"$LIFECYCLE"
 
 cp "$ROOT/scripts/ci/native-official-release-local.sh" "$FAKE_ROOT/scripts/ci/"
 cp "$ROOT/scripts/ci/verify-native-release-identity.py" "$FAKE_ROOT/scripts/ci/"

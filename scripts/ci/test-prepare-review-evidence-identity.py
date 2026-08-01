@@ -40,7 +40,7 @@ class PrepareReviewEvidenceIdentityTest(unittest.TestCase):
             trust_store = root / "trust-store.json"
             trust_store.write_bytes(b'{"keys":["key-1"]}\n')
             lifecycle = root / "review-lifecycle.jsonl"
-            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","state":"active"}\n')
+            lifecycle.write_bytes(b'{"review_id":"review:checkout/r1","sequence":1,"state":"active"}\n')
             output = root / "identity.json"
             subject_digest = "sha256:" + "c" * 64
 
