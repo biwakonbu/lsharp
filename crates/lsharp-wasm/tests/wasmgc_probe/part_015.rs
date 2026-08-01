@@ -351,3 +351,44 @@ fn wasm_gc_emitter_executes_lowered_nested_parametric_record_pattern() {
 
     assert_eq!(main.call(&mut store, ()).unwrap(), 41);
 }
+
+#[test]
+fn wasm_gc_emitter_executes_lowered_adt_pattern_with_typed_payload() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (type Option (Some Int) None)
+        (defn from-option [value]
+          (match value
+            [(Some x) x]
+            [None 0]))
+        (defn main []
+          (+
+            (from-option (Some 41))
+            (if (= (from-option None) 0) 1 0)))
+        "#,
+    )
+    .expect("WasmGC ADT pattern source を parse できる");
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .expect("WasmGC ADT pattern source を型推論できる");
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = lsharp_ir::lower::Lower::with_backend(lsharp_ir::lower::LowerBackend::WasmGc);
+    let ir = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("WasmGC ADT pattern を IR へ lowering できる");
+    let bytes =
+        lsharp_wasm::wasmgc::emit_wasm_wasmgc(&ir).expect("WasmGC ADT pattern module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("WasmGC ADT module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let instance =
+        Instance::new(&mut store, &module, &[]).expect("WasmGC ADT module を instantiate できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+
+    assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+}

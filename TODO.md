@@ -1102,7 +1102,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `dad391cd36df64b6354b1f4429aaf7a4c410697b7ca74606fbb2865dc2186bb1` で一致した。
   これは ordinary ADT の bounded type-inference traversal と current-source Linux native
   self-regeneration の verified sliceであり、nominal/exhaustiveness、full ftable/import、
-  linear-memory/WasmGC runtime parity、Mac/Linux aggregate は残る。
+  linear-memory/WasmGC runtime parity、Mac/Linux aggregate は残る。2026-08-01 に Rust
+  WasmGC backendの non-parametric `Option (Some Int) None` を実際に lower/emitter/Wasmtime
+  で実行し、`Some` の typed payload、variant tag、`None` fallbackを `42` の結果で確認した。
+  これはRust IR/emitter backendの verified sliceであり、parametric ADT、nominal/exhaustiveness、
+  full ftable/import、native stage0 producer parityの完了を意味しない。
 - [~] `LEGACY-COMP-01` full-program compiler closure — 主要 CLI builder は full-program 化済み。
   `TypeInferBlock.ls` の大きな do/computation 子要素走査は 64 要素 bounded/rooted scanへ移行し、
   Linux x86_64 stage2/stage3 fixed-pointを確認した。full-program compiler closure、

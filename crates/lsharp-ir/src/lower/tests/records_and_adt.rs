@@ -116,6 +116,53 @@ fn test_wasmgc_nested_parametric_record_pattern_preserves_reference_field_types(
 }
 
 #[test]
+fn test_wasmgc_adt_pattern_lowers_typed_payload_and_tag_checks() {
+    let source = r#"
+        (type Option (Some Int) None)
+        (defn from-option [value]
+          (match value
+            [(Some x) x]
+            [None 0]))
+        (defn main [] (from-option (Some 41)))
+    "#;
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
+
+    let option_index = module
+        .gc_types
+        .iter()
+        .position(|type_def| type_def.name == "Option")
+        .unwrap() as u32;
+    let from_option = module
+        .functions
+        .iter()
+        .find(|function| function.name == "from-option")
+        .unwrap();
+    assert!(
+        from_option
+            .body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::StructGet(type_idx, 0) if *type_idx == option_index)),
+        "WasmGC ADT pattern は variant tag を読むべき: {:?}",
+        from_option.body
+    );
+    assert!(
+        from_option
+            .body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::StructGet(type_idx, 1) if *type_idx == option_index)),
+        "WasmGC ADT pattern は typed payload を読むべき: {:?}",
+        from_option.body
+    );
+}
+
+#[test]
 fn test_nested_record_pattern_rejects_literal_child_until_lowered() {
     let source = r#"
         (type Inner (record (: x Int)))

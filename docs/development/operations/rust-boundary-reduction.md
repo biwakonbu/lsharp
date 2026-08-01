@@ -597,6 +597,19 @@ emitter backend slice. It does not update the native stage0 source producer or p
 selfhost parity, so the record-pattern aggregate and the full WasmGC type-argument/runtime
 surface remain incomplete.
 
+### WasmGC ordinary ADT pattern runtime slice (2026-08-01)
+
+The Rust WasmGC backend now has direct source-level runtime evidence for an ordinary
+non-parametric ADT: `Option` with `Some Int` and `None`. The lowered module checks the variant tag,
+extracts the typed payload for the `Some` binder, and falls through to the `None` arm. The IR
+regression `test_wasmgc_adt_pattern_lowers_typed_payload_and_tag_checks` and the Wasmtime runtime
+regression `wasm_gc_emitter_executes_lowered_adt_pattern_with_typed_payload` both pass; the fixture
+executes both branches and returns `42`.
+
+This is Rust IR/emitter backend evidence only. Parametric or recursive ADT representation,
+nominal/exhaustiveness parity, import/ftable and linear-memory ABI parity, native stage0 producer
+parity, and the `LEGACY-LANG-02` aggregate remain incomplete.
+
 ### legacy source compile boundary 更新 (2026-07-14)
 
 `App.Cli`、`EmbeddedCli`、`SmokeCli`、`PipelineSmoke` の source/full helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`PipelineSmoke` は Rust host compile と Wasm validate まで確認した。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `run-main-smoke` の単一 AST `lower` は診断用として残り、App.Cli / EmbeddedCli の component sidecar、no-arg pipeline entrypoint の full-program runtime/native E2E は別の未完了 surface である。
