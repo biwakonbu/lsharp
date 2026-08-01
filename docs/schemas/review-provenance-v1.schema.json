@@ -41,6 +41,22 @@
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
     },
+    "canonical_base64url": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z0-9_-]{4})+$"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z0-9_-]{4})*[A-Za-z0-9_-][AQgw]$"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z0-9_-]{4})*[A-Za-z0-9_-]{2}[AEIMQUYcgkosw048]$"
+        }
+      ]
+    },
     "attestation": {
       "type": "object",
       "additionalProperties": false,
@@ -79,9 +95,7 @@
           "const": "ed25519"
         },
         "signature": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_-]+$",
-          "minLength": 1
+          "$ref": "#/$defs/canonical_base64url"
         },
         "issued_at": {
           "$ref": "#/$defs/canonical_utc_timestamp"
@@ -141,8 +155,11 @@
           "const": "ed25519"
         },
         "public_key": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_-]+$",
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonical_base64url"
+            }
+          ],
           "minLength": 43,
           "maxLength": 43
         }
