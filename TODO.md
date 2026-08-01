@@ -1223,6 +1223,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `e8 cd a8 ff ff` → `-22323` / `-22269`、`e8 24 8b ff ff` → `-29916` / `-29852`となり、stage1の
   expected target diagnosticと一致した。これは call rel32の最小修正を正当化する不一致がないことを
   示す診断であり、full transport/materializeの実行証拠ではない。
+  さらに `test-package-native-linux-x86-actual-stage1-vm.sh` の fake Lima harness で、current HEADの
+  target/source commitを検証した stage1 packageを stage0 packageへ変換し、その packageを
+  `scripts/native-selfhost-dev.sh check` に渡す契約を RED→GREEN で固定した。bundled transport driver、
+  decoder、materializer、programを runnerから消費し、`Int` / `diagnostics:0`、stderr空、program materialize、
+  `cargo` / `rustc` / host `lsharp` の未呼び出しを確認した。これは package consumer と provenanceの
+  fake harness verified sliceであり、実 Linux current-source stage1 packageの source-file smoke、full
+  stage2/stage3、release acquisition/rollback、両 target parityの完了証拠には数えない。ADR:
+  `docs/adr/decisions-v0.3-native-linux-stage0-package-runner-contract.md`。
 
 ## ISSUES-derived quality and runtime work
 

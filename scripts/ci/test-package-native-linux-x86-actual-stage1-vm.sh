@@ -94,7 +94,38 @@ case "$1" in
       cat >"$destination_path" <<'PROGRAM'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'fake-stage1-compiler\n'
+if [[ "$#" -eq 0 ]]; then
+  printf 'fake-stage1-compiler\n'
+  exit 0
+fi
+[[ "$#" -eq 5 ]] || exit 92
+case "$2:$3:$4:$5" in
+  0:64:1:0)
+    cat <<'TRANSPORT'
+9000000005
+1
+10
+0
+9000000006
+9000000001
+43
+9000000002
+491481697616312
+9026096594944
+364510094841526784
+7019251490299464131
+8314605285929872999
+667706
+TRANSPORT
+    ;;
+  1:1:0:1)
+    printf '9000000003\n0\n9000000004\n'
+    ;;
+  *)
+    printf 'unexpected compiler range: %s\n' "$*" >&2
+    exit 93
+    ;;
+esac
 PROGRAM
       chmod +x "$destination_path"
     fi
@@ -116,6 +147,43 @@ exit 99
 SH
   chmod +x "$HOST_BIN/$forbidden"
 done
+
+cat >"$HOST_BIN/timeout" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -ge 2 ]] || exit 97
+shift
+exec "$@"
+SH
+chmod +x "$HOST_BIN/timeout"
+
+cat >"$HOST_BIN/cc" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "-c" ]]; then
+  output=""
+  for ((index = 1; index < $#; index += 1)); do
+    if [[ "${!index}" == "-o" ]]; then
+      next=$((index + 1))
+      output="${!next}"
+      break
+    fi
+  done
+  [[ -n "$output" ]] || exit 94
+  : >"$output"
+  exit 0
+fi
+
+[[ "${1:-}" == "@linker-response.txt" ]] || exit 95
+cat >program.native <<'PROGRAM'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'Int\ndiagnostics:0\n'
+PROGRAM
+chmod +x program.native
+SH
+chmod +x "$HOST_BIN/cc"
 
 run_wrapper() {
   PATH="$HOST_BIN:$PATH" \
@@ -180,5 +248,34 @@ assert_file_contains "$LOG" "program.native"
 
 compiler_output="$($OUTPUT_DIR/bin/compiler)"
 [[ "$compiler_output" == "fake-stage1-compiler" ]] || fail "packaged compiler did not come from VM materialization"
+
+RUNNER_SOURCE="$TMP_ROOT/runner-source"
+RUNNER_STAGE="$TMP_ROOT/runner-stage"
+RUNNER_INPUT="$RUNNER_SOURCE/input.ls"
+mkdir -p "$RUNNER_SOURCE/src/App"
+printf '(module App.Cli)\n' >"$RUNNER_SOURCE/src/App/Cli.ls"
+printf '(defn main [] 42)\n' >"$RUNNER_INPUT"
+
+runner_stderr="$TMP_ROOT/runner.stderr"
+runner_output="$TMP_ROOT/runner.stdout"
+set +e
+(
+  cd "$ROOT"
+  PATH="$HOST_BIN:$PATH" \
+    LSHARP_NATIVE_STAGE0_TRANSPORT_TEST_ALLOW_UNSUPPORTED_HOST=1 \
+    NATIVE_STAGE0_DIR="$OUTPUT_DIR" \
+    NATIVE_SOURCE_ROOT="$RUNNER_SOURCE" \
+    NATIVE_STAGE_DIR="$RUNNER_STAGE" \
+    "$ROOT/scripts/native-selfhost-dev.sh" check "$RUNNER_INPUT"
+) >"$runner_output" 2>"$runner_stderr"
+runner_status=$?
+set -e
+[[ "$runner_status" -eq 0 ]] || fail "packaged stage0 runner failed with exit=$runner_status: $(cat "$runner_stderr")"
+[[ -z "$(cat "$runner_stderr")" ]] || fail "packaged stage0 runner emitted stderr: $(cat "$runner_stderr")"
+grep -Fx 'Int' "$runner_output" >/dev/null || fail "packaged stage0 runner output is missing Int"
+grep -Fx 'diagnostics:0' "$runner_output" >/dev/null \
+  || fail "packaged stage0 runner output is missing diagnostics:0"
+[[ -x "$RUNNER_STAGE/program.native" ]] || fail "packaged stage0 runner did not materialize program.native"
+! grep -F -- 'forbidden|' "$LOG" >/dev/null || fail "packaged stage0 runner invoked a forbidden host tool"
 
 echo "Linux x86 actual-stage1 stage0 package tests: OK"

@@ -1527,6 +1527,21 @@ source-file smoke、package acquisition/rollback、両 target parityは未検証
 `bash scripts/ci/test-native-linux-x86-entrypoint-metadata-diagnostic.sh` で確認し、不一致時は
 非ゼロ終了する。これは VM後処理の契約テストであり、native stage2/stage3の成功証拠には数えない。
 
+### V2-16e / LEGACY-BOOT-01 packaged stage0 runner consumer contract (2026-08-01)
+
+`bash scripts/ci/test-package-native-linux-x86-actual-stage1-vm.sh` は、current HEADの
+`source_commit`、Linux x86_64 target、stage1 payload metadataを検証してから fake Lima materializerで
+stage0 packageを作る。続けてその packageを `scripts/native-selfhost-dev.sh check` の `NATIVE_STAGE0_DIR`
+へ渡し、package内の transport driver、decoder、materializer、programを runnerから実際に消費する。
+出力は `Int` / `diagnostics:0`、stderrは空で、`cargo`、`rustc`、host `lsharp` の呼び出しは blocklist
+で検出しない。REDでは host `timeout`、transport header、Mac host assemblerの境界を順に検出し、
+テスト専用 shimと最小合法 transport fixtureでGREENへ進めた。
+
+このテストは package manifest/payload/provenance と runnerの接続契約を閉じる fake harnessであり、
+実 Linux VMの current-source stage1 package、source-file smoke、full stage2/stage3 fixed-point、
+release acquisition/rollback、Mac/Linux artifact parityの証拠ではない。ADR:
+`docs/adr/decisions-v0.3-native-linux-stage0-package-runner-contract.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
