@@ -36,6 +36,11 @@ already agree.
   | 4 | 3417 | 49 | `e8 cd a8 ff ff` | `-22323` | `-22269` |
   | 6 | 3415 | 59 | `e8 24 8b ff ff` | `-29916` | `-29852` |
 
+- The reusable host-side decoder is
+  `scripts/ci/diagnose-native-linux-x86-entrypoint-metadata.py`. Its positive and one-byte-mutated
+  negative fixture contract is covered by
+  `scripts/ci/test-native-linux-x86-entrypoint-metadata-diagnostic.sh`; a mismatch exits non-zero.
+
 ## Boundary
 
 The opcode, emitted bytes, signed rel32, and expected function-relative target agree for the three

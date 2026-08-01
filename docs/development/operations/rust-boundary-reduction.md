@@ -1522,6 +1522,11 @@ full stage2 transport/materialize、target codeへの着地、stage3 fixed-point
 source-file smoke、package acquisition/rollback、両 target parityは未検証である。ADR:
 `docs/adr/decisions-v0.3-native-linux-stage2-entrypoint-rel32-diagnostic.md`。
 
+この相関は `python3 scripts/ci/diagnose-native-linux-x86-entrypoint-metadata.py <metadata> \
+--function-index 3418` で再現できる。fixtureの一致ケースと、bytesを1 byte変更した不一致ケースを
+`bash scripts/ci/test-native-linux-x86-entrypoint-metadata-diagnostic.sh` で確認し、不一致時は
+非ゼロ終了する。これは VM後処理の契約テストであり、native stage2/stage3の成功証拠には数えない。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
