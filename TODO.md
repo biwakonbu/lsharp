@@ -1237,6 +1237,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   fake harness verified sliceであり、実 Linux current-source stage1 packageの source-file smoke、full
   stage2/stage3、release acquisition/rollback、両 target parityの完了証拠には数えない。ADR:
   `docs/adr/decisions-v0.3-native-linux-stage0-package-runner-contract.md`。
+  さらに `scripts/ci/test-fetch-stage0-atomic-install.sh` を追加し、local stage0 archiveの checksum/
+  provenance検証、checksum未登録 payloadの reject、最終 install move failureの REDを一つの契約にした。
+  既存 stage0を復元し、temporary packageと hidden previous backupを残さない GREENを確認した。
+  これは fetch package file-set と atomic rollbackの verified sliceであり、公開 release asset、実 Linux runtime、両 targetの rollback archive parity、
+  `LEGACY-BOOT-01` 全体の完了証拠には数えない。ADR:
+  `docs/adr/decisions-v0.3-native-stage0-fetch-atomic-install.md`。
 
 ## ISSUES-derived quality and runtime work
 

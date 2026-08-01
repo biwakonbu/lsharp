@@ -1542,6 +1542,19 @@ stage0 packageを作る。続けてその packageを `scripts/native-selfhost-de
 release acquisition/rollback、Mac/Linux artifact parityの証拠ではない。ADR:
 `docs/adr/decisions-v0.3-native-linux-stage0-package-runner-contract.md`。
 
+### V2-16e / LEGACY-BOOT-01 fetch install atomic rollback contract (2026-08-01)
+
+`bash scripts/ci/test-fetch-stage0-atomic-install.sh` は local stage0 release archiveを作成し、
+release/package checksum、target、current `source_commit`、native stage0 manifestを通常の
+`scripts/fetch-stage0.sh` で検証する。checksumに登録されていない追加 payloadを rejectする REDと、
+既存 `stage0/` を先に配置して最終 install moveだけを一度失敗させる REDを同じ fixtureで実行する。
+GREENでは valid packageの install、checksum未登録 fileの reject、install error時の既存 package復元、
+temporary packageと hidden previous backupの削除、partial replacementなしを確認した。
+
+これは fetch package file-set と local atomic rollback boundaryであり、GitHub Release assetの取得、実 Linux
+VM runtime、Mac/Linux rollback archiveの実 parity、provider/external release運用の証拠ではない。
+ADR: `docs/adr/decisions-v0.3-native-stage0-fetch-atomic-install.md`。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。

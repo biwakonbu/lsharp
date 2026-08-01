@@ -136,6 +136,38 @@ verify_package_checksums() {
       exit 1
     fi
   done < "$checksums_path"
+
+  python3 - "$package_dir" "$checksums_path" <<'PY'
+import pathlib
+import sys
+
+package_dir = pathlib.Path(sys.argv[1])
+checksums_path = pathlib.Path(sys.argv[2])
+listed = set()
+for line in checksums_path.read_text(encoding="utf-8").splitlines():
+    if not line.strip():
+        continue
+    fields = line.split(None, 1)
+    if len(fields) != 2:
+        raise SystemExit("invalid package checksum entry")
+    relative = fields[1].strip()
+    if relative in listed:
+        raise SystemExit(f"duplicate package checksum entry: {relative}")
+    listed.add(relative)
+
+actual = set()
+for path in package_dir.rglob("*"):
+    if path.is_symlink():
+        raise SystemExit(f"package payload symlink is not allowed: {path.relative_to(package_dir)}")
+    if path.is_file() and path.name != "checksums.txt":
+        actual.add(path.relative_to(package_dir).as_posix())
+
+missing = sorted(actual - listed)
+if missing:
+    raise SystemExit(
+        "package files not listed in package checksums: " + ", ".join(missing)
+    )
+PY
 }
 
 validate_native_stage0_package() {
@@ -209,9 +241,26 @@ install_stage0_package() {
   if [[ -e "${STAGE0_DIR}" || -L "${STAGE0_DIR}" ]]; then
     backup_dir="$(mktemp -d "${parent_dir}/.${stage0_name}.previous.XXXXXX")"
     rmdir "${backup_dir}"
-    mv "${STAGE0_DIR}" "${backup_dir}"
+    if ! mv "${STAGE0_DIR}" "${backup_dir}"; then
+      rm -rf "${backup_dir}" "${temporary_dir}"
+      return 1
+    fi
   fi
-  mv "${temporary_dir}" "${STAGE0_DIR}"
+  local install_status=0
+  if mv "${temporary_dir}" "${STAGE0_DIR}"; then
+    temporary_dir=""
+  else
+    install_status=$?
+    if [[ -n "${backup_dir}" ]]; then
+      if ! mv "${backup_dir}" "${STAGE0_DIR}"; then
+        echo "ERROR: failed to restore previous stage0 package: ${STAGE0_DIR}" >&2
+      else
+        backup_dir=""
+      fi
+    fi
+    rm -rf "${temporary_dir}"
+    return "${install_status}"
+  fi
   if [[ -n "${backup_dir}" ]]; then
     rm -rf "${backup_dir}"
   fi
