@@ -119,6 +119,7 @@ impl ReviewWireDocument {
                 .map(|key| {
                     json!({
                         "algorithm": key.algorithm().as_str(),
+                        "active": key.is_active(),
                         "key_id": key.key_id(),
                         "provider": key.provider(),
                         "public_key": encode_base64url(key.public_key()),
@@ -438,6 +439,7 @@ struct TrustKeyWire {
     key_id: String,
     algorithm: String,
     public_key: String,
+    active: Option<bool>,
 }
 
 impl TryFrom<TrustKeyWire> for ReviewTrustKey {
@@ -450,12 +452,10 @@ impl TryFrom<TrustKeyWire> for ReviewTrustKey {
                 value: encoded.clone(),
             })?;
         let algorithm = AttestationAlgorithm::parse(value.algorithm)?;
-        Ok(ReviewTrustKey::new(
-            value.provider,
-            value.key_id,
-            algorithm,
-            public_key,
-        )?)
+        Ok(
+            ReviewTrustKey::new(value.provider, value.key_id, algorithm, public_key)?
+                .with_active(value.active.unwrap_or(true)),
+        )
     }
 }
 
@@ -486,6 +486,7 @@ impl<'de> Visitor<'de> for TrustKeyVisitor {
         let mut key_id = None;
         let mut algorithm = None;
         let mut public_key = None;
+        let mut active = None;
         while let Some(key) = map.next_key::<String>()? {
             if !seen.insert(key.clone()) {
                 return Err(de::Error::custom(format!(
@@ -497,6 +498,7 @@ impl<'de> Visitor<'de> for TrustKeyVisitor {
                 "key_id" => key_id = Some(map.next_value::<String>()?),
                 "algorithm" => algorithm = Some(map.next_value::<String>()?),
                 "public_key" => public_key = Some(map.next_value::<String>()?),
+                "active" => active = Some(map.next_value::<bool>()?),
                 _ => return Err(de::Error::custom(format!("unknown field trust_key.{key}"))),
             }
         }
@@ -505,6 +507,7 @@ impl<'de> Visitor<'de> for TrustKeyVisitor {
             key_id: required(key_id, "trust_key.key_id")?,
             algorithm: required(algorithm, "trust_key.algorithm")?,
             public_key: required(public_key, "trust_key.public_key")?,
+            active,
         })
     }
 }

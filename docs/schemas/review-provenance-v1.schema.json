@@ -172,6 +172,10 @@
           ],
           "minLength": 43,
           "maxLength": 43
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
         }
       }
     }

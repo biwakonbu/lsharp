@@ -104,6 +104,27 @@ fn review_provenance_schema_declares_unique_trust_store_entries() {
 }
 
 #[test]
+fn review_provenance_schema_declares_optional_active_trust_key_state() {
+    let schema: Value = serde_json::from_str(REVIEW_PROVENANCE_SCHEMA)
+        .expect("review provenance schema は JSON であるべき");
+    assert_eq!(
+        schema["$defs"]["trust_key"]["properties"]["active"]["type"],
+        json!("boolean")
+    );
+    assert_eq!(
+        schema["$defs"]["trust_key"]["properties"]["active"]["default"],
+        json!(true)
+    );
+    assert!(
+        !schema["$defs"]["trust_key"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field == "active")
+    );
+}
+
+#[test]
 fn intent_graph_schema_declares_optional_review_verification_state() {
     let schema: Value =
         serde_json::from_str(INTENT_GRAPH_SCHEMA).expect("intent graph schema は JSON であるべき");

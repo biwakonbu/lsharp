@@ -243,6 +243,9 @@ impl ReviewAttestation {
         let Some(key) = trust_store.get(self.provider(), self.key_id(), self.algorithm()) else {
             return Ok(ReviewVerificationState::Unverified);
         };
+        if !key.is_active() {
+            return Ok(ReviewVerificationState::Unverified);
+        }
         if self.signature.len() != 64 {
             return Err(AttestationVerificationError::InvalidSignatureLength {
                 actual: self.signature.len(),

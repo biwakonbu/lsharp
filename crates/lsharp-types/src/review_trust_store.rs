@@ -22,6 +22,15 @@ pub enum TrustStoreError {
         key_id: String,
         algorithm: String,
     },
+    #[error(
+        "review trust store に active key が複数あります: provider={provider:?}, algorithm={algorithm:?}, existing_key_id={existing_key_id:?}, key_id={key_id:?}"
+    )]
+    MultipleActiveKeys {
+        provider: String,
+        algorithm: String,
+        existing_key_id: String,
+        key_id: String,
+    },
 }
 
 /// provider/key ID に束ねた Ed25519 public key。
@@ -31,6 +40,7 @@ pub struct ReviewTrustKey {
     key_id: String,
     algorithm: AttestationAlgorithm,
     public_key: Vec<u8>,
+    active: bool,
 }
 
 impl ReviewTrustKey {
@@ -56,7 +66,14 @@ impl ReviewTrustKey {
             key_id,
             algorithm,
             public_key,
+            active: true,
         })
+    }
+
+    /// key rotation中の retired key を明示する。
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
     }
 
     pub fn provider(&self) -> &str {
@@ -73,6 +90,10 @@ impl ReviewTrustKey {
 
     pub fn public_key(&self) -> &[u8] {
         &self.public_key
+    }
+
+    pub const fn is_active(&self) -> bool {
+        self.active
     }
 }
 
@@ -95,6 +116,20 @@ impl ReviewTrustStore {
                 key_id: identity.1,
                 algorithm: identity.2,
             });
+        }
+        if key.is_active() {
+            if let Some(existing) = self.keys.values().find(|existing| {
+                existing.is_active()
+                    && existing.provider() == key.provider()
+                    && existing.algorithm() == key.algorithm()
+            }) {
+                return Err(TrustStoreError::MultipleActiveKeys {
+                    provider: key.provider().to_string(),
+                    algorithm: key.algorithm().as_str().to_string(),
+                    existing_key_id: existing.key_id().to_string(),
+                    key_id: key.key_id().to_string(),
+                });
+            }
         }
         self.keys.insert(identity, key);
         Ok(())
@@ -119,6 +154,17 @@ impl ReviewTrustStore {
             key_id.to_string(),
             algorithm.as_str().to_string(),
         ))
+    }
+
+    /// provider/algorithmごとの現在の active key を deterministic に選択する。
+    pub fn active_key(
+        &self,
+        provider: &str,
+        algorithm: AttestationAlgorithm,
+    ) -> Option<&ReviewTrustKey> {
+        self.keys.values().find(|key| {
+            key.is_active() && key.provider() == provider && key.algorithm() == algorithm
+        })
     }
 
     pub fn entries(&self) -> Vec<&ReviewTrustKey> {

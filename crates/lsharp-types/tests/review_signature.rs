@@ -76,6 +76,27 @@ fn trust_store(signing_key: &SigningKey) -> ReviewTrustStore {
     store
 }
 
+#[test]
+fn retired_trust_key_is_not_accepted_for_signature_verification() {
+    let signing_key = SigningKey::from_bytes(&[3; 32]);
+    let attestation = signed_attestation(&signing_key);
+    let retired = ReviewTrustKey::new(
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        signing_key.verifying_key().to_bytes().to_vec(),
+    )
+    .unwrap()
+    .with_active(false);
+    let mut store = ReviewTrustStore::default();
+    store.add_key(retired).unwrap();
+
+    assert_eq!(
+        attestation.verify(&store).unwrap(),
+        ReviewVerificationState::Unverified
+    );
+}
+
 fn lifecycle(state: ReviewLifecycleState, sequence: u64) -> ReviewLifecycleRegistry {
     let mut registry = ReviewLifecycleRegistry::default();
     let initial = if state.is_terminal() {
