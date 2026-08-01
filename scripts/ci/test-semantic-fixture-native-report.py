@@ -166,6 +166,48 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             self.assertEqual(report["fixtures"][0]["runtime"]["stdout"], "payload\n")
             self.assertEqual((work_dir / "input.txt").read_text(encoding="utf-8"), "payload")
 
+    def test_preopens_explicit_empty_runtime_directory_for_missing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "fake-native-runner.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'native-wasm')\n",
+            )
+            make_executable(
+                wasmtime,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "if '--dir=.' not in sys.argv:\n"
+                "    raise SystemExit('explicit empty runtime directory was not preopened')\n"
+                "if Path('input.txt').exists():\n"
+                "    raise SystemExit('missing-file fixture unexpectedly materialized input.txt')\n",
+            )
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                fixture_id="valid/io-read-file-missing",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                report["fixtures"][0]["runtime"],
+                {"status": "observed", "exit_code": 0, "stdout": "", "stderr": ""},
+            )
+            self.assertFalse((work_dir / "input.txt").exists())
+
     def test_rejects_overwriting_declared_runtime_input_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

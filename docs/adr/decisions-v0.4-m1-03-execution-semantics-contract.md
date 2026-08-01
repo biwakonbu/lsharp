@@ -156,7 +156,7 @@ observations as pending rather than overloading `stdout` or a debug log.
   nested record variable patterns on the supported path and declares the
   AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
 - The matrix RED→GREEN contract is covered by
-  `python3 scripts/ci/test-semantic-fixture-matrix.py` (14 tests). The Rust
+  `python3 scripts/ci/test-semantic-fixture-matrix.py` (15 tests). The Rust
   oracle producer, with fixture implementation commit
   `4790bb3e647d03b2ccfa883bc502e40d2385865f`
   and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
@@ -216,6 +216,19 @@ observations as pending rather than overloading `stdout` or a debug log.
   digest
   `sha256:843524e4a13a230bfdf184c0392ab6a2eda9a422fb16c9d6eb48875f7267fb48`.
   Wasmtime 43.0.0 with the task-owned directory preopened returned empty
+  stdout, exit `0`, and empty stderr. `wasm-tools 1.245.1 validate` passed;
+  native/Linux parity remains pending.
+- `valid/io-read-file-missing` fixes the fd-error boundary for a missing
+  `input.txt`: `runtime_inputs: {}` is an explicit empty runtime directory,
+  distinct from omitting the runtime snapshot. Both report producers preopen
+  that directory, materialize no file, and preserve the Preview1 fail-closed
+  result (empty stdout, exit `0`, empty stderr) when `path_open` returns an
+  error. The Rust oracle at implementation commit
+  `21b995e4a11c289bf048c9a19da41f151a21cca5` and target-declared
+  `aarch64-apple-darwin` observed a valid Wasm artifact of 6,583 bytes with
+  digest
+  `sha256:843524e4a13a230bfdf184c0392ab6a2eda9a422fb16c9d6eb48875f7267fb48`.
+  Wasmtime 43.0.0 with the empty task-owned directory preopened returned empty
   stdout, exit `0`, and empty stderr. `wasm-tools 1.245.1 validate` passed;
   native/Linux parity remains pending.
 - `valid/io-read-stdin` extends `V4-M1-03-R4` with the same explicit boundary

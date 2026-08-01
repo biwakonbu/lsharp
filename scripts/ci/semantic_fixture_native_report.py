@@ -308,7 +308,7 @@ def observe_fixture(
     execution_dir = fixture_runtime_dir(runtime_dir, fixture_dir, index, batch_size)
     materialize_runtime_inputs(fixture, execution_dir)
     runtime_command = [str(wasmtime), "run"]
-    if fixture.get("runtime_inputs"):
+    if "runtime_inputs" in fixture:
         runtime_command.append("--dir=.")
     runtime_command.append(str(artifact))
     runtime_stdin = fixture.get("runtime_stdin")

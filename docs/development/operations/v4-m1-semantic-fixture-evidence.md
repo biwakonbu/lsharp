@@ -57,6 +57,7 @@ FIXTURES=(
   --fixture-id valid/free-list-growth
   --fixture-id valid/io-read-file
   --fixture-id valid/io-read-file-empty
+  --fixture-id valid/io-read-file-missing
   --fixture-id valid/io-read-stdin
   --fixture-id valid/map-collections
   --fixture-id valid/module-import
@@ -99,9 +100,10 @@ compiler が non-zero で終了し、`LS####` code と source byte span の両�
 code/span が欠けたときに推測で補完してはならない。
 
 `runtime_inputs` または `runtime_stdin` を宣言する fixture（現時点では `valid/io-read-file`、
-`valid/io-read-file-empty`、`valid/io-read-stdin`）は、manifest の project-relative path/UTF-8 content または UTF-8 stdin
+`valid/io-read-file-empty`、`valid/io-read-file-missing`、`valid/io-read-stdin`）は、manifest の project-relative path/UTF-8 content または UTF-8 stdin
 snapshot を唯一の入力源とする。file input は producer が task-owned runtime directory に新規作成し、
-Wasmtime の `--dir=.` でその directory だけを preopen する。stdin input は producer が child stdin
+Wasmtime の `--dir=.` でその directory だけを preopen する。空 object `{}` も明示的な空 directory
+snapshot として `--dir=.` を要求し、missing path の fd error を fail-closed で観測する。stdin input は producer が child stdin
 へ bytes を渡す。operator 側で入力を作成したり host の stdin を継承させたりしてはならない。既存
 ファイル、symlink、正規化されていない path は fail closed になる。
 
