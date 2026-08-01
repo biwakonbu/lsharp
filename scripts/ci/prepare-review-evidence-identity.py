@@ -47,6 +47,8 @@ def digest_file(path: pathlib.Path, field: str) -> str:
         payload = path.read_bytes()
     except OSError as error:
         raise IdentityInputError(f"{field} cannot be read: {path}: {error}") from error
+    if not payload and field in ("trust store", "review lifecycle"):
+        raise IdentityInputError(f"{field} must be non-empty: {path}")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 

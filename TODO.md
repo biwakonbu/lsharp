@@ -375,6 +375,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   Linux runtime、provider/auth acquisition、両 target packaged provenance/rollback bytes parityは残件のため、
   M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま維持する。
 
+  続けて、offline identity producer / verifier が空の trust-store / review-lifecycle snapshotを
+  provider provenanceとしてdigest化できる境界を、provider field限定の `must be non-empty` preflightへ更新した。
+  producer output未生成と verifier fail-closedを RED→GREEN の focused testで確認した verified partial sliceである。
+  live provider/auth acquisition、署名意味検証、current-source Linux runtime、両 target packaged provenance/
+  rollback bytes parityは未検証のため、M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残る。ADR:
+  `docs/adr/decisions-v0.3-provider-snapshot-nonempty-preflight.md`。
+
   続けて同日、release smoke の `checksums.txt` target path を archive root 内の POSIX relative path に限定した。
   checksum-valid な `../../../outside-checksum-target.txt` fixture を拒否する RED→GREEN を provider snapshot
   harness で確認し、package 外部 file を checksum evidence として受理しない verified partial slice を追加した。

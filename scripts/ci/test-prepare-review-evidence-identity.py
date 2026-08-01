@@ -168,6 +168,38 @@ class PrepareReviewEvidenceIdentityTest(unittest.TestCase):
             self.assertNotEqual(invalid_clock.returncode, 0)
             self.assertIn("now", invalid_clock.stderr)
 
+    def test_rejects_empty_provider_snapshots(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b"")
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_bytes(b"")
+            output = root / "identity.json"
+
+            result = self.run_preparer(
+                "--subject-digest",
+                "sha256:" + "c" * 64,
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--artifact",
+                str(artifact),
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+                "--now",
+                "2026-08-15T00:00:00Z",
+                "--output",
+                str(output),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must be non-empty", result.stderr)
+            self.assertFalse(output.exists())
+
     def test_matches_rust_calendar_timestamp_boundary(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

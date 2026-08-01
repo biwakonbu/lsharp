@@ -243,6 +243,38 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertNotEqual(partial.returncode, 0)
             self.assertIn("together", partial.stderr)
 
+    def test_rejects_empty_provider_snapshots(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b"")
+            lifecycle = root / "review-lifecycle.jsonl"
+            lifecycle.write_bytes(b"")
+            identity_path = root / "identity.json"
+            artifact_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+            empty_digest = "sha256:" + hashlib.sha256(b"").hexdigest()
+            self.write_identity(
+                identity_path,
+                identity_for(artifact_digest, trust=empty_digest, lifecycle=empty_digest),
+            )
+
+            result = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+                "--require-provider-input",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must be non-empty", result.stderr)
+
     def test_rejects_symlink_provider_snapshots(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
