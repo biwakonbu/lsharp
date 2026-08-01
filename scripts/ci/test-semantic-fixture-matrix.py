@@ -56,6 +56,28 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
             self.assertEqual(fixture["execution"]["stage0"], "current-source")
             self.assertEqual(fixture["execution"]["network"], "forbidden")
 
+    def test_r1_nested_record_pattern_fixture_declares_end_to_end_observables(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/nested-record-pattern"
+        )
+        self.assertEqual(fixture["kind"], "valid")
+        self.assertEqual(
+            fixture["layers"],
+            ["syntax", "types", "ir", "codegen", "runtime"],
+        )
+        self.assertEqual(
+            fixture["observables"],
+            ["ast", "type", "ir", "ftable", "imports", "wasm", "runtime", "report"],
+        )
+        self.assertEqual(fixture["commands"], ["check", "compile", "build"])
+        self.assertEqual(fixture["expected"]["runtime"]["stdout"], "41\n1\n7\n")
+        self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
+
     def test_rejects_unresolved_target_and_unsafe_source(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))
         cases = (

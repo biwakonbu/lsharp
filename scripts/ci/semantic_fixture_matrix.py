@@ -18,7 +18,16 @@ from typing import Any, Dict, Iterable, List, Mapping, Set
 
 SUPPORTED_TARGETS = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 ALLOWED_LAYERS = {"syntax", "types", "ir", "codegen", "runtime", "public"}
-ALLOWED_OBSERVABLES = {"ast", "type", "ir", "wasm", "runtime", "report"}
+ALLOWED_OBSERVABLES = {
+    "ast",
+    "type",
+    "ir",
+    "ftable",
+    "imports",
+    "wasm",
+    "runtime",
+    "report",
+}
 ALLOWED_COMMANDS = {"check", "compile", "test", "build"}
 DIAGNOSTIC_CODE = re.compile(r"^LS[0-9]{4}$")
 

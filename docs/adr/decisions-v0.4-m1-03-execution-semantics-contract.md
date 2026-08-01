@@ -144,6 +144,27 @@ observations as pending rather than overloading `stdout` or a debug log.
 - Metrics and ABI fields become versioned public evidence. Producers must fail
   closed when they cannot observe them instead of fabricating success.
 
+## Current verified slice (2026-08-01)
+
+- `valid/nested-record-pattern` is the first `V4-M1-03-R1` fixture. It keeps
+  nested record variable patterns on the supported path and declares the
+  AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
+- The matrix RED→GREEN contract is covered by
+  `python3 scripts/ci/test-semantic-fixture-matrix.py` (5 tests). The Rust
+  oracle producer, with source commit `f963412fc137971faee50d81803abb8731152512`
+  and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
+  `41\n1\n7\n`, Wasm size `6822`, and digest
+  `sha256:370c8ea8332a147ab5614c4062421c3dcad2957c0004d022678c51f2e762e7a`.
+  `wasm-tools validate` also passed. The current Rust report observes the
+  artifact/runtime fields; ftable/import byte observations remain pending.
+- A literal record-field pattern currently returns explicit `LS3001` unsupported
+  representation in the Rust compiler. The R1 valid fixture intentionally does
+  not hide that boundary; a dedicated invalid fixture and native counterpart
+  remain follow-up work.
+- This is Rust-oracle evidence only. Native stage0 execution, Linux x86_64,
+  ftable/import byte parity, resource metrics, and the two-target completion
+  audit remain pending, so R1 and V4-M1-03 stay `[~]`.
+
 ## Evidence and remaining work
 
 - The V4-M1-01 matrix, Rust/native report producers, evidence schema, audit, and
