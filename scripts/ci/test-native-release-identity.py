@@ -95,6 +95,59 @@ class NativeReleaseIdentityTest(unittest.TestCase):
             self.assertEqual(list(projected), list(IDENTITY_KEYS))
             self.assertEqual(projected, identity)
 
+    def test_accepts_lifecycle_declaration_order_independently_of_rust_reducer(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            artifact = root / "program.native"
+            artifact.write_bytes(b"native release program\n")
+            trust_store = root / "trust-store.json"
+            trust_store.write_bytes(b'{"keys":["key-1"]}\n')
+            lifecycle = root / "review-lifecycle.json"
+            lifecycle.write_text(
+                json.dumps(
+                    [
+                        {
+                            "review_id": "review:checkout/r1",
+                            "sequence": 2,
+                            "state": "revoked",
+                            "effective_at": "2026-08-02T00:00:00Z",
+                        },
+                        {
+                            "review_id": "review:checkout/r1",
+                            "sequence": 1,
+                            "state": "active",
+                            "effective_at": "2026-08-01T00:00:00Z",
+                        },
+                    ],
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            identity = identity_for(
+                "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                trust="sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest(),
+                lifecycle="sha256:" + hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
+            )
+            identity_path = root / "identity.json"
+            self.write_identity(identity_path, identity)
+
+            result = self.run_verifier(
+                "--identity",
+                str(identity_path),
+                "--artifact",
+                str(artifact),
+                "--source-commit",
+                SOURCE_COMMIT,
+                "--trust-store",
+                str(trust_store),
+                "--review-lifecycle",
+                str(lifecycle),
+                "--require-provider-input",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_rejects_artifact_digest_mismatch_and_provider_absence(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

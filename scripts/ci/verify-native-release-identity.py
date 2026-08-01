@@ -107,6 +107,33 @@ def validate_review_lifecycle_snapshot(path, identity_now):
 
     if not records:
         raise IdentityError(f"review lifecycle snapshot must contain at least one record: {path}")
+    declaration_order_rollbacks = {}
+    if all(isinstance(record, dict) for record in records):
+        declared_sequences = {}
+        for record in records:
+            review_id = record.get("review_id")
+            sequence = record.get("sequence")
+            if (
+                isinstance(review_id, str)
+                and isinstance(sequence, int)
+                and not isinstance(sequence, bool)
+            ):
+                previous_sequence = declared_sequences.get(review_id)
+                if previous_sequence is not None and sequence < previous_sequence:
+                    declaration_order_rollbacks[(review_id, sequence)] = previous_sequence
+                declared_sequences[review_id] = sequence
+        # Rust の ReviewLifecycleRegistry::from_events と同じく、provider が返す
+        # declaration order ではなく review_id と sequence の canonical order で reduce する。
+        records = sorted(
+            records,
+            key=lambda record: (
+                record.get("review_id") if isinstance(record.get("review_id"), str) else "",
+                record.get("sequence")
+                if isinstance(record.get("sequence"), int)
+                and not isinstance(record.get("sequence"), bool)
+                else -1,
+            ),
+        )
     seen_sequences = set()
     last_sequences = {}
     last_states = {}
@@ -162,6 +189,12 @@ def validate_review_lifecycle_snapshot(path, identity_now):
                     f"review_id={review_id!r} sequence={sequence}"
                 )
             if review_id not in last_states and state not in INITIAL_REVIEW_LIFECYCLE_STATES:
+                previous_sequence = declaration_order_rollbacks.get(sequence_key)
+                if previous_sequence is not None and state in TERMINAL_REVIEW_LIFECYCLE_STATES:
+                    raise IdentityError(
+                        f"review lifecycle sequence rollback: {path}: "
+                        f"review_id={review_id!r} previous={previous_sequence} current={sequence}"
+                    )
                 allowed = ", ".join(sorted(INITIAL_REVIEW_LIFECYCLE_STATES))
                 raise IdentityError(
                     f"review lifecycle initial state must be one of {allowed}: {path}: "

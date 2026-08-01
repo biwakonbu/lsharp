@@ -2235,3 +2235,12 @@ regeneration、Linux replay、full buildは起動していない。これは gat
 API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
 M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。再現 command、再開条件、次に一度だけ実行する gate の記録は
 [`decisions-v0.3-current-source-two-target-runtime-gate-blocker.md`](docs/adr/decisions-v0.3-current-source-two-target-runtime-gate-blocker.md) に固定した。
+
+2026-08-02 に native release identity verifier の lifecycle snapshotを、Rust `ReviewLifecycleRegistry::from_events` と
+selfhost reducerと同じ `(review_id, sequence)` canonical orderで reduceする parityを追加した。`revoked sequence: 2` →
+`active sequence: 1` の逆順でも、canonical orderでは有効な `active` → `revoked` になる fixtureを RED→GREENで固定し、
+既存の rollback/gap/duplicate/transition/effective_at 診断は維持した。native identity 33件、Rust wire declaration-order 1件、
+selfhost lifecycle reducer 1件がGREENである。これは lifecycle producer declaration-order parityの verified partial sliceであり、
+live provider/auth取得・署名検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは
+未検証のため、EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-lifecycle-declaration-order-parity.md`](docs/adr/decisions-v0.3-native-lifecycle-declaration-order-parity.md)。
