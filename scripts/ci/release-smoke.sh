@@ -481,7 +481,14 @@ if [[ "$NATIVE_ONLY" == "1" ]]; then
 else
   (
     cd "$SMOKE_DIR"
-    "$LSHARP_LSP_BIN" --version >/dev/null
+    lsp_version_output="$("$LSHARP_LSP_BIN" --version)"
+    if [[ -n "${VERSION:-}" ]]; then
+      expected_lsp_version="lsharp ${VERSION#v}"
+      if [[ "$lsp_version_output" != "$expected_lsp_version" ]]; then
+        echo "ERROR: packaged LSP version mismatch: expected=${expected_lsp_version} actual=${lsp_version_output}" >&2
+        exit 1
+      fi
+    fi
   )
   run_smoke_cli check "$SMOKE_SOURCE_NAME" >/dev/null
   run_smoke_cli fmt "$SMOKE_SOURCE_NAME" >/dev/null

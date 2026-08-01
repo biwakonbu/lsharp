@@ -1061,6 +1061,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   の verified partial sliceであり、provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux
   両 targetの packaged provenance/rollback bytes parityは未検証であるため、EC-M3-05と関連 milestoneは
   `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-release-identity-artifact-regular-file.md`。
+  さらに非native packaged archiveの `lsharp-lsp --version` 出力を caller-provided `VERSION` と比較し、
+  checksum-valid な version mismatch fixtureを `packaged LSP version mismatch` で fail-closed にする
+  RED→GREENを `test-release-smoke-provider-snapshots.sh` で確認した。これは packaged LSP version output parity
+  の verified partial sliceであり、live provider/auth取得・意味検証、current-source Linux runtime、Mac/Linux両
+  targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
+  ADR: `docs/adr/decisions-v0.3-packaged-lsp-version-output-parity.md`。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は

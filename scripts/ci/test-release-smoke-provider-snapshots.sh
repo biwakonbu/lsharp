@@ -165,6 +165,32 @@ RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
   WORK_DIR="$TMP_ROOT/smoke-work" \
   bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" >/dev/null
 
+BAD_LSP_VERSION_NAME="${ROLLBACK_NAME}-bad-lsp-version"
+BAD_LSP_VERSION_ROOT="$TMP_ROOT/$BAD_LSP_VERSION_NAME"
+BAD_LSP_VERSION_ARCHIVE="$TMP_ROOT/$BAD_LSP_VERSION_NAME.tar.gz"
+cp -R "$ROLLBACK_ROOT" "$BAD_LSP_VERSION_ROOT"
+python3 - "$BAD_LSP_VERSION_ROOT/lsharp-lsp" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(path.read_text().replace("lsharp 0.0.0-test", "lsharp 9.9.9"))
+PY
+bash "$ROOT/scripts/checksum.sh" "$BAD_LSP_VERSION_ROOT" >"$BAD_LSP_VERSION_ROOT/checksums.txt"
+tar -czf "$BAD_LSP_VERSION_ARCHIVE" -C "$TMP_ROOT" "$BAD_LSP_VERSION_NAME"
+
+set +e
+packaged_lsp_version_output="$(
+  VERSION="$VERSION" \
+    WORK_DIR="$TMP_ROOT/packaged-lsp-version-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$BAD_LSP_VERSION_ARCHIVE" 2>&1
+)"
+packaged_lsp_version_status=$?
+set -e
+[[ "$packaged_lsp_version_status" -ne 0 ]] || { echo "packaged lsharp-lsp version mismatch was accepted" >&2; exit 1; }
+grep -F "packaged LSP version mismatch" <<<"$packaged_lsp_version_output" >/dev/null \
+  || { echo "packaged lsharp-lsp version mismatch did not expose a stable diagnostic" >&2; exit 1; }
+
 ROLLBACK_REAL_ARCHIVE="$TMP_ROOT/rollback-input-real.tar.gz"
 mv "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" "$ROLLBACK_REAL_ARCHIVE"
 ln -s "$ROLLBACK_REAL_ARCHIVE" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz"
