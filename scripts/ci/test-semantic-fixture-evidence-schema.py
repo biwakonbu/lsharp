@@ -58,7 +58,7 @@ class SemanticFixtureEvidenceSchemaTest(unittest.TestCase):
             self.assertIn("pattern", properties[field])
             self.assertEqual(
                 properties[field]["pattern"],
-                r"^ci-artifacts/(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\).+$",
+                r"^ci-artifacts/v4-m1-01/(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\).+$",
             )
 
     def test_declares_fixture_command_and_required_negative_gates(self):

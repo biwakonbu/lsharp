@@ -26,7 +26,8 @@ set -euo pipefail
 ROOT="$(pwd)" # dedicated worktree root
 SOURCE_COMMIT="$(git rev-parse HEAD)"
 TASK="v4-m1-01-evidence-${SOURCE_COMMIT:0:12}"
-EVIDENCE_ROOT="$ROOT/ci-artifacts/v4-m1-01/$SOURCE_COMMIT"
+TARGET="aarch64-apple-darwin" # or x86_64-unknown-linux-gnu
+EVIDENCE_ROOT="$ROOT/ci-artifacts/v4-m1-01/$SOURCE_COMMIT/$TARGET"
 mkdir -p "$EVIDENCE_ROOT"
 
 git status --short --branch
@@ -37,8 +38,9 @@ python3 scripts/ci/semantic_fixture_matrix.py \
 ```
 
 `SOURCE_COMMIT` は report、stage0 manifest、comparison、evidence index の全てで同一でなければ
-ならない。diff/audit はさらに専用 worktree の `git rev-parse --verify HEAD` と一致することを
-検証する。作業中に source が変わった場合は report を再利用せず、preflight からやり直す。
+ならない。`EVIDENCE_ROOT` は source commit と `TARGET` の両方を含み、Mac/Linux の結果を同じ
+directoryへ書かない。diff/audit はさらに専用 worktree の `git rev-parse --verify HEAD` と一致することを
+検証する。作業中に source または target が変わった場合は report を再利用せず、preflight からやり直す。
 
 ## 1. Fixture set の固定
 
@@ -67,7 +69,6 @@ FIXTURES=(
   --fixture-id valid/recursive-runtime
   --fixture-id valid/syntax-basic
 )
-TARGET="aarch64-apple-darwin" # or x86_64-unknown-linux-gnu
 ```
 
 subset を検証する場合も `--fixture-id` を省略せず、evidence index の fixture list と完全一致させる。
@@ -161,7 +162,9 @@ python3 scripts/ci/semantic_fixture_diff.py \
 
 `INDEX` は [`v4-m1-06-evidence-index.schema.json`](../../schemas/v4-m1-06-evidence-index.schema.json)
 に従う project-relative path で作る。report と comparison の source commit / target / fixture IDs は
-index と一致させる。oracle/native report と comparison の参照は必ず task-owned `ci-artifacts/` 配下に置く。
+index と一致させる。oracle/native report と comparison の参照は必ず
+`ci-artifacts/v4-m1-01/<source_commit>/<target>/` 配下に置く。audit は index の source commit と target
+からこの namespace を導出し、別 target の bundle を拒否する。
 各 fixture の `command` は matrix に宣言されたものから一つ選び、4つの negative gate を全て `pass` と明示する。
 
 ```bash

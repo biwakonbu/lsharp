@@ -61,6 +61,12 @@ partial として追加した。実 Rust/native artifact、runtime、Mac/Linux m
 として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には
 移さない。ADR: `docs/adr/decisions-v0.4-m1-06-artifact-namespace-boundary.md`。
 
+さらに evidence artifact の report/comparison path を
+`ci-artifacts/v4-m1-01/<source_commit>/<target>/` に分離し、同一 source commit の Mac/Linux
+結果の上書きと target 取り違えを拒否する target-scoped artifact boundary を executable audit に接続した
+verified partial として追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の
+完了項目には移さない。ADR: `docs/adr/decisions-v0.4-m1-06-target-artifact-boundary.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。

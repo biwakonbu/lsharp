@@ -42,7 +42,7 @@ REQUIRED_GATES = {
     "target-declared",
 }
 ALLOWED_STATUS = {"pass", "pending", "mismatch"}
-ARTIFACT_NAMESPACE = ("ci-artifacts",)
+ARTIFACT_LAYOUT = ("ci-artifacts", "v4-m1-01")
 
 
 def safe_relative_file(
@@ -63,7 +63,9 @@ def safe_relative_file(
         raise ObservationError(f"{label} must be a safe project-relative path")
     if namespace and relative.parts[: len(namespace)] != namespace:
         prefix = "/".join(namespace)
-        raise ObservationError(f"{label} must be under {prefix}/")
+        raise ObservationError(
+            f"{label} must be under {prefix}/ for the index source_commit and target"
+        )
     path = root.joinpath(*relative.parts)
     candidate = root
     for part in relative.parts:
@@ -95,7 +97,12 @@ def validate_gates(value: Any, label: str) -> Dict[str, str]:
     return normalized
 
 
-def load_index(path: pathlib.Path, root: pathlib.Path, manifest: Mapping[str, Any]) -> Dict[str, Any]:
+def load_index(
+    path: pathlib.Path,
+    root: pathlib.Path,
+    manifest: Mapping[str, Any],
+    current_source_commit: str = None,
+) -> Dict[str, Any]:
     index = require_object(load_json(path, "evidence index"), "evidence index")
     expect_keys(
         index,
@@ -130,6 +137,8 @@ def load_index(path: pathlib.Path, root: pathlib.Path, manifest: Mapping[str, An
     source_commit = require_string(index["source_commit"], "evidence index.source_commit")
     if not SOURCE_COMMIT.fullmatch(source_commit):
         raise ObservationError("evidence index.source_commit must be a 40-character lowercase commit")
+    if current_source_commit is not None and source_commit != current_source_commit:
+        raise ObservationError("evidence index source_commit does not match current checkout HEAD")
     status = require_string(index["status"], "evidence index.status")
     if status not in ALLOWED_STATUS:
         raise ObservationError("evidence index.status must be pass, pending, or mismatch")
@@ -137,14 +146,15 @@ def load_index(path: pathlib.Path, root: pathlib.Path, manifest: Mapping[str, An
     adr_path = pathlib.PurePosixPath(adr)
     if adr_path.parts[:2] != ("docs", "adr") or adr_path.suffix != ".md":
         raise ObservationError("evidence index.adr must reference a Markdown file under docs/adr")
+    artifact_namespace = ARTIFACT_LAYOUT + (source_commit, target)
     oracle_report, oracle_path = safe_relative_file(
-        index["oracle_report"], "evidence index.oracle_report", root, ARTIFACT_NAMESPACE
+        index["oracle_report"], "evidence index.oracle_report", root, artifact_namespace
     )
     native_report, native_path = safe_relative_file(
-        index["native_report"], "evidence index.native_report", root, ARTIFACT_NAMESPACE
+        index["native_report"], "evidence index.native_report", root, artifact_namespace
     )
     comparison, comparison_path = safe_relative_file(
-        index["comparison"], "evidence index.comparison", root, ARTIFACT_NAMESPACE
+        index["comparison"], "evidence index.comparison", root, artifact_namespace
     )
 
     entries = index["fixtures"]
@@ -300,12 +310,8 @@ def main() -> int:
         root = arguments.root.resolve()
         raw_manifest = load_json(arguments.manifest, "fixture matrix")
         manifest = project_manifest(require_object(raw_manifest, "manifest"), root)
-        index = load_index(arguments.index, root, manifest)
         current_source_commit = read_current_source_commit(root)
-        if index["source_commit"] != current_source_commit:
-            raise ObservationError(
-                "evidence index source_commit does not match current checkout HEAD"
-            )
+        index = load_index(arguments.index, root, manifest, current_source_commit)
         result = audit(index, manifest)
     except (OSError, json.JSONDecodeError, ManifestError, ObservationError) as error:
         print(f"error: {error}", file=sys.stderr)

@@ -35,17 +35,17 @@
     "oracle_report": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^ci-artifacts/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+      "pattern": "^ci-artifacts/v4-m1-01/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
     },
     "native_report": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^ci-artifacts/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+      "pattern": "^ci-artifacts/v4-m1-01/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
     },
     "comparison": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^ci-artifacts/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+      "pattern": "^ci-artifacts/v4-m1-01/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
     },
     "fixtures": {
       "type": "array",
