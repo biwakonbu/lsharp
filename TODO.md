@@ -1073,6 +1073,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   1 testが passした。selfhost source bytesは変更していないため、直近の current-source native
   fixed-point evidenceを再利用する。record schema patternのsemantic parity、全 pattern、import
   target、Rust ABI parityは actual E2Eで引き続き閉じる。
+  2026-08-01 に parametric record application (`Box a`) を含む nested record pattern の
+  field bindingを追加した。Rust側は `record_registry` に登録済みの `Type::App` だけを
+  parameter substitution付き `Type::Record` へ materializeし、selfhost側は record patternの
+  field boundaryごとに同じ変換を遅延適用する。Rust focused test、nested E2E 1件、既存の
+  `selfhost_typeinfer_quote_patterns` 15件が passした。Mac Apple Silicon native gateは
+  source commit `fa97fa948489f635dc8888b5a269755a75776670` の 1 test pass（artifact 4660 KiB）、
+  Linux x86_64 hostgen/VM gateも status `pass` で、stage2/stage3 code length 各 `11332908`、
+  stdout SHA-256 は両方 `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad`
+  で一致した。これは nested parametric pattern の verified sliceであり、import/deep pattern、
+  runtime/ftable/linear-memory ABI、`LEGACY-LANG-01` aggregateは残る。
 - [~] `LEGACY-LANG-02` ADT/GADT execution parity — ordinary ADT の direct/nested constructor と
   GADT parser/type refinement は verified。2026-07-31 に selfhost
   `Types.TypeInferAdt` の type parameter、constructor field、variant、type declaration scan を

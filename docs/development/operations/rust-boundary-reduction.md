@@ -548,6 +548,26 @@ Evidence: `test_e2e_selfhost_typeinfer_analysis_accepts_private_record_in_same_m
 
 source / ftable compiler-mode では record literal / static constructor が nominal marker `-3` を Map に保存し、canonical record pattern の type hash と照合する。同じ field layout を持つ別 record type の arm fallback、ftable nominal pattern の独立 E2E、`p -> q -> r` patch/base Map chain への marker 伝播を確認済みである。さらに source / ftable compiler-mode の nonparametric nested record pattern で親・子 field binder、nested literal child、record field 内の nested constructor child を actual Wasm 実行まで確認した。`map-contains?` / `map-remove` / `map-size` は integer key と string literal key の source / ftable actual Wasm slice まで確認済みだが、その先の一般 Map API parity は残課題である。
 
+### nested parametric record pattern materialization (2026-08-01)
+
+Nested record patterns whose expected field type is a parametric record application are now
+materialized consistently at the Rust and selfhost type-inference boundaries. Rust resolves only
+registered record applications, substitutes their parameters, and leaves unknown applications and
+non-record ADTs unchanged. Selfhost applies the equivalent materialization lazily at each record
+pattern field boundary, while the existing constructor-scheme visibility guard remains in force.
+
+Evidence: `test_nested_parametric_record_pattern_propagates_field_type`,
+`test_e2e_selfhost_typeinfer_nested_parametric_record_pattern_binds_field_type`, and the complete
+`selfhost_typeinfer_quote_patterns` group (15 passed). The Mac Apple Silicon native gate passed for
+source commit `fa97fa948489f635dc8888b5a269755a75776670` (1 native test, 4660 KiB artifact). The
+Linux x86_64 hostgen/VM gate also passed for that source commit; stage2/stage3 code lengths were
+both `11332908` and their stdout SHA-256 values matched at
+`aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad`.
+
+This is a verified nested parametric field-binding slice, not completion of record-pattern
+semantic parity. Import/deep pattern coverage, runtime/ftable/linear-memory ABI, and the
+`LEGACY-LANG-01` aggregate remain Rust-oracle or otherwise incomplete boundaries.
+
 ### legacy source compile boundary 更新 (2026-07-14)
 
 `App.Cli`、`EmbeddedCli`、`SmokeCli`、`PipelineSmoke` の source/full helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`PipelineSmoke` は Rust host compile と Wasm validate まで確認した。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `run-main-smoke` の単一 AST `lower` は診断用として残り、App.Cli / EmbeddedCli の component sidecar、no-arg pipeline entrypoint の full-program runtime/native E2E は別の未完了 surface である。
