@@ -1031,7 +1031,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `trust_store` の retired/active key rotation と provider/algorithm ごとの active key 一意選択を
   Rust wire/native preflight で fail-closed にする parity、Rust の verified signature から
   attestation/trust-store digest と verification clock を束ねる receipt の Rust/native canonical
-  handoff も verified partial とした。
+  handoff、明示 receipt を native `lsharp_validate` へ渡して
+  `review_verifications[].receipt` へ exact projection する handoffも verified partial とした。
   current subject/source/provenance binding と explicit report、および
   `reviews[].verification_state` manifest projection を Rust canonical model で検証する。
   attestation input wiring、selfhost/native parity、両 supported target の artifact/runtime evidence
@@ -1044,7 +1045,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   attestation verification state と no-report/no-manifest の失敗境界を CLI/MCP の共通 projectionへ接続した。
   `--review-subject-digest` / `--review-source-commit` / `--review-now` の all-or-none context、
   expiry/binding の Rust CLI/MCP fixture、malformed clock の no-report contract も verified partial
-  とした。selfhost/native parity は残る。ADR:
+  とした。Rust verified receipt の明示 file input、native command handoff、欠落/不一致 report
+  projection の fail-closed も native MCP focused suiteで verified partial とした。selfhost/native
+  full parity は残る。ADR:
   `docs/adr/decisions-v0.3-review-explicit-context.md`。
 - [~] `EC-M3-04` source と selfhost/native producer の attestation named-field、canonical bytes、
   state、span、exit code の Rust/selfhost 同一 fixture parity は verified partial。JSON report の

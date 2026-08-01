@@ -24,6 +24,7 @@ verifier is available.
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
@@ -272,6 +273,42 @@ VALIDATE_OUTPUT_SCHEMA = {
                         "type": "string",
                         "enum": ["verified", "unverified", "stale", "revoked"],
                     },
+                    "receipt": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "review_id",
+                            "state",
+                            "provider",
+                            "key_id",
+                            "algorithm",
+                            "attestation_digest",
+                            "trust_store_digest",
+                            "verification_now",
+                        ],
+                        "properties": {
+                            "review_id": {
+                                "type": "string",
+                                "pattern": r"^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+                            },
+                            "state": {"const": "verified"},
+                            "provider": {"type": "string", "minLength": 1},
+                            "key_id": {"type": "string", "minLength": 1},
+                            "algorithm": {"const": "ed25519"},
+                            "attestation_digest": {
+                                "type": "string",
+                                "pattern": r"^sha256:[0-9a-f]{64}$",
+                            },
+                            "trust_store_digest": {
+                                "type": "string",
+                                "pattern": r"^sha256:[0-9a-f]{64}$",
+                            },
+                            "verification_now": {
+                                "type": "string",
+                                "pattern": CANONICAL_UTC_TIMESTAMP_PATTERN,
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -297,6 +334,7 @@ VALIDATE_ARGUMENT_NAMES = frozenset(
         "review_trust_store_digest",
         "review_lifecycle_digest",
         "review_now",
+        "review_verification_receipt",
     }
 )
 TOOLS = [
@@ -385,6 +423,7 @@ TOOLS = [
                 "minLength": 1,
                 "pattern": CANONICAL_UTC_TIMESTAMP_PATTERN,
             },
+            "review_verification_receipt": {"type": "string", "minLength": 1},
         },
         [["source"], ["file"], ["manifest"], ["manifest_file"]],
         VALIDATE_OUTPUT_SCHEMA,
@@ -1234,7 +1273,7 @@ def validate_review_verification(value, index):
     label = f"native validate report review_verifications[{index}]"
     if not isinstance(value, dict):
         raise ToolError(f"{label} must be an object")
-    allowed = {"review_id", "state"}
+    allowed = {"review_id", "state", "receipt"}
     unknown = sorted(set(value).difference(allowed))
     if unknown:
         raise ToolError(f"{label} has unknown field: {unknown[0]}")
@@ -1248,6 +1287,39 @@ def validate_review_verification(value, index):
         raise ToolError(f"{label}.review_id has invalid format")
     if value["state"] not in ("verified", "unverified", "stale", "revoked"):
         raise ToolError(f"{label}.state must be one of verified, unverified, stale, revoked")
+    if "receipt" in value:
+        if value["state"] != "verified":
+            raise ToolError(f"{label}.receipt requires state verified")
+        try:
+            validate_review_verification_receipt_value(value["receipt"])
+        except ValueError as error:
+            raise ToolError(f"{label}.receipt is invalid: {error}") from error
+
+
+def validate_review_verification_receipt_value(value):
+    validator_path = pathlib.Path(__file__).parent / "ci" / "verify-native-review-verification-receipt.py"
+    spec = importlib.util.spec_from_file_location(
+        "lsharp_native_review_verification_receipt", validator_path
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("verification receipt validator is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.validate_value(value)
+
+
+def load_review_verification_receipt(path_value):
+    path = pathlib.Path(path_value)
+    if path.is_symlink() or not path.is_file():
+        raise ToolError(f"native MCP review verification receipt file が見つかりません: {path}")
+    try:
+        value = strict_json_loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise ToolError(f"native MCP review verification receipt JSON が不正です: {error}") from error
+    try:
+        return validate_review_verification_receipt_value(value)
+    except ValueError as error:
+        raise ToolError(f"native MCP review verification receipt が不正です: {error}") from error
 
 
 def validate_review_evidence_identity(value):
@@ -1328,19 +1400,34 @@ def validate_report_output(value):
         validate_manifest_output(value["manifest"])
 
 
-def reject_provider_semantic_states(report, provider_digests):
+def reject_provider_semantic_states(report, provider_digests, receipt):
     if not provider_digests:
         return
     semantic_states = [
         verification["state"]
         for verification in report.get("review_verifications", [])
         if verification["state"] != "unverified"
+        and not (receipt is not None and verification.get("receipt") == receipt)
     ]
     if semantic_states:
         raise ToolError(
             "provider semantic verification is unavailable; "
             "review_verifications must remain unverified"
         )
+
+
+def verify_review_verification_receipt_projection(report, receipt):
+    if receipt is None:
+        return
+    matches = [
+        verification
+        for verification in report.get("review_verifications", [])
+        if verification.get("review_id") == receipt["review_id"]
+    ]
+    if len(matches) != 1 or matches[0].get("state") != "verified":
+        raise ToolError("native validate receipt projection is missing or ambiguous")
+    if matches[0].get("receipt") != receipt:
+        raise ToolError("native validate receipt projection mismatch")
 
 
 def verify_identity_projection(
@@ -1392,6 +1479,10 @@ def call_validate(program, arguments, temporary_directory):
         raise ToolError("include_manifest は boolean が必要です")
     command = ["validate", "--source", str(path), "--format", "json"]
     provider_flags, provider_digest_names, provider_digests = provider_snapshot_arguments(arguments)
+    receipt = None
+    if "review_verification_receipt" in arguments:
+        receipt = load_review_verification_receipt(arguments["review_verification_receipt"])
+        command.extend(("--review-verification-receipt", arguments["review_verification_receipt"]))
     command.extend(identity_arguments(arguments, provider_digest_names))
     command.extend(provider_flags)
     manifest_path = None
@@ -1401,7 +1492,8 @@ def call_validate(program, arguments, temporary_directory):
     completed = run_native(program, command)
     report = parse_json_output(completed)
     validate_report_output(report)
-    reject_provider_semantic_states(report, provider_digests)
+    verify_review_verification_receipt_projection(report, receipt)
+    reject_provider_semantic_states(report, provider_digests, receipt)
     if include_manifest:
         if manifest_path is None or not manifest_path.is_file():
             raise ToolError("native validate が manifest を生成しませんでした")

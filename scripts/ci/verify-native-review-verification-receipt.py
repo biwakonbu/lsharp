@@ -43,11 +43,7 @@ def canonical_bytes(value: dict[str, object]) -> bytes:
     return bytes(output)
 
 
-def validate(path: pathlib.Path) -> dict[str, object]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError(f"verification receipt JSON is invalid: {error}") from error
+def validate_value(value: object) -> dict[str, object]:
     required = {
         "review_id",
         "state",
@@ -86,6 +82,14 @@ def validate(path: pathlib.Path) -> dict[str, object]:
     except ValueError as error:
         raise ValueError("verification receipt verification_now must be a valid UTC date") from error
     return value
+
+
+def validate(path: pathlib.Path) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"verification receipt JSON is invalid: {error}") from error
+    return validate_value(value)
 
 
 def main(argv: list[str]) -> int:

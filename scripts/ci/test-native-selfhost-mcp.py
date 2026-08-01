@@ -188,6 +188,22 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                             "review_id": "review:team/one",
                             "state": "verified",
                         }}]
+                    elif report_mode in ("receipt-valid", "receipt-missing", "receipt-mismatch"):
+                        receipt_path = arg_value("--review-verification-receipt")
+                        receipt = json.loads(pathlib.Path(receipt_path).read_text(encoding="utf-8"))
+                        if report_mode == "receipt-valid":
+                            report["review_verifications"] = [{{
+                                "review_id": receipt["review_id"],
+                                "state": "verified",
+                                "receipt": receipt,
+                            }}]
+                        elif report_mode == "receipt-mismatch":
+                            receipt["attestation_digest"] = "sha256:" + "c" * 64
+                            report["review_verifications"] = [{{
+                                "review_id": receipt["review_id"],
+                                "state": "verified",
+                                "receipt": receipt,
+                            }}]
                     elif report_mode == "identity-missing":
                         report["review_evidence_identity"] = {{
                             "subject_digest": "sha256:subject",
@@ -884,6 +900,25 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 verification_schema["properties"]["state"]["enum"],
                 ["verified", "unverified", "stale", "revoked"],
             )
+            receipt_schema = verification_schema["properties"]["receipt"]
+            self.assertFalse(receipt_schema["additionalProperties"])
+            self.assertEqual(
+                receipt_schema["required"],
+                [
+                    "review_id",
+                    "state",
+                    "provider",
+                    "key_id",
+                    "algorithm",
+                    "attestation_digest",
+                    "trust_store_digest",
+                    "verification_now",
+                ],
+            )
+            self.assertEqual(
+                validate_schema["properties"]["review_verification_receipt"],
+                {"type": "string", "minLength": 1},
+            )
             manifest_schema = validate_output_schema["properties"]["manifest"]
             self.assertEqual(manifest_schema["type"], "object")
             self.assertEqual(
@@ -1133,6 +1168,145 @@ class NativeSelfhostMcpTest(unittest.TestCase):
             }
             self.assertEqual(response["structuredContent"]["review_evidence_identity"], expected_identity)
             self.assertEqual(response["structuredContent"]["manifest"]["review_evidence_identity"], expected_identity)
+
+    def test_explicit_verification_receipt_is_forwarded_and_projected(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            receipt = root / "receipt.json"
+            receipt_value = {
+                "review_id": "review:orders/reviewer-001",
+                "state": "verified",
+                "provider": "github",
+                "key_id": "org/reviews-2026",
+                "algorithm": "ed25519",
+                "attestation_digest": "sha256:" + "a" * 64,
+                "trust_store_digest": "sha256:" + "b" * 64,
+                "verification_now": "2026-08-02T00:00:00Z",
+            }
+            receipt.write_text(json.dumps(receipt_value), encoding="utf-8")
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_verification_receipt": str(receipt),
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root, report_mode="receipt-valid")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertFalse(response["isError"])
+            self.assertEqual(
+                response["structuredContent"]["review_verifications"],
+                [{"review_id": receipt_value["review_id"], "state": "verified", "receipt": receipt_value}],
+            )
+            command = json.loads((root / "native.log").read_text().splitlines()[0])
+            self.assertIn("--review-verification-receipt", command)
+
+    def test_explicit_verification_receipt_projection_is_required(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            receipt = root / "receipt.json"
+            receipt_value = {
+                "review_id": "review:orders/reviewer-001",
+                "state": "verified",
+                "provider": "github",
+                "key_id": "org/reviews-2026",
+                "algorithm": "ed25519",
+                "attestation_digest": "sha256:" + "a" * 64,
+                "trust_store_digest": "sha256:" + "b" * 64,
+                "verification_now": "2026-08-02T00:00:00Z",
+            }
+            receipt.write_text(json.dumps(receipt_value), encoding="utf-8")
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_verification_receipt": str(receipt),
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root, report_mode="receipt-missing")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("receipt projection", response["content"][0]["text"])
+
+    def test_explicit_verification_receipt_projection_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            receipt = root / "receipt.json"
+            receipt_value = {
+                "review_id": "review:orders/reviewer-001",
+                "state": "verified",
+                "provider": "github",
+                "key_id": "org/reviews-2026",
+                "algorithm": "ed25519",
+                "attestation_digest": "sha256:" + "a" * 64,
+                "trust_store_digest": "sha256:" + "b" * 64,
+                "verification_now": "2026-08-02T00:00:00Z",
+            }
+            receipt.write_text(json.dumps(receipt_value), encoding="utf-8")
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_verification_receipt": str(receipt),
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root, report_mode="receipt-mismatch")
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("receipt projection", response["content"][0]["text"])
+
+    def test_invalid_verification_receipt_is_rejected_before_native(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            receipt = root / "receipt.json"
+            receipt.write_text(
+                json.dumps({"review_id": "review:orders/reviewer-001", "state": "unverified"}),
+                encoding="utf-8",
+            )
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_verification_receipt": str(receipt),
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]["result"]
+            self.assertTrue(response["isError"])
+            self.assertIn("verification receipt", response["content"][0]["text"])
+            self.assertFalse((root / "native.log").exists())
 
     def test_native_report_identity_mismatch_is_rejected_after_execution(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
