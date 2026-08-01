@@ -12,6 +12,13 @@ VERSION="v0.0.0-test"
 PATH_PREFIX="$TMP_ROOT/bin"
 SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-snapshot-smoke.XXXXXX)"
 SOURCE_SMOKE_EVIDENCE_ROOT="$TMP_ROOT/source-smoke-evidence"
+SOURCE_SMOKE_EVIDENCE_ROOT_CANONICAL="$(python3 - "$SOURCE_SMOKE_EVIDENCE_ROOT" <<'PY'
+import pathlib
+import sys
+
+print(pathlib.Path(sys.argv[1]).resolve())
+PY
+)"
 PARTIAL_SMOKE_ROOT=""
 MISSING_IDENTITY_SMOKE_ROOT=""
 PROVIDER_IDENTITY_SMOKE_ROOT=""
@@ -190,6 +197,28 @@ for identity_path in (
     identity_path.write_text(json.dumps(identity, separators=(",", ":")) + "\n", encoding="utf-8")
 PY
 
+UNSAFE_EVIDENCE_DIST="$TMP_ROOT/unsafe-evidence-dist"
+set +e
+unsafe_evidence_output="$({
+  FAKE_LOG="$LOG_PATH" \
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$UNSAFE_EVIDENCE_DIST" \
+  SMOKE_ROOT="$SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$SMOKE_ROOT" \
+  NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$FAKE_ROOT" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh"
+} 2>&1)"
+unsafe_evidence_status=$?
+set -e
+[[ "$unsafe_evidence_status" -ne 0 ]] \
+  || { echo 'repository-root source smoke evidence unexpectedly accepted' >&2; exit 1; }
+grep -F 'source smoke evidence root' <<<"$unsafe_evidence_output" >/dev/null \
+  || { echo 'unsafe source smoke evidence root diagnostic was missing' >&2; echo "$unsafe_evidence_output" >&2; exit 1; }
+[[ ! -e "$UNSAFE_EVIDENCE_DIST" ]] \
+  || { echo 'official gate created release output before evidence root preflight' >&2; exit 1; }
+
 FAKE_LOG="$LOG_PATH" \
 PATH="$PATH_PREFIX:$PATH" \
 VERSION="$VERSION" \
@@ -217,8 +246,8 @@ grep -F "review-lifecycle.snapshot" "$LOG_PATH" >/dev/null
 grep -F "review_identity_timestamp.py" "$LOG_PATH" >/dev/null
 grep -F "fetch target=aarch64-apple-darwin" "$LOG_PATH" >/dev/null
 grep -F "fetch target=x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
-grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin source=$FAKE_ROOT_CANONICAL/selfhost evidence=$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin" "$LOG_PATH" >/dev/null
-grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu evidence=$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
+grep -F "runtime mac stage0=$SMOKE_ROOT/stage0-aarch64-apple-darwin source=$FAKE_ROOT_CANONICAL/selfhost evidence=$SOURCE_SMOKE_EVIDENCE_ROOT_CANONICAL/aarch64-apple-darwin" "$LOG_PATH" >/dev/null
+grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu evidence=$SOURCE_SMOKE_EVIDENCE_ROOT_CANONICAL/x86_64-unknown-linux-gnu" "$LOG_PATH" >/dev/null
 [[ -s "$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin/manifest.json" ]] \
   || { echo 'Mac source smoke evidence was not retained' >&2; exit 1; }
 [[ -s "$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" ]] \

@@ -174,14 +174,51 @@ validate_source_smoke_evidence_root() {
   [[ -z "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]] && return 0
   [[ "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" = /* && "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" != "/" ]] \
     || { echo "ERROR: NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT must be an absolute non-root path" >&2; exit 1; }
-  [[ "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" != "${SMOKE_ROOT}" && "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" != "${SMOKE_ROOT}"/* ]] \
-    || { echo "ERROR: source smoke evidence root must not be inside the cleaned release smoke root" >&2; exit 1; }
+  [[ ! -L "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]] \
+    || { echo "ERROR: source smoke evidence root must not be a symlink: ${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" >&2; exit 1; }
+  NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$(python3 - \
+    "${ROOT_DIR}" \
+    "${SMOKE_ROOT}" \
+    "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1]).resolve()
+smoke_root = Path(sys.argv[2]).resolve()
+raw_evidence_root = sys.argv[3]
+evidence_root = Path(raw_evidence_root).resolve()
+protected_paths = {
+    Path("/"),
+    Path("/tmp"),
+    Path("/private/tmp"),
+    root,
+    root / "target",
+    root / "target" / "ci",
+    root / "ci-artifacts",
+    root / "dist",
+    root / "stage0",
+}
+if evidence_root in protected_paths:
+    raise SystemExit(
+        "ERROR: source smoke evidence root is a protected shared path: "
+        f"{raw_evidence_root}"
+    )
+try:
+    evidence_root.relative_to(smoke_root)
+except ValueError:
+    pass
+else:
+    raise SystemExit(
+        "ERROR: source smoke evidence root must not be inside the cleaned release smoke root: "
+        f"{raw_evidence_root}"
+    )
+print(evidence_root)
+PY
+)"
   if [[ -e "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" && ! -d "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]]; then
     echo "ERROR: source smoke evidence root is not a directory: ${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" >&2
     exit 1
   fi
-  [[ ! -L "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]] \
-    || { echo "ERROR: source smoke evidence root must not be a symlink: ${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" >&2; exit 1; }
 }
 
 NATIVE_OFFICIAL_REVIEW_ENV=()
