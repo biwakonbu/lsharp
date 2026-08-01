@@ -14,6 +14,7 @@ ARCHIVE_ROOT="${RELEASE_DIR}/${ARCHIVE_ROOT_NAME}"
 STAGE0_DIR="${TMP_ROOT}/stage0"
 HOST_BIN="${TMP_ROOT}/host-bin"
 MOVE_FAILURE_MARKER="${TMP_ROOT}/move-failure-injected"
+RESTORE_FAILURE_MARKER="${TMP_ROOT}/restore-failure-injected"
 
 cleanup() {
   rm -rf "${TMP_ROOT}"
@@ -90,6 +91,53 @@ grep -F 'injected final install move failure' "${TMP_ROOT}/fetch.stderr" >/dev/n
   || { echo "fetch-stage0 partially installed a new stage0 after install failure" >&2; exit 1; }
 ! compgen -G "${TMP_ROOT}/.stage0.previous.*" >/dev/null \
   || { echo "fetch-stage0 left a previous stage0 backup after install failure" >&2; exit 1; }
+
+cat >"${HOST_BIN}/mv" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${2:-}" == "${LSHARP_FETCH_STAGE0_FAIL_DEST:?}" ]]; then
+  if [[ ! -e "${LSHARP_FETCH_STAGE0_FINAL_FAILURE_MARKER:?}" ]]; then
+    : >"${LSHARP_FETCH_STAGE0_FINAL_FAILURE_MARKER}"
+    printf 'injected final install move failure before restore failure\n' >&2
+    exit 77
+  fi
+  : >"${LSHARP_FETCH_STAGE0_RESTORE_FAILURE_MARKER:?}"
+  printf 'injected rollback restore move failure\n' >&2
+  exit 78
+fi
+exec /bin/mv "$@"
+SH
+chmod 0755 "${HOST_BIN}/mv"
+rm -f "${MOVE_FAILURE_MARKER}"
+
+set +e
+PATH="${HOST_BIN}:${PATH}" \
+  STAGE0_RELEASE_BASE_URL="file://${RELEASE_DIR}" \
+  STAGE0_VERSION="${VERSION}" \
+  STAGE0_TARGET="${TARGET}" \
+  STAGE0_DIR="${STAGE0_DIR}" \
+  LSHARP_FETCH_STAGE0_FAIL_DEST="${STAGE0_DIR}" \
+  LSHARP_FETCH_STAGE0_FINAL_FAILURE_MARKER="${MOVE_FAILURE_MARKER}" \
+  LSHARP_FETCH_STAGE0_RESTORE_FAILURE_MARKER="${RESTORE_FAILURE_MARKER}" \
+  bash "${FETCH_SCRIPT}" >"${TMP_ROOT}/restore-failure.stdout" 2>"${TMP_ROOT}/restore-failure.stderr"
+restore_failure_status=$?
+set -e
+
+[[ "${restore_failure_status}" -ne 0 ]] || {
+  echo "fetch-stage0 unexpectedly succeeded during injected rollback restore failure" >&2
+  exit 1
+}
+grep -F 'injected rollback restore move failure' "${TMP_ROOT}/restore-failure.stderr" >/dev/null \
+  || { echo "fetch-stage0 did not report the injected rollback restore failure" >&2; cat "${TMP_ROOT}/restore-failure.stderr" >&2; exit 1; }
+previous_stage0_contents="$(cat "${STAGE0_DIR}/keep.txt" 2>/dev/null || true)"
+[[ "${previous_stage0_contents}" == 'keep existing stage0' ]] || {
+  echo "fetch-stage0 did not keep the previous stage0 after rollback restore failure" >&2
+  exit 1
+}
+! compgen -G "${TMP_ROOT}/.stage0.previous.*" >/dev/null || {
+  echo "fetch-stage0 left a hidden previous stage0 after rollback restore failure" >&2
+  exit 1
+}
 
 TAMPERED_BUILD="${TMP_ROOT}/tampered-build"
 TAMPERED_RELEASE="${TMP_ROOT}/tampered-release"

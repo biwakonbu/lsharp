@@ -288,7 +288,13 @@ install_stage0_package() {
     install_status=$?
     if [[ -n "${backup_dir}" ]]; then
       if ! mv "${backup_dir}" "${STAGE0_DIR}"; then
-        echo "ERROR: failed to restore previous stage0 package: ${STAGE0_DIR}" >&2
+        echo "WARNING: stage0 restore move failed; attempting copy recovery: ${STAGE0_DIR}" >&2
+        if mkdir -p "${STAGE0_DIR}" && cp -pR "${backup_dir}/." "${STAGE0_DIR}/"; then
+          rm -rf "${backup_dir}"
+          backup_dir=""
+        else
+          echo "ERROR: failed to restore previous stage0 package; backup retained at ${backup_dir}" >&2
+        fi
       else
         backup_dir=""
       fi

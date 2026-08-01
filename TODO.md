@@ -317,6 +317,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   runtime、packaged target parity、rollback parity は残る。M3-05-N9 は `[~]` のまま維持する。ADR:
   `docs/adr/decisions-v0.3-stage0-fetch-provider-url-boundary.md`。
 
+  同日、既存 atomic install harness に final install move failure と rollback restore move failure の二重失敗を
+  追加した。restore move が失敗しても旧 stage0 を copy-recover し、成功後に hidden backup を回収する
+  RED→GREEN を確認した。これは local rollback restore failure の verified partial sliceであり、実 I/O 障害下の
+  recovery、rollback archive parity、live provider/auth、current-source Linux runtime、packaged target parity は
+  残るため、M3-05-N9 は `[~]` のまま維持する。ADR:
+  `docs/adr/decisions-v0.3-stage0-fetch-rollback-restore-failure.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。
