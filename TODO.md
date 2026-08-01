@@ -134,6 +134,12 @@ stage0 package/runtime、Linux x86_64、Wasm validation/runtime、Rust/native di
 未接続のため `[~]` を維持する。ADR:
 `docs/adr/decisions-v0.4-m1-01-native-report-source-isolation.md`。
 
+さらに semantic diff helper の implementation commit `4b70bb7d` で observed artifact の `size=0` を
+拒否し、空ファイルを pending/pass の artifact evidence として扱わない positive-size boundary を
+verified partial として追加した。実 Wasm validation/runtime、native stage0、Linux、Rust/native
+differential、aggregate は未接続のため `[~]` を維持する。ADR:
+`docs/adr/decisions-v0.4-m1-01-nonempty-artifact-boundary.md`。
+
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
   trust store、署名検証、両対応 target の runtime evidence は残る。

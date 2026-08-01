@@ -41,6 +41,8 @@ look stronger than its evidence.
   using `scripts/ci/semantic_fixture_diff.py`. Equal diagnostics/exit/runtime/
   artifact observations are `pass`; any mismatch is `mismatch`; an unobserved
   artifact or runtime boundary is `pending` with exit code 2.
+- Treat an observed artifact size as a positive integer. A zero-byte artifact is
+  not an observed Wasm boundary and is rejected before pending/pass comparison.
 - Start the Rust lane with `scripts/ci/semantic_fixture_rust_report.py` for a
   valid, no-diagnostic fixture or an invalid fixture whose Rust diagnostic
   explicitly contains both an `LS####` code and a byte span. The caller must
@@ -135,3 +137,7 @@ look stronger than its evidence.
   manifest, fallback, invalid diagnostic, runtime input, and batch isolation
   boundaries. This is a producer safety slice only; no stale native artifact
   is promoted to current-source evidence.
+- The diff helper at implementation commit `4b70bb7d` rejects an observed
+  artifact with `size=0` instead of allowing empty metadata to remain pending.
+  The positive-size contract is producer-report validation only; native stage0,
+  Linux, Wasm validation, and differential runtime evidence remain pending.
