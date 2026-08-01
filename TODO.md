@@ -354,6 +354,13 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   `git rev-parse --verify HEAD` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f -name manifest.json
   -path '*lsharp*'`。ADR: `docs/adr/decisions-v0.3-release-smoke-checksum-path.md`。
 
+  続けて同日、rollback archive の `checksums.txt` に smoke-critical payload 全ての checksum entry を必須化した。
+  `lsharp` entry だけを除いた checksum-valid rollback fixture を拒否する RED→GREEN を provider snapshot harness
+  で確認した verified partial sliceである。live provider/auth acquisition、current-source Linux runtime、両 target
+  の packaged provenance/rollback bytes parity は未検証のため、M3-05-N2 / M3-05-N7 は `[~]` のまま残る。current-source
+  blocker の再現 command は `git rev-parse --verify HEAD` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f
+  -name manifest.json -path '*lsharp*'`。ADR: `docs/adr/decisions-v0.3-rollback-checksum-coverage.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。

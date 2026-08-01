@@ -285,6 +285,12 @@ for field, expected in expected_payloads.items():
     if manifest.get(field) != expected:
         raise SystemExit(f"rollback compatibility manifest {field} mismatch")
 PY
+  for required_checksum in README.md LICENSE lsharp lsharp-lsp lsharp.component.wasm manifest.json; do
+    if ! awk '{print $2}' "$ARCHIVE_ROOT/checksums.txt" | grep -Fxq "$required_checksum"; then
+      echo "ERROR: rollback compatibility checksums.txt missing required entry: $required_checksum" >&2
+      exit 1
+    fi
+  done
 fi
 
 if [[ -e "$ARCHIVE_ROOT/CHANGELOG.md" ]]; then

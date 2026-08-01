@@ -273,4 +273,43 @@ set -e
 grep -F "unsafe checksum target" <<<"$checksum_path_output" >/dev/null \
   || { echo "checksum target escape did not expose diagnostic" >&2; exit 1; }
 
+BAD_CHECKSUM_ROLLBACK_NAME="${ROLLBACK_NAME}-missing-checksum"
+BAD_CHECKSUM_ROLLBACK_ROOT="$TMP_ROOT/$BAD_CHECKSUM_ROLLBACK_NAME"
+BAD_CHECKSUM_ROLLBACK_ARCHIVE="$TMP_ROOT/$BAD_CHECKSUM_ROLLBACK_NAME.tar.gz"
+cp -R "$ROLLBACK_ROOT" "$BAD_CHECKSUM_ROLLBACK_ROOT"
+bash "$ROOT/scripts/checksum.sh" "$BAD_CHECKSUM_ROLLBACK_ROOT" \
+  | awk '$2 != "lsharp"' >"$TMP_ROOT/bad-rollback-checksums.txt"
+mv "$TMP_ROOT/bad-rollback-checksums.txt" "$BAD_CHECKSUM_ROLLBACK_ROOT/checksums.txt"
+tar -czf "$BAD_CHECKSUM_ROLLBACK_ARCHIVE" -C "$TMP_ROOT" "$BAD_CHECKSUM_ROLLBACK_NAME"
+bad_checksum_rollback_sha256="$(sha256sum "$BAD_CHECKSUM_ROLLBACK_ARCHIVE" | awk '{print $1}')"
+python3 - "$STABLE_ROOT/manifest.json" "$BAD_CHECKSUM_ROLLBACK_NAME.tar.gz" "$bad_checksum_rollback_sha256" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+manifest = json.loads(manifest_path.read_text())
+manifest["rollback_anchor"] = {
+    "kind": "rollback compatibility",
+    "asset": sys.argv[2],
+    "rollback_sha256": sys.argv[3],
+}
+manifest_path.write_text(json.dumps(manifest) + "\n")
+PY
+bash "$ROOT/scripts/checksum.sh" "$STABLE_ROOT" >"$STABLE_ROOT/checksums.txt"
+tar -czf "$TMP_ROOT/$STABLE_NAME.tar.gz" -C "$TMP_ROOT" "$STABLE_NAME"
+
+set +e
+rollback_checksum_output="$(
+  RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
+    RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
+    WORK_DIR="$TMP_ROOT/rollback-checksum-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$BAD_CHECKSUM_ROLLBACK_ARCHIVE" 2>&1
+)"
+rollback_checksum_status=$?
+set -e
+[[ "$rollback_checksum_status" -ne 0 ]] || { echo "rollback payload without checksum coverage was accepted" >&2; exit 1; }
+grep -F "checksums.txt missing required entry: lsharp" <<<"$rollback_checksum_output" >/dev/null \
+  || { echo "rollback checksum coverage mismatch did not expose diagnostic" >&2; exit 1; }
+
 echo "release-smoke provider snapshot tests: OK"
