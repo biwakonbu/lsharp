@@ -182,6 +182,21 @@ PY
 
 validate_native_stage0_package "$STAGE0_DIR" "$TARGET"
 
+STAGE0_ARTIFACT_PATH="$(python3 - "$STAGE0_DIR/manifest.json" "$STAGE0_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+package_dir = pathlib.Path(sys.argv[2])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+compiler = manifest.get("compiler")
+if not isinstance(compiler, str) or not compiler:
+    raise SystemExit("native stage0 manifest compiler is required for review identity binding")
+print(package_dir / compiler)
+PY
+)"
+
 EMBEDDED_REVIEW_EVIDENCE_IDENTITY="$STAGE0_DIR/review-evidence-identity.json"
 if [[ -s "$EMBEDDED_REVIEW_EVIDENCE_IDENTITY" && ( -z "$REVIEW_EVIDENCE_IDENTITY" || -z "$REVIEW_TRUST_STORE" || -z "$REVIEW_LIFECYCLE" ) ]]; then
   die "embedded review evidence identity requires explicit provider snapshots and identity input"
@@ -204,6 +219,7 @@ if [[ -n "$REVIEW_EVIDENCE_IDENTITY" ]]; then
   fi
   REVIEW_EVIDENCE_IDENTITY_JSON="$(python3 "$REVIEW_IDENTITY_VERIFIER" \
     --identity "$REVIEW_EVIDENCE_IDENTITY" \
+    --artifact "$STAGE0_ARTIFACT_PATH" \
     --source-commit "$SOURCE_COMMIT" \
     "${REVIEW_IDENTITY_PROVIDER_ARGS[@]}" \
     --require-provider-input)"

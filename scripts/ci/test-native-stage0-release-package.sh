@@ -65,10 +65,11 @@ import pathlib
 import sys
 
 identity_path, trust_store_path, lifecycle_path, source_commit = map(pathlib.Path, sys.argv[1:])
+compiler_path = identity_path.parent / "compiler.native"
 identity = {
     "subject_digest": "sha256:" + "c" * 64,
     "source_commit": str(source_commit),
-    "artifact_digest": "sha256:" + "d" * 64,
+    "artifact_digest": "sha256:" + hashlib.sha256(compiler_path.read_bytes()).hexdigest(),
     "trust_store_digest": "sha256:" + hashlib.sha256(trust_store_path.read_bytes()).hexdigest(),
     "lifecycle_digest": "sha256:" + hashlib.sha256(lifecycle_path.read_bytes()).hexdigest(),
     "now": "2026-08-15T00:00:00Z",
@@ -194,6 +195,43 @@ grep -F "embedded review evidence identity requires explicit provider snapshots"
   || fail "embedded identity rejection did not explain the provider snapshot requirement"
 [[ ! -e "$EMBEDDED_DIST_DIR/lsharp-stage0-${VERSION}-embedded-identity-${TARGET}.tar.gz" ]] \
   || fail "embedded identity rejection left a release archive"
+
+ARTIFACT_MISMATCH_DIST_DIR="$TMP_ROOT/artifact-mismatch-dist"
+ARTIFACT_MISMATCH_IDENTITY_BACKUP="$TMP_ROOT/artifact-mismatch-identity.json"
+cp "$IDENTITY_PATH" "$ARTIFACT_MISMATCH_IDENTITY_BACKUP"
+python3 - "$IDENTITY_PATH" <<'PY'
+import json
+import pathlib
+import sys
+
+identity_path = pathlib.Path(sys.argv[1])
+identity = json.loads(identity_path.read_text(encoding="utf-8"))
+identity["artifact_digest"] = "sha256:" + "d" * 64
+identity_path.write_text(json.dumps(identity, separators=(",", ":")) + "\n", encoding="utf-8")
+PY
+set +e
+artifact_mismatch_output="$(
+  NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
+    PATH="$HOST_BIN:$PATH" \
+    "$RELEASE_PACKAGE" \
+      --target "$TARGET" \
+      --version "${VERSION}-artifact-mismatch" \
+      --stage0-dir "$STAGE0_DIR" \
+      --source-commit "$SOURCE_COMMIT" \
+      --review-evidence-identity "$IDENTITY_PATH" \
+      --review-trust-store "$TRUST_STORE_PATH" \
+      --review-lifecycle "$LIFECYCLE_PATH" \
+      --output-dir "$ARTIFACT_MISMATCH_DIST_DIR" 2>&1
+)"
+artifact_mismatch_status=$?
+set -e
+cp "$ARTIFACT_MISMATCH_IDENTITY_BACKUP" "$IDENTITY_PATH"
+[[ "$artifact_mismatch_status" -ne 0 ]] \
+  || fail "stage0 artifact digest mismatch was accepted"
+grep -F "artifact_digest" <<<"$artifact_mismatch_output" >/dev/null \
+  || fail "stage0 artifact digest mismatch did not expose the identity field"
+[[ ! -e "$ARTIFACT_MISMATCH_DIST_DIR/lsharp-stage0-${VERSION}-artifact-mismatch-${TARGET}.tar.gz" ]] \
+  || fail "stage0 artifact digest mismatch left a release archive"
 
 RELATIVE_ROOT="$TMP_ROOT/relative-output"
 mkdir -p "$RELATIVE_ROOT"

@@ -1851,3 +1851,12 @@ fixed-point（stage2/stage3 SHA-256一致、code length 11,332,908）と package
 その後の doc/schema-only fast-forward `ed72cb59` の後も selfhost source treeは変更されていない。
 project graph aggregate、ID省略の全仕様、manifest/MCP/公開 surface、EC-M2-01全体の completion evidence
 は残る。Evidence: `docs/adr/decisions-v0.2-native-validation-project-duplicate.md`。
+
+2026-08-02 に packaged stage0 releaseの identity `artifact_digest` を stage0 manifestの compiler bytesへ
+束縛した。別 artifact digestの identityは provider snapshot/source commitが正しくても archive生成前に
+拒否し、正しい digestの package成功と archive未生成を `test-native-stage0-release-package.sh` で確認した
+verified partial sliceである。provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux両
+targetの packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 /
+M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockがないためLinux replayは未実行で、
+別セッション所有のLima/cargo processも変更していない。Evidence:
+`docs/adr/decisions-v0.3-native-stage0-release-artifact-binding.md`。
