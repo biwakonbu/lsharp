@@ -206,11 +206,23 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
         )
         self.assertEqual(fixture["runtime_inputs"], {"input.txt": "payload"})
 
+    def test_r4_stdin_fixture_declares_explicit_runtime_stdin_snapshot(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/io-read-stdin"
+        )
+        self.assertEqual(fixture["runtime_stdin"], "payload")
+
     def test_rejects_unsafe_or_non_string_runtime_input_snapshot(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))
         cases = (
             ("unsafe path", {"runtime_inputs": {"../outside.txt": "payload"}}),
             ("non-string content", {"runtime_inputs": {"input.txt": 42}}),
+            ("non-string stdin", {"runtime_stdin": 42}),
         )
         fixture_index = next(
             index for index, fixture in enumerate(original["fixtures"])
@@ -224,7 +236,8 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
                 manifest.write_text(json.dumps(payload), encoding="utf-8")
                 result = self.run_validator(manifest)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("runtime_inputs", result.stderr)
+                expected_field = "runtime_stdin" if "runtime_stdin" in update else "runtime_inputs"
+                self.assertIn(expected_field, result.stderr)
 
     def test_rejects_unresolved_target_and_unsafe_source(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))

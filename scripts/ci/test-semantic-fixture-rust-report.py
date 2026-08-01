@@ -199,6 +199,40 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertEqual((work_dir / "input.txt").read_text(encoding="utf-8"), "existing")
 
+    def test_passes_declared_runtime_stdin_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "fake-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
+            )
+            make_executable(
+                wasmtime,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "if '--dir=.' in sys.argv:\n"
+                "    raise SystemExit('stdin-only fixture must not preopen a directory')\n"
+                "print(sys.stdin.read(), end='')\n",
+            )
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_id="valid/io-read-stdin",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["fixtures"][0]["runtime"]["stdout"], "payload")
+
     def test_writes_invalid_report_when_code_and_span_are_explicit(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

@@ -139,6 +139,16 @@ def validate_runtime_inputs(value: Any, label: str) -> Dict[str, str]:
     return dict(sorted(normalized.items()))
 
 
+def validate_runtime_stdin(value: Any, label: str) -> str:
+    if not isinstance(value, str):
+        raise ManifestError(f"{label} must be a UTF-8 string")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ManifestError(f"{label} must be valid UTF-8") from error
+    return value
+
+
 def validate_execution(value: Any, label: str) -> Dict[str, str]:
     execution = require_object(value, label)
     expect_keys(execution, ("stage0", "fallback", "network"), label)
@@ -241,7 +251,7 @@ def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[st
             fixture,
             ("id", "source", "kind", "layers", "observables", "targets", "commands", "execution", "expected"),
             label,
-            optional=("runtime_inputs",),
+            optional=("runtime_inputs", "runtime_stdin"),
         )
         identifier = require_string(fixture["id"], f"{label}.id")
         identifiers.append(identifier)
@@ -277,6 +287,12 @@ def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[st
                 raise ManifestError(f"{label}.runtime_inputs is only allowed for valid fixtures")
             projected_fixture["runtime_inputs"] = validate_runtime_inputs(
                 fixture["runtime_inputs"], f"{label}.runtime_inputs"
+            )
+        if "runtime_stdin" in fixture:
+            if kind != "valid":
+                raise ManifestError(f"{label}.runtime_stdin is only allowed for valid fixtures")
+            projected_fixture["runtime_stdin"] = validate_runtime_stdin(
+                fixture["runtime_stdin"], f"{label}.runtime_stdin"
             )
         projected_fixtures.append(projected_fixture)
 

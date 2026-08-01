@@ -84,7 +84,9 @@ environment. Runtime file snapshots are UTF-8 content keyed by normalized
 project-relative paths. The producer materializes them only in its
 task-owned runtime directory, preopens that directory explicitly for
 Wasmtime, and fails closed instead of overwriting an existing file or
-traversing a symlink.
+traversing a symlink. Runtime stdin snapshots are also explicit UTF-8 content;
+the producer passes them as the child process stdin and never inherits an
+operator or host-process stream.
 
 ### 4. Failure and unsupported-feature policy
 
@@ -154,7 +156,7 @@ observations as pending rather than overloading `stdout` or a debug log.
   nested record variable patterns on the supported path and declares the
   AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
 - The matrix RED→GREEN contract is covered by
-  `python3 scripts/ci/test-semantic-fixture-matrix.py` (12 tests). The Rust
+  `python3 scripts/ci/test-semantic-fixture-matrix.py` (13 tests). The Rust
   oracle producer, with fixture implementation commit
   `4790bb3e647d03b2ccfa883bc502e40d2385865f`
   and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
@@ -206,6 +208,17 @@ observations as pending rather than overloading `stdout` or a debug log.
   exit `0`, and empty stderr. `wasm-tools 1.245.1 validate` passed. The
   producer refuses to overwrite an existing input and the report remains
   task-local until a final-main evidence run.
+- `valid/io-read-stdin` extends `V4-M1-03-R4` with the same explicit boundary
+  for stdin: the matrix projects a UTF-8 `runtime_stdin` snapshot and both
+  report producers pass it as child stdin without inheriting a host stream.
+  The Rust oracle at implementation commit
+  `dd459fd10bf9aa391a9b7b7bd971226a5dea1eb5` and target-declared
+  `aarch64-apple-darwin` observed a valid Wasm artifact of 6,498 bytes with
+  digest
+  `sha256:2d96798a5befcf678b898ab375462cba4095668fd81b3e2cac3377867e0abe72`;
+  Wasmtime 43.0.0 returned `payload`, exit `0`, and empty stderr, and
+  `wasm-tools 1.245.1 validate` passed. Native/Linux parity remains pending;
+  the report is task-local until a final-main evidence run.
 - This is Rust-oracle evidence only. Native stage0 execution, Linux x86_64,
   ftable/import byte parity, root/resource telemetry, limit-boundary diagnostics,
   file/stdin/short-read ABI coverage, and the two-target completion audit remain

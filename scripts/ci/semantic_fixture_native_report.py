@@ -311,10 +311,12 @@ def observe_fixture(
     if fixture.get("runtime_inputs"):
         runtime_command.append("--dir=.")
     runtime_command.append(str(artifact))
+    runtime_stdin = fixture.get("runtime_stdin")
     runtime_result = subprocess.run(
         runtime_command,
         cwd=execution_dir,
         env=environment,
+        input=runtime_stdin.encode("utf-8") if runtime_stdin is not None else None,
         capture_output=True,
         check=False,
     )

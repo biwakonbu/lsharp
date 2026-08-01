@@ -812,7 +812,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 - [~] `V2-16b` / `LEGACY-IO-01` native artifact I/O — bounded argv/file/raw-byte Preview1 と
   4096 bytes 超 read の slice は verified。`valid/io-read-file` は manifest の明示的な
   UTF-8 runtime input snapshot と task-owned preopen まで Rust oracle/native producer contract
-  で固定した。全 fd error semantics、dynamic root/data/heap layout、component sidecar、target 別
+  で固定した。`valid/io-read-stdin` も明示的な UTF-8 stdin snapshot と producer 境界を固定する。
+  全 fd error semantics、dynamic root/data/heap layout、component sidecar、target 別
   release artifact を閉じる。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
