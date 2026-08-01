@@ -172,6 +172,26 @@
       }
     },
     {
+      "id": "valid/argv-program-only",
+      "source": "scripts/ci/semantic-fixtures/argv-program-only.ls",
+      "kind": "valid",
+      "layers": ["syntax", "types", "ir", "codegen", "runtime"],
+      "observables": ["ast", "type", "ir", "wasm", "runtime", "report"],
+      "targets": ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"],
+      "commands": ["check", "compile", "build"],
+      "execution": {
+        "stage0": "current-source",
+        "fallback": "forbidden",
+        "network": "forbidden"
+      },
+      "expected": {
+        "diagnostics": [],
+        "exit_code": 0,
+        "artifact": {"required": true, "status": "pending"},
+        "runtime": {"status": "expected", "exit_code": 0, "stdout": "1\n", "stderr": ""}
+      }
+    },
+    {
       "id": "valid/closure-allocation",
       "source": "scripts/ci/semantic-fixtures/closure-allocation.ls",
       "kind": "valid",

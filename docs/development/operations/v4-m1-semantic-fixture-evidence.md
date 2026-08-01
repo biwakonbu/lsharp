@@ -52,6 +52,7 @@ FIXTURES=(
   --fixture-id invalid/record-field-pattern-literal
   --fixture-id invalid/type-undefined-value
   --fixture-id valid/adt-pattern
+  --fixture-id valid/argv-program-only
   --fixture-id valid/closure-allocation
   --fixture-id valid/free-list-growth
   --fixture-id valid/io-read-file
