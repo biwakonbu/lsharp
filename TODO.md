@@ -1038,9 +1038,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `ci-artifacts/native-linux-x86-hostgen-vm/0064a5bb-parser-metadata-initializers/actual-selfregen-summary.json` に保存し、
   stage2/stage3 code lengthは双方 `11332908`、stdout SHA-256は双方
   `aa5cee91b5f47dd54a7da64492859bb1b9eede381059051713e85310115ba7ad` で一致した。
-  record schema pattern の semantic parity、全 pattern、import target、Rust ABI parity を
-  actual E2E で閉じる。既知の `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`
-  の `1` vs `0` は変更前 baseline と同じで残件。
+  2026-08-01 に `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type` の
+  fixtureを現在の visibility contractへ修正した。空の value envに schema registryだけを渡していた
+  ための `1` vs `0` は selfhost実装の未対応ではなく、constructor visibilityを表現していない
+  test gapだった。可視 constructor scheme経由の field binding成功と、同じ registryだけを持つ
+  非可視経路の fail-closedを同一fixtureで固定し、quote/pattern 13 tests と private visibility
+  1 testが passした。selfhost source bytesは変更していないため、直近の current-source native
+  fixed-point evidenceを再利用する。record schema patternのsemantic parity、全 pattern、import
+  target、Rust ABI parityは actual E2Eで引き続き閉じる。
 - [~] `LEGACY-LANG-02` ADT/GADT execution parity — ordinary ADT の direct/nested constructor と
   GADT parser/type refinement は verified。2026-07-31 に selfhost
   `Types.TypeInferAdt` の type parameter、constructor field、variant、type declaration scan を

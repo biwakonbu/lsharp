@@ -253,7 +253,7 @@ fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
     );
 }
 
-/// selfhost TypeInfer.ls テスト: record schema の field 型で record pattern binder を具体化する
+/// selfhost TypeInfer.ls テスト: 可視 constructor と record schema の field 型で binder を具体化する
 #[test]
 fn test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type() {
     let harness = r#"
@@ -266,7 +266,12 @@ fn test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type() {
         point-ty (type-record-add-field (make-type-record point-hash) field-x (mk-int))
         record-env (map-insert-object-safe (map-new) point-hash (mono point-ty))
         counter (var-counter-with-alias-env-and-record-env counter0 aliases record-env)
-        env (type-env-new)
+        env
+          (type-env-insert
+            (type-env-new)
+            point-hash
+            (mono (typeinfer-record-constructor-type point-ty)))
+        hidden-env (type-env-new)
         child-pat (vector-push (vector-push (vector-new 2) (ast-pat-var)) x-hash)
         pat (vector-push
               (vector-push
@@ -278,12 +283,14 @@ fn test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type() {
                 child-pat)
               point-hash)
         result (infer-pattern pat env (subst-new) counter)
+        hidden-result (infer-pattern pat hidden-env (subst-new) counter)
         bound (type-env-lookup (pat-result-env result) x-hash)
         bound-ty (apply-subst (result-subst result) (scheme-type bound))]
     (do
       (print (result-failed result))
       (print (ty-tag bound-ty))
       (print (ty-name bound-ty))
+      (print (result-failed hidden-result))
       0)))
 "#;
 
@@ -307,6 +314,10 @@ fn test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type() {
     assert_eq!(
         lines[2], "100",
         "record pattern binder の型名は Int hash=100 であるべき"
+    );
+    assert_eq!(
+        lines[3], "1",
+        "record schema registry だけでは非可視 record pattern を受理してはいけない"
     );
 }
 

@@ -2957,3 +2957,22 @@ verified sliceである。field schema全体の診断/semantic parity、parser r
 ファイル分割、record schema pattern semantic parity、全 pattern/import target、ftable/linear-memory/runtime ABI、
 Mac Apple Siliconのこの変更後 current-source gate、全公開 surface、`LEGACY-LANG-01` aggregateの完了を意味しない。
 Rust oracle / bootstrap / host integration境界と TODOの `[~]` は維持する。
+
+### LEGACY-LANG-01 record pattern schema visibility contract (2026-08-01)
+
+`TypeInferPattern.ls` の canonical record patternは、全 program の schemaを保持する
+`record-env`だけでなく、現在の moduleで可視な constructor schemeを必要とする。既存の低レベル
+fixtureが value environmentを空にしていたため、private visibilityをfail-closedにする実装を
+`result-failed=1`として観測していた。fixtureを可視 constructor scheme経由の成功ケースへ修正し、
+同じ schema registryを持つ空の value environmentは拒否されることを同一テストで固定した。
+
+Evidence: `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type` の可視
+field binding (`Int`, tag `1`, hash `100`) と非可視拒否、
+`selfhost_typeinfer_quote_patterns` 13 tests、`selfhost_typeinfer_private_visibility` 1 testが
+passした。selfhost source bytesは変更していないため、native stage0の再生成・Linux VM replayは
+重複実行せず、直近の current-source fixed-point evidenceを再利用する。
+
+これは record pattern schema visibilityとfield bindingの verified partial sliceであり、record
+pattern全体のsemantic parity、import/parametric/deep cases、runtime/ftable/linear-memory ABI、
+Mac Apple SiliconとLinux x86_64の変更後artifact matrix、`LEGACY-LANG-01` aggregateの完了を意味しない。
+Rust oracle / bootstrap / host integration境界と TODOの `[~]` は維持する。
