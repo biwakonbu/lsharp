@@ -37,6 +37,10 @@ python3 scripts/ci/semantic_fixture_matrix.py \
   --root "$ROOT" >/dev/null
 ```
 
+Manifest の source は `ROOT` 配下の normalized な `.ls` path でなければならない。各 path component
+の symlink traversal は拒否されるため、外部 source や共有 fixture を symlink で注入せず、task-owned
+worktree 内へ regular file として配置する。
+
 `SOURCE_COMMIT` は report、stage0 manifest、comparison、evidence index の全てで同一でなければ
 ならない。`EVIDENCE_ROOT` は source commit と `TARGET` の両方を含み、Mac/Linux の結果を同じ
 directoryへ書かない。diff/audit はさらに専用 worktree の `git rev-parse --verify HEAD` と一致することを

@@ -83,6 +83,10 @@ Mac→Linux order と target-scoped `index.json` path を固定し、schema-only
 ADR: `docs/adr/decisions-v0.4-m1-06-two-target-aggregate.md`、
 `docs/adr/decisions-v0.4-m1-06-aggregate-result-schema.md`、
 `docs/adr/decisions-v0.4-m1-06-aggregate-index-schema.md`。
+さらに semantic fixture matrix の source path は各 component の symlink traversal を拒否し、manifest root
+が所有する regular `.ls` file のみを受け付ける source-ownership boundary を verified partial として
+追加した。実 Rust/native artifact、runtime、Mac/Linux matrix は未接続のため v0.4 の完了項目には移さない。
+ADR: `docs/adr/decisions-v0.4-m1-01-source-symlink-boundary.md`。
 
 - [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
   canonical bytes、signature encoding boundary は verified partial slice。source/native producer、

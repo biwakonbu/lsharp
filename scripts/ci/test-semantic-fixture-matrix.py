@@ -283,6 +283,27 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
                 expected_word = "target" if "target" in label else "source"
                 self.assertIn(expected_word, result.stderr.lower())
 
+    def test_rejects_source_fixture_symlink_traversal(self):
+        original = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as root_directory, tempfile.TemporaryDirectory() as outside_directory:
+            root = pathlib.Path(root_directory)
+            outside = pathlib.Path(outside_directory) / "outside.ls"
+            outside.write_text("(defn outside [] true)\n", encoding="utf-8")
+            fixture_directory = root / "fixtures"
+            fixture_directory.mkdir()
+            (fixture_directory / "link.ls").symlink_to(outside)
+
+            payload = json.loads(json.dumps(original))
+            payload["fixtures"] = [payload["fixtures"][0]]
+            payload["fixtures"][0]["source"] = "fixtures/link.ls"
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+            result = self.run_validator(manifest, root)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("symlink", result.stderr.lower())
+
     def test_rejects_valid_fixture_with_diagnostic_or_invalid_without_one(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))
         valid_index = next(

@@ -110,6 +110,11 @@ def validate_source(root: pathlib.Path, source: Any, label: str) -> str:
         path.relative_to(root)
     except ValueError as error:
         raise ManifestError(f"{label} escapes the project root") from error
+    current = root
+    for component in relative.parts:
+        current /= component
+        if current.is_symlink():
+            raise ManifestError(f"{label} must not traverse symlinks")
     if not path.is_file():
         raise ManifestError(f"{label} does not exist: {relative.as_posix()}")
     return relative.as_posix()

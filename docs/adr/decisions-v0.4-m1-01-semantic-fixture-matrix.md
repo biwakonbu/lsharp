@@ -18,9 +18,9 @@ look stronger than its evidence.
 ## Decision
 
 - Use `scripts/ci/semantic-fixture-matrix.json` as the version-1 inventory for
-  V4-M1-01. Every fixture names a project-relative `.ls` source, valid/invalid
-  kind, covered layers, observable outputs, commands, expected diagnostics and
-  spans, exit code, artifact state, and runtime state.
+  V4-M1-01. Every fixture names a project-relative, regular non-symlink `.ls`
+  source, valid/invalid kind, covered layers, observable outputs, commands,
+  expected diagnostics and spans, exit code, artifact state, and runtime state.
 - Require both supported targets (`aarch64-apple-darwin` and
   `x86_64-unknown-linux-gnu`) on the manifest and every fixture in a stable
   order. Unknown or omitted targets fail closed.
