@@ -147,6 +147,13 @@ def load_index(
     if adr_path.parts[:2] != ("docs", "adr") or adr_path.suffix != ".md":
         raise ObservationError("evidence index.adr must reference a Markdown file under docs/adr")
     artifact_namespace = ARTIFACT_LAYOUT + (source_commit, target)
+    try:
+        index_relative = path.absolute().relative_to(root).as_posix()
+    except ValueError as error:
+        raise ObservationError("evidence index must be under its target-scoped artifact namespace") from error
+    if pathlib.PurePosixPath(index_relative).name != "index.json":
+        raise ObservationError("evidence index must be named index.json")
+    safe_relative_file(index_relative, "evidence index", root, artifact_namespace)
     oracle_report, oracle_path = safe_relative_file(
         index["oracle_report"], "evidence index.oracle_report", root, artifact_namespace
     )

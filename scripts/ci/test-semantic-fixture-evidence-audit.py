@@ -135,8 +135,13 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
         if cls._created_artifact_root:
             ARTIFACT_ROOT.rmdir()
 
-    def run_audit(self, root: pathlib.Path, index: dict) -> subprocess.CompletedProcess[str]:
-        index_path = root / "index.json"
+    def run_audit(
+        self,
+        root: pathlib.Path,
+        index: dict,
+        index_path: pathlib.Path = None,
+    ) -> subprocess.CompletedProcess[str]:
+        index_path = index_path or root / "index.json"
         index_path.write_text(json.dumps(index), encoding="utf-8")
         return subprocess.run(
             [
@@ -300,6 +305,30 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("source_commit", result.stderr.lower())
+
+    def test_rejects_index_outside_target_namespace(self):
+        with temporary_bundle() as root, tempfile.TemporaryDirectory(
+            dir=ROOT, prefix=".semantic-index-"
+        ) as outside_directory:
+            self.write_bundle(root)
+            outside_index = pathlib.Path(outside_directory) / "index.json"
+
+            result = self.run_audit(root, index_for(root), outside_index)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("evidence index", result.stderr.lower())
+
+    def test_rejects_index_symlink(self):
+        with temporary_bundle() as root, tempfile.TemporaryDirectory() as outside_directory:
+            self.write_bundle(root)
+            outside_index = pathlib.Path(outside_directory) / "index.json"
+            linked_index = root / "index.json"
+            linked_index.symlink_to(outside_index)
+
+            result = self.run_audit(root, index_for(root), linked_index)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("symlink", result.stderr.lower())
 
 
 if __name__ == "__main__":

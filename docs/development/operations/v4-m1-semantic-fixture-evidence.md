@@ -164,7 +164,8 @@ python3 scripts/ci/semantic_fixture_diff.py \
 に従う project-relative path で作る。report と comparison の source commit / target / fixture IDs は
 index と一致させる。oracle/native report と comparison の参照は必ず
 `ci-artifacts/v4-m1-01/<source_commit>/<target>/` 配下に置く。audit は index の source commit と target
-からこの namespace を導出し、別 target の bundle を拒否する。
+からこの namespace を導出し、index 自体もその directory の `index.json` として置く。bundle 外や symlink の
+index、別 target の bundle は拒否する。
 各 fixture の `command` は matrix に宣言されたものから一つ選び、4つの negative gate を全て `pass` と明示する。
 
 ```bash
