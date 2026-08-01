@@ -36,7 +36,24 @@ class SemanticFixtureEvidenceAggregateSchemaTest(unittest.TestCase):
         )
         self.assertEqual(
             item["properties"]["index"]["pattern"],
-            r"^ci-artifacts/v4-m1-01/(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\).+",
+            r"^ci-artifacts/v4-m1-01/[0-9a-f]{40}/(?:aarch64-apple-darwin|x86_64-unknown-linux-gnu)/index\.json$",
+        )
+
+    def test_declares_canonical_target_order_and_scoped_index_paths(self):
+        schema = self.load_schema()
+        prefix_items = schema["properties"]["indexes"]["prefixItems"]
+        self.assertEqual(len(prefix_items), 2)
+        self.assertEqual(
+            [item["properties"]["target"] for item in prefix_items],
+            [{"const": "aarch64-apple-darwin"}, {"const": "x86_64-unknown-linux-gnu"}],
+        )
+        self.assertEqual(
+            prefix_items[0]["properties"]["index"]["pattern"],
+            r"^ci-artifacts/v4-m1-01/[0-9a-f]{40}/aarch64-apple-darwin/index\.json$",
+        )
+        self.assertEqual(
+            prefix_items[1]["properties"]["index"]["pattern"],
+            r"^ci-artifacts/v4-m1-01/[0-9a-f]{40}/x86_64-unknown-linux-gnu/index\.json$",
         )
 
     def test_declares_recomputed_result_shape(self):

@@ -16,6 +16,34 @@
       "type": "array",
       "minItems": 2,
       "maxItems": 2,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "index"],
+          "properties": {
+            "target": {"const": "aarch64-apple-darwin"},
+            "index": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/aarch64-apple-darwin/index\\.json$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "index"],
+          "properties": {
+            "target": {"const": "x86_64-unknown-linux-gnu"},
+            "index": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/x86_64-unknown-linux-gnu/index\\.json$"
+            }
+          }
+        }
+      ],
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -27,7 +55,7 @@
           "index": {
             "type": "string",
             "minLength": 1,
-            "pattern": "^ci-artifacts/v4-m1-01/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+"
+            "pattern": "^ci-artifacts/v4-m1-01/[0-9a-f]{40}/(?:aarch64-apple-darwin|x86_64-unknown-linux-gnu)/index\\.json$"
           }
         }
       }

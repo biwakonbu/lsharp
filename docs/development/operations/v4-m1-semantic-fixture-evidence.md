@@ -189,7 +189,8 @@ stale source/target、欠落した gate は fail closed になる。
 `ci-artifacts/v4-m1-01/$SOURCE_COMMIT/aggregate/index.json` に両 target の index path を記録する。
 aggregate schema は2 targetを要求し、audit は各 target index を再監査する。
 各 target index の selected fixture IDs も一致していなければ aggregate は失敗する。
-入力の aggregate index は [`v4-m1-06-evidence-aggregate.schema.json`](../../schemas/v4-m1-06-evidence-aggregate.schema.json)、
+入力の aggregate index は [`v4-m1-06-evidence-aggregate.schema.json`](../../schemas/v4-m1-06-evidence-aggregate.schema.json) が
+Mac Apple Silicon → Linux x86_64 の順序と target-scoped `index.json` path を要求し、
 再計算された stdout は [`v4-m1-06-evidence-aggregate-result.schema.json`](../../schemas/v4-m1-06-evidence-aggregate-result.schema.json)
 に従う。result には top-level の `fixture_ids` と、各 target の `fixture_ids`、`fixture_count`、
 `pending_boundaries`、`mismatches` が含まれる。schema は形状を固定し、current source/target と

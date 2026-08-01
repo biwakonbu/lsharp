@@ -27,8 +27,9 @@ pending while its Linux replay or packaged artifact is unavailable.
   target mismatches but either target is pending, and `pass` only when both
   target audits pass. A declared status that differs from this result fails
   closed.
-- The JSON Schema fixes the aggregate suite/task and two-entry shape; dynamic
-  source-commit/target path binding remains executable semantics.
+- The JSON Schema fixes the aggregate suite/task, two-entry shape, canonical
+  Mac-then-Linux target order, and target-scoped `index.json` path shape;
+  current source binding and filesystem safety remain executable semantics.
 - The recomputed stdout shape is fixed separately by
   `docs/schemas/v4-m1-06-evidence-aggregate-result.schema.json`, including the
   selected fixture IDs and per-target pending/mismatch summaries.
@@ -49,5 +50,7 @@ rollback evidence remain pending, so V4-M1-06 stays `[~]`.
   contracts.
 - `docs/adr/decisions-v0.4-m1-06-aggregate-result-schema.md` — result schema
   decision record.
+- `docs/adr/decisions-v0.4-m1-06-aggregate-index-schema.md` — input index
+  target namespace decision record.
 - `docs/development/operations/v4-m1-semantic-fixture-evidence.md` —
   per-target producer flow followed by aggregate audit.
