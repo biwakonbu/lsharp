@@ -302,6 +302,14 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   partial sliceであり、current-source Linux runtime、fetch後の packaged provenance、provider/auth、両 target
   runtime は残る。ADR: `docs/adr/decisions-v0.3-native-linux-stage0-source-directory-provenance.md`。
 
+  2026-08-02 に `fetch-stage0.sh` の archive preflight を directory または regular file のみ受理する
+  fail-closed boundaryへ更新した。unknown tar entry の RED→GREEN と valid local package の fetch/install を
+  focused harness で確認した。current source `e7c7e864` と一致する Linux stage0 artifact がなく、実 Linux
+  runtime replay は未実行であるため、current-source runtime、packaged runtime、provider/auth、rollback、
+  両 target parity は残る。再現 command は `git rev-parse --verify HEAD` と
+  `find /tmp /Users/biwakonbu/github/tmp -maxdepth 4 -type f -name manifest.json -path '*lsharp*'`。
+  ADR: `docs/adr/decisions-v0.3-stage0-fetch-archive-entry-provenance.md`。
+
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
 rollback archive、stage0 package/fetch、official release smoke を同一 source commit で確認した。

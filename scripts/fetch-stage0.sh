@@ -89,7 +89,7 @@ for member in members:
     path = pathlib.PurePosixPath(member.name)
     if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != expected_root:
         raise SystemExit(f"unsafe native stage0 archive entry: {member.name}")
-    if member.issym() or member.islnk() or member.isdev():
+    if not member.isdir() and not member.isfile():
         raise SystemExit(f"unsafe native stage0 archive entry type: {member.name}")
 PY
 }
