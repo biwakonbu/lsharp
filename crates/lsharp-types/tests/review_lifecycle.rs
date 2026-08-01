@@ -144,6 +144,27 @@ fn lifecycle_rejects_duplicate_or_rollback_sequences_and_invalid_transitions() {
         )),
         Err(LifecycleError::InvalidTransition { .. })
     ));
+
+    let mut gap_registry = ReviewLifecycleRegistry::default();
+    gap_registry
+        .add_event(event(
+            "review:orders/reviewer-002",
+            1,
+            ReviewLifecycleState::Proposed,
+        ))
+        .expect("initial proposed state is allowed");
+    assert!(matches!(
+        gap_registry.add_event(event(
+            "review:orders/reviewer-002",
+            3,
+            ReviewLifecycleState::Active,
+        )),
+        Err(LifecycleError::SequenceGap {
+            review_id,
+            previous: 1,
+            next: 3,
+        }) if review_id == "review:orders/reviewer-002"
+    ));
 }
 
 #[test]

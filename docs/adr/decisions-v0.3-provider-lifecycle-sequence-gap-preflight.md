@@ -18,8 +18,8 @@ native release identity preflight は sequence の欠落・非正数・duplicate
 `1 → 3` のような gapは `review lifecycle sequence gap` として fail-closedに拒否する。rollback・duplicate・required/positive
 の既存診断と、異なる review ID間の sequence orderingはこのsliceで変更しない。
 
-Rust `ReviewLifecycleRegistry` の一般 event reducerは gapを拒否する契約としてまだ検証していないため、この sliceを Rust/native
-完全 parity の証拠へ拡大解釈しない。release provider boundaryの証跡として別途扱う。
+Rust `ReviewLifecycleRegistry` の一般 event reducerは、この元の native-only sliceでは対象外だったため、当時の時点で Rust/native
+完全 parityの証拠へ拡大解釈しなかった。後続の parity ADRで同じ gap fixtureを別途検証する。
 
 ## Evidence
 

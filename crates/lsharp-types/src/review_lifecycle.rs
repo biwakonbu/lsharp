@@ -65,6 +65,14 @@ pub enum LifecycleError {
         next: u64,
     },
     #[error(
+        "review lifecycle の sequence に gap があります: review_id={review_id:?}, previous={previous}, next={next}"
+    )]
+    SequenceGap {
+        review_id: String,
+        previous: u64,
+        next: u64,
+    },
+    #[error(
         "review lifecycle の effective_at が巻き戻っています: review_id={review_id:?}, previous={previous:?}, next={next:?}"
     )]
     EffectiveTimeRollback {
@@ -192,6 +200,13 @@ impl ReviewLifecycleRegistry {
             }
             if event.sequence() < previous.sequence() {
                 return Err(LifecycleError::SequenceRollback {
+                    review_id,
+                    previous: previous.sequence(),
+                    next: event.sequence(),
+                });
+            }
+            if event.sequence() - previous.sequence() > 1 {
+                return Err(LifecycleError::SequenceGap {
                     review_id,
                     previous: previous.sequence(),
                     next: event.sequence(),
