@@ -787,6 +787,8 @@ def validate_manifest_output(value):
             raise ToolError("native emitted manifest reviews must be an array")
         for index, review in enumerate(value["reviews"]):
             validate_manifest_review(review, index)
+    for index, edge in enumerate(value["edges"]):
+        validate_manifest_edge(edge, index)
 
 
 def validate_manifest_non_empty_string(value, label):
@@ -876,6 +878,70 @@ def validate_manifest_review(value, index):
         "revoked",
     ):
         raise ToolError(f"{label}.verification_state has invalid value")
+
+
+def validate_manifest_id(value, label):
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"namespace", "key"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in ("namespace", "key") if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    validate_manifest_identifier(value["namespace"], f"{label}.namespace")
+    validate_manifest_identifier(value["key"], f"{label}.key")
+
+
+def validate_manifest_subject(value, label, kinds):
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {"kind", "namespace", "key"}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in ("kind", "namespace", "key") if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    if value["kind"] not in kinds:
+        raise ToolError(f"{label}.kind has invalid value")
+    validate_manifest_identifier(value["namespace"], f"{label}.namespace")
+    validate_manifest_identifier(value["key"], f"{label}.key")
+
+
+def validate_manifest_edge(value, index):
+    label = f"native emitted manifest edges[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    if "relation" not in value:
+        raise ToolError(f"{label} is missing field: relation")
+
+    relation = value["relation"]
+    relation_fields = {
+        "motivates": (("intent", "claim"), None),
+        "constrained-by": (("claim", "assumption"), None),
+        "tested-by": (("claim", "contract"), None),
+        "supports": (("observation", "claim"), None),
+        "contradicts": (("observation", "claim"), None),
+        "evaluates": (("review", "subject"), ("intent", "claim", "evidence")),
+        "invalidates": (("change", "subject"), ("evidence", "review")),
+    }
+    if relation not in relation_fields:
+        raise ToolError(f"{label}.relation has invalid value")
+    fields, subject_kinds = relation_fields[relation]
+    allowed = {"relation", *fields}
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in fields if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    for name in fields:
+        if name == "subject":
+            validate_manifest_subject(value[name], f"{label}.{name}", subject_kinds)
+        else:
+            validate_manifest_id(value[name], f"{label}.{name}")
 
 
 def validate_trace_gap(value, index):

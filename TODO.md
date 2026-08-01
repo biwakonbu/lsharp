@@ -264,6 +264,12 @@ input 経由の malformed identity を native 成功として返さず、完全�
 MCP 72 tests と Python compile で確認した verified partial である。ADR:
 `docs/adr/decisions-v0.3-native-mcp-review-identity-output.md`。manifest nested runtime、target runtime、
 provider semantics、Rust/native full parity は残る。
+さらに native MCP emitted manifest の `edges` を全 relation variant（`motivates`、`constrained-by`、
+`tested-by`、`supports`、`contradicts`、`evaluates`、`invalidates`）ごとに postflight 検証し、relation
+固有 field、ID、subject kind、unknown field の境界を揃えた。valid edge manifest は保持し、malformed edge
+は native 成功として返さないことを native MCP 74 tests と Python compile で確認した verified partial
+である。ADR: `docs/adr/decisions-v0.3-native-mcp-manifest-edges.md`。evidence nested、referential integrity、
+target runtime、provider semantics、Rust/native full parity は残る。
 さらに native MCP emitted manifest の `nodes` / `reviews` item を postflight 検証し、closed field、
 required identifier、kind/visibility/state enum、non-empty text、span offset、provenance digest の境界を
 揃えた。valid node/review manifest は保持し、malformed item は native 成功として返さないことを native

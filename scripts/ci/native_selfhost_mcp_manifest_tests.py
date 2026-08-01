@@ -81,6 +81,11 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
         ("review-missing", "reviews[0] is missing field: namespace"),
         ("review-visibility", "reviews[0].visibility has invalid value"),
         ("review-extra", "reviews[0] has unknown field: extra"),
+        ("edge-missing", "edges[0] is missing field: relation"),
+        ("edge-relation", "edges[0].relation has invalid value"),
+        ("edge-extra", "edges[0] has unknown field: extra"),
+        ("edge-id", "edges[0].intent is missing field: key"),
+        ("edge-subject", "edges[0].subject.kind has invalid value"),
     )
     for manifest_mode, expected_message in cases:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -136,3 +141,30 @@ def assert_validate_accepts_valid_emitted_manifest_items(test):
         manifest = response["result"]["structuredContent"]["manifest"]
         test.assertEqual(manifest["nodes"][0]["span"], {"start": 0, "end": 5})
         test.assertEqual(manifest["reviews"][0]["verification_state"], "verified")
+
+
+def assert_validate_accepts_valid_emitted_manifest_edges(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "include_manifest": True,
+                    },
+                },
+            ),
+            root,
+            manifest_mode="edges-valid",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        edges = response["result"]["structuredContent"]["manifest"]["edges"]
+        test.assertEqual([edge["relation"] for edge in edges], ["motivates", "supports", "evaluates"])
