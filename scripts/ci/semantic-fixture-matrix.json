@@ -244,6 +244,7 @@
         "fallback": "forbidden",
         "network": "forbidden"
       },
+      "runtime_inputs": {"input.txt": "payload"},
       "expected": {
         "diagnostics": [],
         "exit_code": 0,

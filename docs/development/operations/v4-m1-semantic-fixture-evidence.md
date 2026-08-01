@@ -96,6 +96,12 @@ valid fixture は regular Wasm artifact と Wasmtime の stdout/stderr を記録
 compiler が non-zero で終了し、`LS####` code と source byte span の両方が得られた場合だけ記録する。
 code/span が欠けたときに推測で補完してはならない。
 
+`runtime_inputs` を宣言する fixture（現時点では `valid/io-read-file`）は、manifest の
+project-relative path と UTF-8 content を唯一の入力源とする。producer が task-owned runtime
+directory に新規作成し、Wasmtime の `--dir=.` でその directory だけを preopen するため、operator
+側で `input.txt` を作成したり、作業ディレクトリの外からファイルを拾わせたりしてはならない。
+既存ファイル、symlink、正規化されていない path は fail closed になる。
+
 ## 3. Native stage0 report
 
 `STAGE0_MANIFEST` の `kind`、target、source commit は preflight と一致させる。runner の環境から

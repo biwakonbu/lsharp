@@ -36,11 +36,16 @@ class ManifestError(ValueError):
     """The fixture matrix does not satisfy its versioned contract."""
 
 
-def expect_keys(value: Mapping[str, Any], required: Iterable[str], label: str) -> None:
+def expect_keys(
+    value: Mapping[str, Any],
+    required: Iterable[str],
+    label: str,
+    optional: Iterable[str] = (),
+) -> None:
     required_set = set(required)
     actual = set(value)
     missing = sorted(required_set - actual)
-    unexpected = sorted(actual - required_set)
+    unexpected = sorted(actual - required_set - set(optional))
     if missing or unexpected:
         details = []
         if missing:
@@ -108,6 +113,30 @@ def validate_source(root: pathlib.Path, source: Any, label: str) -> str:
     if not path.is_file():
         raise ManifestError(f"{label} does not exist: {relative.as_posix()}")
     return relative.as_posix()
+
+
+def validate_runtime_inputs(value: Any, label: str) -> Dict[str, str]:
+    inputs = require_object(value, label)
+    normalized: Dict[str, str] = {}
+    for relative_value, content in inputs.items():
+        if not isinstance(relative_value, str) or not relative_value:
+            raise ManifestError(f"{label} paths must be non-empty strings")
+        relative = pathlib.PurePosixPath(relative_value)
+        if (
+            relative.is_absolute()
+            or "\\" in relative_value
+            or "\x00" in relative_value
+            or ".." in relative.parts
+            or "." in relative.parts
+            or relative.as_posix() != relative_value
+        ):
+            raise ManifestError(
+                f"{label}.{relative_value} is unsafe; use a normalized project-relative path"
+            )
+        if not isinstance(content, str):
+            raise ManifestError(f"{label}.{relative_value} content must be a string")
+        normalized[relative.as_posix()] = content
+    return dict(sorted(normalized.items()))
 
 
 def validate_execution(value: Any, label: str) -> Dict[str, str]:
@@ -212,6 +241,7 @@ def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[st
             fixture,
             ("id", "source", "kind", "layers", "observables", "targets", "commands", "execution", "expected"),
             label,
+            optional=("runtime_inputs",),
         )
         identifier = require_string(fixture["id"], f"{label}.id")
         identifiers.append(identifier)
@@ -231,19 +261,24 @@ def project_manifest(manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[st
         fixture_execution = validate_execution(fixture["execution"], f"{label}.execution")
         if fixture_execution != execution:
             raise ManifestError(f"{label}.execution must match manifest.execution")
-        projected_fixtures.append(
-            {
-                "id": identifier,
-                "source": validate_source(root, fixture["source"], f"{label}.source"),
-                "kind": kind,
-                "layers": layers,
-                "observables": observables,
-                "targets": fixture_targets,
-                "commands": commands,
-                "execution": fixture_execution,
-                "expected": validate_expected(fixture["expected"], kind, f"{label}.expected"),
-            }
-        )
+        projected_fixture = {
+            "id": identifier,
+            "source": validate_source(root, fixture["source"], f"{label}.source"),
+            "kind": kind,
+            "layers": layers,
+            "observables": observables,
+            "targets": fixture_targets,
+            "commands": commands,
+            "execution": fixture_execution,
+            "expected": validate_expected(fixture["expected"], kind, f"{label}.expected"),
+        }
+        if "runtime_inputs" in fixture:
+            if kind != "valid":
+                raise ManifestError(f"{label}.runtime_inputs is only allowed for valid fixtures")
+            projected_fixture["runtime_inputs"] = validate_runtime_inputs(
+                fixture["runtime_inputs"], f"{label}.runtime_inputs"
+            )
+        projected_fixtures.append(projected_fixture)
 
     if len(set(identifiers)) != len(identifiers):
         raise ManifestError("fixture ids must be unique")

@@ -128,6 +128,75 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                 {"status": "observed", "exit_code": 0, "stdout": "42\n", "stderr": ""},
             )
 
+    def test_materializes_declared_runtime_input_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "fake-native-runner.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'native-wasm')\n",
+            )
+            make_executable(
+                wasmtime,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "if '--dir=.' not in sys.argv:\n"
+                "    raise SystemExit('runtime input directory was not preopened')\n"
+                "print(Path('input.txt').read_text(encoding='utf-8'))\n",
+            )
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                fixture_id="valid/io-read-file",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["fixtures"][0]["runtime"]["stdout"], "payload\n")
+            self.assertEqual((work_dir / "input.txt").read_text(encoding="utf-8"), "payload")
+
+    def test_rejects_overwriting_declared_runtime_input_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "fake-native-runner.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            (work_dir / "input.txt").write_text("existing", encoding="utf-8")
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'native-wasm')\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                fixture_id="valid/io-read-file",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("runtime input", result.stderr.lower())
+            self.assertFalse(output.exists())
+            self.assertEqual((work_dir / "input.txt").read_text(encoding="utf-8"), "existing")
+
     def test_writes_invalid_report_when_code_and_span_are_explicit(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

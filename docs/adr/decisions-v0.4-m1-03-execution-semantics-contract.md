@@ -80,7 +80,11 @@ where they are observable, and the process boundary for:
 The same fixture must be safe to run with fallback and network disabled. An
 external helper or provider may be used only when the fixture declares its
 input as an explicit, hashed snapshot; it must not be discovered from the
-environment.
+environment. Runtime file snapshots are UTF-8 content keyed by normalized
+project-relative paths. The producer materializes them only in its
+task-owned runtime directory, preopens that directory explicitly for
+Wasmtime, and fails closed instead of overwriting an existing file or
+traversing a symlink.
 
 ### 4. Failure and unsupported-feature policy
 
@@ -150,7 +154,7 @@ observations as pending rather than overloading `stdout` or a debug log.
   nested record variable patterns on the supported path and declares the
   AST/type/IR/ftable/import/Wasm/runtime/report observations in the V4 matrix.
 - The matrix RED→GREEN contract is covered by
-  `python3 scripts/ci/test-semantic-fixture-matrix.py` (10 tests). The Rust
+  `python3 scripts/ci/test-semantic-fixture-matrix.py` (12 tests). The Rust
   oracle producer, with fixture implementation commit
   `4790bb3e647d03b2ccfa883bc502e40d2385865f`
   and target-declared `aarch64-apple-darwin`, observed exit `0`, stdout
@@ -191,6 +195,17 @@ observations as pending rather than overloading `stdout` or a debug log.
   6,498 bytes with digest
   `sha256:5b6f2251feac0697d5c22f849a43cf15209e959320ef978c5806b312c0c6ab51`;
   Wasmtime 43.0.0 validation and standalone execution passed.
+- `valid/io-read-file` extends `V4-M1-03-R4` with an explicit runtime input
+  snapshot: the matrix projects `{\"input.txt\": \"payload\"}` and rejects
+  unsafe paths or non-string content. The Rust oracle at source commit
+  `708bc6f5775f69a849cd8b683778eb1963928361` and target-declared
+  `aarch64-apple-darwin` observed a valid Wasm artifact of 6,583 bytes with
+  digest
+  `sha256:843524e4a13a230bfdf184c0392ab6a2eda9a422fb16c9d6eb48875f7267fb48`;
+  Wasmtime 43.0.0 with the task-owned directory preopened returned `payload`,
+  exit `0`, and empty stderr. `wasm-tools 1.245.1 validate` passed. The
+  producer refuses to overwrite an existing input and the report remains
+  task-local until a final-main evidence run.
 - This is Rust-oracle evidence only. Native stage0 execution, Linux x86_64,
   ftable/import byte parity, root/resource telemetry, limit-boundary diagnostics,
   file/stdin/short-read ABI coverage, and the two-target completion audit remain

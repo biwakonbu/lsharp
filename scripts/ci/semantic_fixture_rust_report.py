@@ -28,6 +28,7 @@ from semantic_fixture_matrix import (
     SUPPORTED_TARGETS,
     project_manifest,
     require_object,
+    validate_runtime_inputs,
 )
 
 
@@ -174,6 +175,51 @@ def fixture_work_dir(work_dir: pathlib.Path, index: int, batch_size: int) -> pat
     return path
 
 
+def fixture_runtime_dir(runtime_dir: pathlib.Path, fixture_dir: pathlib.Path, index: int, batch_size: int) -> pathlib.Path:
+    if batch_size == 1:
+        return runtime_dir
+    path = runtime_dir / f"{index:04d}"
+    if path == fixture_dir:
+        return path
+    if path.exists() or path.is_symlink():
+        raise ReportError(f"fixture runtime directory already exists: {path}")
+    try:
+        path.mkdir()
+    except OSError as error:
+        raise ReportError(f"fixture runtime directory cannot be created: {path}: {error}") from error
+    return path
+
+
+def materialize_runtime_inputs(fixture: Dict[str, Any], runtime_dir: pathlib.Path) -> None:
+    inputs = validate_runtime_inputs(fixture.get("runtime_inputs", {}), f"fixture {fixture['id']}.runtime_inputs")
+    for relative_value, content in inputs.items():
+        relative = pathlib.PurePosixPath(relative_value)
+        destination = runtime_dir.joinpath(*relative.parts)
+        try:
+            destination.relative_to(runtime_dir)
+        except ValueError as error:
+            raise ReportError(f"runtime input escapes runtime directory: {relative_value}") from error
+
+        parent = runtime_dir
+        for part in relative.parts[:-1]:
+            parent = parent / part
+            if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                raise ReportError(f"runtime input parent is not a regular directory: {parent}")
+            if not parent.exists():
+                try:
+                    parent.mkdir()
+                except OSError as error:
+                    raise ReportError(f"runtime input parent cannot be created: {parent}: {error}") from error
+
+        if destination.exists() or destination.is_symlink():
+            raise ReportError(f"runtime input already exists; refusing overwrite: {destination}")
+        try:
+            with destination.open("x", encoding="utf-8", newline="") as stream:
+                stream.write(content)
+        except OSError as error:
+            raise ReportError(f"runtime input cannot be materialized: {destination}: {error}") from error
+
+
 def observe_fixture(
     fixture: Dict[str, Any],
     index: int,
@@ -187,7 +233,8 @@ def observe_fixture(
 ) -> Dict[str, Any]:
     source = root / pathlib.PurePosixPath(fixture["source"])
     source_text = source.read_text(encoding="utf-8")
-    artifact = fixture_work_dir(work_dir, index, batch_size) / "semantic-fixture.wasm"
+    fixture_dir = fixture_work_dir(work_dir, index, batch_size)
+    artifact = fixture_dir / "semantic-fixture.wasm"
     if artifact.exists() or artifact.is_symlink():
         raise ReportError(f"artifact path already exists: {artifact}")
     compile_result = subprocess.run(
@@ -224,9 +271,15 @@ def observe_fixture(
         raise ReportError(f"Rust oracle compile failed with exit {compile_result.returncode}: {detail}")
     if not artifact.is_file() or artifact.is_symlink():
         raise ReportError("Rust oracle compile succeeded without a regular Wasm artifact")
+    execution_dir = fixture_runtime_dir(runtime_dir, fixture_dir, index, batch_size)
+    materialize_runtime_inputs(fixture, execution_dir)
+    runtime_command = [str(wasmtime), "run"]
+    if fixture.get("runtime_inputs"):
+        runtime_command.append("--dir=.")
+    runtime_command.append(str(artifact))
     runtime_result = subprocess.run(
-        [str(wasmtime), "run", str(artifact)],
-        cwd=runtime_dir,
+        runtime_command,
+        cwd=execution_dir,
         env=environment,
         capture_output=True,
         check=False,

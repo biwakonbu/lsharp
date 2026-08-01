@@ -810,8 +810,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   diagnostic-only legacy `lower`、no-arg pipeline runtime/native E2E、component sidecar の
   artifact boundary を閉じる。
 - [~] `V2-16b` / `LEGACY-IO-01` native artifact I/O — bounded argv/file/raw-byte Preview1 と
-  4096 bytes 超 read の slice は verified。全 fd error semantics、dynamic root/data/heap layout、
-  component sidecar、target 別 release artifact を閉じる。
+  4096 bytes 超 read の slice は verified。`valid/io-read-file` は manifest の明示的な
+  UTF-8 runtime input snapshot と task-owned preopen まで Rust oracle/native producer contract
+  で固定した。全 fd error semantics、dynamic root/data/heap layout、component sidecar、target 別
+  release artifact を閉じる。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host

@@ -195,6 +195,37 @@ class SemanticFixtureMatrixTest(unittest.TestCase):
         self.assertEqual(fixture["expected"]["runtime"]["stdout"], "1\n")
         self.assertEqual(fixture["expected"]["runtime"]["exit_code"], 0)
 
+    def test_r4_file_fixture_declares_explicit_runtime_input_snapshot(self):
+        result = self.run_validator()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        projected = json.loads(result.stdout)
+        fixture = next(
+            fixture
+            for fixture in projected["fixtures"]
+            if fixture["id"] == "valid/io-read-file"
+        )
+        self.assertEqual(fixture["runtime_inputs"], {"input.txt": "payload"})
+
+    def test_rejects_unsafe_or_non_string_runtime_input_snapshot(self):
+        original = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        cases = (
+            ("unsafe path", {"runtime_inputs": {"../outside.txt": "payload"}}),
+            ("non-string content", {"runtime_inputs": {"input.txt": 42}}),
+        )
+        fixture_index = next(
+            index for index, fixture in enumerate(original["fixtures"])
+            if fixture["id"] == "valid/io-read-file"
+        )
+        for label, update in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                manifest = pathlib.Path(directory) / "manifest.json"
+                payload = json.loads(json.dumps(original))
+                payload["fixtures"][fixture_index].update(update)
+                manifest.write_text(json.dumps(payload), encoding="utf-8")
+                result = self.run_validator(manifest)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("runtime_inputs", result.stderr)
+
     def test_rejects_unresolved_target_and_unsafe_source(self):
         original = json.loads(MANIFEST.read_text(encoding="utf-8"))
         cases = (
