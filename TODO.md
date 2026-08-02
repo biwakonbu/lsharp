@@ -1508,6 +1508,27 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   allocationと narrow object runtimeの verified sliceであり、全 fd/error semantics、current HEADの
   source-file smoke、Mac parity、package/release/rollbackの完了証拠ではない。ADR:
   `docs/adr/decisions-v0.3-native-linux-read-file-bounded-heap.md`。
+  さらに current `HEAD=0b668bf500afbf03ffb55297abd381dfee845957` で Linux x86_64 actual stage1を一度だけ
+  fresh生成し、`1 passed` / `305.60s`、code `4,393,234` bytes、data `2,757` bytes、entrypoint
+  `4,390,778`、function-start `3,409`、main function `3,418`、manifest source commit一致を確認した。
+  これを VM materializerで `lsharp-native-selfhost-stage0` packageへ変換し、manifestの target、compiler、
+  transport driver、materializer、source commitを確認した。packageは
+  `ci-artifacts/native-linux-x86-hostgen-vm/0b668bf5-stage0-package/` に保持した。
+  同じ packageを `LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE=64`、timeout `900` 秒で
+  `native-linux-x86-native-stage0-source-file-smoke.sh` に渡し、`parse`、`check`、`fmt`、通常/metadata/property
+  `test`、EC-M3 validationのpositive/negative fixture、`compile`、`build` を native stage0から実行した。
+  runは `exit_code=0`、stderrなしの成功 markerで終了し、`parse` は `decls:1` / `first-body:int` /
+  `diagnostics:0`、`check` は `Int` / `diagnostics:0`、`test` は `examples:0` / `invariants:0` /
+  `failures:0`、metadata testは `examples:2` / `invariants:1` / `failures:0`、compile/buildは各
+  `wasm-size:2559`、Wasm bytesは同一 SHA-256 `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`
+  / 2,559 bytesだった。`cargo`、`rustc`、host `lsharp` は blocklistで成功経路から除外した。
+  evidence manifestは `source_commit`、stage0 manifest SHA-256
+  `fe1bf90ff3e7542cd6df7b92f9ef5069620d93d49d693a8002b505e104ee9a19`、payload SHA-256
+  `0111da02752e0e9e3ffa20deaf7818e1aa167c2f20c2168132a340a220625c8e`、target、exit `0` を記録し、
+  `ci-artifacts/native-linux-x86-hostgen-vm/0b668bf5-source-smoke-evidence/` に保持した。これは current
+  Linux stage0 package/source-file smokeの verified sliceであり、公開 release assetの acquisition、rollback
+  実行、全公開 command、component sidecar、Mac/Linux packaged artifact parity、`LEGACY-BOOT-01` aggregateの
+  完了証拠ではない。
 
 ## ISSUES-derived quality and runtime work
 

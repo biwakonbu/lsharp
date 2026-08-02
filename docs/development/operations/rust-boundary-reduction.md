@@ -3337,6 +3337,36 @@ pattern全体のsemantic parity、import/parametric/deep cases、runtime/ftable/
 Mac Apple SiliconとLinux x86_64の変更後artifact matrix、`LEGACY-LANG-01` aggregateの完了を意味しない。
 Rust oracle / bootstrap / host integration境界と TODOの `[~]` は維持する。
 
+### V2-16e / LEGACY-BOOT-01 Linux current HEAD stage0 package/source-file smoke (2026-08-02)
+
+current `HEAD=0b668bf500afbf03ffb55297abd381dfee845957` で
+`test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact` を一度だけ実行し、fresh
+stage1は `1 passed` / `305.60s`、target `x86_64-unknown-linux-gnu`、code `4,393,234` bytes、data `2,757`
+bytes、entrypoint `4,390,778`、function-start `3,409`、main function `3,418`、manifest source commit一致を
+記録した。これを `package-native-linux-x86-actual-stage1-vm.sh` で VM materializeし、current source commitを
+束縛した `lsharp-native-selfhost-stage0` packageを生成した。package manifestは target、relative compiler /
+transport driver / materializer path、source commitを保持し、artifactは
+`ci-artifacts/native-linux-x86-hostgen-vm/0b668bf5-stage0-package/` に保存した。
+
+同じ packageを `native-linux-x86-native-stage0-source-file-smoke.sh` へ渡し、transport chunk `64`、chunk
+timeout `900` 秒、VM free `7,682,572,288` bytes / required `4,294,967,296` bytesで、native stage0の
+`parse`、`check`、`fmt`、通常/metadata/property `test`、EC-M3 validation positive/negative fixture、
+`compile`、`build`を実行した。runは exit `0` で `Linux x86_64 native stage0 source-file smoke passed` となり、
+positive core outputは `decls:1` / `first-body:int` / `diagnostics:0`、`Int` / `diagnostics:0`、
+`examples:0` / `invariants:0` / `failures:0`、metadata `examples:2` / `invariants:1` / `failures:0`。
+compile/buildはいずれも `wasm-size:2559`、Wasm size `2,559` bytes、SHA-256
+`afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`で一致した。成功経路の PATHでは
+`cargo`、`rustc`、host `lsharp`をblocklistし、Rust fallbackを使っていない。EC-M3 negative fixtureのstderrは
+期待される診断として個別 artifactへ保存した。
+
+evidence manifestは exit `0`、target、source commit、stage0 manifest SHA-256
+`fe1bf90ff3e7542cd6df7b92f9ef5069620d93d49d693a8002b505e104ee9a19`、stage0 payload SHA-256
+`0111da02752e0e9e3ffa20deaf7818e1aa167c2f20c2168132a340a220625c8e`を記録し、
+`ci-artifacts/native-linux-x86-hostgen-vm/0b668bf5-source-smoke-evidence/`に保持した。これは current Linux
+stage0 package/source-file smokeの verified sliceであり、公開 release asset acquisition、rollback実行、全公開
+command、component sidecar、Mac/Linux packaged artifact parity、`LEGACY-BOOT-01` aggregateの完了を意味しない。
+既存の source-smoke evidence export contractは `docs/adr/decisions-v0.3-native-source-smoke-evidence.md` に記録する。
+
 ### V2-16e / LEGACY-BOOT-01 Linux current-source stage2/stage3 fixed point (2026-08-02)
 
 source commit `a41cf0655a12d88ac3ed2185492183049234cc7d` で生成した Linux x86_64 stage1 code/data/seed
