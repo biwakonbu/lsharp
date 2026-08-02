@@ -696,6 +696,49 @@ fn canonicalize_driver_path(path: &Path) -> miette::Result<PathBuf> {
         .map_err(|e| driver_io_error(format!("パスの正規化に失敗 '{}': {e}", path.display())))
 }
 
+fn validate_path_dependency(project_dir: &Path, dependency_path: &str) -> miette::Result<PathBuf> {
+    let resolved = project_dir.join(dependency_path);
+    let metadata = std::fs::metadata(&resolved).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            miette::miette!(
+                "path dependency does not exist: {} ({error})",
+                resolved.display()
+            )
+        } else {
+            driver_io_error(format!(
+                "path dependency cannot be inspected: {} ({error})",
+                resolved.display()
+            ))
+        }
+    })?;
+    if !metadata.is_dir() {
+        return Err(miette::miette!(
+            "path dependency is not a directory: {}",
+            resolved.display()
+        ));
+    }
+
+    let manifest = resolved.join("lsharp.toml");
+    let manifest_metadata = std::fs::metadata(&manifest).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            miette::miette!("path dependency has no lsharp.toml: {}", manifest.display())
+        } else {
+            driver_io_error(format!(
+                "path dependency manifest cannot be inspected: {} ({error})",
+                manifest.display()
+            ))
+        }
+    })?;
+    if !manifest_metadata.is_file() {
+        return Err(miette::miette!(
+            "path dependency has no lsharp.toml: {}",
+            manifest.display()
+        ));
+    }
+
+    canonicalize_driver_path(&resolved)
+}
+
 include!("artifact_cache_options.rs");
 
 fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
@@ -2460,6 +2503,14 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
 
     let deps = &config.dependencies;
 
+    // 全 path provider input を managed install directory 作成前に検証し、欠落した宣言を
+    // 警告扱いで空の lock/index として確定しない。
+    for spec in deps.values() {
+        if let config::DependencySpec::Path { path } = spec {
+            validate_path_dependency(project_dir, path)?;
+        }
+    }
+
     let lsharp_dir = project_dir.join(".lsharp");
     let packages_dir = lsharp_dir.join("packages");
     std::fs::create_dir_all(&packages_dir)
@@ -2494,26 +2545,7 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     for (name, spec) in dependency_specs {
         match spec {
             config::DependencySpec::Path { path } => {
-                let resolved = project_dir.join(path);
-                if !resolved.exists() {
-                    eprintln!(
-                        "警告: パス依存 '{name}' のパスが存在しません: {}",
-                        resolved.display()
-                    );
-                    skipped += 1;
-                    continue;
-                }
-                let toml_path = resolved.join("lsharp.toml");
-                if !toml_path.exists() {
-                    eprintln!(
-                        "警告: パス依存 '{name}' に lsharp.toml が見つかりません: {}",
-                        resolved.display()
-                    );
-                    skipped += 1;
-                    continue;
-                }
-
-                let abs_resolved = canonicalize_driver_path(&resolved)?;
+                let abs_resolved = validate_path_dependency(project_dir, path)?;
                 let source_id = dependency_source_string(spec, project_dir);
                 let link_path = installed_package_dir(&packages_dir, name, &source_id);
                 if let Ok(metadata) = link_path.symlink_metadata()

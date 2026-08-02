@@ -2476,3 +2476,12 @@ provenance/determinismの verified partial sliceであり、registry/network取�
 current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
 次の RED は外部 registry/provider取得を含む完全 transactionality、または実 filesystem crash/power-loss durabilityである。
+
+2026-08-02 に宣言済み local `path` dependency の Rust/native input validation parityを追加した。missing path、通常 file、
+`lsharp.toml` 欠落を Rust `cmd_install` と native selfhost installer の同一 fixtureで fail-closed にし、managed `.lsharp` directory、
+lock.toml、module-index、transaction stagingを作成しない境界を固定した。これは cached registry candidate provenanceや既存の
+destination/promotion/metadata/durability rollbackとは別の local provider input boundaryであり、registry/network取得は追加していない。
+Rust installer 22 tests、native installer 18 tests、Rust format、Python syntaxを通過した。live registry/provider取得、crash/power-loss semantics、
+完全 transactionality、native MCP package-install semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、
+EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-package-install-path-input-fail-closed.md`](docs/adr/decisions-v0.3-native-package-install-path-input-fail-closed.md)。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。

@@ -797,6 +797,11 @@ def write_lockfile(lsharp_dir, entries):
 def install(project_dir):
     config = load_toml(project_dir / "lsharp.toml")
     specs = dependency_specs(config)
+    # 全 path provider input を managed install directory 作成前に検証し、Rust と同じく
+    # 欠落した宣言を警告扱いで空の lock/index として確定しない。
+    for _name, kind, value, _branch, _tag in specs:
+        if kind == "path":
+            path_source(project_dir, value)
     lsharp_dir = ensure_managed_directory(project_dir, ".lsharp")
     packages_dir = ensure_managed_directory(lsharp_dir, "packages")
     staging_dir = temporary_path(packages_dir, "install-txn")

@@ -154,6 +154,50 @@ class NativeSelfhostInstallTest(unittest.TestCase):
                 ],
             )
 
+    def test_path_dependency_input_validation_fails_closed(self):
+        for case, dependency_name, setup in (
+            (
+                "missing",
+                "missing",
+                lambda root: None,
+            ),
+            (
+                "file",
+                "not-a-directory",
+                lambda root: (root / "not-a-directory").write_text(
+                    "not a directory\n", encoding="utf-8"
+                ),
+            ),
+            (
+                "missing-manifest",
+                "missing-manifest",
+                lambda root: (root / "missing-manifest").mkdir(),
+            ),
+        ):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary_directory:
+                root = pathlib.Path(temporary_directory)
+                project = root / "project"
+                project.mkdir()
+                setup(root)
+                (project / "lsharp.toml").write_text(
+                    "[dependencies.invalid]\n"
+                    f'path = "../{dependency_name}"\n',
+                    encoding="utf-8",
+                )
+                environment, marker = self.poison_host_commands(root)
+
+                result = self.run_installer(project, environment)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(marker.exists(), "host fallback must not run")
+                expected = {
+                    "missing": "path dependency does not exist",
+                    "file": "path dependency is not a directory",
+                    "missing-manifest": "path dependency has no lsharp.toml",
+                }[case]
+                self.assertIn(expected, result.stderr)
+                self.assertFalse((project / ".lsharp").exists())
+
     def test_clones_local_git_dependencies_with_branch_and_tag(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

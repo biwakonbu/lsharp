@@ -1826,7 +1826,7 @@ tag = "v0.1.0"
 
 #[test]
 fn test_cmd_install_path_dependency_missing_path() {
-    // 存在しないパス依存はスキップされる (エラーにはならない)
+    // 宣言済みの存在しない path 依存は native installer と同じく fail-closed にする
     let base_dir = std::env::temp_dir().join("lsharp_test_install_missing_path");
     let _ = std::fs::remove_dir_all(&base_dir);
     std::fs::create_dir_all(&base_dir).unwrap();
@@ -1837,10 +1837,63 @@ fn test_cmd_install_path_dependency_missing_path() {
     )
     .unwrap();
 
-    let result = cmd_install_in(&base_dir);
-    assert!(result.is_ok(), "存在しないパスでもエラーにはならないべき");
+    let error =
+        cmd_install_in(&base_dir).expect_err("存在しない path 依存は暗黙に skip せず失敗するべき");
+    assert!(
+        error.to_string().contains("path dependency does not exist"),
+        "native と同じ path provider input 診断を返すべき: {error}"
+    );
+    assert!(
+        !base_dir.join(".lsharp/lock.toml").exists(),
+        "invalid path で lock を確定してはいけない"
+    );
+    assert!(
+        !base_dir.join(".lsharp/module-index").exists(),
+        "invalid path で module-index を確定してはいけない"
+    );
+    assert!(
+        !base_dir.join(".lsharp").exists(),
+        "invalid path で managed install directory を作成してはいけない"
+    );
 
     std::fs::remove_dir_all(&base_dir).unwrap();
+}
+
+#[test]
+fn test_cmd_install_path_dependency_input_validation_fails_closed() {
+    for (case, dependency_path) in [
+        ("file", "not-a-directory"),
+        ("missing-manifest", "missing-manifest"),
+    ] {
+        let base_dir = std::env::temp_dir().join(format!(
+            "lsharp_test_install_path_input_{case}_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+        if case == "file" {
+            std::fs::write(base_dir.join(dependency_path), "not a directory").unwrap();
+        } else {
+            std::fs::create_dir(base_dir.join(dependency_path)).unwrap();
+        }
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            format!("[dependencies.invalid]\npath = \"{dependency_path}\"\n"),
+        )
+        .unwrap();
+
+        let error = cmd_install_in(&base_dir)
+            .expect_err("invalid path dependency must fail before metadata commit");
+        let diagnostic = error.to_string();
+        assert!(
+            diagnostic.contains("path dependency is not a directory")
+                || diagnostic.contains("path dependency has no lsharp.toml"),
+            "unexpected native parity diagnostic for {case}: {diagnostic}"
+        );
+        assert!(!base_dir.join(".lsharp/lock.toml").exists());
+        assert!(!base_dir.join(".lsharp/module-index").exists());
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
 }
 
 #[test]
@@ -2372,7 +2425,7 @@ fn test_cmd_install_git_dependency_rejects_symlink_destinations() {
 
 #[test]
 fn test_cmd_install_path_dependency_no_toml() {
-    // lsharp.toml がない依存先はスキップされる
+    // lsharp.toml がない依存先は native installer と同じく fail-closed にする
     let base_dir = std::env::temp_dir().join("lsharp_test_install_no_dep_toml");
     let _ = std::fs::remove_dir_all(&base_dir);
     std::fs::create_dir_all(&base_dir).unwrap();
@@ -2387,18 +2440,19 @@ fn test_cmd_install_path_dependency_no_toml() {
     )
     .unwrap();
 
-    let result = cmd_install_in(&base_dir);
+    let error = cmd_install_in(&base_dir)
+        .expect_err("lsharp.toml がない path 依存は暗黙に skip せず失敗するべき");
     assert!(
-        result.is_ok(),
-        "lsharp.toml がない依存先でもエラーにはならないべき"
+        error
+            .to_string()
+            .contains("path dependency has no lsharp.toml"),
+        "native と同じ path provider input 診断を返すべき: {error}"
     );
-
-    // シンボリックリンクは作成されない
-    let link_path = find_installed_package_dir(&base_dir, "noconfig");
     assert!(
-        link_path.is_none(),
-        "lsharp.toml がない依存先にはリンクを作らないべき"
+        !base_dir.join(".lsharp/lock.toml").exists(),
+        "invalid path で lock を確定してはいけない"
     );
+    assert!(!base_dir.join(".lsharp/module-index").exists());
 
     std::fs::remove_dir_all(&base_dir).unwrap();
 }
