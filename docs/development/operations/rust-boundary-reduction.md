@@ -1527,6 +1527,39 @@ source-file smoke、package acquisition/rollback、両 target parityは未検証
 `bash scripts/ci/test-native-linux-x86-entrypoint-metadata-diagnostic.sh` で確認し、不一致時は
 非ゼロ終了する。これは VM後処理の契約テストであり、native stage2/stage3の成功証拠には数えない。
 
+### V2-16e / LEGACY-BOOT-01 Mac current-source stage0 package/source-file smoke (2026-08-02)
+
+current `HEAD=80b299def6ca9b036b09bc427bc6d3e381fe63bf` で
+`scripts/ci/native-macos-aarch64-stage0-release.sh` を実行し、
+`test_e2e_native_macos_aarch64_actual_app_cli_release_program` を `1 passed` / `1,248.21s` で完走した。
+生成した stage0 package `ci-artifacts/native-stage0/aarch64-apple-darwin/80b299de-current/` は
+target `aarch64-apple-darwin`、current `source_commit`、relative な compiler / transport driver /
+materializer pathを manifestへ保持し、`bin/compiler` は arm64 Mach-Oだった。
+
+同じ packageを Mac native `scripts/ci/native-selfhost-dev-source-file-smoke.sh` に渡し、
+`parse`、`check`、`fmt`、通常/metadata/property `test`、EC-M3 validation positive/negative fixture、
+`compile`、`build`を実行した。runは `aarch64-apple-darwin native selfhost source-file smoke passed`、
+exit `0` で終了した。成功経路では `cargo`、`rustc`、host `lsharp`を blocklistし、Rust fallbackを使わない
+ことを smoke runner自身で確認した。positive outputは parse `decls:1` / `first-decl:defn` /
+`first-body:int` / `diagnostics:0`、check `Int` / `diagnostics:0`、fmt `(defn main [] 42)`、通常test
+`examples:0` / `invariants:0` / `failures:0`、metadata test `examples:2` / `invariants:1` /
+`failures:0`。compile/buildの Wasm bytesは各 `2,559` bytes、SHA-256
+`afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`で一致した。
+
+source smoke evidenceは `ci-artifacts/native-stage0/aarch64-apple-darwin/80b299de-source-smoke-evidence/`
+へ保存し、manifestは exit `0`、target/source commit、stage0 manifest SHA-256
+`0452f04df1a6a0b9ec5d57e0833542983f4a6ccfbf4df86a2b505db19e5bd5ec`、payload SHA-256
+`7d328772978bad0a3a0e4abf9703675cd9e01f5fa3c8c5bdc3461f1c0e8c938c`を記録した。初回 smokeで
+macOS Bashの `set -u` 空配列展開が evidence writerを呼ぶ cleanupを失敗させたため、
+`test-native-selfhost-source-file-smoke-evidence.sh` に REDを固定し、writer commandの配列化と optional
+argumentの条件付き appendをGREENにした。focused test、`bash -n`、`git diff --check`、修正後 Mac source-file
+smokeはすべて passし、task-owned Cargo target、source smoke stage directory、stale packageは回収した。
+
+これは Mac current-source stage0 package/source-file smokeの verified sliceであり、Linux x86_64の同一
+current commit package、公開 release asset acquisition、rollback実行、全公開 command、component sidecar、
+Mac/Linux packaged artifact parity、`LEGACY-BOOT-01` aggregateの完了を意味しない。生成 package/evidenceは
+ローカル `ci-artifacts/native-stage0/` に保持し、build差分として追跡しない。
+
 ### V2-16e / LEGACY-BOOT-01 packaged stage0 runner consumer contract (2026-08-01)
 
 `bash scripts/ci/test-package-native-linux-x86-actual-stage1-vm.sh` は、current HEADの

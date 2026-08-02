@@ -1529,6 +1529,29 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   Linux stage0 package/source-file smokeの verified sliceであり、公開 release assetの acquisition、rollback
   実行、全公開 command、component sidecar、Mac/Linux packaged artifact parity、`LEGACY-BOOT-01` aggregateの
   完了証拠ではない。
+  さらに current `HEAD=80b299def6ca9b036b09bc427bc6d3e381fe63bf` で Mac Apple Silicon の
+  `native-macos-aarch64-stage0-release.sh` を実行し、`test_e2e_native_macos_aarch64_actual_app_cli_release_program`
+  を `1 passed` / `1,248.21s` で完走した。stage0 packageは target `aarch64-apple-darwin`、manifestの
+  `source_commit` は同じ current commit、`bin/compiler` は arm64 Mach-O、transport driver/materializerの
+  relative pathを保持する `ci-artifacts/native-stage0/aarch64-apple-darwin/80b299de-current/` に保存した。
+  同じ packageを Mac native `scripts/ci/native-selfhost-dev-source-file-smoke.sh` に渡し、
+  `parse`、`check`、`fmt`、通常/metadata/property `test`、EC-M3 validation positive/negative fixture、
+  `compile`、`build` を実行した。runは `aarch64-apple-darwin native selfhost source-file smoke passed`、
+  exit `0` で終了し、成功経路の `cargo`、`rustc`、host `lsharp` は blocklistで呼び出されなかった。
+  positive outputは `parse=decls:1/first-decl:defn/first-body:int/diagnostics:0`、
+  `check=Int/diagnostics:0`、`fmt=(defn main [] 42)`、通常test `examples:0/invariants:0/failures:0`、
+  metadata test `examples:2/invariants:1/failures:0`。compile/buildの Wasm bytesは各 `2,559` bytes、
+  SHA-256 `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00` で一致した。
+  evidence manifestは exit `0`、target、source commit、stage0 manifest SHA-256
+  `0452f04df1a6a0b9ec5d57e0833542983f4a6ccfbf4df86a2b505db19e5bd5ec`、stage0 payload SHA-256
+  `7d328772978bad0a3a0e4abf9703675cd9e01f5fa3c8c5bdc3461f1c0e8c938c` を記録し、
+  `ci-artifacts/native-stage0/aarch64-apple-darwin/80b299de-source-smoke-evidence/` に保持した。
+  初回 smokeの cleanup では macOS Bash の `set -u` と空 optional array展開の failureを REDとして検出し、
+  `test-native-selfhost-source-file-smoke-evidence.sh` に回帰テストを追加した。writer commandを常に配列化して
+  optional argumentだけを条件付きで appendする修正後、同テスト、`bash -n`、`git diff --check`、Mac source-file
+  smokeを再実行してGREENを確認した。これは Mac current-source stage0 package/source-file smokeの verified
+  sliceであり、公開 release asset acquisition、rollback実行、全公開 command、component sidecar、Linux/Mac
+  packaged artifact parity、`LEGACY-BOOT-01` aggregateの完了証拠ではない。
 
 ## ISSUES-derived quality and runtime work
 

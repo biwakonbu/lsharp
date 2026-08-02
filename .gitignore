@@ -33,6 +33,7 @@ ci-artifacts/native-plan/
 ci-artifacts/native-proxy/
 ci-artifacts/native-linux-x86-hostgen-vm/
 ci-artifacts/native-linux-x86-native-stage0-dev/
+ci-artifacts/native-stage0/
 /ci-artifacts/native-release/
 crates/lsharp-wasm/ci-artifacts/
 selfhost/src/Backend/Native/NativeCodegen.prefix*.ls
