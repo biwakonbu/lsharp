@@ -440,6 +440,25 @@ class NativeSelfhostInstallTest(unittest.TestCase):
             self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
             self.assertIn("invalid semver", result.stderr)
 
+    def test_registry_dependency_requires_offline_cache_before_install_state(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            project = root / "project"
+            project.mkdir()
+            (project / "lsharp.toml").write_text(
+                '[dependencies]\nmath-core = "1.0.0"\n', encoding="utf-8"
+            )
+            environment, marker = self.poison_host_commands(root)
+
+            result = self.run_installer(project, environment)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(marker.exists(), "host fallback must not run")
+            self.assertIn(
+                "registry provider acquisition is an external boundary", result.stderr
+            )
+            self.assertFalse((project / ".lsharp").exists())
+
     def test_mixed_path_and_cached_failure_keeps_state_unpromoted(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

@@ -2530,6 +2530,30 @@ fn test_cmd_install_version_dependency_errors_when_no_cached_match_exists() {
 }
 
 #[test]
+fn test_cmd_install_version_dependency_requires_offline_cache_before_install_state() {
+    let base_dir = std::env::temp_dir().join("lsharp_test_install_version_no_cache");
+    let _ = std::fs::remove_dir_all(&base_dir);
+    std::fs::create_dir_all(&base_dir).unwrap();
+    std::fs::write(
+        base_dir.join("lsharp.toml"),
+        "[dependencies]\nmath-core = \"1.0.0\"\n",
+    )
+    .unwrap();
+
+    let error = cmd_install_in(&base_dir)
+        .expect_err("registry dependency without offline cache must fail before install state");
+    assert!(
+        error
+            .to_string()
+            .contains("registry provider acquisition is an external boundary"),
+        "live registry acquisition must be explicit: {error}"
+    );
+    assert!(!base_dir.join(".lsharp").exists());
+
+    std::fs::remove_dir_all(&base_dir).unwrap();
+}
+
+#[test]
 fn test_cmd_install_version_dependency_rejects_signed_semver_requirement() {
     let base_dir = std::env::temp_dir().join("lsharp_test_install_version_signed");
     let _ = std::fs::remove_dir_all(&base_dir);

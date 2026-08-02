@@ -590,6 +590,11 @@ def resolve_cached_version_candidate(packages_dir, name, requirement):
     candidates = []
     try:
         package_paths = sorted(packages_dir.iterdir(), key=lambda path: path.name)
+    except FileNotFoundError:
+        raise InstallError(
+            "registry provider acquisition is an external boundary; "
+            f"dependency {name!r} has no offline cached semver candidate: {requirement!r}"
+        )
     except OSError as error:
         raise InstallError(f"cannot scan package cache {packages_dir}: {error}") from error
     for package_dir in package_paths:
@@ -601,7 +606,8 @@ def resolve_cached_version_candidate(packages_dir, name, requirement):
         candidates.append((version, package_dir.name, version_text, package_dir))
     if not candidates:
         raise InstallError(
-            f"no cached package matches dependency {name!r} version requirement {requirement!r}"
+            "registry provider acquisition is an external boundary; "
+            f"dependency {name!r} has no offline cached semver candidate: {requirement!r}"
         )
     selected = max(candidates, key=lambda candidate: (candidate[0], candidate[1], candidate[2]))
     return selected[0], selected[3], selected[2]
@@ -802,6 +808,10 @@ def install(project_dir):
     for _name, kind, value, _branch, _tag in specs:
         if kind == "path":
             path_source(project_dir, value)
+        elif kind == "version":
+            resolve_cached_version_dependency(
+                project_dir / ".lsharp" / "packages", _name, value
+            )
     lsharp_dir = ensure_managed_directory(project_dir, ".lsharp")
     packages_dir = ensure_managed_directory(lsharp_dir, "packages")
     staging_dir = temporary_path(packages_dir, "install-txn")

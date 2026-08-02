@@ -100,7 +100,7 @@ pub fn resolve_cached_version_dependency(
     let candidates = cached_packages_for_name(&project_dir.join(".lsharp").join("packages"), name)?;
     let selected = select_highest_matching_cached_package(&req, &candidates).ok_or_else(|| {
         format!(
-            "依存 '{}' に一致する semver 候補が cache にありません: {}",
+            "registry provider acquisition is an external boundary; dependency '{}' has no offline cached semver candidate: {}",
             name, version_req
         )
     })?;

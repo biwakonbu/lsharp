@@ -2505,9 +2505,16 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
 
     // 全 path provider input を managed install directory 作成前に検証し、欠落した宣言を
     // 警告扱いで空の lock/index として確定しない。
-    for spec in deps.values() {
-        if let config::DependencySpec::Path { path } = spec {
-            validate_path_dependency(project_dir, path)?;
+    for (name, spec) in deps {
+        match spec {
+            config::DependencySpec::Path { path } => {
+                validate_path_dependency(project_dir, path)?;
+            }
+            config::DependencySpec::Version(version_req) => {
+                resolver::resolve_cached_version_dependency(project_dir, name, version_req)
+                    .map_err(|error| miette::miette!("{error}"))?;
+            }
+            config::DependencySpec::Git { .. } => {}
         }
     }
 

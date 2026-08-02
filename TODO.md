@@ -2485,3 +2485,13 @@ Rust installer 22 tests、native installer 18 tests、Rust format、Python synta
 完全 transactionality、native MCP package-install semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、
 EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-package-install-path-input-fail-closed.md`](docs/adr/decisions-v0.3-native-package-install-path-input-fail-closed.md)。
 current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
+2026-08-02 に version dependency の Rust/native registry external boundaryを追加した。version spec は明示された offline
+`.lsharp/packages` cacheからのみ解決し、cache missを live registry取得へ暗黙に委譲せず、
+`registry provider acquisition is an external boundary` として managed `.lsharp`、lock.toml、module-index、transaction stagingの作成前に
+fail-closed にする同一 fixtureを固定した。valid cached candidate、path/Git install、promotion/metadata/sync rollbackを含む Rust installer
+23 tests、native installer 19 testsがGREENである。これは直前の local path-provider input boundaryや cached candidate provenanceの再実装ではなく、
+registry/network/auth取得を追加しない external boundaryである。live registry/provider retrieval/auth、完全 transactionality、crash/power-loss semantics、
+native MCP package-install semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。
+Evidence: [`decisions-v0.3-native-package-install-registry-external-boundary.md`](docs/adr/decisions-v0.3-native-package-install-registry-external-boundary.md)。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
