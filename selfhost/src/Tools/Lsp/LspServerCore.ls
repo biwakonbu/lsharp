@@ -438,6 +438,19 @@
     payload (string-concat payload-7 "}}")]
     payload))
 
+;; LSP wire の Position は zero-based。内部解析位置 (1-based) から境界で変換する。
+(defn lsp-render-wire-range-json [range]
+  (let [payload-0 "{\"start\":{\"line\":"
+    payload-1 (string-concat payload-0 (int-to-string (- (vector-get range 0) 1)))
+    payload-2 (string-concat payload-1 ",\"character\":")
+    payload-3 (string-concat payload-2 (int-to-string (- (vector-get range 1) 1)))
+    payload-4 (string-concat payload-3 "},\"end\":{\"line\":")
+    payload-5 (string-concat payload-4 (int-to-string (- (vector-get range 2) 1)))
+    payload-6 (string-concat payload-5 ",\"character\":")
+    payload-7 (string-concat payload-6 (int-to-string (- (vector-get range 3) 1)))
+    payload (string-concat payload-7 "}}")]
+    payload))
+
 (defn lsp-render-hover-frame [request-id hover]
   (let [range (vector-get hover 0)
     contents (vector-get hover 1)
@@ -445,7 +458,7 @@
     payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
     payload-1 (string-concat payload-0 (int-to-string request-id))
     payload-2 (string-concat payload-1 ",\"result\":{\"range\":")
-    payload-3 (string-concat payload-2 (lsp-render-range-json range))
+    payload-3 (string-concat payload-2 (lsp-render-wire-range-json range))
     payload-4 (string-concat payload-3 ",\"contents\":\"")
     payload-5 (string-concat payload-4 contents-json)
     payload (string-concat payload-5 "\"}}")]

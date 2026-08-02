@@ -586,7 +586,7 @@ fn test_e2e_selfhost_lsp_hover_frame_projects_range_object() {
     let harness = r#"
 (module Main)
 (defn main []
-  (let [range (make-range 0 1 2 3)
+  (let [range (make-range 1 2 3 4)
         hover (push-object-vector-local
                 (push-object-vector-local (vector-new 2) range)
                 "info")]
@@ -749,7 +749,7 @@ fn test_e2e_selfhost_lsp_formatting_frame_projects_text_edit_object() {
     (print-string (lsp-render-formatting-frame 12 edits))))
 "#;
     let output = compile_and_run(&format!("{}\n{}", source, harness));
-    let body = r#"{"jsonrpc":"2.0","id":12,"result":[{"range":{"start":{"line":1,"character":2},"end":{"line":3,"character":4}},"newText":"formatted"}]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":12,"result":[{"range":{"start":{"line":0,"character":1},"end":{"line":2,"character":3}},"newText":"formatted"}]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     assert_eq!(output, expected, "formatting response は LSP TextEdit object を返すべき");
 }

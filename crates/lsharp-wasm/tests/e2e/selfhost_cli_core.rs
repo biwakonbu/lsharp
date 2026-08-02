@@ -5022,6 +5022,61 @@ fn test_e2e_selfhost_cli_lsp_transport_completion_frame() {
     );
 }
 
+/// TEST-CLI-02-M9e-zero-based: stdio の hover/formatting は zero-based Position を wire に返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_zero_based_position_contract() {
+    let hover_source = "(defn helper [x] x)";
+    let formatting_source = "(defn main []\\n 1)";
+    let hover_body = format!(
+        r#"{{"jsonrpc":"2.0","id":91,"method":"textDocument/hover","params":{{"uri":42,"line":0,"character":6,"source":"{}"}}}}"#,
+        hover_source
+    );
+    let formatting_body = format!(
+        r#"{{"jsonrpc":"2.0","id":92,"method":"textDocument/formatting","params":{{"uri":42,"source":"{}"}}}}"#,
+        formatting_source
+    );
+    let stdin = format!("{}{}", lsp_frame(&hover_body), lsp_frame(&formatting_body));
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let frames = parse_lsp_stdio_frames(&output);
+
+    assert_eq!(frames.len(), 2, "hover/formatting の2 responseが必要: {output}");
+    assert_eq!(
+        frames[0],
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 91,
+            "result": {
+                "range": {
+                    "start": {"line": 0, "character": 6},
+                    "end": {"line": 0, "character": 12}
+                },
+                "contents": "defn helper"
+            }
+        }),
+        "hover は標準 zero-based Position を返すべき: {output}"
+    );
+    assert_eq!(
+        frames[1],
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 92,
+            "result": [{
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 1, "character": 3}
+                },
+                "newText": "(defn main [] 1)\n"
+            }]
+        }),
+        "formatting は標準 zero-based Position を返すべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-M9e: selfhost/src/App/Cli.ls の LSP transport helper が formatting request を framed response にできること
 #[test]
 #[ignore]

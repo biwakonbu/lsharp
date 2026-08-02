@@ -1721,8 +1721,8 @@
     (push-int-vector-local
       (push-int-vector-local
         (push-int-vector-local params (lsp-stdio-body-int-field body "\"uri\":"))
-        (lsp-stdio-body-int-field body "\"line\":"))
-      (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":"))]
+        (+ (lsp-stdio-body-int-field body "\"line\":") 1))
+      (+ (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":") 1))]
     (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
       (push-object-vector-local with-position (lsp-stdio-body-string-field body "\"source\":\""))
       with-position)))
@@ -1747,8 +1747,8 @@
         (push-int-vector-local
           (push-int-vector-local
             (push-int-vector-local params (lsp-stdio-body-int-field body "\"uri\":"))
-            (lsp-stdio-body-int-field body "\"line\":"))
-          (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":"))
+            (+ (lsp-stdio-body-int-field body "\"line\":") 1))
+          (+ (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":") 1))
         (lsp-stdio-body-string-field body "\"source\":\""))
       (lsp-stdio-body-string-field body "\"newName\":\""))))
 

@@ -116,7 +116,7 @@
 
 (defn lsp-render-text-edit-json [edit]
   (let [payload-0 "{\"range\":"
-    payload-1 (string-concat payload-0 (lsp-render-range-json edit))
+    payload-1 (string-concat payload-0 (lsp-render-wire-range-json edit))
     payload-2 (string-concat payload-1 ",\"newText\":\"")
     payload-3 (string-concat payload-2 (json-escape-string (vector-get edit 4)))]
     (string-concat payload-3 "\"}")))
