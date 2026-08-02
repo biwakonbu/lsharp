@@ -165,6 +165,47 @@ RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
   WORK_DIR="$TMP_ROOT/smoke-work" \
   bash "$ROOT/scripts/ci/release-smoke.sh" "$TMP_ROOT/$STABLE_NAME.tar.gz" "$TMP_ROOT/$ROLLBACK_NAME.tar.gz" >/dev/null
 
+UNLISTED_ROLLBACK_NAME="${ROLLBACK_NAME}-unlisted-payload"
+UNLISTED_ROLLBACK_ROOT="$TMP_ROOT/$UNLISTED_ROLLBACK_NAME"
+UNLISTED_ROLLBACK_ARCHIVE="$TMP_ROOT/$UNLISTED_ROLLBACK_NAME.tar.gz"
+UNLISTED_STABLE_NAME="${STABLE_NAME}-unlisted-rollback"
+UNLISTED_STABLE_ROOT="$TMP_ROOT/$UNLISTED_STABLE_NAME"
+UNLISTED_STABLE_ARCHIVE="$TMP_ROOT/$UNLISTED_STABLE_NAME.tar.gz"
+cp -R "$ROLLBACK_ROOT" "$UNLISTED_ROLLBACK_ROOT"
+printf '%s\n' 'unregistered rollback payload' >"$UNLISTED_ROLLBACK_ROOT/unlisted-payload"
+tar -czf "$UNLISTED_ROLLBACK_ARCHIVE" -C "$TMP_ROOT" "$UNLISTED_ROLLBACK_NAME"
+unlisted_rollback_sha256="$(sha256sum "$UNLISTED_ROLLBACK_ARCHIVE" | awk '{print $1}')"
+cp -R "$STABLE_ROOT" "$UNLISTED_STABLE_ROOT"
+python3 - "$UNLISTED_STABLE_ROOT/manifest.json" "$UNLISTED_ROLLBACK_NAME.tar.gz" "$unlisted_rollback_sha256" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+manifest["rollback_anchor"]["asset"] = sys.argv[2]
+manifest["rollback_anchor"]["rollback_sha256"] = sys.argv[3]
+manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+PY
+bash "$ROOT/scripts/checksum.sh" "$UNLISTED_STABLE_ROOT" >"$UNLISTED_STABLE_ROOT/checksums.txt"
+tar -czf "$UNLISTED_STABLE_ARCHIVE" -C "$TMP_ROOT" "$UNLISTED_STABLE_NAME"
+
+set +e
+unlisted_payload_output="$(
+  RELEASE_REVIEW_TRUST_STORE="$TRUST_STORE" \
+    RELEASE_REVIEW_LIFECYCLE="$LIFECYCLE" \
+    WORK_DIR="$TMP_ROOT/unlisted-payload-work" \
+    bash "$ROOT/scripts/ci/release-smoke.sh" \
+      "$UNLISTED_STABLE_ARCHIVE" \
+      "$UNLISTED_ROLLBACK_ARCHIVE" 2>&1
+)"
+unlisted_payload_status=$?
+set -e
+[[ "$unlisted_payload_status" -ne 0 ]] \
+  || { echo "rollback archive with an unlisted payload was accepted" >&2; exit 1; }
+grep -F "checksums.txt missing payload coverage: unlisted-payload" <<<"$unlisted_payload_output" >/dev/null \
+  || { echo "rollback payload closure rejection did not expose a stable diagnostic" >&2; echo "$unlisted_payload_output" >&2; exit 1; }
+
 BAD_HELP_NAME="${STABLE_NAME}-bad-help"
 BAD_HELP_ROOT="$TMP_ROOT/$BAD_HELP_NAME"
 BAD_HELP_ARCHIVE="$TMP_ROOT/$BAD_HELP_NAME.tar.gz"

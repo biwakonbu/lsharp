@@ -2361,3 +2361,15 @@ Linux replay・stage regeneration・full buildは未実行である。live provi
 current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
 M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-stage0-archive-round-trip-provenance.md`](docs/adr/decisions-v0.3-stage0-archive-round-trip-provenance.md)。
+
+2026-08-02 に rollback compatibility archive の offline payload checksum closure を追加した。従来の required
+checksum entry確認に加えて、展開後の全 regular file（`checksums.txt` 自身を除く）が安全・一意な checksum entryを
+持つこと、checksum entryの targetが実在する regular fileであることを branch-specific manifest preflight後に検証する。
+`unlisted-payload` を rollback archiveへ追加した RED を従来実装が受け入れることを確認し、
+`checksums.txt missing payload coverage: unlisted-payload` で executable/rollback smoke前に拒否する GREEN を
+`bash scripts/ci/test-release-smoke-provider-snapshots.sh` で固定した。これは stage0 archive round-trip、rollback
+anchor/version/checksumの個別契約、provider/auth、native cryptoの再実装ではない、rollback payload provenanceの verified partial sliceである。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため
+Linux replay・stage regeneration・full buildは未実行である。current-source Linux runtime、live provider/auth実取得・意味検証、
+Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-rollback-archive-payload-closure.md`](docs/adr/decisions-v0.3-rollback-archive-payload-closure.md)。

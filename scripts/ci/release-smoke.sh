@@ -226,6 +226,46 @@ for required in README.md LICENSE checksums.txt; do
   fi
 done
 
+validate_payload_checksum_closure() {
+python3 - "$ARCHIVE_ROOT" <<'PY'
+import pathlib
+import sys
+
+package_dir = pathlib.Path(sys.argv[1])
+checksums_path = package_dir / "checksums.txt"
+listed = set()
+for line in checksums_path.read_text(encoding="utf-8").splitlines():
+    if not line.strip():
+        continue
+    fields = line.split(None, 1)
+    if len(fields) != 2:
+        raise SystemExit("invalid release checksum entry")
+    relative = fields[1].strip()
+    path = pathlib.PurePosixPath(relative)
+    if not path.parts or path.is_absolute() or ".." in path.parts:
+        raise SystemExit(f"unsafe checksum target: {relative}")
+    if relative in listed:
+        raise SystemExit(f"duplicate release checksum entry: {relative}")
+    candidate = package_dir.joinpath(*path.parts)
+    if candidate.is_symlink() or not candidate.is_file():
+        raise SystemExit(f"checksum target missing from release payload: {relative}")
+    listed.add(relative)
+
+actual = set()
+for path in package_dir.rglob("*"):
+    if path.is_symlink():
+        raise SystemExit(f"release payload symlink is not allowed: {path.relative_to(package_dir)}")
+    if path.is_file() and path.name != "checksums.txt":
+        actual.add(path.relative_to(package_dir).as_posix())
+
+missing = sorted(actual - listed)
+if missing:
+    raise SystemExit(
+        "checksums.txt missing payload coverage: " + ", ".join(missing)
+    )
+PY
+}
+
 NATIVE_ONLY=0
 if [[ -f "$PROGRAM_NATIVE" ]]; then
   NATIVE_ONLY=1
@@ -332,6 +372,8 @@ PY
     fi
   done
 fi
+
+validate_payload_checksum_closure
 
 if [[ -e "$ARCHIVE_ROOT/CHANGELOG.md" ]]; then
   echo "INFO: optional payload present: CHANGELOG.md"
