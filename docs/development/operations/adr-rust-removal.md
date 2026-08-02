@@ -9,6 +9,8 @@ Superseded by native-only official replacement (2026-05-31)
 > - ロールバック手順詳細: [`docs/development/operations/rollback-procedure.md`](./rollback-procedure.md)
 > - 配布・署名: [`docs/development/operations/release-distribution-signing.md`](./release-distribution-signing.md)
 > - 現行の配布正本: [`docs/development/operations/release-playbook.md`](./release-playbook.md)
+> - Native-only 完了判断: ADR-172 ([`docs/adr/decisions-003.jsonl`](../../adr/decisions-003.jsonl))
+> - Rust-free 日常開発 boundary: ADR-173 ([`docs/adr/decisions-003.jsonl`](../../adr/decisions-003.jsonl))
 
 ## コンテキスト
 

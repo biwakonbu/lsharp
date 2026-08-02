@@ -210,5 +210,5 @@ official WASI Preview2 import mapping や selfhost compiler world への適用�
 
 - [`backend-boundary.md`](./backend-boundary.md) -- backend 境界仕様
 - [`runtime-spec.md`](./runtime-spec.md) -- runtime 共通契約
-- [`native-backend-spec.md`](./native-backend-spec.md) -- native backend (deferred)
-- `TODO.md` Phase 13 -- 実装ロードマップ
+- [`native-backend-spec.md`](./native-backend-spec.md) -- native backend と current supported target
+- `docs/adr/decisions-002.jsonl` ADR-167 -- Phase 13 の完了判断

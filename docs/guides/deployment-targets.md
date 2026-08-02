@@ -40,7 +40,7 @@ lsharp compile src/Main.ls --target native -o main.native
 - native backend 経路です。
 - product / release support target は Linux x86_64 と Mac Apple Silicon を通常対象にします。
 - Windows native と Intel Mac native は通常サポート対象として案内しません。
-- native backend の self-regeneration や Linux x86 stage chain は TODO.md の native track を正本として追跡します。
+- native backend の self-regeneration や Linux x86 stage chain の完了判断は ADR-172 と `docs/language/native-backend-spec.md` を正本とします。未完の Rust-free public surface は TODO.md の `LEGACY-*` task で追跡します。
 
 ## Choosing A Target
 

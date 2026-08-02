@@ -7,8 +7,8 @@
 | 誰向けか | まず読む場所 |
 |----------|----------------|
 | L# でプログラムを書きたい人 | [`guides/`](./guides/)（利用者向けハウツー）→ リポジトリ直下の [`book/`](../book/)（言語の講義的ガイド） |
-| コンパイラや backend を実装・変更する人 | [`language/`](./language/)（v1 契約）→ 必要に応じて [`development/`](./development/) |
-| Phase / CI / リリースに関わる人 | [`development/`](./development/)（計画・検証・運用） |
+| コンパイラや backend を実装・変更する人 | [`language/`](./language/)（current contract）→ [`development/planning/`](./development/planning/)（次版設計） |
+| milestone / CI / リリースに関わる人 | [`development/`](./development/)（計画・検証・運用） |
 | 意思決定の経緯を追いたい人 | [`adr/`](./adr/)（JSONL 形式の意思決定ログ） |
 | 既知の問題と改善計画を知りたい人 | リポジトリ直下の [`ISSUES.md`](../ISSUES.md)（問題台帳）→ [`development/planning/improvement-roadmap.md`](./development/planning/improvement-roadmap.md)（改善方針）|
 | ドキュメント生成・スキーマを触る人 | [`schemas/`](./schemas/)（JSON Schema。`lsharp-docs` 等から参照） |
@@ -25,8 +25,8 @@ CI / GitHub Pages 公開手順は [`development/operations/documentation-site.md
 
 ## ディレクトリ構成
 
-- `language/` -- 実装済み、または v1 契約として扱う言語 / runtime / backend の仕様
-- `development/` -- Phase 11 の計画、検証、運用（CI / release / distribution / signing を含む）
+- `language/` -- current contract として扱う言語 / runtime / backend の仕様
+- `development/` -- 次版設計、current milestone、検証、運用（CI / release / distribution / signing を含む）
 - `adr/` -- 意思決定ログ（JSONL）
 - `site.toml` -- 公開ドキュメントサイトの構成正本
 - `guides/` -- 利用者向けチュートリアル / マニュアル
