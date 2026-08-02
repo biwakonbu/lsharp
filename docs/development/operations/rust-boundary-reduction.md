@@ -3434,3 +3434,27 @@ expected/actual exit `7`、`status=pass`。artifactは
 semantics、current HEADの Linux native stage0 source-file smoke、Mac Apple Silicon parity、package acquisition/
 release/rollback、Rust-free全体の完了証拠には拡張しない。ADR:
 `docs/adr/decisions-v0.3-native-linux-read-file-bounded-heap.md`。
+
+### V2-16b/c current Mac native read-stdin routing (2026-08-02)
+
+`read-stdin` を native selfhost compiler の builtin/opcode `91` として固定し、x86_64 helper（104 bytes）と
+AArch64 helper（156 bytes）、nullary stack effect、runtime call target、helper trailer offsetを追加した。
+RED→GREENは `scripts/ci/test-native-selfhost-read-stdin-contract.sh` で確認し、source-level `Cli` の
+`run-lsp-stdio-server` が同じ builtinで wire inputを読む接続も固定した。x86 helperの rel32分岐・保存先と
+AArch64 helperの分岐を独立 disassemblyで確認した。
+
+current source commit `1ee26eef38fe6f32ac1f6a1e7342bcf8cb1fec41` の Mac Apple Silicon actual `App.Cli`
+release gateは `1 passed` / `877.69s`、package manifestは `target=aarch64-apple-darwin` と同じ source commit、
+Mach-O arm64を記録した。同packageを current source-file smokeへ渡し、parse/check/fmt/test/metadata test/
+compile/build と validation positive/negative を exit `0` で確認した。compile/build Wasmは各 `2,559` bytes、
+SHA-256 `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`、evidence manifestは stage0
+manifest SHA-256 `fd1f47bd7a61e0f45bd2b8d086021fe0b919e3d75de172c82102b0e653518dd7`、payload SHA-256
+`36f7cd4e27c58bb23b299eca5d5f0d1be266b821b1f1e9708d3a9b8fca70b5c9` を記録した。成功経路では `cargo`、
+`rustc`、host `lsharp`、Rust fallbackを使用していない。
+
+同packageの `lsp --stdio` は stdin wireを読み、stderr空、`Content-Length` frameを返すところまで実 native
+確認した。ただし initialize resultの selfhost配列表現と Rust LSP object shapeの parity、hover等の semantic
+projectionは未完である。また `valid/io-read-stdin` の生成 Preview1 Wasm compileは native CLIの明示的な
+`unsupported standalone Preview1 runtime capability` 境界で拒否され、Wasm runtime証拠にはしていない。
+Linux x86_64 current HEADの同opcode stage0/package/runtime、component sidecar、release asset acquisition/
+rollback、Mac/Linux packaged parityは未検証のため、`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま残す。

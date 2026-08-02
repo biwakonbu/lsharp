@@ -1379,6 +1379,24 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   external packaging拒否も確認した。これは Rust-host source bundleの artifact I/O verified sliceであり、
   native stage0の output path、fd error semantics、component sidecar、両 supported targetの
   release artifactは残る。
+
+  2026-08-02 の verified partialとして、`read-stdin` を native selfhost compiler の builtin/opcode `91` に固定し、
+  x86_64 helper（104 bytes）と AArch64 helper（156 bytes）、nullary stack effect、runtime call target、helper trailer
+  offsetを追加した。`scripts/ci/test-native-selfhost-read-stdin-contract.sh` の RED→GREENで、source-level `Cli` の
+  `run-lsp-stdio-server` が同じ builtinで wire inputを読む接続も固定し、x86/AArch64 helperは独立 disassemblyで確認した。
+  source commit `1ee26eef38fe6f32ac1f6a1e7342bcf8cb1fec41` の Mac actual `App.Cli` release gateは `1 passed` /
+  `877.69s`、packageは `aarch64-apple-darwin` / Mach-O arm64だった。同packageの current source-file smokeも
+  parse/check/fmt/test/metadata test/compile/buildとvalidation positive/negativeをexit `0`で通過し、compile/build
+  Wasmは各 `2,559` bytes、SHA-256 `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`、
+  evidenceはstage0 manifest SHA-256 `fd1f47bd7a61e0f45bd2b8d086021fe0b919e3d75de172c82102b0e653518dd7`、
+  payload SHA-256 `36f7cd4e27c58bb23b299eca5d5f0d1be266b821b1f1e9708d3a9b8fca70b5c9`を記録した。成功経路では
+  `cargo`、`rustc`、host `lsharp`、Rust fallbackを使用していない。
+  同packageの `lsp --stdio` はstdin wireを読み、stderr空、`Content-Length` frameを返すところまで実native確認したが、
+  initialize resultのselfhost配列表現とRust LSP object shape、hover等のsemantic projectionは未完である。また
+  `valid/io-read-stdin` の生成 Preview1 Wasm compileはnative CLIの明示的な `unsupported standalone Preview1 runtime capability`
+  境界で拒否され、Wasm runtime証拠にはしていない。Linux x86_64 current HEADの同opcode stage0/package/runtime、
+  component sidecar、release asset acquisition/rollback、Mac/Linux packaged parityは未検証のため、`V2-16b` /
+  `V2-16c` / `V2-16e` と aggregateは `[~]` のまま残す。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host

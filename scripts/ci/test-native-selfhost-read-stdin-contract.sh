@@ -6,6 +6,7 @@ COMPILER_BASE="$ROOT/selfhost/src/Backend/Wasm/CompilerBase.ls"
 COMPILER="$ROOT/selfhost/src/Backend/Wasm/Compiler.ls"
 IR="$ROOT/selfhost/src/IR/IR.ls"
 NATIVE="$ROOT/selfhost/src/Backend/Native/NativeCodegen.ls"
+CLI="$ROOT/selfhost/src/App/Cli.ls"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -30,5 +31,6 @@ assert_contains "$NATIVE" '(defn aarch64-selfhost-read-stdin-helper-offset [impo
 assert_contains "$NATIVE" '(if (= opcode 91)'
 assert_contains "$NATIVE" '(append-native-bytes-rooted result (emit-x86-selfhost-read-stdin-helper)'
 assert_contains "$NATIVE" '(append-native-bytes-rooted result (emit-aarch64-selfhost-read-stdin-helper)'
+assert_contains "$CLI" '(defn run-lsp-stdio-server [] (let [wire (read-stdin)]'
 
 echo "native read-stdin contract test passed"
