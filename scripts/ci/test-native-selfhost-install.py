@@ -3,6 +3,7 @@
 import os
 import pathlib
 import json
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,9 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 INSTALLER = ROOT / "scripts" / "native-selfhost-install.py"
+INSTALLER_MODULE_SPEC = importlib.util.spec_from_file_location("native_selfhost_install", INSTALLER)
+NATIVE_INSTALLER = importlib.util.module_from_spec(INSTALLER_MODULE_SPEC)
+INSTALLER_MODULE_SPEC.loader.exec_module(NATIVE_INSTALLER)
 
 
 class NativeSelfhostInstallTest(unittest.TestCase):
@@ -623,6 +627,98 @@ class NativeSelfhostInstallTest(unittest.TestCase):
                 ".lsharp/packages/cached-12345678/src/Existing.ls",
             )
             self.assertEqual(self.read_lock(project), [])
+
+    def test_cached_candidates_require_safe_manifests_and_deterministic_ties(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            packages = root / "project" / ".lsharp" / "packages"
+            packages.mkdir(parents=True)
+            for candidate in ("demo-alpha", "demo-zeta"):
+                self.write_package(
+                    packages / candidate,
+                    "demo",
+                    "1.2.3",
+                    {},
+                )
+
+            selected = NATIVE_INSTALLER.resolve_cached_version_candidate(
+                packages, "demo", "1.0.0"
+            )
+            self.assertEqual(selected[1].name, "demo-zeta")
+
+            external = root / "external"
+            self.write_package(external, "demo", "9.0.0", {})
+            (external / "src").mkdir()
+            (packages / "demo-root-symlink").symlink_to(external, target_is_directory=True)
+
+            nested = packages / "demo-nested-symlink"
+            self.write_package(nested, "demo", "8.0.0", {})
+            (nested / "src").mkdir()
+            (nested / "src" / "linked-source").symlink_to(
+                external / "src", target_is_directory=True
+            )
+
+            with self.assertRaises(NATIVE_INSTALLER.InstallError) as error:
+                NATIVE_INSTALLER.resolve_cached_version_candidate(
+                    packages, "demo", "1.0.0"
+                )
+            self.assertIn("cached candidate", str(error.exception))
+
+    def test_invalid_cached_candidate_fails_closed_without_state_change(self):
+        for candidate_kind in (
+            "root-symlink",
+            "nested-symlink",
+            "invalid-manifest",
+            "missing-version",
+        ):
+            with self.subTest(candidate_kind=candidate_kind), tempfile.TemporaryDirectory() as temporary_directory:
+                root = pathlib.Path(temporary_directory)
+                project = root / "project"
+                packages = project / ".lsharp" / "packages"
+                index = project / ".lsharp" / "module-index"
+                packages.mkdir(parents=True)
+                index.mkdir(parents=True)
+                (project / "lsharp.toml").write_text(
+                    '[dependencies]\ndemo = "1.0.0"\n', encoding="utf-8"
+                )
+                lock = project / ".lsharp" / "lock.toml"
+                lock.write_text("lock sentinel\n", encoding="utf-8")
+                sentinel = index / "sentinel.path"
+                sentinel.write_text("index sentinel\n", encoding="utf-8")
+
+                external = root / "external"
+                self.write_package(external, "demo", "9.0.0", {})
+                (external / "src").mkdir()
+                candidate = packages / "demo-invalid"
+                if candidate_kind == "root-symlink":
+                    candidate.symlink_to(external, target_is_directory=True)
+                elif candidate_kind == "nested-symlink":
+                    self.write_package(candidate, "demo", "9.0.0", {})
+                    (candidate / "src").mkdir()
+                    (candidate / "src" / "linked-source").symlink_to(
+                        external / "src", target_is_directory=True
+                    )
+                elif candidate_kind == "invalid-manifest":
+                    candidate.mkdir()
+                    (candidate / "lsharp.toml").write_text(
+                        "[project\nname = \"demo\"\nversion = \"9.0.0\"\n",
+                        encoding="utf-8",
+                    )
+                else:
+                    candidate.mkdir()
+                    (candidate / "lsharp.toml").write_text(
+                        '[project]\nname = "demo"\n', encoding="utf-8"
+                    )
+
+                environment, marker = self.poison_host_commands(root)
+                result = self.run_installer(project, environment)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("cached candidate", result.stderr)
+                self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
+                self.assertEqual(lock.read_text(encoding="utf-8"), "lock sentinel\n")
+                self.assertEqual(sentinel.read_text(encoding="utf-8"), "index sentinel\n")
+                self.assertEqual(list(packages.glob(".install-txn*")), [])
 
     def test_refuses_a_symlinked_lsharp_directory_without_touching_external_state(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

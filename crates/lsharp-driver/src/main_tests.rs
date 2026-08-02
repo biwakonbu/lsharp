@@ -2502,6 +2502,101 @@ fn test_cmd_install_version_dependency_rejects_signed_semver_requirement() {
 }
 
 #[test]
+fn test_cmd_install_invalid_cached_candidate_fails_closed_without_state_change() {
+    for candidate_kind in [
+        "root-symlink",
+        "nested-symlink",
+        "invalid-manifest",
+        "missing-version",
+    ] {
+        let base_dir = std::env::temp_dir().join(format!(
+            "lsharp_test_install_cached_candidate_{candidate_kind}"
+        ));
+        let _ = std::fs::remove_dir_all(&base_dir);
+        let project_dir = base_dir.join("project");
+        let packages_dir = project_dir.join(".lsharp/packages");
+        let index_dir = project_dir.join(".lsharp/module-index");
+        std::fs::create_dir_all(&packages_dir).unwrap();
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::write(
+            project_dir.join("lsharp.toml"),
+            "[dependencies]\ndemo = \"1.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(project_dir.join(".lsharp/lock.toml"), "lock sentinel\n").unwrap();
+        std::fs::write(index_dir.join("sentinel.path"), "index sentinel\n").unwrap();
+
+        let external = base_dir.join("external");
+        std::fs::create_dir_all(external.join("src")).unwrap();
+        std::fs::write(
+            external.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"9.0.0\"\n",
+        )
+        .unwrap();
+        let candidate = packages_dir.join("demo-invalid");
+        match candidate_kind {
+            "root-symlink" => {
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&external, &candidate).unwrap();
+            }
+            "nested-symlink" => {
+                std::fs::create_dir_all(candidate.join("src")).unwrap();
+                std::fs::write(
+                    candidate.join("lsharp.toml"),
+                    "[project]\nname = \"demo\"\nversion = \"9.0.0\"\n",
+                )
+                .unwrap();
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&external, candidate.join("src/linked-source")).unwrap();
+            }
+            "invalid-manifest" => {
+                std::fs::create_dir_all(&candidate).unwrap();
+                std::fs::write(
+                    candidate.join("lsharp.toml"),
+                    "[project\nname = \"demo\"\nversion = \"9.0.0\"\n",
+                )
+                .unwrap();
+            }
+            "missing-version" => {
+                std::fs::create_dir_all(&candidate).unwrap();
+                std::fs::write(
+                    candidate.join("lsharp.toml"),
+                    "[project]\nname = \"demo\"\n",
+                )
+                .unwrap();
+            }
+            _ => unreachable!(),
+        }
+
+        let result = cmd_install_in(&project_dir);
+
+        assert!(result.is_err(), "unsafe cached candidate must fail closed");
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("cached candidate"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(project_dir.join(".lsharp/lock.toml")).unwrap(),
+            "lock sentinel\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(index_dir.join("sentinel.path")).unwrap(),
+            "index sentinel\n"
+        );
+        assert!(std::fs::read_dir(&packages_dir).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".install-txn-")
+        }));
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+}
+
+#[test]
 fn test_cmd_install_mixed_path_and_cached_failure_keeps_state_unpromoted() {
     let base_dir = std::env::temp_dir().join("lsharp_test_install_mixed_transaction");
     let _ = std::fs::remove_dir_all(&base_dir);

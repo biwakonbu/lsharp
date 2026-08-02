@@ -140,30 +140,125 @@ fn cached_packages_for_name(packages_dir: &Path, name: &str) -> Result<Vec<Cache
         if !file_name.starts_with(&prefix) {
             continue;
         }
-        if !path.join("lsharp.toml").exists() {
-            continue;
-        }
-        let metadata = match path.symlink_metadata() {
-            Ok(metadata) => metadata,
-            Err(_) => continue,
-        };
-        if !metadata.is_dir() && !metadata.file_type().is_symlink() {
-            continue;
-        }
-
-        let version_text = package_version_text(&path);
-        let Ok(version) = SemVersion::parse(&version_text) else {
-            continue;
-        };
-        candidates.push(CachedPackage {
-            path,
-            version,
-            version_text,
-        });
+        candidates.push(validate_cached_candidate(&path, name)?);
     }
 
     candidates.sort_by(|left, right| left.version.cmp(&right.version));
     Ok(candidates)
+}
+
+fn validate_cached_candidate(path: &Path, expected_name: &str) -> Result<CachedPackage, String> {
+    let metadata = path.symlink_metadata().map_err(|error| {
+        format!(
+            "cached candidate {} cannot be inspected: {error}",
+            path.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!(
+            "cached candidate {} must be a regular symlink-free directory",
+            path.display()
+        ));
+    }
+
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).map_err(|error| {
+            format!(
+                "cached candidate {} cannot be scanned: {error}",
+                path.display()
+            )
+        })? {
+            let entry = entry.map_err(|error| {
+                format!(
+                    "cached candidate {} cannot be scanned: {error}",
+                    path.display()
+                )
+            })?;
+            let child = entry.path();
+            let child_metadata = child.symlink_metadata().map_err(|error| {
+                format!(
+                    "cached candidate {} cannot inspect {}: {error}",
+                    path.display(),
+                    child.display()
+                )
+            })?;
+            if child_metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "cached candidate {} must be symlink-free: {}",
+                    path.display(),
+                    child.display()
+                ));
+            }
+            if child_metadata.is_dir() {
+                pending.push(child);
+            }
+        }
+    }
+
+    let manifest = path.join("lsharp.toml");
+    let manifest_metadata = manifest.symlink_metadata().map_err(|error| {
+        format!(
+            "cached candidate {} manifest-valid check failed: {error}",
+            path.display()
+        )
+    })?;
+    if !manifest_metadata.is_file() || manifest_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "cached candidate {} manifest must be a regular file",
+            path.display()
+        ));
+    }
+    let content = std::fs::read_to_string(&manifest).map_err(|error| {
+        format!(
+            "cached candidate {} manifest-valid check failed: {error}",
+            path.display()
+        )
+    })?;
+    let document: toml::Value = toml::from_str(&content).map_err(|error| {
+        format!(
+            "cached candidate {} manifest is invalid: {error}",
+            path.display()
+        )
+    })?;
+    let project = document
+        .get("project")
+        .and_then(toml::Value::as_table)
+        .ok_or_else(|| {
+            format!(
+                "cached candidate {} manifest project table is invalid",
+                path.display()
+            )
+        })?;
+    let manifest_name = project.get("name").and_then(toml::Value::as_str);
+    if manifest_name != Some(expected_name) {
+        return Err(format!(
+            "cached candidate {} manifest name does not match dependency {}",
+            path.display(),
+            expected_name
+        ));
+    }
+    let version_text = project
+        .get("version")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "cached candidate {} manifest version is invalid",
+                path.display()
+            )
+        })?
+        .to_string();
+    let version = SemVersion::parse(&version_text).map_err(|error| {
+        format!(
+            "cached candidate {} manifest version is invalid: {error}",
+            path.display()
+        )
+    })?;
+    Ok(CachedPackage {
+        path: path.to_path_buf(),
+        version,
+        version_text,
+    })
 }
 
 fn matches_compatible(base: &SemVersion, version: &SemVersion) -> bool {
@@ -188,7 +283,18 @@ pub fn select_highest_matching_cached_package<'a>(
     candidates
         .iter()
         .filter(|candidate| req.matches(&candidate.version))
-        .max_by(|left, right| left.version.cmp(&right.version))
+        .max_by(|left, right| match left.version.cmp(&right.version) {
+            std::cmp::Ordering::Equal => cached_package_name(left).cmp(cached_package_name(right)),
+            ordering => ordering,
+        })
+}
+
+fn cached_package_name(candidate: &CachedPackage) -> &str {
+    candidate
+        .path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
 }
 
 #[cfg(test)]

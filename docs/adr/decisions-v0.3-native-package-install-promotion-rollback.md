@@ -70,3 +70,26 @@ This verifies ordering and fail-closed recovery in an offline fixture. It does
 not prove crash consistency, filesystem journaling, power-loss durability,
 cross-device rename behavior, registry/provider acquisition, current-source
 runtime, or Mac/Linux packaged parity; those remain `[~]`.
+
+## Cached candidate provenance boundary
+
+The cached-version resolver now treats every matching cache entry as an
+attestable candidate before selection. Its root must be a regular directory,
+the complete candidate tree must be symlink-free, and `lsharp.toml` must be a
+regular, parseable manifest whose project name matches the dependency and whose
+version is valid semver. Any matching invalid candidate fails closed rather
+than being silently ignored; this keeps an unsafe cache from becoming a
+successful install or from changing existing lock/index state.
+
+When multiple valid candidates have the same semantic version, both Rust and
+native select the lexicographically greatest cache directory name after the
+version comparison. This makes the existing highest-version rule deterministic
+without adding a registry or changing the lock source representation.
+
+The same offline fixture covers valid equal-version candidates, a root
+symlink, a nested symlink, and malformed manifest input. Rust resolver tests
+and the native selfhost installer tests agree on the selected candidate and
+on preservation of sentinel lock/index files plus transaction residue absence
+when an unsafe candidate is encountered. Network/registry acquisition,
+filesystem crash consistency, current-source runtime, and Mac/Linux packaged
+parity remain unverified and stay `[~]`.

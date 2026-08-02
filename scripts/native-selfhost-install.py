@@ -7,6 +7,7 @@ import pathlib
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import uuid
@@ -577,6 +578,13 @@ def semver_matches(kind, required, candidate):
 
 
 def resolve_cached_version_dependency(packages_dir, name, requirement):
+    _, _package_dir, version_text = resolve_cached_version_candidate(
+        packages_dir, name, requirement
+    )
+    return {"name": name, "version": version_text, "source": "registry:default"}
+
+
+def resolve_cached_version_candidate(packages_dir, name, requirement):
     kind, required = parse_version_requirement(requirement)
     prefix = f"{name}-"
     candidates = []
@@ -587,24 +595,87 @@ def resolve_cached_version_dependency(packages_dir, name, requirement):
     for package_dir in package_paths:
         if not package_dir.name.startswith(prefix):
             continue
-        if not package_dir.is_dir() and not package_dir.is_symlink():
+        version, version_text = validate_cached_candidate(package_dir, name)
+        if not semver_matches(kind, required, version):
             continue
-        manifest = package_dir / "lsharp.toml"
-        if not manifest.is_file():
-            continue
-        version_text = package_version_text(package_dir)
-        try:
-            version = parse_semver(version_text)
-        except InstallError:
-            continue
-        if semver_matches(kind, required, version):
-            candidates.append((version, package_dir.name, version_text))
+        candidates.append((version, package_dir.name, version_text, package_dir))
     if not candidates:
         raise InstallError(
             f"no cached package matches dependency {name!r} version requirement {requirement!r}"
         )
-    _, _, version_text = max(candidates)
-    return {"name": name, "version": version_text, "source": "registry:default"}
+    selected = max(candidates, key=lambda candidate: (candidate[0], candidate[1], candidate[2]))
+    return selected[0], selected[3], selected[2]
+
+
+def validate_cached_candidate(package_dir, expected_name):
+    try:
+        root_mode = package_dir.lstat().st_mode
+    except OSError as error:
+        raise InstallError(
+            f"cached candidate {package_dir} cannot be inspected: {error}"
+        ) from error
+    if stat.S_ISLNK(root_mode) or not stat.S_ISDIR(root_mode):
+        raise InstallError(
+            f"cached candidate {package_dir} must be a regular symlink-free directory"
+        )
+
+    pending = [package_dir]
+    while pending:
+        directory = pending.pop()
+        try:
+            children = sorted(directory.iterdir(), key=lambda path: path.name)
+        except OSError as error:
+            raise InstallError(
+                f"cached candidate {package_dir} cannot be scanned: {error}"
+            ) from error
+        for child in children:
+            try:
+                child_mode = child.lstat().st_mode
+            except OSError as error:
+                raise InstallError(
+                    f"cached candidate {package_dir} cannot inspect {child}: {error}"
+                ) from error
+            if stat.S_ISLNK(child_mode):
+                raise InstallError(
+                    f"cached candidate {package_dir} must be symlink-free: {child}"
+                )
+            if stat.S_ISDIR(child_mode):
+                pending.append(child)
+
+    manifest = package_dir / "lsharp.toml"
+    try:
+        manifest_mode = manifest.lstat().st_mode
+    except OSError as error:
+        raise InstallError(
+            f"cached candidate {package_dir} manifest-valid check failed: {error}"
+        ) from error
+    if stat.S_ISLNK(manifest_mode) or not stat.S_ISREG(manifest_mode):
+        raise InstallError(
+            f"cached candidate {package_dir} manifest must be a regular file"
+        )
+    try:
+        config = load_toml(manifest)
+    except InstallError as error:
+        raise InstallError(
+            f"cached candidate {package_dir} manifest is invalid: {error}"
+        ) from error
+    project = config.get("project")
+    if not isinstance(project, dict) or project.get("name") != expected_name:
+        raise InstallError(
+            f"cached candidate {package_dir} manifest name does not match dependency {expected_name}"
+        )
+    version_text = project.get("version")
+    if not isinstance(version_text, str) or not version_text:
+        raise InstallError(
+            f"cached candidate {package_dir} manifest version is invalid"
+        )
+    try:
+        version = parse_semver(version_text)
+    except InstallError as error:
+        raise InstallError(
+            f"cached candidate {package_dir} manifest version is invalid: {error}"
+        ) from error
+    return version, version_text
 
 
 def exported_modules(package_dir):

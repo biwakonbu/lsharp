@@ -2466,3 +2466,13 @@ power-loss durability、cross-device rename、完全な installer transactionali
 Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
 次の RED は実 filesystem crash/power-loss durability または外部 registry/provider取得を含む完全 transactionalityである。
+
+2026-08-02 に cached registry candidate の provenance/determinism boundaryを Rust/nativeで揃えた。version cacheの matching candidateは regular directoryで、
+配下を含め symlink-free、regularでparse可能な `lsharp.toml`、dependency name一致、valid semverであることを事前検証し、matching範囲に
+invalid candidateが一つでもあれば暗黙に捨てず fail-closed にする。同じ semantic versionの valid候補は、既存の最高version選択に加えて
+cache directory nameの辞書順最大を tie-breakerとして Rust/nativeで一致させた。root/nested symlink、malformed manifest、同version候補を同一
+offline fixtureで RED→GREENし、invalid時の既存 lock/indexと `.install-txn-*` residue不在を確認した。これは cached candidate
+provenance/determinismの verified partial sliceであり、registry/network取得、filesystem crash consistency、完全な installer transactionality、
+current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
+次の RED は外部 registry/provider取得を含む完全 transactionality、または実 filesystem crash/power-loss durabilityである。
