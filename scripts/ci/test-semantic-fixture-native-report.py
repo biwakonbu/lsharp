@@ -544,6 +544,37 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                 ],
             )
 
+    def test_rejects_invalid_fixture_with_unexpected_compile_exit_before_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "invalid-native-runner.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stderr.write('Error: [LS1001] undefined value (15..28)\\n')\n"
+                "raise SystemExit(2)\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                fixture_id="invalid/type-undefined-value",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("compile exit", result.stderr.lower())
+            self.assertIn("expected", result.stderr.lower())
+            self.assertFalse(output.exists())
+
     def test_writes_invalid_report_for_rust_style_structured_span(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

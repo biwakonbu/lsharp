@@ -299,6 +299,12 @@ def observe_fixture(
     if fixture["kind"] == "invalid":
         if compile_result.returncode == 0:
             raise ReportError("Rust oracle invalid fixture unexpectedly compiled successfully")
+        expected_exit_code = fixture["expected"].get("exit_code")
+        if expected_exit_code is not None and compile_result.returncode != expected_exit_code:
+            raise ReportError(
+                "Rust oracle invalid fixture compile exit "
+                f"{compile_result.returncode} does not match expected exit {expected_exit_code}"
+            )
         if artifact.exists() or artifact.is_symlink():
             raise ReportError("Rust oracle invalid fixture produced an unexpected Wasm artifact")
         if sha256(source) != source_sha256:

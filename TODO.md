@@ -2569,6 +2569,16 @@ current-source Mac/Linux runtime、packaged App.Cli/rollback bytes parity、live
 M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-official-cross-target-source-smoke-projection.md`](docs/adr/decisions-v0.3-native-official-cross-target-source-smoke-projection.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: semantic fixture report producerの invalid compiler exit admissionをRust/nativeで揃えた。
+invalid fixtureは従来から non-zero compiler exit と診断 code/span を要求していたが、fixtureが宣言する `expected.exit_code` と異なる
+non-zero exitでも report を生成できたため、同じ `invalid/type-undefined-value` fake fixtureで exit `2` を注入する REDを追加した。
+Rust oracle/native stage0とも compile exit mismatch を report生成・Wasmtime実行前に fail-closed とし、既存の diagnostic parser、source digest、
+no-artifact、invalid report schemaを維持した。Rust 18 tests、native 19 testsをGREENにした。これは diagnostic span parity、runtime exit/output admission、
+runtime-evidence receipt、source/ftable/import、batch cleanupの再実装ではなく、invalid compiler outcomeの exact admissionに限定する。
+実 target Mac/Linux runtime、current-source Rust/native producer parity、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と
+M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-semantic-invalid-compile-exit-admission.md`](docs/adr/decisions-v0.3-semantic-invalid-compile-exit-admission.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 の verified partial: official two-target release orchestratorの target runtime/evidence admissionを追加した。
 App.Cli/stage0 archiveとchecksumを既存の最終 `DIST_DIR` へ直接書かず、task-owned `SMOKE_ROOT/release-dist`へ stagingし、Mac/Linuxの
 fetched stage0 runtime postflightと cross-target evidence projection が全て成功した後だけ final `DIST_DIR` へ promoteする。同一 fake harnessで

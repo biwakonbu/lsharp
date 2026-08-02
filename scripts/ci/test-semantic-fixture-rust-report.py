@@ -541,6 +541,35 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 },
             )
 
+    def test_rejects_invalid_fixture_with_unexpected_compile_exit_before_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "invalid-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stderr.write('Error: [LS1001] undefined value (15..28)\\n')\n"
+                "raise SystemExit(2)\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_id="invalid/type-undefined-value",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("compile exit", result.stderr.lower())
+            self.assertIn("expected", result.stderr.lower())
+            self.assertFalse(output.exists())
+
     def test_writes_invalid_report_from_multiline_span_struct(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
