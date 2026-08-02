@@ -423,6 +423,50 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                     }
                 ],
             )
+
+    def test_writes_invalid_report_for_rust_style_structured_span(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "invalid-native-runner.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stderr.write('Error: [LS3001] unsupported literal pattern "
+                "Span { start:\\n  │ 214, end: 216 }\\n')\n"
+                "raise SystemExit(1)\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                fixture_id="invalid/record-field-pattern-literal",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            fixture = json.loads(output.read_text(encoding="utf-8"))["fixtures"][0]
+            self.assertEqual(
+                fixture["diagnostics"],
+                [
+                    {
+                        "code": "LS3001",
+                        "span": {
+                            "start": {"line": 8, "column": 19},
+                            "end": {"line": 8, "column": 21},
+                        },
+                    }
+                ],
+            )
             self.assertEqual(fixture["exit_code"], 1)
             self.assertEqual(fixture["artifact"], {"status": "not-applicable"})
             self.assertEqual(

@@ -35,7 +35,16 @@ from semantic_fixture_matrix import (
 
 SOURCE_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 DIAGNOSTIC_CODE = re.compile(r"\[(LS[0-9]{4})\]")
-BYTE_SPAN = re.compile(r"\((\d+)\.\.(\d+)\)")
+BYTE_SPAN = re.compile(
+    r"(?:"
+    r"\((?P<range_start>\d+)\.\.(?P<range_end>\d+)\)"
+    r"|"
+    r"Span\s*\{\s*start:\s*(?:[│|]\s*)?"
+    r"(?P<struct_start>\d+)\s*,\s*end:\s*(?:[│|]\s*)?"
+    r"(?P<struct_end>\d+)\s*\}"
+    r")",
+    re.DOTALL,
+)
 
 
 class ReportError(ValueError):
@@ -117,8 +126,8 @@ def parse_invalid_diagnostic(output: str, source: str) -> Dict[str, Any]:
     span_match = BYTE_SPAN.search(output)
     if span_match is None:
         raise ReportError("native diagnostic span is missing; refusing synthetic invalid report")
-    start = int(span_match.group(1))
-    end = int(span_match.group(2))
+    start = int(span_match.group("range_start") or span_match.group("struct_start"))
+    end = int(span_match.group("range_end") or span_match.group("struct_end"))
     if end < start:
         raise ReportError("native diagnostic span has a reversed range")
     return {

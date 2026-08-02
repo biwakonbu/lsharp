@@ -2533,6 +2533,14 @@ current-source Mac/Linux runtime、packaged App.Cli/rollback bytes parity、live
 M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-official-cross-target-source-smoke-projection.md`](docs/adr/decisions-v0.3-native-official-cross-target-source-smoke-projection.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: Rust/native semantic report producerの診断 span grammar parityを追加した。
+native側が Rust側と同じ compact byte rangeと multiline structured `Span { start, end }`（diagnostic gutter marker付き）を受け付け、既存の
+diagnostic codeとbyte offsetから同じ line/column JSONへ正規化する。同一 `LS3001` fixtureでRust/nativeのstructured span、invalid code/span、
+reversed/UTF-8 boundaryのfail-closed semanticsを focused testsで確認した。これは source-commit admission、runtime-evidence receipt、component digest binding、
+static source/ftable/import projectionとは別の producer diagnostic parityであり、report schemaは変更していない。current-source Mac/Linux producer parity、
+component instantiation、target runtime、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。
+Evidence: [`decisions-v0.3-semantic-native-diagnostic-span-parity.md`](docs/adr/decisions-v0.3-semantic-native-diagnostic-span-parity.md)。
+
 2026-08-02 の verified partial: `v4-m1-07` static source→artifact projectionに current-source commit admissionを追加した。
 projection開始時に explicit `--source-commit` と `root` の現HEADを exact compareし、不一致・取得不能・不正なcommitなら `wasm-tools print`、artifact読込、sidecar生成を行わず fail-closed にする。同一 fake fixtureで current commitのprojection GREENと stale commitの外部tool未起動/no-evidence RED→GREENを確認した。
 これは直前の runtime-evidence receipt、component runtime→packaged digest binding、既存のsource/ftable/import shape projectionとは別の producer provenance admission boundaryであり、report schemaは変更していない。current-source Rust/native producer parity、component instantiation、Mac/Linux runtime、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
