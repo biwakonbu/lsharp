@@ -1257,6 +1257,12 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
             program = self.write_fake_program(root)
+            trust_store = root / "trust.json"
+            lifecycle = root / "lifecycle.json"
+            trust_store.write_bytes(b"trust snapshot\n")
+            lifecycle.write_bytes(b"lifecycle snapshot\n")
+            trust_digest = f"sha256:{hashlib.sha256(trust_store.read_bytes()).hexdigest()}"
+            lifecycle_digest = f"sha256:{hashlib.sha256(lifecycle.read_bytes()).hexdigest()}"
             payload = request(
                 1,
                 "tools/call",
@@ -1265,11 +1271,13 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                     "arguments": {
                         "source": "(defn main [] true)",
                         "include_manifest": True,
+                        "trust_store": str(trust_store),
+                        "review_lifecycle": str(lifecycle),
                         "review_subject_digest": "sha256:subject",
                         "review_source_commit": "a" * 40,
                         "review_artifact_digest": "sha256:artifact",
-                        "review_trust_store_digest": "sha256:trust",
-                        "review_lifecycle_digest": "sha256:lifecycle",
+                        "review_trust_store_digest": trust_digest,
+                        "review_lifecycle_digest": lifecycle_digest,
                         "review_now": "2026-08-01T00:00:00Z",
                     },
                 },
@@ -1292,8 +1300,8 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 "subject_digest": "sha256:subject",
                 "source_commit": "a" * 40,
                 "artifact_digest": "sha256:artifact",
-                "trust_store_digest": "sha256:trust",
-                "lifecycle_digest": "sha256:lifecycle",
+                "trust_store_digest": trust_digest,
+                "lifecycle_digest": lifecycle_digest,
                 "now": "2026-08-01T00:00:00Z",
             }
             self.assertEqual(response["structuredContent"]["review_evidence_identity"], expected_identity)
@@ -1823,6 +1831,31 @@ class NativeSelfhostMcpTest(unittest.TestCase):
                 ["--review-lifecycle-digest", f"sha256:{hashlib.sha256(lifecycle_bytes).hexdigest()}"],
                 [command[index : index + 2] for index in range(len(command) - 1)],
             )
+
+    def test_provider_digest_requires_explicit_snapshot_paths(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = self.write_fake_program(root)
+            payload = request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "review_trust_store_digest": "sha256:" + "b" * 64,
+                        "review_lifecycle_digest": "sha256:" + "c" * 64,
+                    },
+                },
+            )
+
+            result = self.run_shim(program, payload, root)
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = self.responses(result.stdout)[0]
+            self.assertTrue(response["result"]["isError"])
+            self.assertIn("explicit provider snapshot", response["result"]["content"][0]["text"])
+            self.assertFalse((root / "native.log").exists())
 
     def test_provider_snapshot_semantic_state_is_rejected_without_native_verifier(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

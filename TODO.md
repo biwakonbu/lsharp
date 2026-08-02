@@ -2495,6 +2495,23 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: native MCP `lsharp_validate` の provider digest-only
+contextを explicit snapshot ownershipへ閉じた。`review_trust_store_digest` または
+`review_lifecycle_digest` だけを渡す入力は、対応する `trust_store` と `review_lifecycle`
+の regular non-symlink snapshot pathも、明示 verification receiptもないため native実行前に
+`provider digest requires explicit provider snapshot files` で fail-closed にする。receiptに
+束ねた既存の trust-store digest contextは受理し、receiptと一致しない場合は従来どおり拒否する。
+同一 fake harnessで digest-only RED→GREEN、explicit snapshotの bytes→digest forwarding、
+receipt lifecycle boundaryを確認した。
+これは既存の live provider/auth external boundary、trust-store/receipt coherency、native
+cryptographic verificationとは重複せず、network/auth clientや暗号検証は追加していない。
+current-source Mac/Linux runtime、full Rust/native producer parity、packaged/rollback parity、
+live provider/auth acquisitionは未検証のため、EC-M3-01〜05 と M3-04-N1 / M3-05-N2 /
+M3-05-N7 / M3-05-N9 は `[~]` のまま維持する。Evidence:
+[`decisions-v0.3-native-mcp-provider-digest-requires-snapshot.md`](docs/adr/decisions-v0.3-native-mcp-provider-digest-requires-snapshot.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが
+稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 の verified partial: semantic fixture diff の Rust-oracle/native-stage0
 producer observation state parityを追加した。valid fixtureの artifact/runtime が片側だけ
 `observed` で他方が `pending` の場合、比較前に `artifact.status` / `runtime.status` の

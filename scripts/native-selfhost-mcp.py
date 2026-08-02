@@ -820,6 +820,13 @@ def provider_snapshot_arguments(arguments):
     path_names = ("trust_store", "review_lifecycle")
     present = [name for name in path_names if name in arguments]
     if not present:
+        if any(
+            name in arguments
+            for name in ("review_trust_store_digest", "review_lifecycle_digest")
+        ) and "review_verification_receipt" not in arguments:
+            raise ToolError(
+                "provider digest requires explicit provider snapshot files"
+            )
         return [], set(), {}
     if len(present) != len(path_names):
         raise ToolError("trust_store と review_lifecycle は同時指定が必要です")
