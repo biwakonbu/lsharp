@@ -387,6 +387,25 @@ def rollback_promotions(promoted, packages_dir):
             os.replace(backup, destination)
 
 
+def rollback_install_state(promoted, metadata_backups, packages_dir, lsharp_dir):
+    for path, backup in reversed(metadata_backups):
+        if os.path.lexists(path):
+            remove_managed_path(path, lsharp_dir)
+        if backup is not None and os.path.lexists(backup):
+            os.replace(backup, path)
+    rollback_promotions(promoted, packages_dir)
+
+
+def backup_metadata(path, backup):
+    if not os.path.lexists(path):
+        return None
+    try:
+        os.replace(path, backup)
+    except OSError as error:
+        raise InstallError(f"cannot back up install metadata {path}: {error}") from error
+    return backup
+
+
 def fnv1a64(value):
     hashed = 0xCBF29CE484222325
     for byte in value.encode("utf-8"):
@@ -738,8 +757,50 @@ def install(project_dir):
                 raise InstallError(f"cannot promote package {destination}: {error}") from error
             promoted.append((destination, backup_path))
             print(f"installed {description}")
-        write_lockfile(lsharp_dir, entries)
-        rebuild_module_index(project_dir, lsharp_dir, packages_dir)
+        lock_path = managed_child(lsharp_dir, "lock.toml")
+        index_root = managed_child(lsharp_dir, "module-index")
+        if lock_path.is_symlink():
+            raise InstallError(f"refusing symlinked lockfile: {lock_path}")
+        if lock_path.exists() and not lock_path.is_file():
+            raise InstallError(f"lockfile is not a regular file: {lock_path}")
+        if os.path.lexists(index_root):
+            if index_root.is_symlink():
+                raise InstallError(f"refusing symlinked module index: {index_root}")
+            if not index_root.is_dir():
+                raise InstallError(f"module index is not a directory: {index_root}")
+
+        metadata_backups = []
+        try:
+            metadata_backups.append(
+                (lock_path, backup_metadata(lock_path, temporary_path(staging_dir, "metadata-lock")))
+            )
+            metadata_backups.append(
+                (
+                    index_root,
+                    backup_metadata(index_root, temporary_path(staging_dir, "metadata-index")),
+                )
+            )
+        except InstallError:
+            rollback_install_state(promoted, metadata_backups, packages_dir, lsharp_dir)
+            raise
+
+        if os.environ.get("LSHARP_TEST_INSTALL_FAILPOINT") == "lock":
+            rollback_install_state(promoted, metadata_backups, packages_dir, lsharp_dir)
+            raise InstallError("test-only lockfile commit failpoint")
+        try:
+            write_lockfile(lsharp_dir, entries)
+        except InstallError:
+            rollback_install_state(promoted, metadata_backups, packages_dir, lsharp_dir)
+            raise
+
+        if os.environ.get("LSHARP_TEST_INSTALL_FAILPOINT") == "index":
+            rollback_install_state(promoted, metadata_backups, packages_dir, lsharp_dir)
+            raise InstallError("test-only module-index commit failpoint")
+        try:
+            rebuild_module_index(project_dir, lsharp_dir, packages_dir)
+        except InstallError:
+            rollback_install_state(promoted, metadata_backups, packages_dir, lsharp_dir)
+            raise
         print(f"installed {len(entries)} dependency entries")
     finally:
         if os.path.lexists(staging_dir):

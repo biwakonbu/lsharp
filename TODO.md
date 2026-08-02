@@ -2447,3 +2447,12 @@ promotion rollback verified partial sliceであり、lockfile/module-index I/O f
 semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
 次の RED は lock.toml または module-index の I/O failureでも package destinationと旧 metadataを復元する commit boundaryである。
+
+2026-08-02 に lock.toml/module-index metadata commitの Rust/native rollback boundaryを追加した。同じ local path + fresh Git fixtureで
+promotion後に `lock` と `index` の test-only failpointをそれぞれ注入し、既存 path destination symlink、sentinel lock/indexを復元し、
+fresh Git destination、partial metadata、`.install-txn-*` residueを残さない RED→GREENを確認した。Rustは `cfg(test)` failpoint、nativeは
+`LSHARP_TEST_INSTALL_FAILPOINT=lock|index` を使い、通常の CLI/API へ公開しない。これは final promotion + metadata rollbackの verified partial sliceであり、
+完全な installer transactionality、filesystem durability、registry/provider/auth取得、native MCP package-install semantics、current-source Linux runtime、
+Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
+次の RED は metadata rollback後の filesystem durability/fsync境界、または外部 registry/provider取得を含む完全 transactionalityである。

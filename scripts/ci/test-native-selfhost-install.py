@@ -478,6 +478,65 @@ class NativeSelfhostInstallTest(unittest.TestCase):
             )
             self.assertEqual(list(packages.glob(".install-txn*")), [])
 
+    def test_metadata_failure_restores_previous_state(self):
+        for failpoint in ("lock", "index"):
+            with self.subTest(failpoint=failpoint), tempfile.TemporaryDirectory() as temporary_directory:
+                root = pathlib.Path(temporary_directory)
+                project = root / "project"
+                dependency = root / "local-lib"
+                repository = root / "git-lib"
+                self.write_package(dependency, "local-lib", "1.0.0", {})
+                repository.mkdir()
+                self.run_git(repository, "init", "-q")
+                self.run_git(repository, "config", "user.email", "native-install@example.invalid")
+                self.run_git(repository, "config", "user.name", "Native Install Test")
+                self.write_package(repository, "git-lib", "1.0.0", {})
+                self.run_git(repository, "add", ".")
+                self.run_git(repository, "commit", "-qm", "initial package")
+
+                packages = project / ".lsharp" / "packages"
+                index = project / ".lsharp" / "module-index"
+                packages.mkdir(parents=True)
+                index.mkdir(parents=True)
+                (project / "lsharp.toml").write_text(
+                    "[dependencies]\n"
+                    '"a-local-lib" = { path = "../local-lib" }\n'
+                    f'"z-git" = {{ git = "{repository}" }}\n',
+                    encoding="utf-8",
+                )
+                lock = project / ".lsharp" / "lock.toml"
+                lock.write_text("lock sentinel\n", encoding="utf-8")
+                index_sentinel = index / "sentinel.path"
+                index_sentinel.write_text("index sentinel\n", encoding="utf-8")
+                old_target = root / "old-local-lib"
+                old_target.mkdir()
+                source_id = f"path:{dependency.resolve()}"
+                destination = packages / f"a-local-lib-{self.fnv1a64(source_id)[:8]}"
+                destination.symlink_to(old_target, target_is_directory=True)
+                environment, marker = self.poison_host_commands(root)
+                environment["LSHARP_TEST_INSTALL_FAILPOINT"] = failpoint
+
+                result = self.run_installer(project, environment)
+
+                self.assertNotEqual(result.returncode, 0)
+                expected_diagnostic = (
+                    "test-only module-index"
+                    if failpoint == "index"
+                    else f"test-only {failpoint}"
+                )
+                self.assertIn(expected_diagnostic, result.stderr)
+                self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
+                self.assertTrue(destination.is_symlink())
+                self.assertEqual(destination.resolve(), old_target.resolve())
+                git_source = f"git:{repository}"
+                git_destination = packages / f"z-git-{self.fnv1a64(git_source)[:8]}"
+                self.assertFalse(git_destination.exists())
+                self.assertEqual(lock.read_text(encoding="utf-8"), "lock sentinel\n")
+                self.assertEqual(
+                    index_sentinel.read_text(encoding="utf-8"), "index sentinel\n"
+                )
+                self.assertEqual(list(packages.glob(".install-txn*")), [])
+
     def test_empty_dependencies_rebuilds_module_index_and_writes_empty_lock(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

@@ -17,13 +17,15 @@ managed destinations before metadata is touched.
 Before each final promotion, move an existing managed destination into the
 transaction staging directory as a backup. If a later promotion fails, remove
 newly promoted destinations in reverse order and restore each backup. The Rust
-test build exposes an atomic-index failpoint only under `cfg(test)`; the native
+test build exposes an atomic promotion-index failpoint only under `cfg(test)`; the native
 fixture uses the explicit `LSHARP_TEST_INSTALL_FAILPOINT=promotion:<index>` test
 environment input. Neither changes the normal CLI surface or external API.
 
-The tested commit point is the final rename loop. Lockfile and module-index
-writes remain after that loop and are not claimed as fully rollback-safe by this
-slice. No registry, network, or MCP route is introduced.
+The tested commit points are the final rename loop and the lockfile/module-index
+metadata commit. Existing metadata is moved into the same transaction staging
+area before writing. A lockfile write failure, module-index failure, or the
+deterministic test failpoint restores metadata and promoted packages in reverse
+order. No registry, network, or MCP route is introduced.
 
 ## Evidence
 
@@ -36,7 +38,14 @@ slice. No registry, network, or MCP route is introduced.
 - The focused Rust and native installer suites also retain successful path,
   Git, cached-version, and module-index coverage.
 
-This is promotion-loop rollback evidence, not full installer transactionality.
-Lockfile/module-index I/O rollback, registry/provider/auth acquisition,
-current-source Linux runtime, and Mac/Linux packaged/rollback parity remain
-unverified and stay `[~]` in `TODO.md`.
+The metadata fixture injects `lock` and `index` failures after both path and
+fresh Git packages have been promoted. Rust keeps these failpoints under
+`cfg(test)`; native accepts them only through the explicit
+`LSHARP_TEST_INSTALL_FAILPOINT` test environment input. The previous lock/index
+contents, existing path symlink, and module-index sentinel are restored, while
+the fresh Git destination and transaction staging are removed.
+
+This is final promotion plus metadata rollback evidence, not full installer
+transactionality or filesystem durability evidence. Registry/provider/auth
+acquisition, current-source Linux runtime, and Mac/Linux packaged/rollback
+parity remain unverified and stay `[~]` in `TODO.md`.

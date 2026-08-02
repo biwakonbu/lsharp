@@ -2387,6 +2387,10 @@ impl Drop for InstallTransactionGuard {
 static INSTALL_TEST_PROMOTION_FAILPOINT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(usize::MAX);
 
+#[cfg(test)]
+static INSTALL_TEST_METADATA_FAILPOINT: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+
 fn remove_install_path(path: &Path) {
     if path.symlink_metadata().is_ok() {
         let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
@@ -2400,6 +2404,33 @@ fn rollback_promoted_packages(promoted: &mut Vec<(PathBuf, Option<PathBuf>)>) {
             let _ = std::fs::rename(backup_path, final_path);
         }
     }
+}
+
+fn backup_install_metadata(path: &Path, backup_path: &Path) -> miette::Result<Option<PathBuf>> {
+    if path.symlink_metadata().is_err() {
+        return Ok(None);
+    }
+    std::fs::rename(path, backup_path).map_err(|error| {
+        driver_io_error(format!("managed install metadata の退避に失敗: {error}"))
+    })?;
+    Ok(Some(backup_path.to_path_buf()))
+}
+
+fn restore_install_metadata(path: &Path, backup_path: Option<&Path>) {
+    remove_install_path(path);
+    if let Some(backup_path) = backup_path {
+        let _ = std::fs::rename(backup_path, path);
+    }
+}
+
+fn rollback_install_state(
+    promoted: &mut Vec<(PathBuf, Option<PathBuf>)>,
+    metadata_backups: &mut Vec<(PathBuf, Option<PathBuf>)>,
+) {
+    for (path, backup_path) in metadata_backups.drain(..).rev() {
+        restore_install_metadata(&path, backup_path.as_deref());
+    }
+    rollback_promoted_packages(promoted);
 }
 
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
@@ -2628,15 +2659,53 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
 
     println!("\nインストール完了: {installed} 個インストール, {skipped} 個スキップ");
 
-    // ロックファイルを生成・書き出し
+    // ロックファイルと module-index は package promotion と同じ commit boundary に置く
     let lock = lockfile::generate_lockfile_from_entries(resolved_entries);
     std::fs::create_dir_all(&lsharp_dir)
         .map_err(|e| driver_io_error(format!("{}: {}", lsharp_dir.display(), e)))?;
     let lock_path = lsharp_dir.join("lock.toml");
-    lockfile::write_lockfile(&lock, &lock_path)
-        .map_err(|e| driver_io_error(format!("{}: {e}", lock_path.display())))?;
+    let index_path = lsharp_dir.join("module-index");
+    let mut metadata_backups = Vec::new();
+    let lock_backup =
+        match backup_install_metadata(&lock_path, &transaction_dir.join(".metadata-lock")) {
+            Ok(backup) => backup,
+            Err(error) => {
+                rollback_install_state(&mut promoted, &mut metadata_backups);
+                return Err(error);
+            }
+        };
+    metadata_backups.push((lock_path.clone(), lock_backup));
+    let index_backup =
+        match backup_install_metadata(&index_path, &transaction_dir.join(".metadata-index")) {
+            Ok(backup) => backup,
+            Err(error) => {
+                rollback_install_state(&mut promoted, &mut metadata_backups);
+                return Err(error);
+            }
+        };
+    metadata_backups.push((index_path, index_backup));
+
+    #[cfg(test)]
+    if INSTALL_TEST_METADATA_FAILPOINT.load(std::sync::atomic::Ordering::SeqCst) == 1 {
+        rollback_install_state(&mut promoted, &mut metadata_backups);
+        return Err(miette::miette!("test-only lockfile commit failpoint"));
+    }
+
+    if let Err(error) = lockfile::write_lockfile(&lock, &lock_path) {
+        rollback_install_state(&mut promoted, &mut metadata_backups);
+        return Err(driver_io_error(format!("{}: {error}", lock_path.display())));
+    }
     println!("ロックファイルを生成しました: {}", lock_path.display());
-    rebuild_installed_module_index(project_dir)?;
+    #[cfg(test)]
+    if INSTALL_TEST_METADATA_FAILPOINT.load(std::sync::atomic::Ordering::SeqCst) == 2 {
+        rollback_install_state(&mut promoted, &mut metadata_backups);
+        return Err(miette::miette!("test-only module-index commit failpoint"));
+    }
+
+    if let Err(error) = rebuild_installed_module_index(project_dir) {
+        rollback_install_state(&mut promoted, &mut metadata_backups);
+        return Err(error);
+    }
     std::fs::remove_dir_all(&transaction_dir)
         .map_err(|e| driver_io_error(format!("install transaction staging の回収に失敗: {e}")))?;
 
