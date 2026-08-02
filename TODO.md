@@ -2415,3 +2415,16 @@ lock.toml と module-index を更新しない。Rust 4 tests と native Git 3 te
 MCP package-install API、複数依存のtransactionality、live provider/auth取得、current-source Linux runtime、Mac/Linux両 targetの
 packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-package-install-git-boundary.md`](docs/adr/decisions-v0.3-native-package-install-git-boundary.md)。
+
+2026-08-02 に cached-version dependency の Rust/native semver lexical parityを追加した。同じ offline cache fixtureで
+`math-core = "+1.0.0"` を渡したとき、native installerが既に拒否していた signed componentを Rust `cmd_install`も
+ASCII digit-only preflightで拒否し、lock entryを生成しない境界を RED→GREEN で揃えた。これは registry/networkを導入しない
+cached-version入力境界の verified partial sliceである。複数依存の atomic promotion/rollback transactionality、registry/provider/auth取得、
+native MCP package-install semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証であり、
+EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-cached-semver-parity.md`](docs/adr/decisions-v0.3-native-package-install-cached-semver-parity.md)。
+次の RED は path/Git/cached-versionを含む複数依存で、後続依存の失敗時に先行 final package、lock.toml、module-indexを残さない
+task-owned transaction boundaryを同一 Rust/native fixtureで固定すること。current-source manifest/expected replay lockが現HEADに一致せず、
+別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+再現 command: `cargo test -p lsharp-driver test_cmd_install_version_dependency_rejects_signed_semver_requirement -- --nocapture` と
+`python3 scripts/ci/test-native-selfhost-install.py -k signed_cached_version_requirement`。

@@ -369,6 +369,29 @@ class NativeSelfhostInstallTest(unittest.TestCase):
                 ],
             )
 
+    def test_rejects_signed_cached_version_requirement(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            project = root / "project"
+            packages = project / ".lsharp" / "packages"
+            self.write_package(
+                packages / "math-core-a",
+                "math-core",
+                "1.0.0",
+                {"Math.ls": ""},
+            )
+            (project / "lsharp.toml").write_text(
+                "[dependencies]\nmath-core = \"+1.0.0\"\n",
+                encoding="utf-8",
+            )
+            environment, marker = self.poison_host_commands(root)
+
+            result = self.run_installer(project, environment)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
+            self.assertIn("invalid semver", result.stderr)
+
     def test_empty_dependencies_rebuilds_module_index_and_writes_empty_lock(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

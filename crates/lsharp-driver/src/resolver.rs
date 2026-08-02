@@ -12,19 +12,31 @@ impl SemVersion {
     pub fn parse(input: &str) -> Result<Self, String> {
         let normalized = input.trim().trim_start_matches('v');
         let mut parts = normalized.split('.');
-        let major = parts
+        let major_text = parts
             .next()
-            .ok_or_else(|| format!("semver の形式が不正です: {input}"))?
+            .ok_or_else(|| format!("semver の形式が不正です: {input}"))?;
+        if !major_text.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(format!("major version の形式が不正です: {input}"));
+        }
+        let major = major_text
             .parse()
             .map_err(|_| format!("major version の形式が不正です: {input}"))?;
-        let minor = parts
+        let minor_text = parts
             .next()
-            .ok_or_else(|| format!("semver の形式が不正です: {input}"))?
+            .ok_or_else(|| format!("semver の形式が不正です: {input}"))?;
+        if !minor_text.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(format!("minor version の形式が不正です: {input}"));
+        }
+        let minor = minor_text
             .parse()
             .map_err(|_| format!("minor version の形式が不正です: {input}"))?;
-        let patch = parts
+        let patch_text = parts
             .next()
-            .ok_or_else(|| format!("semver の形式が不正です: {input}"))?
+            .ok_or_else(|| format!("semver の形式が不正です: {input}"))?;
+        if !patch_text.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(format!("patch version の形式が不正です: {input}"));
+        }
+        let patch = patch_text
             .parse()
             .map_err(|_| format!("patch version の形式が不正です: {input}"))?;
         if parts.next().is_some() {

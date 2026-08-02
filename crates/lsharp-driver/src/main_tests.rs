@@ -2474,3 +2474,29 @@ fn test_cmd_install_version_dependency_errors_when_no_cached_match_exists() {
 
     std::fs::remove_dir_all(&base_dir).unwrap();
 }
+
+#[test]
+fn test_cmd_install_version_dependency_rejects_signed_semver_requirement() {
+    let base_dir = std::env::temp_dir().join("lsharp_test_install_version_signed");
+    let _ = std::fs::remove_dir_all(&base_dir);
+    std::fs::create_dir_all(base_dir.join(".lsharp/packages/math-core-a/src")).unwrap();
+
+    std::fs::write(
+        base_dir.join(".lsharp/packages/math-core-a/lsharp.toml"),
+        "[project]\nname = \"math-core\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        base_dir.join("lsharp.toml"),
+        "[dependencies]\nmath-core = \"+1.0.0\"\n",
+    )
+    .unwrap();
+
+    let result = cmd_install_in(&base_dir);
+    assert!(
+        result.is_err(),
+        "符号付き semver requirement は Rust/native とも fail-closed であるべき"
+    );
+
+    std::fs::remove_dir_all(&base_dir).unwrap();
+}
