@@ -29,6 +29,7 @@ cleanup() {
     if ! python3 "$SOURCE_SMOKE_EVIDENCE_WRITER" \
       --evidence-dir "$SOURCE_SMOKE_EVIDENCE_DIR" \
       --work-dir "$WORK_DIR" \
+      --stage0-dir "$STAGE0_DIR" \
       --stage0-manifest "$STAGE0_DIR/manifest.json" \
       --target "$SMOKE_TARGET" \
       --exit-code "$status" \

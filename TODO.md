@@ -2373,3 +2373,11 @@ current-source manifest/expected replay lockが現HEADに一致せず、別セ�
 Linux replay・stage regeneration・full buildは未実行である。current-source Linux runtime、live provider/auth実取得・意味検証、
 Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-rollback-archive-payload-closure.md`](docs/adr/decisions-v0.3-rollback-archive-payload-closure.md)。
+
+2026-08-02 に source-file smoke evidence writerへ fetched stage0 directoryを明示的に渡し、regular/symlink-free
+package内の全 regular payloadを相対path・size・file SHA-256の deterministic digestへ束ねる
+`stage0_payload_sha256` projectionを追加した。独立再計算を含む offline RED→GREEN harnessで確認した verified partial sliceであり、
+M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。live provider/auth取得・意味検証、native crypto、
+current-source Linux runtime、Mac/Linux packaged/rollback bytes parityは未検証である。current-source manifest/expected replay lockは
+現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行。
+Evidence: [`decisions-v0.3-source-smoke-fetched-payload-binding.md`](docs/adr/decisions-v0.3-source-smoke-fetched-payload-binding.md)。

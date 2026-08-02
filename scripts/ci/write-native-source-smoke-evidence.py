@@ -34,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", required=True)
     parser.add_argument("--work-dir", required=True)
+    parser.add_argument("--stage0-dir", required=True)
     parser.add_argument("--stage0-manifest", required=True)
     parser.add_argument("--review-attestation-report")
     parser.add_argument("--target", required=True, choices=sorted(TARGETS))
@@ -106,6 +107,35 @@ def first_symlink(path: Path) -> Path | None:
     return None
 
 
+def stage0_payload_sha256(stage0_dir: Path) -> str:
+    if stage0_dir.is_symlink() or not stage0_dir.is_dir():
+        fail(f"stage0 directory is unavailable: {stage0_dir}")
+    stage0_symlink = first_symlink(stage0_dir)
+    if stage0_symlink is not None:
+        fail(f"stage0 directory contains a symlink: {stage0_symlink}")
+
+    records: list[bytes] = []
+    for path in sorted(stage0_dir.rglob("*")):
+        if path.is_file() and not path.is_symlink():
+            relative = path.relative_to(stage0_dir).as_posix()
+            records.append(
+                (
+                    relative.encode("utf-8")
+                    + b"\0"
+                    + str(path.stat().st_size).encode("ascii")
+                    + b"\0"
+                    + sha256(path).encode("ascii")
+                    + b"\n"
+                )
+            )
+    if not records:
+        fail(f"stage0 directory contains no regular payload files: {stage0_dir}")
+    digest = hashlib.sha256()
+    for record in records:
+        digest.update(record)
+    return digest.hexdigest()
+
+
 def main() -> int:
     args = parse_args()
     if not 0 <= args.exit_code <= 255:
@@ -124,7 +154,14 @@ def main() -> int:
     if work_symlink is not None:
         fail(f"source smoke work directory contains a symlink: {work_symlink}")
 
+    stage0_dir = Path(args.stage0_dir)
     stage0_manifest = Path(args.stage0_manifest)
+    payload_digest = stage0_payload_sha256(stage0_dir)
+    if stage0_manifest != stage0_dir / "manifest.json":
+        fail(
+            "stage0 manifest must be the manifest.json file inside stage0 directory: "
+            f"manifest={stage0_manifest} stage0_dir={stage0_dir}"
+        )
     manifest, stage0_digest = load_stage0_manifest(stage0_manifest, args.target)
     review_attestations = None
     if args.review_attestation_report:
@@ -147,6 +184,7 @@ def main() -> int:
             "target": args.target,
             "source_commit": manifest["source_commit"],
             "stage0_manifest_sha256": stage0_digest,
+            "stage0_payload_sha256": payload_digest,
             "exit_code": args.exit_code,
             "artifacts": artifact_metadata(work_dir),
             "command_outputs": command_outputs(work_dir),

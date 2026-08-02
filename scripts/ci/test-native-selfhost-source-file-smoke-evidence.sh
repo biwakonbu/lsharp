@@ -36,12 +36,14 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 WORK_DIR="$TMP_ROOT/work"
 EVIDENCE_DIR="$TMP_ROOT/evidence"
-STAGE0_MANIFEST="$TMP_ROOT/stage0-manifest.json"
+STAGE0_DIR="$TMP_ROOT/stage0"
+STAGE0_MANIFEST="$STAGE0_DIR/manifest.json"
 ATTESTATION_REPORT="$TMP_ROOT/validation-attestation-json.stdout"
-mkdir -p "$WORK_DIR"
+mkdir -p "$WORK_DIR" "$STAGE0_DIR/bin"
 printf 'decls:1\n' >"$WORK_DIR/parse.stdout"
 printf 'compile-bytes' >"$WORK_DIR/compile.wasm"
 printf 'build-bytes' >"$WORK_DIR/build.wasm"
+printf 'compiler-bytes' >"$STAGE0_DIR/bin/compiler"
 cat >"$ATTESTATION_REPORT" <<'JSON'
 {"review_attestations":[{"review_id":"review:checkout/reviewer-001","subject_digest":"sha256:subject-001","source_commit":"0123456789abcdef","provenance_digest":"sha256:review-001","provider":"github","key_id":"org/reviews-2026","algorithm":"ed25519","signature":"AAECAw","issued_at":"2026-08-01T00:00:00Z","expires_at":"2026-09-01T00:00:00Z","sequence":3,"state":"unverified","canonical_bytes":[0,1,2],"span":{"start":12,"end":34}}]}
 JSON
@@ -49,13 +51,15 @@ cat >"$STAGE0_MANIFEST" <<'JSON'
 {
   "kind": "lsharp-native-selfhost-stage0",
   "target": "aarch64-apple-darwin",
-  "source_commit": "0123456789012345678901234567890123456789"
+  "source_commit": "0123456789012345678901234567890123456789",
+  "compiler": "bin/compiler"
 }
 JSON
 
 python3 "$WRITER" \
   --evidence-dir "$EVIDENCE_DIR" \
   --work-dir "$WORK_DIR" \
+  --stage0-dir "$STAGE0_DIR" \
   --stage0-manifest "$STAGE0_MANIFEST" \
   --review-attestation-report "$ATTESTATION_REPORT" \
   --target aarch64-apple-darwin \
@@ -67,15 +71,30 @@ cmp -s "$WORK_DIR/compile.wasm" "$EVIDENCE_DIR/work/compile.wasm" \
   || fail "Wasm evidence was not preserved"
 [[ -s "$EVIDENCE_DIR/stage0-manifest.json" ]] || fail "stage0 manifest evidence is missing"
 
-python3 - "$EVIDENCE_DIR/manifest.json" <<'PY'
+python3 - "$EVIDENCE_DIR/manifest.json" "$STAGE0_DIR" <<'PY'
+import hashlib
 import json
 import pathlib
 import sys
 
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+stage0_dir = pathlib.Path(sys.argv[2])
+records = []
+for path in sorted(stage0_dir.rglob("*")):
+    if path.is_file() and not path.is_symlink():
+        records.append(
+            path.relative_to(stage0_dir).as_posix().encode()
+            + b"\0"
+            + str(path.stat().st_size).encode()
+            + b"\0"
+            + hashlib.sha256(path.read_bytes()).hexdigest().encode()
+            + b"\n"
+        )
+expected_payload_digest = hashlib.sha256(b"".join(records)).hexdigest()
 assert manifest["kind"] == "lsharp-native-selfhost-source-smoke-evidence"
 assert manifest["target"] == "aarch64-apple-darwin"
 assert manifest["source_commit"] == "0123456789012345678901234567890123456789"
+assert manifest["stage0_payload_sha256"] == expected_payload_digest
 assert manifest["exit_code"] == 7
 assert manifest["artifacts"]["compile.wasm"]["size"] == len(b"compile-bytes")
 assert manifest["review_attestations"] == [{
@@ -100,6 +119,7 @@ NO_REPORT_EVIDENCE_DIR="$TMP_ROOT/no-report-evidence"
 python3 "$WRITER" \
   --evidence-dir "$NO_REPORT_EVIDENCE_DIR" \
   --work-dir "$WORK_DIR" \
+  --stage0-dir "$STAGE0_DIR" \
   --stage0-manifest "$STAGE0_MANIFEST" \
   --target aarch64-apple-darwin \
   --exit-code 0
@@ -119,6 +139,7 @@ ln -s "$SYMLINK_TARGET" "$WORK_DIR/linked.stdout"
 if python3 "$WRITER" \
   --evidence-dir "$SYMLINK_EVIDENCE_DIR" \
   --work-dir "$WORK_DIR" \
+  --stage0-dir "$STAGE0_DIR" \
   --stage0-manifest "$STAGE0_MANIFEST" \
   --review-attestation-report "$ATTESTATION_REPORT" \
   --target aarch64-apple-darwin \
@@ -126,12 +147,29 @@ if python3 "$WRITER" \
   fail "evidence writer accepted a symlink inside the work directory"
 fi
 [[ ! -e "$SYMLINK_EVIDENCE_DIR" ]] || fail "symlink work input created evidence output"
+rm "$WORK_DIR/linked.stdout"
+
+STAGE0_SYMLINK_EVIDENCE_DIR="$TMP_ROOT/stage0-symlink-evidence"
+ln -s "$STAGE0_DIR/bin/compiler" "$STAGE0_DIR/bin/linked-compiler"
+if python3 "$WRITER" \
+  --evidence-dir "$STAGE0_SYMLINK_EVIDENCE_DIR" \
+  --work-dir "$WORK_DIR" \
+  --stage0-dir "$STAGE0_DIR" \
+  --stage0-manifest "$STAGE0_MANIFEST" \
+  --target aarch64-apple-darwin \
+  --exit-code 0; then
+  fail "evidence writer accepted a symlink inside the stage0 directory"
+fi
+[[ ! -e "$STAGE0_SYMLINK_EVIDENCE_DIR" ]] \
+  || fail "stage0 symlink input created evidence output"
+rm "$STAGE0_DIR/bin/linked-compiler"
 
 MISSING_ATTESTATION_REPORT="$TMP_ROOT/missing-attestation.stdout"
 MISSING_ATTESTATION_EVIDENCE_DIR="$TMP_ROOT/missing-attestation-evidence"
 if python3 "$WRITER" \
   --evidence-dir "$MISSING_ATTESTATION_EVIDENCE_DIR" \
   --work-dir "$WORK_DIR" \
+  --stage0-dir "$STAGE0_DIR" \
   --stage0-manifest "$STAGE0_MANIFEST" \
   --review-attestation-report "$MISSING_ATTESTATION_REPORT" \
   --target aarch64-apple-darwin \
@@ -154,6 +192,7 @@ PY
 if python3 "$WRITER" \
   --evidence-dir "$UPPER_EVIDENCE_DIR" \
   --work-dir "$WORK_DIR" \
+  --stage0-dir "$STAGE0_DIR" \
   --stage0-manifest "$UPPER_MANIFEST" \
   --target aarch64-apple-darwin \
   --exit-code 0; then
@@ -164,6 +203,7 @@ fi
 if python3 "$WRITER" \
   --evidence-dir "$EVIDENCE_DIR" \
   --work-dir "$WORK_DIR" \
+  --stage0-dir "$STAGE0_DIR" \
   --stage0-manifest "$STAGE0_MANIFEST" \
   --target aarch64-apple-darwin \
   --exit-code 0; then
