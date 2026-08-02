@@ -2683,3 +2683,11 @@ packaged/rollback parity、provider/authの証拠ではない。EC-M3-04 / EC-M3
 [`decisions-v0.3-semantic-source-fingerprint-binding.md`](docs/adr/decisions-v0.3-semantic-source-fingerprint-binding.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 2026-08-02 の verified partial: semantic fixture report producerの compiler/runner workspace ownershipをRust/nativeで揃えた。両producerは compile subprocessの `cwd` を per-fixtureのtask-owned directoryへ固定し、相対パスの runner 出力が checkout rootへ漏れないことを同一 fake fixtureで RED→GREEN にした。Rust producer 19 tests、native producer 21 testsと既存 focused batchがGREENである。これは source mutation、manifest→runner identity、runtime/report admissionとは別の runner workspace safety contractであり、current-source Mac/Linux runtime、full native producer parity、component instantiation、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence: [`decisions-v0.3-semantic-producer-runner-workspace.md`](docs/adr/decisions-v0.3-semantic-producer-runner-workspace.md)。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+2026-08-02 の verified partial: native semantic report producerの stage0 manifest payload closureを追加した。compilerだけでなく、manifestが宣言する
+`transport_driver` と `materializer` も、source fixtureのcopy、runner起動、report/evidence生成前に regular executable file として検査する。
+欠落または symlink payload の fake fixture 4ケースを native report 22 testsで RED→GREENにし、既存の compiler→runner identity、source digest、
+runtime/report admission、batch cleanup semanticsは変更していない。これは runner identity/cwd isolation とは別の stage0 package closed-shape
+boundaryである。Rust oracleはstage0 manifestを入力としないためこの preflight の対象外であり、current-source Mac/Linux runtime、full native producer
+parity、component instantiation、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。
+Evidence: [`decisions-v0.3-native-report-stage0-payload-closure.md`](docs/adr/decisions-v0.3-native-report-stage0-payload-closure.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。

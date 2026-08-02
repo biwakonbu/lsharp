@@ -32,6 +32,10 @@ def make_executable(path: pathlib.Path, body: str) -> None:
 def write_stage0_manifest(root: pathlib.Path, target: str = TARGET, source_commit: str = SOURCE_COMMIT) -> pathlib.Path:
     stage0 = root / "stage0"
     stage0.mkdir()
+    payload_dir = stage0 / "bin"
+    payload_dir.mkdir()
+    for payload in ("transport-driver", "materializer"):
+        make_executable(payload_dir / payload, "#!/bin/sh\nexit 0\n")
     manifest = stage0 / "manifest.json"
     manifest.write_text(
         json.dumps(
@@ -755,6 +759,47 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("source_commit", result.stderr)
             self.assertFalse(output.exists())
+
+    def test_rejects_stage0_manifest_payload_without_regular_executables(self):
+        for field in ("transport_driver", "materializer"):
+            for invalid_kind in ("missing", "symlink"):
+                with self.subTest(field=field, invalid_kind=invalid_kind):
+                    with tempfile.TemporaryDirectory() as directory:
+                        root = pathlib.Path(directory)
+                        runner = root / "runner"
+                        wasmtime = root / "wasmtime"
+                        stage0_manifest = write_stage0_manifest(root)
+                        manifest = json.loads(stage0_manifest.read_text(encoding="utf-8"))
+                        payload = stage0_manifest.parent / manifest[field]
+                        if invalid_kind == "missing":
+                            payload.unlink()
+                        else:
+                            payload.unlink()
+                            replacement = root / f"{field}-outside"
+                            make_executable(replacement, "#!/bin/sh\nexit 0\n")
+                            payload.symlink_to(replacement)
+                        work_dir = root / "work"
+                        work_dir.mkdir()
+                        output = root / "report.json"
+                        make_executable(
+                            runner,
+                            "#!/usr/bin/env python3\n"
+                            "import pathlib, sys\n"
+                            "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
+                        )
+                        make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+                        result = self.run_producer(
+                            root,
+                            runner,
+                            wasmtime,
+                            stage0_manifest,
+                            output,
+                            work_dir,
+                        )
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn(field, result.stderr.lower())
+                        self.assertIn("regular executable", result.stderr.lower())
+                        self.assertFalse(output.exists())
 
     def test_rejects_runner_not_bound_to_stage0_manifest(self):
         with tempfile.TemporaryDirectory() as directory:

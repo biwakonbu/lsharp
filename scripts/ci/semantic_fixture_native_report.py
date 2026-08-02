@@ -160,6 +160,7 @@ def load_stage0_manifest(
             "stage0 manifest source_commit mismatch: "
             f"manifest={manifest.get('source_commit')!r} requested={source_commit!r}"
         )
+    payload_paths: Dict[str, pathlib.Path] = {}
     for field in ("compiler", "transport_driver", "materializer"):
         value = manifest.get(field)
         relative = pathlib.PurePosixPath(value) if isinstance(value, str) else None
@@ -171,12 +172,17 @@ def load_stage0_manifest(
             or "\\" in value
         ):
             raise ReportError(f"stage0 manifest {field} must be a safe relative path")
-    compiler_path = path.parent / manifest["compiler"]
-    if compiler_path.is_symlink() or not compiler_path.is_file() or not os.access(compiler_path, os.X_OK):
-        raise ReportError(
-            "stage0 manifest compiler must be a regular executable file: "
-            f"{compiler_path}"
-        )
+        payload_path = path.parent / value
+        if (
+            payload_path.is_symlink()
+            or not payload_path.is_file()
+            or not os.access(payload_path, os.X_OK)
+        ):
+            raise ReportError(
+                f"stage0 manifest {field} must be a regular executable file: {payload_path}"
+            )
+        payload_paths[field] = payload_path
+    compiler_path = payload_paths["compiler"]
     if compiler_path.resolve() != runner.resolve():
         raise ReportError(
             "native runner is not bound to the stage0 manifest compiler: "
