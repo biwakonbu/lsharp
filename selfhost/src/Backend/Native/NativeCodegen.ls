@@ -9815,7 +9815,7 @@
     part4 (byte-vector-4 77 133 255 120)
     part5 (byte-vector-4 14 73 129 255)
     part6 (byte-vector-4 0 0 0 64)
-    part7 (byte-vector-4 115 107 77 1)
+    part7 (byte-vector-4 115 109 77 1)
     part8 (byte-vector-4 247 235 5 73)
     part9 (byte-vector-4 15 186 247 63)
     part10 (byte-vector-4 65 137 204 41)
@@ -9823,29 +9823,29 @@
     part12 (byte-vector-4 68 137 238 72)
     part13 (byte-vector-4 131 198 8 72)
     part14 (byte-vector-4 131 198 15 72)
-    part15 (byte-vector-4 131 230 240 49)
-    part16 (byte-vector-4 255 186 3 0)
-    part17 (byte-vector-4 0 0 65 186)
-    part18 (byte-vector-4 34 0 0 0)
-    part19 (byte-vector-4 73 199 192 255)
-    part20 (byte-vector-4 255 255 255 69)
-    part21 (byte-vector-4 49 201 184 9)
-    part22 (byte-vector-4 0 0 0 15)
-    part23 (byte-vector-4 5 72 133 192)
-    part24 (byte-vector-4 120 39 199 0)
-    part25 (byte-vector-4 1 0 0 0)
-    part26 (byte-vector-4 68 137 104 4)
-    part27 (byte-vector-4 72 141 120 8)
-    part28 (byte-vector-4 75 141 116 39)
-    part29 (byte-vector-4 8 68 137 233)
-    part30 (byte-vector-4 243 164 72 15)
-    part31 (byte-vector-4 186 232 63 65)
-    part32 (byte-vector-4 95 65 94 65)
-    part33 (byte-vector-4 93 65 92 91)
-    part34 (byte-vector-4 195 49 192 65)
-    part35 (byte-vector-4 95 65 94 65)
-    part36 (byte-vector-4 93 65 92 91)
-    part37 (byte-vector-1 195)
+    part15 (byte-vector-4 131 230 240 73)
+    part16 (byte-vector-4 139 14 72 133)
+    part17 (byte-vector-4 201 117 5 185)
+    part18 (byte-vector-4 0 32 0 0)
+    part19 (byte-vector-4 72 137 207 72)
+    part20 (byte-vector-4 1 241 73 139)
+    part21 (byte-vector-4 86 8 72 57)
+    part22 (byte-vector-4 209 119 48 73)
+    part23 (byte-vector-4 137 14 76 1)
+    part24 (byte-vector-4 247 199 7 1)
+    part25 (byte-vector-4 0 0 0 68)
+    part26 (byte-vector-4 137 111 4 72)
+    part27 (byte-vector-4 137 248 72 141)
+    part28 (byte-vector-4 127 8 75 141)
+    part29 (byte-vector-4 116 39 8 68)
+    part30 (byte-vector-4 137 233 243 164)
+    part31 (byte-vector-4 72 15 186 232)
+    part32 (byte-vector-4 63 65 95 65)
+    part33 (byte-vector-4 94 65 93 65)
+    part34 (byte-vector-4 92 91 195 49)
+    part35 (byte-vector-4 192 65 95 65)
+    part36 (byte-vector-4 94 65 93 65)
+    part37 (byte-vector-3 92 91 195)
     group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
     group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
     group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
@@ -10535,7 +10535,7 @@
   20)
 
 (defn x86-selfhost-substring-helper-size []
-  145)
+  147)
 
 (defn x86-selfhost-string-concat-helper-size []
   197)
@@ -10648,43 +10648,43 @@
   (+ (x86-helper-base-offset import-stub-offset import-count) 949))
 
 (defn x86-selfhost-string-concat-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1094))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1096))
 
 (defn x86-selfhost-map-new-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1291))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1293))
 
 (defn x86-selfhost-map-size-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1366))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1368))
 
 (defn x86-selfhost-map-insert-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1383))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1385))
 
 (defn x86-selfhost-map-get-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1487))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1489))
 
 (defn x86-selfhost-map-remove-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1549))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1551))
 
 (defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1626))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1628))
 
 (defn x86-selfhost-command-line-args-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1710))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1712))
 
 (defn x86-selfhost-print-string-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1714))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1716))
 
 (defn x86-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1765))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1767))
 
 (defn x86-selfhost-write-file-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1777))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1779))
 
 (defn x86-selfhost-write-file-bytes-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1964))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1966))
 
 (defn x86-selfhost-int-to-string-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 2219))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 2221))
 
 (defn is-selfhost-runtime-opcode-x86-core [opcode]
   (if (= opcode 64)
@@ -14186,7 +14186,7 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-ref-new-helper) 73)
           (append-native-bytes-rooted result (emit-x86-selfhost-ref-get-helper) 18)
           (append-native-bytes-rooted result (emit-x86-selfhost-ref-set-helper) 20)
-          (append-native-bytes-rooted result (emit-x86-selfhost-substring-helper) 145)
+          (append-native-bytes-rooted result (emit-x86-selfhost-substring-helper) 147)
           (append-native-bytes-rooted result (emit-x86-selfhost-string-concat-helper) 197)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-new-helper) 75)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-size-helper) 17)

@@ -10877,7 +10877,7 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 569)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1549)"),
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1551)"),
         "x86 vector-new helper の拡張後は後続 runtime helper offset も +37 へ同期するべき"
     );
 }
@@ -10960,17 +10960,17 @@ fn test_native_codegen_x86_map_new_helper_adds_heap_base_before_header() {
         "x86 map-new helper の base 加算を含む実バイト長と trailer append 長は 75 bytes に同期するべき"
     );
     assert!(
-        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1366)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1383)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1487)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1549)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1626)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1710)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1714)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1765)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1777)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1964)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2219)"),
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1368)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1385)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1489)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1551)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1628)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1712)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1716)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1767)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1779)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1966)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2221)"),
         "x86 map-new helper の拡張後は map-remove を含む後続 runtime helper offset も同期するべき"
     );
 }
@@ -11128,8 +11128,8 @@ fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 633)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1487)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1549)"),
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1489)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1551)"),
         "x86 vector-get helper の短縮 tag guard 後は map-get/map-remove を含む後続 runtime helper offset と同期するべき"
     );
 }
@@ -13049,7 +13049,7 @@ fn test_native_codegen_x86_print_string_helper_resolves_static_data_offset() {
     );
     assert!(
         size_body.contains("\n  51)")
-            && proc_exit_offset_body.contains("1765")
+            && proc_exit_offset_body.contains("1767")
             && bundle_writer.contains(
                 "(append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)"
             ),
@@ -58482,7 +58482,7 @@ fn test_linux_x86_function_segment_metadata_detects_bad_map_new_runtime_call_tar
     assert_eq!(bad_targets[0].row.depth, 1);
     assert_eq!(bad_targets[0].call_offset, 1);
     assert_eq!(bad_targets[0].rel32, 1103);
-    assert_eq!(bad_targets[0].target, 2219);
+    assert_eq!(bad_targets[0].target, 2221);
 }
 
 #[test]
@@ -58523,7 +58523,7 @@ fn test_linux_x86_function_segment_metadata_detects_map_new_target_inside_functi
     assert_eq!(bad_targets[0].row.function_size, 5792);
     assert_eq!(bad_targets[0].row.instr_idx, 138);
     assert_eq!(bad_targets[0].row.opcode, 60);
-    assert_eq!(bad_targets[0].target, 2219);
+    assert_eq!(bad_targets[0].target, 2221);
 }
 
 #[test]
@@ -58548,8 +58548,6 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_substring_runtime_cal
 3
 692
 12
-0
-0
 0
 0
 0
@@ -59447,7 +59445,7 @@ fn test_linux_x86_function_metadata_derives_entry_ir_call_trace_rows() {
             offset: 1111,
             size: 7,
             param_count: -1,
-            target_offset: 2219,
+            target_offset: 2221,
         }]
     );
 }

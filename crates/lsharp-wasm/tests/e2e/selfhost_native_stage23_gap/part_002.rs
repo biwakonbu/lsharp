@@ -90,8 +90,26 @@ fn test_native_codegen_x86_substring_uses_end_minus_start_length() {
 
     assert_eq!(
         lines,
-        vec![145, 65, 137, 204, 41, 200, 65, 137, 197],
+        vec![147, 65, 137, 204, 41, 200, 65, 137, 197],
         "x86_64 substring helper は length=end-start を保存し、path/module 文字列を壊さないこと"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_substring_uses_bounded_heap_cursor() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-substring-bounded-heap",
+        r#"  (let [helper (emit-x86-selfhost-substring-helper)]
+    (do
+      (print-bytes-loop helper 0 (vector-length helper))
+      0))"#,
+    );
+
+    assert!(
+        !lines
+            .windows(7)
+            .any(|window| window == [184, 9, 0, 0, 0, 15, 5]),
+        "x86_64 substring helper は per-allocation mmap syscall を発行せず、bounded native heap cursor を使うべき"
     );
 }
 
