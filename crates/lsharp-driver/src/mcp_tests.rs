@@ -1238,6 +1238,41 @@ entry = "src/main.ls"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_package_api_tool_rejects_symlinked_api_json() {
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_api_symlink_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let package_dir = root.join(".lsharp/packages/demo-1.0.0");
+        std::fs::create_dir_all(package_dir.join("docs")).unwrap();
+        std::fs::write(
+            package_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let external_api = root.join("external-api.json");
+        std::fs::write(
+            &external_api,
+            r#"{"package":"demo","version":"1.0.0","modules":[]}"#,
+        )
+        .unwrap();
+        symlink(&external_api, package_dir.join("docs/api.json")).unwrap();
+
+        let error = call_tool(
+            "lsharp_package_api",
+            &json!({"project_dir": root.display().to_string(), "name": "demo"}),
+        )
+        .expect_err("symlink api.json は拒否するべき");
+        assert!(error.contains("regular non-symlink file"), "{error}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn test_package_api_tool_generates_api_from_source_when_missing() {
         let root = std::env::temp_dir().join(format!(

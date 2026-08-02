@@ -275,6 +275,39 @@ def assert_package_api_rejects_identity_mismatch(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_package_api_rejects_symlinked_api_json(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        external_api = root / "external-api.json"
+        external_api.write_text(
+            json.dumps({"package": "demo", "version": "1.0.0", "modules": []}),
+            encoding="utf-8",
+        )
+        api_path = package / "docs" / "api.json"
+        api_path.parent.mkdir(parents=True)
+        api_path.symlink_to(external_api)
+
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_package_api",
+                    "arguments": {"project_dir": str(root), "name": "demo"},
+                },
+            ),
+            root,
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        test.assertIn("regular non-symlink file", response["result"]["content"][0]["text"])
+        test.assertFalse((root / "native.log").exists())
+
+
 def assert_package_api_rejects_malformed_native_doc(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

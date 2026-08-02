@@ -105,15 +105,12 @@ fn validate_project_context_dependency_sources(project_dir: &Path) -> Result<(),
                     "dependencies.{name}.git は空でない文字列が必要です"
                 ));
             }
-            if git
-                .split_once("://")
-                .is_some_and(|(_, remainder)| {
-                    remainder
-                        .split('/')
-                        .next()
-                        .is_some_and(|authority| authority.contains('@'))
-                })
-            {
+            if git.split_once("://").is_some_and(|(_, remainder)| {
+                remainder
+                    .split('/')
+                    .next()
+                    .is_some_and(|authority| authority.contains('@'))
+            }) {
                 return Err(format!(
                     "dependencies.{name}.git に credentials を含められません"
                 ));
@@ -338,7 +335,19 @@ fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
     };
     let expected_identity =
         (!cfg.project.name.is_empty()).then_some((package.as_str(), version.as_str()));
-    if api_path.exists() {
+    match std::fs::symlink_metadata(&api_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err(format!(
+                "{}: api.json must be a regular non-symlink file",
+                api_path.display()
+            ));
+        }
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            return Err(mcp_io_error(api_path.display(), error));
+        }
+        _ => {}
+    }
+    if api_path.is_file() {
         let content =
             std::fs::read_to_string(&api_path).map_err(|e| mcp_io_error(api_path.display(), e))?;
         let value: Value =

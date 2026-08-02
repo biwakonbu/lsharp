@@ -512,7 +512,9 @@ def call_package_api(program, arguments):
     expected_identity = (
         (config["name"], config["version"]) if config["name"].strip() else None
     )
-    if api_path.exists():
+    if api_path.is_symlink() or (api_path.exists() and not api_path.is_file()):
+        raise PackageLookupError(f"{api_path}: api.json must be a regular non-symlink file")
+    if api_path.is_file():
         try:
             value = strict_json_loads(api_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError) as error:
