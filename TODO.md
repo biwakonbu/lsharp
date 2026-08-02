@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の `origin/main` は `79bde035095e71a2baa85532c0430a9d76ea2ca7`。
+- 確認時点の `origin/main` は `6f0238c2f537e15b2db7f9c274f3f75a0d94d7fd`。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1460,6 +1460,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `lsharp://document/<id>` fallbackとなるため、full symbol range、cross-document URI provenance、diagnosticsの標準Diagnostic shapeは残る。
   current `HEAD=79bde035` のMac/Linux native artifactをこのURI変更込みで再生成したdirect LSP gateは未実行であり、直前の `9175c6e5`
   native evidenceをcurrent evidenceへ拡大解釈しない。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま残す。
+
+  さらに `6f0238c240d12e5e0f4bbb31dc9ff75b774b4535` で、didOpen/didChange後に自動追加する diagnostics refreshも保存済みの wire URIを
+  使うよう修正した。REDの `test_e2e_selfhost_lsp_transport_diagnostics_preserves_wire_uri` は didOpenのURIだけが stringで、後続
+  `publishDiagnostics` が numeric hashになる failureを確認し、GREENは同じ実際の `App.Cli` bundleで `1 passed` / `318.71s`、
+  `test_e2e_selfhost_lsp_state_preserves_wire_uri` は `1 passed` / `9.13s`、native LSP shimは `5 passed` となった。これは diagnostics
+  refreshのURI保持に限定した verified partialで、標準Diagnostic fields、cross-document provenance、current-source Mac/Linux native
+  artifact gate、component/release parityは残る。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま維持する。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host

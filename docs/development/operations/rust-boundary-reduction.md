@@ -1752,6 +1752,21 @@ native artifactをこのURI変更込みで再生成したdirect LSP gateでは�
 current URI evidenceへ拡大解釈せず、native regeneration、standalone Preview1 runtime、component sidecar、release acquisition/rollback、
 Mac/Linux packaged provenance parity、LSP aggregateは TODOの `[~]` と Rust oracle/bootstrap/host integration境界を維持する。
 
+### V2-16b / V2-16c / V2-16e current-source LSP diagnostics URI refresh (2026-08-02)
+
+current `HEAD=6f0238c240d12e5e0f4bbb31dc9ff75b774b4535` で、didOpen/didChange後に
+`lsp-transport-maybe-append-diagnostics-frame` が追加する `publishDiagnostics` frameも、stateに保存した wire URIを
+`lsp-render-publish-diagnostics-frame-with-state` へ渡すよう修正した。REDの
+`test_e2e_selfhost_lsp_transport_diagnostics_preserves_wire_uri` は、didOpen notificationは string URIだが後続 diagnostics frameだけが
+numeric URI hashになることを実際の `App.Cli` bundleで検出した。GREENは同じ fixtureで `1 passed` / `318.71s`、
+`test_e2e_selfhost_lsp_state_preserves_wire_uri` は `1 passed` / `9.13s`、
+`python3 scripts/ci/test-native-selfhost-lsp-stdio.py` は `5 passed` となった。
+
+この結果は diagnostics refresh の URI ownership を閉じる host-Wasm selfhost verified partialである。標準 LSP Diagnosticの
+field/schema parity、cross-document URI provenance、current `HEAD` のMac Apple Silicon / Linux x86_64 native artifact direct gate、
+standalone Preview1 runtime、component sidecar、release acquisition/rollback、Mac/Linux packaged provenance parity、LSP aggregateは
+未完了であり、TODOの `[~]` と Rust oracle/bootstrap/host integration境界を維持する。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。
