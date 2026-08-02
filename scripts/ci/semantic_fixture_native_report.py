@@ -141,7 +141,7 @@ def parse_invalid_diagnostic(output: str, source: str) -> Dict[str, Any]:
 
 
 def load_stage0_manifest(
-    path: pathlib.Path, target: str, source_commit: str
+    path: pathlib.Path, target: str, source_commit: str, runner: pathlib.Path
 ) -> Dict[str, Any]:
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -171,6 +171,17 @@ def load_stage0_manifest(
             or "\\" in value
         ):
             raise ReportError(f"stage0 manifest {field} must be a safe relative path")
+    compiler_path = path.parent / manifest["compiler"]
+    if compiler_path.is_symlink() or not compiler_path.is_file() or not os.access(compiler_path, os.X_OK):
+        raise ReportError(
+            "stage0 manifest compiler must be a regular executable file: "
+            f"{compiler_path}"
+        )
+    if compiler_path.resolve() != runner.resolve():
+        raise ReportError(
+            "native runner is not bound to the stage0 manifest compiler: "
+            f"manifest={compiler_path} runner={runner}"
+        )
     return manifest
 
 
@@ -496,7 +507,9 @@ def main() -> int:
         wasmtime = require_executable(arguments.wasmtime, "wasmtime")
         wasm_tools = require_executable(arguments.wasm_tools, "wasm-tools")
         stage0_manifest = require_absolute_file(arguments.stage0_manifest, "stage0-manifest")
-        load_stage0_manifest(stage0_manifest, arguments.target, arguments.source_commit)
+        load_stage0_manifest(
+            stage0_manifest, arguments.target, arguments.source_commit, runner
+        )
         raw_manifest = json.loads(arguments.manifest.read_text(encoding="utf-8"))
         manifest = project_manifest(require_object(raw_manifest, "manifest"), root)
         fixtures = select_fixtures(manifest, arguments.fixture_ids, arguments.target)

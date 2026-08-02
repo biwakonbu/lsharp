@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import pathlib
+import shutil
 import stat
 import subprocess
 import sys
@@ -66,6 +67,10 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             wasm_tools = root / "fake-wasm-tools.py"
             make_executable(wasm_tools, "#!/bin/sh\nexit 0\n")
         selected_fixture_ids = fixture_ids or [fixture_id]
+        declared_runner = stage0_manifest.parent / "bin" / "compiler"
+        declared_runner.parent.mkdir(exist_ok=True)
+        shutil.copy2(runner, declared_runner)
+        declared_runner.chmod(declared_runner.stat().st_mode | stat.S_IXUSR)
         command = [
             sys.executable,
             str(PRODUCER),
@@ -78,7 +83,7 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             "--source-commit",
             SOURCE_COMMIT,
             "--runner",
-            str(runner),
+            str(declared_runner),
             "--wasmtime",
             str(wasmtime),
             "--wasm-tools",
@@ -719,6 +724,41 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             result = self.run_producer(root, runner, wasmtime, stage0_manifest, output, work_dir)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("source_commit", result.stderr)
+            self.assertFalse(output.exists())
+
+    def test_rejects_runner_not_bound_to_stage0_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "unbound-runner.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            manifest = json.loads(stage0_manifest.read_text(encoding="utf-8"))
+            manifest["compiler"] = "bin/other-compiler"
+            stage0_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+            other_compiler = stage0_manifest.parent / "bin" / "other-compiler"
+            other_compiler.parent.mkdir(exist_ok=True)
+            make_executable(other_compiler, "#!/bin/sh\nexit 0\n")
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nexit 0\n")
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("runner", result.stderr.lower())
+            self.assertIn("manifest", result.stderr.lower())
             self.assertFalse(output.exists())
 
     def test_writes_sorted_batch_report_with_isolated_artifacts(self):

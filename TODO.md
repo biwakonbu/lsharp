@@ -2495,6 +2495,17 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: native semantic report producerの stage0 manifest→compiler runner identity bindingを追加した。
+従来は manifestの kind/target/source_commit と compiler/transport/materializerの relative path shapeだけを検証し、別の `--runner`を実行できた。
+manifestの `compiler` を regular executableとして検査し、resolved pathを明示 `--runner` と exact compareすることで、unbound/missing/symlink/non-executable
+compilerを fixture実行前に fail-closed にした。同一 fake fixtureで unbound runnerの RED→GREEN、native producer 20 tests、Rust/native diff 9 testsを確認した。
+これは source_sha256、ABI、runtime output/exit、batch transaction/cleanup の再実装ではなく、native evidenceが宣言 stage0 payloadを観測するための
+manifest-to-runner identity boundaryである。current-source Mac/Linux runtime、full Rust/native producer parity、packaged/rollback parity、provider/authは未検証のため、
+EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence: [`decisions-v0.3-native-report-manifest-runner-binding.md`](docs/adr/decisions-v0.3-native-report-manifest-runner-binding.md)。
+再現 command: `python3 scripts/ci/test-semantic-fixture-native-report.py SemanticFixtureNativeReportTest.test_rejects_runner_not_bound_to_stage0_manifest` と
+`python3 scripts/ci/test-semantic-fixture-diff.py`。current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、
+Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 の verified partial: semantic fixture report producer の stdout/stderr admission を Rust/native で揃えた。
 valid fixture の `expected.runtime.stdout` / `stderr` と Wasmtimeの実出力が不一致なら、exit `0` でも report生成前に stream-specific fail-closed とする
 同一 fake fixtureを RED→GREEN で確認した。runtime exit admission、receipt、artifact digest、source/ftable/import、batch cleanupの再実装ではない。
