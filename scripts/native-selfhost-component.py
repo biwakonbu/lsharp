@@ -23,6 +23,11 @@ def parse_arguments(argv):
     )
     parser.add_argument("--program", required=True, metavar="PATH")
     parser.add_argument("--wasm-tools", metavar="PATH")
+    parser.add_argument(
+        "--wasmtime",
+        metavar="PATH",
+        help="optionally run the temporary component with an external wasmtime",
+    )
     parser.add_argument("--command", required=True, choices=("compile", "build"))
     parser.add_argument("--source", required=True, metavar="FILE")
     parser.add_argument("--output", required=True, metavar="FILE")
@@ -96,6 +101,18 @@ def find_wasm_tools(value):
     return validate_executable("wasm-tools", candidate)
 
 
+def find_wasmtime(value):
+    if value is not None:
+        return validate_executable("wasmtime", value)
+
+    candidate = shutil.which("wasmtime")
+    if candidate is None:
+        raise ComponentPackagingError(
+            "wasmtime was not found on PATH; pass --wasmtime PATH"
+        )
+    return validate_executable("wasmtime", candidate)
+
+
 def forward_stderr(stderr):
     if not stderr:
         return
@@ -149,7 +166,7 @@ def cleanup_temporary_component(path):
         ) from error
 
 
-def package_component(program, wasm_tools, command, source, output):
+def package_component(program, wasm_tools, wasmtime, command, source, output):
     temporary_component = None
     primary_error = None
     try:
@@ -187,6 +204,11 @@ def package_component(program, wasm_tools, command, source, output):
                 [str(wasm_tools), "validate", str(temporary_component)],
                 "wasm-tools semantic validation",
             )
+            if wasmtime is not None:
+                run_command(
+                    [str(wasmtime), "run", str(temporary_component)],
+                    "wasmtime component runtime",
+                )
 
             try:
                 os.replace(temporary_component, output)
@@ -230,7 +252,8 @@ def main(argv=None):
         source = validate_source(args.source)
         output = validate_output(args.output)
         wasm_tools = find_wasm_tools(args.wasm_tools)
-        package_component(program, wasm_tools, args.command, source, output)
+        wasmtime = find_wasmtime(args.wasmtime) if args.wasmtime else None
+        package_component(program, wasm_tools, wasmtime, args.command, source, output)
     except ComponentPackagingError as error:
         write_error(error)
         return 1

@@ -2495,6 +2495,14 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 に native component compile/build の opt-in runtime postflightを追加した。`--wasmtime PATH` が明示された場合だけ、byte-shape検査と
+`wasm-tools validate` の後、atomic replace前に `wasmtime run <temporary-component>` を実行する。成功時の runtime invocationと cleanup、runtime exit
+`31` 時の stderr/exit、既存 output保持、temporary cleanupを同一 fake fixtureで RED→GREENにした。既定 compile/buildは Wasmtimeを起動しない。
+これは component instantiationの外部 boundaryの verified partialであり、実 target runtime、source/ftable/import parity、provider/auth、Mac/Linux
+packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-component-runtime-postflight.md`](docs/adr/decisions-v0.3-native-component-runtime-postflight.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 に native component compile/build の artifact postflightを追加した。native programの core outputと
 wasm-tools component new の packaged outputを、atomic promotion前に non-symlink regular file・non-empty Wasm magic
 ('\0asm')として検査する。同じ fake component fixtureで、invalid coreは wasm-tools 実行前に拒否し、invalid packaged

@@ -118,6 +118,35 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             """,
         )
 
+    def write_fake_wasmtime(self, path):
+        return self.write_executable(
+            path,
+            f"""\
+            #!{sys.executable}
+            import json
+            import os
+            import pathlib
+            import sys
+
+            arguments = sys.argv[1:]
+            with pathlib.Path(os.environ["FAKE_WASMTIME_LOG"]).open(
+                "a", encoding="utf-8"
+            ) as log:
+                log.write(json.dumps({{"arguments": arguments}}) + "\\n")
+
+            if len(arguments) != 2 or arguments[0] != "run":
+                sys.stderr.write("unexpected wasmtime arguments: " + repr(arguments) + "\\n")
+                raise SystemExit(94)
+            component = pathlib.Path(arguments[1])
+            if not component.is_file() or not component.read_bytes().startswith(b"\\x00asm"):
+                sys.stderr.write("missing component runtime input\\n")
+                raise SystemExit(95)
+            if os.environ.get("FAKE_WASMTIME_MODE") == "fail":
+                sys.stderr.write("fake component runtime failure\\n")
+                raise SystemExit(31)
+            """,
+        )
+
     def write_forbidden_command(self, directory, name):
         return self.write_executable(
             directory / name,
@@ -144,6 +173,7 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             {
                 "FAKE_NATIVE_LOG": str(root / "native.jsonl"),
                 "FAKE_WASM_TOOLS_LOG": str(root / "wasm-tools.jsonl"),
+                "FAKE_WASMTIME_LOG": str(root / "wasmtime.jsonl"),
                 "FORBIDDEN_LOG": str(root / "forbidden-command-ran"),
                 "PATH": str(tools_directory),
             }
@@ -158,6 +188,7 @@ class NativeSelfhostComponentTest(unittest.TestCase):
         environment,
         command="compile",
         wasm_tools=None,
+        wasmtime=None,
     ):
         self.assertTrue(HELPER.is_file(), "native selfhost component helper is missing")
         arguments = [
@@ -174,6 +205,8 @@ class NativeSelfhostComponentTest(unittest.TestCase):
         ]
         if wasm_tools is not None:
             arguments.extend(("--wasm-tools", str(wasm_tools)))
+        if wasmtime is not None:
+            arguments.extend(("--wasmtime", str(wasmtime)))
         return subprocess.run(
             arguments,
             capture_output=True,
@@ -273,6 +306,61 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", "replace"))
             self.assertEqual(output.read_bytes(), b"\x00asmfake-component")
             self.assert_successful_invocations(root, source, output, "build")
+
+    def test_explicit_wasmtime_runs_component_before_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            wasmtime = self.write_fake_wasmtime(root / "wasmtime")
+
+            result = self.run_helper(
+                program, source, output, environment, wasmtime=wasmtime
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", "replace"))
+            self.assertEqual(output.read_bytes(), b"\x00asmfake-component")
+            runtime_records = self.read_records(root, "wasmtime.jsonl")
+            self.assertEqual(len(runtime_records), 1)
+            self.assertEqual(runtime_records[0]["arguments"][0], "run")
+            component = pathlib.Path(runtime_records[0]["arguments"][1])
+            self.assertFalse(component.exists())
+            self.assertFalse(output.is_symlink())
+            self.assert_no_forbidden_command(root)
+
+    def test_component_runtime_failure_preserves_existing_output_and_cleans_temporary(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            wasmtime = self.write_fake_wasmtime(root / "wasmtime")
+            environment["FAKE_WASMTIME_MODE"] = "fail"
+
+            result = self.run_helper(
+                program, source, output, environment, wasmtime=wasmtime
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                b"wasmtime component runtime exited with status 31", result.stderr
+            )
+            self.assertIn(b"fake component runtime failure", result.stderr)
+            self.assertEqual(output.read_bytes(), b"existing-component")
+            runtime_records = self.read_records(root, "wasmtime.jsonl")
+            self.assertEqual(len(runtime_records), 1)
+            self.assertFalse(pathlib.Path(runtime_records[0]["arguments"][1]).exists())
+            self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
+            self.assert_no_forbidden_command(root)
 
     def test_forwards_successful_native_and_wasm_tools_stderr(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
