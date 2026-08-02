@@ -234,6 +234,34 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
         finally:
             source_path.write_bytes(original_source)
 
+    def test_runs_compiler_in_task_owned_fixture_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "relative-write-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path('runner-relative-residue').write_text('unexpected\\n', encoding='utf-8')\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_id="valid/syntax-basic",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root / "runner-relative-residue").exists())
+            self.assertTrue((work_dir / "runner-relative-residue").is_file())
+
     def test_rejects_source_mutation_during_runtime_before_report(self):
         source_path = ROOT / "examples/hello.ls"
         original_source = source_path.read_bytes()

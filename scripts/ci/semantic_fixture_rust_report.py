@@ -291,7 +291,7 @@ def observe_fixture(
             "--target",
             "wasi-preview1",
         ],
-        cwd=root,
+        cwd=fixture_dir,
         env=environment,
         capture_output=True,
         check=False,

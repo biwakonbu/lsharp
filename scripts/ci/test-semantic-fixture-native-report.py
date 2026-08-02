@@ -239,6 +239,36 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
         finally:
             source_path.write_bytes(original_source)
 
+    def test_runs_runner_in_task_owned_fixture_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "relative-write-runner.py"
+            wasmtime = root / "fake-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path('runner-relative-residue').write_text('unexpected\\n', encoding='utf-8')\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'native-wasm')\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                fixture_id="valid/syntax-basic",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root / "runner-relative-residue").exists())
+            self.assertTrue((work_dir / "runner-relative-residue").is_file())
+
     def test_rejects_source_mutation_during_runtime_before_report(self):
         source_path = ROOT / "examples/hello.ls"
         original_source = source_path.read_bytes()
