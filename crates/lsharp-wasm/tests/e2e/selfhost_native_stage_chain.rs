@@ -3343,6 +3343,7 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
         "emit-x86-selfhost-write-file-helper",
         "emit-x86-selfhost-write-file-bytes-helper",
         "emit-x86-selfhost-int-to-string-helper",
+        "emit-x86-selfhost-read-stdin-helper",
         "emit-x86-selfhost-map-remove-helper",
     ] {
         assert!(
@@ -3368,6 +3369,7 @@ fn test_linux_x86_representative_seed_printed_trailer_includes_all_declared_help
         "emit-x86-selfhost-write-file-helper",
         "emit-x86-selfhost-write-file-bytes-helper",
         "emit-x86-selfhost-int-to-string-helper",
+        "emit-x86-selfhost-read-stdin-helper",
         "emit-x86-selfhost-map-remove-helper",
     ] {
         assert!(
@@ -18854,6 +18856,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     (print-packed-code-segment (emit-x86-selfhost-write-file-helper))
     (print-packed-code-segment (emit-x86-selfhost-write-file-bytes-helper))
     (print-packed-code-segment (emit-x86-selfhost-int-to-string-helper))
+    (print-packed-code-segment (emit-x86-selfhost-read-stdin-helper))
     0))
 
 (defn prefixed-chunk-file-path [prefix chunk-idx]
@@ -19059,7 +19062,8 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         c23 (write-packed-code-segment prefix (emit-x86-selfhost-proc-exit-helper) c22)
         c24 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-helper) c23)
         c25 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-bytes-helper) c24)]
-    (write-packed-code-segment prefix (emit-x86-selfhost-int-to-string-helper) c25)))
+    (let [c26 (write-packed-code-segment prefix (emit-x86-selfhost-int-to-string-helper) c25)]
+      (write-packed-code-segment prefix (emit-x86-selfhost-read-stdin-helper) c26))))
 
 (defn write-x86-code-segments [prefix functions starts import-count import-stub-offset]
   (do
