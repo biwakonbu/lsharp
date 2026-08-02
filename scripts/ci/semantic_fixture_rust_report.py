@@ -256,6 +256,7 @@ def observe_fixture(
     source = root / pathlib.PurePosixPath(fixture["source"])
     source_bytes = source.read_bytes()
     source_text = source_bytes.decode("utf-8")
+    source_sha256 = sha256(source)
     fixture_dir = fixture_work_dir(work_dir, index, batch_size)
     # The Rust compile CLI applies formatting before compilation and may write
     # the formatted source back to the path it receives. Keep the manifest
@@ -285,8 +286,11 @@ def observe_fixture(
             raise ReportError("Rust oracle invalid fixture unexpectedly compiled successfully")
         if artifact.exists() or artifact.is_symlink():
             raise ReportError("Rust oracle invalid fixture produced an unexpected Wasm artifact")
+        if sha256(source) != source_sha256:
+            raise ReportError("source fixture changed during Rust oracle observation")
         return {
             "id": fixture["id"],
+            "source_sha256": source_sha256,
             "diagnostics": [
                 parse_invalid_diagnostic(
                     decode_output(compile_result.stderr) + "\n" + decode_output(compile_result.stdout),
@@ -324,8 +328,11 @@ def observe_fixture(
         capture_output=True,
         check=False,
     )
+    if sha256(source) != source_sha256:
+        raise ReportError("source fixture changed during Rust oracle observation")
     return {
         "id": fixture["id"],
+        "source_sha256": source_sha256,
         "diagnostics": [],
         "exit_code": compile_result.returncode,
         "artifact": {

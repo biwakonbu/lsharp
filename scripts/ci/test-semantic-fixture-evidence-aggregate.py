@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import shutil
@@ -72,6 +73,9 @@ def report_for(producer: str, target: str, observed: bool) -> dict:
         result.append(
             {
                 "id": identifier,
+                "source_sha256": "sha256:" + hashlib.sha256(
+                    (ROOT / fixtures[identifier]["source"]).read_bytes()
+                ).hexdigest(),
                 "diagnostics": expected["diagnostics"],
                 "exit_code": expected["exit_code"],
                 "artifact": artifact,

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -50,6 +51,9 @@ def report_for(producer):
         fixtures.append(
             {
                 "id": fixture["id"],
+                "source_sha256": "sha256:" + hashlib.sha256(
+                    (ROOT / fixture["source"]).read_bytes()
+                ).hexdigest(),
                 "diagnostics": expected["diagnostics"],
                 "exit_code": expected["exit_code"],
                 "artifact": artifact,
@@ -246,6 +250,21 @@ class SemanticFixtureDiffTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("current", result.stderr.lower())
+
+    def test_rejects_source_digest_not_matching_current_fixture(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        for report in (oracle, native):
+            report["fixtures"] = [
+                fixture for fixture in report["fixtures"] if fixture["id"] == "valid/syntax-basic"
+            ]
+        fixture = next(item for item in native["fixtures"] if item["id"] == "valid/syntax-basic")
+        fixture["source_sha256"] = "sha256:" + "c" * 64
+
+        result = self.run_diff(oracle, native, ["valid/syntax-basic"])
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("source_sha256", result.stderr)
 
     def test_rejects_swapped_report_producer_roles(self):
         oracle = report_for("native-stage0")

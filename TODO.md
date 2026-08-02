@@ -2625,3 +2625,10 @@ Rust/native producer parity、component instantiation、Mac/Linux runtime、pack
 EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
 [`decisions-v0.3-semantic-source-artifact-exact-abi.md`](docs/adr/decisions-v0.3-semantic-source-artifact-exact-abi.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+2026-08-02 の verified partial: semantic fixture reportへ `source_sha256` を追加し、source bytes→Rust-oracle/native-stage0 producer→current fixtureの exact bindingを固定した。
+compile前の digestと観測後の再計算が一致しない source mutation、Rust/native間の digest mismatch、current fixtureと異なる stale digestは report/evidence前に fail-closedにする。
+同じ fake fixtureで Rust report 14、native report 15、diff 9、evidence audit 12、two-target aggregate 7をGREENにした。これは直前の source-commit admission、exact ABI binding、
+runtime-evidence receiptとは別の compiler-input provenance verified partialであり、current-source Rust/native producer parity、component instantiation、Mac/Linux runtime、
+packaged/rollback parity、provider/authの証拠ではない。EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
+[`decisions-v0.3-semantic-source-fingerprint-binding.md`](docs/adr/decisions-v0.3-semantic-source-fingerprint-binding.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。

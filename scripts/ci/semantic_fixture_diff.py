@@ -10,6 +10,7 @@ runtime entries must identify the exact observed artifact digest they executed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import pathlib
 import re
@@ -37,6 +38,14 @@ REPORT_PRODUCERS = {"rust-oracle", "native-stage0"}
 
 class ObservationError(ValueError):
     """A report cannot be compared under the matrix contract."""
+
+
+def sha256(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
 
 
 def read_current_source_commit(root: pathlib.Path) -> str:
@@ -136,6 +145,13 @@ def validate_runtime(value: Any, kind: str, label: str) -> Dict[str, Any]:
     return dict(runtime)
 
 
+def validate_source_sha256(value: Any, label: str) -> str:
+    source_sha256 = require_string(value, label)
+    if not SHA256.fullmatch(source_sha256):
+        raise ObservationError(f"{label} must use sha256:<64 lowercase hex>")
+    return source_sha256
+
+
 def validate_report(
     value: Any,
     label: str,
@@ -166,11 +182,18 @@ def validate_report(
     for index, fixture_value in enumerate(fixtures):
         fixture_label = f"{label}.fixtures[{index}]"
         fixture = require_object(fixture_value, fixture_label)
-        expect_keys(fixture, ("id", "diagnostics", "exit_code", "artifact", "runtime"), fixture_label)
+        expect_keys(
+            fixture,
+            ("id", "source_sha256", "diagnostics", "exit_code", "artifact", "runtime"),
+            fixture_label,
+        )
         identifier = require_string(fixture["id"], f"{fixture_label}.id")
         if identifier not in manifest_fixtures:
             raise ObservationError(f"{fixture_label}.id is not in the fixture matrix: {identifier}")
         ids.append(identifier)
+        source_sha256 = validate_source_sha256(
+            fixture["source_sha256"], f"{fixture_label}.source_sha256"
+        )
         exit_code = fixture["exit_code"]
         if isinstance(exit_code, bool) or not isinstance(exit_code, int):
             raise ObservationError(f"{fixture_label}.exit_code must be an integer")
@@ -190,6 +213,7 @@ def validate_report(
         result.append(
             {
                 "id": identifier,
+                "source_sha256": source_sha256,
                 "diagnostics": validate_diagnostics(fixture["diagnostics"], f"{fixture_label}.diagnostics"),
                 "exit_code": exit_code,
                 "artifact": artifact,
@@ -232,6 +256,14 @@ def compare_reports(manifest: Mapping[str, Any], oracle: Dict[str, Any], native:
         oracle_fixture = oracle_by_id[identifier]
         native_fixture = native_by_id[identifier]
         expected_result = expected["expected"]
+        if oracle_fixture["source_sha256"] != native_fixture["source_sha256"]:
+            mismatch(
+                mismatches,
+                identifier,
+                "source_sha256",
+                oracle_fixture["source_sha256"],
+                native_fixture["source_sha256"],
+            )
         for field in ("diagnostics", "exit_code"):
             if oracle_fixture[field] != native_fixture[field]:
                 mismatch(mismatches, identifier, field, oracle_fixture[field], native_fixture[field])
@@ -334,6 +366,15 @@ def main() -> int:
             or native["source_commit"] != current_source_commit
         ):
             raise ObservationError("report source_commit does not match current checkout HEAD")
+        for report_label, report in (("oracle", oracle), ("native", native)):
+            for fixture in report["fixtures"]:
+                source = arguments.root / pathlib.PurePosixPath(
+                    manifest_fixtures[fixture["id"]]["source"]
+                )
+                if fixture["source_sha256"] != sha256(source):
+                    raise ObservationError(
+                        f"{report_label} source_sha256 does not match current fixture: {fixture['id']}"
+                    )
         selected_manifest = dict(projected_manifest)
         selected_manifest["fixtures"] = [
             fixture for fixture in projected_manifest["fixtures"] if fixture["id"] in set(selected_ids)

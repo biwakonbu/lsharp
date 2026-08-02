@@ -134,6 +134,10 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             self.assertEqual(report["producer"], "native-stage0")
             self.assertEqual(report["source_commit"], SOURCE_COMMIT)
             self.assertEqual(fixture["exit_code"], 0)
+            self.assertEqual(
+                fixture["source_sha256"],
+                "sha256:" + hashlib.sha256((ROOT / "examples/hello.ls").read_bytes()).hexdigest(),
+            )
             self.assertEqual(fixture["artifact"]["status"], "observed")
             self.assertEqual(
                 fixture["artifact"]["sha256"],
@@ -227,6 +231,49 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(source_path.read_bytes(), original_source)
+        finally:
+            source_path.write_bytes(original_source)
+
+    def test_rejects_source_mutation_during_runtime_before_report(self):
+        source_path = ROOT / "examples/hello.ls"
+        original_source = source_path.read_bytes()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                mutated_source = original_source + b"\n; mutation\n"
+                runner = root / "fake-native-runner.py"
+                wasmtime = root / "mutating-wasmtime.py"
+                stage0_manifest = write_stage0_manifest(root)
+                work_dir = root / "work"
+                work_dir.mkdir()
+                output = root / "report.json"
+                make_executable(
+                    runner,
+                    "#!/usr/bin/env python3\n"
+                    "import pathlib, sys\n"
+                    "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'native-wasm')\n",
+                )
+                make_executable(
+                    wasmtime,
+                    f"#!/usr/bin/env python3\n"
+                    f"import pathlib\n"
+                    f"pathlib.Path({str(source_path)!r}).write_bytes({mutated_source!r})\n"
+                    "print('42')\n",
+                )
+
+                result = self.run_producer(
+                    root,
+                    runner,
+                    wasmtime,
+                    stage0_manifest,
+                    output,
+                    work_dir,
+                    fixture_id="valid/syntax-basic",
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("source", result.stderr.lower())
+                self.assertFalse(output.exists())
         finally:
             source_path.write_bytes(original_source)
 
