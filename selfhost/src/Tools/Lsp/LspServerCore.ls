@@ -426,23 +426,29 @@
 (defn lsp-render-location-frame [request-id location]
   (render-rpc-int-vector-response-frame request-id location))
 
+(defn lsp-render-range-json [range]
+  (let [payload-0 "{\"start\":{\"line\":"
+    payload-1 (string-concat payload-0 (int-to-string (vector-get range 0)))
+    payload-2 (string-concat payload-1 ",\"character\":")
+    payload-3 (string-concat payload-2 (int-to-string (vector-get range 1)))
+    payload-4 (string-concat payload-3 "},\"end\":{\"line\":")
+    payload-5 (string-concat payload-4 (int-to-string (vector-get range 2)))
+    payload-6 (string-concat payload-5 ",\"character\":")
+    payload-7 (string-concat payload-6 (int-to-string (vector-get range 3)))
+    payload (string-concat payload-7 "}}")]
+    payload))
+
 (defn lsp-render-hover-frame [request-id hover]
   (let [range (vector-get hover 0)
     contents (vector-get hover 1)
     contents-json (json-escape-string contents)
     payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
     payload-1 (string-concat payload-0 (int-to-string request-id))
-    payload-2 (string-concat payload-1 ",\"result\":{\"range\":[")
-    payload-3 (string-concat payload-2 (int-to-string (vector-get range 0)))
-    payload-4 (string-concat payload-3 ",")
-    payload-5 (string-concat payload-4 (int-to-string (vector-get range 1)))
-    payload-6 (string-concat payload-5 ",")
-    payload-7 (string-concat payload-6 (int-to-string (vector-get range 2)))
-    payload-8 (string-concat payload-7 ",")
-    payload-9 (string-concat payload-8 (int-to-string (vector-get range 3)))
-    payload-10 (string-concat payload-9 "],\"contents\":\"")
-    payload-11 (string-concat payload-10 contents-json)
-    payload (string-concat payload-11 "\"}}")]
+    payload-2 (string-concat payload-1 ",\"result\":{\"range\":")
+    payload-3 (string-concat payload-2 (lsp-render-range-json range))
+    payload-4 (string-concat payload-3 ",\"contents\":\"")
+    payload-5 (string-concat payload-4 contents-json)
+    payload (string-concat payload-5 "\"}}")]
     (render-json-rpc-frame payload)))
 
 ;; === 文字列ハッシュ・シンボル情報 ===

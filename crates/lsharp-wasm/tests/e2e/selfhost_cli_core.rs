@@ -4920,7 +4920,7 @@ fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
     let body =
-        r#"{"jsonrpc":"2.0","id":8,"result":{"range":[2,16,2,22],"contents":"defn square"}}"#;
+        r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":2,"character":16},"end":{"line":2,"character":22}},"contents":"defn square"}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
     let harness = format!(
@@ -15668,7 +15668,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover() {
         request_body
     );
     let response_body =
-        r#"{"jsonrpc":"2.0","id":62,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+        r#"{"jsonrpc":"2.0","id":62,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -15827,7 +15827,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document() {
     let open_response =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":45}}"#;
     let hover_response =
-        r#"{"jsonrpc":"2.0","id":66,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+        r#"{"jsonrpc":"2.0","id":66,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -15864,7 +15864,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document_spec_param
     let open_response =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":45}}"#;
     let hover_response =
-        r#"{"jsonrpc":"2.0","id":66,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+        r#"{"jsonrpc":"2.0","id":66,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16536,7 +16536,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_resolves_open_document() {
         main_source.len()
     );
     let hover_response =
-        r#"{"jsonrpc":"2.0","id":73,"result":{"range":[1,2,1,8],"contents":"defn helper"}}"#;
+        r#"{"jsonrpc":"2.0","id":73,"result":{"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":8}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_helper_response.len(),
@@ -16879,7 +16879,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_changed_document() {
         changed_source.len()
     );
     let hover_response =
-        r#"{"jsonrpc":"2.0","id":76,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+        r#"{"jsonrpc":"2.0","id":76,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -17156,7 +17156,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document
         latest_source.len()
     );
     let hover_response =
-        r#"{"jsonrpc":"2.0","id":79,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+        r#"{"jsonrpc":"2.0","id":79,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_response.len(),

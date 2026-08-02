@@ -579,6 +579,25 @@ fn test_e2e_selfhost_lsp_hover_returns_type_info() {
     );
 }
 
+/// TEST-LSP-10b: hover の wire response は LSP の range object を投影すること
+#[test]
+fn test_e2e_selfhost_lsp_hover_frame_projects_range_object() {
+    let source = selfhost_lsp_runtime_bundle();
+    let harness = r#"
+(module Main)
+(defn main []
+  (let [range (make-range 0 1 2 3)
+        hover (push-object-vector-local
+                (push-object-vector-local (vector-new 2) range)
+                "info")]
+    (print-string (lsp-render-hover-frame 8 hover))))
+"#;
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    let body = r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":0,"character":1},"end":{"line":2,"character":3}},"contents":"info"}}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    assert_eq!(output, expected, "hover response は LSP range object を返すべき");
+}
+
 /// TEST-LSP-11: handle-goto-definition がソース位置構造を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_definition_returns_location() {

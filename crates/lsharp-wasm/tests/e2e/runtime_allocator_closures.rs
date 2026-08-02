@@ -354,7 +354,7 @@ fn collect_lsp_actual_stdio_repeated_sequence_proxy_workload() -> serde_json::Va
         open_source.len()
     );
     let hover_response =
-        r#"{"jsonrpc":"2.0","id":81,"result":{"range":[1,21,1,27],"contents":"defn helper"}}"#;
+        r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
     let change_response = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         change_source.len()
