@@ -48,6 +48,26 @@ def require_executable(path: pathlib.Path, label: str) -> pathlib.Path:
     return path.resolve()
 
 
+def current_source_commit(root: pathlib.Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as error:
+        raise ProjectionError(f"current source commit cannot be read: {error}") from error
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise ProjectionError(f"current source commit cannot be read: {detail}")
+    commit = result.stdout.strip()
+    if not SOURCE_COMMIT.fullmatch(commit):
+        raise ProjectionError("current source commit is not a valid commit")
+    return commit
+
+
 def require_artifact(path: pathlib.Path) -> pathlib.Path:
     if not path.is_absolute() or path == pathlib.Path("/") or path.is_symlink() or not path.is_file():
         raise ProjectionError(f"artifact must be an absolute regular file: {path}")
@@ -195,6 +215,11 @@ def main() -> int:
         if not SOURCE_COMMIT.fullmatch(arguments.source_commit):
             raise ProjectionError("source_commit must be a 40-character lowercase commit")
         root = require_absolute_directory(arguments.root, "root")
+        current_commit = current_source_commit(root)
+        if arguments.source_commit != current_commit:
+            raise ProjectionError(
+                "source_commit does not match the current checkout HEAD"
+            )
         wasm_tools = require_executable(arguments.wasm_tools, "wasm-tools")
         artifact = require_artifact(arguments.artifact)
         raw_manifest = json.loads(arguments.manifest.read_text(encoding="utf-8"))

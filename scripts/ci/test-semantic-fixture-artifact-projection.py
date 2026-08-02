@@ -26,7 +26,17 @@ def make_executable(path: pathlib.Path, body: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def run_projection(root: pathlib.Path, tool: pathlib.Path, artifact: pathlib.Path, output: pathlib.Path):
+def run_projection(
+    root: pathlib.Path,
+    tool: pathlib.Path,
+    artifact: pathlib.Path,
+    output: pathlib.Path,
+    source_commit: str | None = None,
+):
+    if source_commit is None:
+        source_commit = subprocess.check_output(
+            ["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"], text=True
+        ).strip()
     return subprocess.run(
         [
             sys.executable,
@@ -40,9 +50,7 @@ def run_projection(root: pathlib.Path, tool: pathlib.Path, artifact: pathlib.Pat
             "--target",
             "aarch64-apple-darwin",
             "--source-commit",
-            subprocess.check_output(
-                ["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"], text=True
-            ).strip(),
+            source_commit,
             "--artifact",
             str(artifact),
             "--wasm-tools",
@@ -104,6 +112,32 @@ class SemanticFixtureArtifactProjectionTest(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("projection", result.stderr.lower())
+            self.assertFalse(output.exists())
+
+    def test_rejects_stale_source_commit_before_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            tool = root / "fake-wasm-tools.py"
+            artifact = root / "artifact.wasm"
+            output = root / "projection.json"
+            artifact.write_bytes(b"\x00asm\x01\x00\x00\x00fake")
+            make_executable(
+                tool,
+                "#!/bin/sh\n"
+                "echo should-not-run >&2\n"
+                "exit 97\n",
+            )
+
+            result = run_projection(
+                root,
+                tool,
+                artifact,
+                output,
+                source_commit="0" * 40,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("source_commit", result.stderr)
             self.assertFalse(output.exists())
 
     def test_diff_rejects_rust_native_import_or_table_mismatch(self):
