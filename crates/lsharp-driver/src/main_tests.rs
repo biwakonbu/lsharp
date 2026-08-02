@@ -2202,6 +2202,11 @@ fn test_cmd_install_git_dependency_already_exists() {
         &source_id,
     );
     std::fs::create_dir_all(&deps_dir).unwrap();
+    std::fs::write(
+        deps_dir.join("lsharp.toml"),
+        "[project]\nname = \"mylib\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
 
     std::fs::write(
         base_dir.join("lsharp.toml"),
@@ -2223,26 +2228,146 @@ branch = "main"
 
 #[test]
 fn test_cmd_install_git_dependency_clone_failure() {
-    // 無効な URL での git clone はエラーメッセージを出してスキップする (全体はエラーにならない)
-    let base_dir = std::env::temp_dir().join("lsharp_test_install_git_fail");
+    // local repository の存在しない branch は、temporary clone と state を残さず失敗するべき
+    let base_dir = std::env::temp_dir().join(format!(
+        "lsharp_test_install_git_fail_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&base_dir);
     std::fs::create_dir_all(&base_dir).unwrap();
+    let repository = base_dir.join("repository");
+    std::fs::create_dir_all(&repository).unwrap();
+    init_test_git_repo(&repository);
+    std::fs::write(
+        repository.join("lsharp.toml"),
+        "[project]\nname = \"badrepo\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    git_commit_all(&repository, "initial package");
 
     std::fs::write(
         base_dir.join("lsharp.toml"),
-        r#"[dependencies.badrepo]
-git = "https://invalid.example.com/no-such-repo.git"
-"#,
+        format!(
+            "[dependencies.badrepo]\ngit = \"{}\"\nbranch = \"missing\"\n",
+            repository.display()
+        ),
     )
     .unwrap();
 
     let result = cmd_install_in(&base_dir);
     assert!(
-        result.is_ok(),
-        "git clone 失敗でも全体はエラーにならないべき"
+        result.is_err(),
+        "git clone 失敗は lock/index 更新前に fail-closed であるべき"
+    );
+    assert!(result.unwrap_err().to_string().contains("git clone"));
+    assert!(!base_dir.join(".lsharp/lock.toml").exists());
+    assert!(!base_dir.join(".lsharp/module-index").exists());
+    let packages_dir = base_dir.join(".lsharp/packages");
+    assert!(
+        !packages_dir
+            .read_dir()
+            .unwrap()
+            .flatten()
+            .any(|entry| entry.file_name().to_string_lossy().starts_with("badrepo-"))
+    );
+    assert!(
+        !packages_dir
+            .read_dir()
+            .unwrap()
+            .flatten()
+            .any(|entry| entry.file_name().to_string_lossy().contains("tmp-"))
     );
 
     std::fs::remove_dir_all(&base_dir).unwrap();
+}
+
+#[test]
+fn test_cmd_install_git_dependency_rejects_non_directory_destinations() {
+    for destination_kind in ["file", "directory"] {
+        let base_dir = std::env::temp_dir().join(format!(
+            "lsharp_test_install_git_destination_{}_{}",
+            destination_kind,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+        let source_id = "git:file:///local/repository";
+        let packages_dir = base_dir.join(".lsharp/packages");
+        std::fs::create_dir_all(&packages_dir).unwrap();
+        let destination = installed_package_dir(&packages_dir, "badrepo", source_id);
+        if destination_kind == "file" {
+            std::fs::write(&destination, "sentinel\n").unwrap();
+        } else {
+            std::fs::create_dir(&destination).unwrap();
+        }
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies.badrepo]\ngit = \"file:///local/repository\"\n",
+        )
+        .unwrap();
+
+        let error =
+            cmd_install_in(&base_dir).expect_err("non-directory git destination は拒否されるべき");
+        let expected = if destination_kind == "directory" {
+            "existing git package has no lsharp.toml"
+        } else {
+            "git package destination is not a directory"
+        };
+        assert!(
+            error.to_string().contains(expected),
+            "unexpected error for {destination_kind}: {error}"
+        );
+        assert!(destination.exists());
+        assert!(!base_dir.join(".lsharp/lock.toml").exists());
+        assert!(!base_dir.join(".lsharp/module-index").exists());
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn test_cmd_install_git_dependency_rejects_symlink_destinations() {
+    for dangling in [false, true] {
+        let base_dir = std::env::temp_dir().join(format!(
+            "lsharp_test_install_git_symlink_{}_{}",
+            dangling,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+        let packages_dir = base_dir.join(".lsharp/packages");
+        std::fs::create_dir_all(&packages_dir).unwrap();
+        let destination =
+            installed_package_dir(&packages_dir, "badrepo", "git:file:///local/repository");
+        let target = if dangling {
+            base_dir.join("missing-target")
+        } else {
+            let target = base_dir.join("existing-target");
+            std::fs::create_dir(&target).unwrap();
+            target
+        };
+        std::os::unix::fs::symlink(&target, &destination).unwrap();
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies.badrepo]\ngit = \"file:///local/repository\"\n",
+        )
+        .unwrap();
+
+        let error =
+            cmd_install_in(&base_dir).expect_err("symlinked git destination は拒否されるべき");
+        assert!(
+            error
+                .to_string()
+                .contains("refusing symlinked git package destination"),
+            "unexpected error for dangling={dangling}: {error}"
+        );
+        assert!(destination.is_symlink());
+        assert!(!base_dir.join(".lsharp/lock.toml").exists());
+        assert!(!base_dir.join(".lsharp/module-index").exists());
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
 }
 
 #[test]

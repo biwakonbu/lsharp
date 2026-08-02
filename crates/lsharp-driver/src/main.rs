@@ -2474,7 +2474,25 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
             config::DependencySpec::Git { git, branch, tag } => {
                 let source_id = dependency_source_string(spec, project_dir);
                 let dep_path = installed_package_dir(&packages_dir, name, &source_id);
-                if dep_path.exists() {
+                if let Ok(metadata) = dep_path.symlink_metadata() {
+                    if metadata.file_type().is_symlink() {
+                        return Err(miette::miette!(
+                            "refusing symlinked git package destination: {}",
+                            dep_path.display()
+                        ));
+                    }
+                    if !metadata.is_dir() {
+                        return Err(miette::miette!(
+                            "git package destination is not a directory: {}",
+                            dep_path.display()
+                        ));
+                    }
+                    if !dep_path.join("lsharp.toml").is_file() {
+                        return Err(miette::miette!(
+                            "existing git package has no lsharp.toml: {}",
+                            dep_path.display()
+                        ));
+                    }
                     println!("  already installed: {name}");
                     resolved_entries.push(lockfile::LockEntry {
                         name: name.clone(),
@@ -2485,23 +2503,50 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                     continue;
                 }
 
-                let clone_result = git_clone(git, branch.as_deref(), tag.as_deref(), &dep_path);
-                match clone_result {
-                    Ok(()) => {
-                        let _ = generate_api_json_for_package(&dep_path);
-                        println!("  インストール: {name} (git: {git})");
-                        resolved_entries.push(lockfile::LockEntry {
-                            name: name.clone(),
-                            version: resolver::package_version_text(&dep_path),
-                            source: dependency_source_string(spec, project_dir),
-                        });
-                        installed += 1;
-                    }
-                    Err(e) => {
-                        eprintln!("  失敗: {name} (git clone エラー: {e})");
-                        skipped += 1;
-                    }
+                let temporary_path = packages_dir.join(format!(
+                    ".{}.tmp-{}",
+                    dep_path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("package"),
+                    std::process::id()
+                ));
+                if temporary_path.symlink_metadata().is_ok() {
+                    return Err(miette::miette!(
+                        "temporary git package path already exists: {}",
+                        temporary_path.display()
+                    ));
                 }
+                if let Err(error) =
+                    git_clone(git, branch.as_deref(), tag.as_deref(), &temporary_path)
+                {
+                    let _ = std::fs::remove_dir_all(&temporary_path)
+                        .or_else(|_| std::fs::remove_file(&temporary_path));
+                    return Err(miette::miette!("git clone failed for {name}: {error}"));
+                }
+                if !temporary_path.join("lsharp.toml").is_file() {
+                    let _ = std::fs::remove_dir_all(&temporary_path)
+                        .or_else(|_| std::fs::remove_file(&temporary_path));
+                    return Err(miette::miette!(
+                        "cloned dependency has no lsharp.toml: {}",
+                        temporary_path.display()
+                    ));
+                }
+                if let Err(error) = std::fs::rename(&temporary_path, &dep_path) {
+                    let _ = std::fs::remove_dir_all(&temporary_path)
+                        .or_else(|_| std::fs::remove_file(&temporary_path));
+                    return Err(driver_io_error(format!(
+                        "git package install の確定に失敗 '{name}': {error}"
+                    )));
+                }
+                let _ = generate_api_json_for_package(&dep_path);
+                println!("  インストール: {name} (git: {git})");
+                resolved_entries.push(lockfile::LockEntry {
+                    name: name.clone(),
+                    version: resolver::package_version_text(&dep_path),
+                    source: dependency_source_string(spec, project_dir),
+                });
+                installed += 1;
             }
             config::DependencySpec::Version(v) => {
                 let resolved = resolver::resolve_cached_version_dependency(project_dir, name, v)

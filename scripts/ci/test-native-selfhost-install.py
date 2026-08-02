@@ -216,6 +216,81 @@ class NativeSelfhostInstallTest(unittest.TestCase):
                 ],
             )
 
+    def test_git_clone_failure_is_atomic_and_does_not_write_state(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            repository = root / "repository"
+            repository.mkdir()
+            self.run_git(repository, "init", "-q")
+            self.run_git(repository, "config", "user.email", "native-install@example.invalid")
+            self.run_git(repository, "config", "user.name", "Native Install Test")
+            self.write_package(repository, "badrepo", "1.0.0", {"Bad.ls": "(module Bad)\n"})
+            self.run_git(repository, "add", ".")
+            self.run_git(repository, "commit", "-qm", "initial package")
+
+            project = root / "project"
+            project.mkdir()
+            (project / "lsharp.toml").write_text(
+                "[dependencies.badrepo]\n"
+                f'git = "{repository}"\n'
+                'branch = "missing"\n',
+                encoding="utf-8",
+            )
+            environment, marker = self.poison_host_commands(root)
+
+            result = self.run_installer(project, environment)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("git clone failed", result.stderr)
+            self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
+            self.assertFalse((project / ".lsharp" / "lock.toml").exists())
+            self.assertFalse((project / ".lsharp" / "module-index").exists())
+            packages = project / ".lsharp" / "packages"
+            self.assertFalse(list(packages.glob("badrepo-*")))
+            self.assertFalse(list(packages.glob("*.tmp-*")))
+
+    def test_git_install_rejects_file_directory_and_symlink_destinations(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            environment, marker = self.poison_host_commands(root)
+            for kind in ("file", "directory", "symlink", "dangling"):
+                project = root / f"project-{kind}"
+                project.mkdir()
+                packages = project / ".lsharp" / "packages"
+                packages.mkdir(parents=True)
+                source_id = "git:file:///local/repository"
+                destination = packages / f"badrepo-{self.fnv1a64(source_id)[:8]}"
+                if kind == "file":
+                    destination.write_text("sentinel\n", encoding="utf-8")
+                elif kind == "directory":
+                    destination.mkdir()
+                else:
+                    target = root / f"target-{kind}"
+                    if kind == "symlink":
+                        target.mkdir()
+                    destination.symlink_to(target, target_is_directory=True)
+                (project / "lsharp.toml").write_text(
+                    '[dependencies.badrepo]\n'
+                    'git = "file:///local/repository"\n',
+                    encoding="utf-8",
+                )
+                result = self.run_installer(project, environment)
+
+                self.assertNotEqual(result.returncode, 0, kind)
+                expected = (
+                    "refusing symlinked git package destination"
+                    if kind in {"symlink", "dangling"}
+                    else (
+                        "existing git package has no lsharp.toml"
+                        if kind == "directory"
+                        else "git package destination is not a directory"
+                    )
+                )
+                self.assertIn(expected, result.stderr, kind)
+                self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
+                self.assertFalse((project / ".lsharp" / "lock.toml").exists())
+                self.assertFalse((project / ".lsharp" / "module-index").exists())
+
     def test_path_dependency_without_project_version_locks_zero_version(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

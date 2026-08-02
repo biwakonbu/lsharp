@@ -2407,3 +2407,11 @@ install routeを追加せず、offline package-installの mutation safetyに限�
 Git/registry取得は外部/provider boundary、native MCP package projection、current-source Linux runtime、Mac/Linux両 targetの
 packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-package-install-destination-boundary.md`](docs/adr/decisions-v0.3-native-package-install-destination-boundary.md)。
+
+2026-08-02 に Git dependency installの Rust/native managed destination parityを追加した。同一 local git fixtureで、既存の
+regular file、manifestなし directory、valid/dangling symlinkを installed package として再利用せず fail-closed にし、fresh cloneは
+`.tmp-*` へ作成して `lsharp.toml`確認後に promoteする契約を揃えた。clone/manifest/promotion failureでは temporary pathだけを回収し、
+lock.toml と module-index を更新しない。Rust 4 tests と native Git 3 testsを RED→GREEN で確認した。registry/cache parity、
+MCP package-install API、複数依存のtransactionality、live provider/auth取得、current-source Linux runtime、Mac/Linux両 targetの
+packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-git-boundary.md`](docs/adr/decisions-v0.3-native-package-install-git-boundary.md)。
