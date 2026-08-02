@@ -43,6 +43,12 @@ MAX_DIST_KIB="${LSHARP_NATIVE_RELEASE_MAX_DIST_KIB:-1048576}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 HOSTGEN_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${VM_NAME}.lock}"
 STAGED_DIST_DIR="${SMOKE_ROOT}/release-dist"
+FINAL_PROMOTION_FAIL_AFTER="${LSHARP_NATIVE_RELEASE_PROMOTION_FAIL_AFTER:-0}"
+
+if [[ ! "${FINAL_PROMOTION_FAIL_AFTER}" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: LSHARP_NATIVE_RELEASE_PROMOTION_FAIL_AFTER must be a non-negative integer: ${FINAL_PROMOTION_FAIL_AFTER}" >&2
+  exit 1
+fi
 
 require_safe_cleanup_path() {
   local path="$1"
@@ -409,6 +415,93 @@ for key in sorted(mac_shared_keys):
 PY
 }
 
+FINAL_PROMOTION_ROOT=""
+FINAL_PROMOTION_BACKUP_DIR=""
+FINAL_PROMOTION_BACKED_UP_DESTINATIONS=()
+FINAL_PROMOTION_PROMOTED_DESTINATIONS=()
+
+rollback_final_release_promotion() {
+  local destination
+  local backup_path
+
+  for destination in "${FINAL_PROMOTION_PROMOTED_DESTINATIONS[@]}"; do
+    if [[ -e "${destination}" || -L "${destination}" ]]; then
+      rm -rf -- "${destination}"
+    fi
+  done
+  for destination in "${FINAL_PROMOTION_BACKED_UP_DESTINATIONS[@]}"; do
+    backup_path="${FINAL_PROMOTION_BACKUP_DIR}/$(basename "${destination}")"
+    if [[ -e "${backup_path}" ]]; then
+      if [[ -e "${destination}" || -L "${destination}" ]]; then
+        rm -rf -- "${destination}"
+      fi
+      mv -- "${backup_path}" "${destination}"
+    fi
+  done
+  rm -rf -- "${FINAL_PROMOTION_ROOT}"
+  FINAL_PROMOTION_ROOT=""
+  FINAL_PROMOTION_BACKUP_DIR=""
+  FINAL_PROMOTION_BACKED_UP_DESTINATIONS=()
+  FINAL_PROMOTION_PROMOTED_DESTINATIONS=()
+}
+
+promote_final_release_outputs() {
+  local staged_path
+  local destination
+  local destination_name
+  local -a staged_paths=()
+  local promoted_count=0
+
+  FINAL_PROMOTION_ROOT="${SMOKE_ROOT}/final-promotion"
+  FINAL_PROMOTION_BACKUP_DIR="${FINAL_PROMOTION_ROOT}/backup"
+  FINAL_PROMOTION_BACKED_UP_DESTINATIONS=()
+  FINAL_PROMOTION_PROMOTED_DESTINATIONS=()
+  mkdir -p "${FINAL_PROMOTION_BACKUP_DIR}"
+  while IFS= read -r -d '' staged_path; do
+    staged_paths+=("${staged_path}")
+  done < <(find "${STAGED_DIST_DIR}" -mindepth 1 -maxdepth 1 -type f -print0)
+  if (( ${#staged_paths[@]} == 0 )); then
+    echo "ERROR: final release publication transaction failed: staged release output is empty" >&2
+    rollback_final_release_promotion
+    return 1
+  fi
+
+  for staged_path in "${staged_paths[@]}"; do
+    destination_name="$(basename "${staged_path}")"
+    destination="${DIST_DIR}/${destination_name}"
+    if [[ -L "${destination}" || ( -e "${destination}" && ! -f "${destination}" ) ]]; then
+      echo "ERROR: final release publication transaction failed: managed destination is not a regular file: ${destination}" >&2
+      rollback_final_release_promotion
+      return 1
+    fi
+    if [[ -f "${destination}" ]]; then
+      if ! cp -p -- "${destination}" "${FINAL_PROMOTION_BACKUP_DIR}/${destination_name}"; then
+        echo "ERROR: final release publication transaction failed: could not backup ${destination}" >&2
+        rollback_final_release_promotion
+        return 1
+      fi
+      FINAL_PROMOTION_BACKED_UP_DESTINATIONS+=("${destination}")
+    fi
+    if ! mv -- "${staged_path}" "${destination}"; then
+      echo "ERROR: final release publication transaction failed: could not promote ${destination}" >&2
+      rollback_final_release_promotion
+      return 1
+    fi
+    FINAL_PROMOTION_PROMOTED_DESTINATIONS+=("${destination}")
+    promoted_count=$((promoted_count + 1))
+    if (( FINAL_PROMOTION_FAIL_AFTER > 0 && promoted_count == FINAL_PROMOTION_FAIL_AFTER )); then
+      echo "ERROR: final release publication transaction failed: deterministic promotion failpoint after ${promoted_count} file(s)" >&2
+      rollback_final_release_promotion
+      return 1
+    fi
+  done
+  rm -rf -- "${FINAL_PROMOTION_ROOT}"
+  FINAL_PROMOTION_ROOT=""
+  FINAL_PROMOTION_BACKUP_DIR=""
+  FINAL_PROMOTION_BACKED_UP_DESTINATIONS=()
+  FINAL_PROMOTION_PROMOTED_DESTINATIONS=()
+}
+
 NATIVE_OFFICIAL_REVIEW_ENV=()
 validate_review_snapshots
 validate_review_identity_inputs
@@ -673,9 +766,7 @@ smoke_stage0_runtime "x86_64-unknown-linux-gnu"
 validate_source_smoke_evidence_pair
 
 mkdir -p "${DIST_DIR}"
-while IFS= read -r -d '' staged_path; do
-  mv "${staged_path}" "${DIST_DIR}/$(basename "${staged_path}")"
-done < <(find "${STAGED_DIST_DIR}" -mindepth 1 -maxdepth 1 -type f -print0)
+promote_final_release_outputs
 
 dist_kib="$(du -sk "${DIST_DIR}" | awk '{print $1}')"
 if (( dist_kib > MAX_DIST_KIB )); then

@@ -2711,3 +2711,12 @@ official source-smoke projectionとは別の semantic evidence cross-target rela
 packaged/rollback parity、provider/authは未検証のため EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
 [`decisions-v0.3-semantic-two-target-observation-parity.md`](docs/adr/decisions-v0.3-semantic-two-target-observation-parity.md)。current-source
 manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+
+2026-08-02 の verified partial: official two-target release orchestratorの final `DIST_DIR` promotionを bounded transactionへ強化した。staged regular
+fileの managed destinationを task-owned backupへ退避してから順に promoteし、test-only failpointまたは promotion failureでは移動済みの新規ファイルを
+除去して旧 archive/checksumsを復元する。unrelated sentinelは保持し、symlink/non-regular managed destinationは fail-closed、成功・rollbackとも transaction
+residueを残さない。同一 fake two-target harnessで通常 successと1ファイル後の RED→GREEN、既存 managed outputs復元を確認した。これは直前の
+staging-before-evidence admissionとは別の final publication transaction boundaryであり、stale managed file removal、power-loss/`fsync` durability、実 Mac/Linux
+runtime、packaged/rollback parity、full native producer parity、provider/authは未検証である。EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。
+Evidence: [`decisions-v0.3-native-official-release-final-promotion-transaction.md`](docs/adr/decisions-v0.3-native-official-release-final-promotion-transaction.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。

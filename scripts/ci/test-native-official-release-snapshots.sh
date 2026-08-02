@@ -37,6 +37,7 @@ REPORT_FREE_SMOKE_ROOT=""
 REPORT_FREE_EVIDENCE_ROOT=""
 MISMATCH_SMOKE_ROOT=""
 MISMATCH_EVIDENCE_ROOT=""
+FINAL_PROMOTION_FAILURE_SMOKE_ROOT=""
 TRAVERSAL_ROOT=""
 TRAVERSAL_BASE=""
 HOSTGEN_REPLAY_LOCK_PATH="/tmp/lsharp-native-official-snapshot-hostgen-lock.$$"
@@ -60,6 +61,7 @@ cleanup() {
   [[ -z "$REPORT_FREE_EVIDENCE_ROOT" ]] || rm -rf "$REPORT_FREE_EVIDENCE_ROOT"
   [[ -z "$MISMATCH_SMOKE_ROOT" ]] || rm -rf "$MISMATCH_SMOKE_ROOT"
   [[ -z "$MISMATCH_EVIDENCE_ROOT" ]] || rm -rf "$MISMATCH_EVIDENCE_ROOT"
+  [[ -z "$FINAL_PROMOTION_FAILURE_SMOKE_ROOT" ]] || rm -rf "$FINAL_PROMOTION_FAILURE_SMOKE_ROOT"
   [[ -z "$TRAVERSAL_ROOT" ]] || rm -rf "$TRAVERSAL_ROOT"
   [[ -z "$TRAVERSAL_BASE" ]] || rm -rf "$TRAVERSAL_BASE"
 }
@@ -436,6 +438,62 @@ for manifest_path, stage0_dir_arg in zip(
 PY
 grep -F "report=$REVIEW_ATTESTATION_REPORT" "$LOG_PATH" >/dev/null
 grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
+
+FINAL_PROMOTION_FAILURE_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-final-promotion.XXXXXX)"
+FINAL_PROMOTION_FAILURE_DIST="$TMP_ROOT/final-promotion-failure-dist"
+mkdir -p "$FINAL_PROMOTION_FAILURE_DIST"
+printf '%s\n' 'unrelated-release-sentinel' >"$FINAL_PROMOTION_FAILURE_DIST/unrelated-sentinel.txt"
+for managed_name in \
+  "lsharp-${VERSION}-aarch64-apple-darwin.tar.gz" \
+  "lsharp-${VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+  "lsharp-stage0-${VERSION}-aarch64-apple-darwin.tar.gz" \
+  "lsharp-stage0-${VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+  checksums.txt; do
+  printf 'previous-%s\n' "$managed_name" >"$FINAL_PROMOTION_FAILURE_DIST/$managed_name"
+done
+set +e
+final_promotion_failure_output="$(
+  LSHARP_NATIVE_RELEASE_PROMOTION_FAIL_AFTER=1 \
+  FAKE_LOG="$LOG_PATH" \
+  PATH="$PATH_PREFIX:$PATH" \
+  VERSION="$VERSION" \
+  SOURCE_COMMIT="$SOURCE_COMMIT" \
+  DIST_DIR="$FINAL_PROMOTION_FAILURE_DIST" \
+  SMOKE_ROOT="$FINAL_PROMOTION_FAILURE_SMOKE_ROOT" \
+  LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$FINAL_PROMOTION_FAILURE_SMOKE_ROOT" \
+  KEEP_WORK_DIR=1 \
+  NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$SOURCE_SMOKE_EVIDENCE_ROOT/final-promotion-failure" \
+  NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="$REVIEW_ATTESTATION_REPORT" \
+  FAKE_EXPECT_ATTESTATION_REPORT=1 \
+  NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+  NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+  MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+  LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+  MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+  LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+  MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+  LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+    bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" 2>&1
+  )"
+final_promotion_failure_status=$?
+set -e
+[[ "$final_promotion_failure_status" -ne 0 ]] \
+  || { echo 'final release promotion failpoint was unexpectedly accepted' >&2; exit 1; }
+grep -F 'final release publication transaction failed' <<<"$final_promotion_failure_output" >/dev/null \
+  || { echo 'final release promotion rollback diagnostic was missing' >&2; echo "$final_promotion_failure_output" >&2; exit 1; }
+[[ "$(<"$FINAL_PROMOTION_FAILURE_DIST/unrelated-sentinel.txt")" == 'unrelated-release-sentinel' ]] \
+  || { echo 'final release promotion rollback removed unrelated output' >&2; exit 1; }
+for managed_name in \
+  "lsharp-${VERSION}-aarch64-apple-darwin.tar.gz" \
+  "lsharp-${VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+  "lsharp-stage0-${VERSION}-aarch64-apple-darwin.tar.gz" \
+  "lsharp-stage0-${VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+  checksums.txt; do
+  grep -F "previous-${managed_name}" "$FINAL_PROMOTION_FAILURE_DIST/$managed_name" >/dev/null \
+    || { echo "final release promotion rollback did not restore $managed_name" >&2; exit 1; }
+done
+[[ ! -e "$FINAL_PROMOTION_FAILURE_SMOKE_ROOT/final-promotion" ]] \
+  || { echo 'final release promotion rollback left transaction residue' >&2; exit 1; }
 
 CROSS_TARGET_MISMATCH_EVIDENCE_ROOT="$TMP_ROOT/cross-target-mismatch-evidence"
 CROSS_TARGET_MISMATCH_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-cross-target-mismatch.XXXXXX)"
