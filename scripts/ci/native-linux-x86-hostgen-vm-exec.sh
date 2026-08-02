@@ -982,13 +982,14 @@ main:
 
 .Largv_done:
     mov %r14, %r12
-    mov $1048576, %rdi
+    # read-file は最大 2 MiB の String object を bounded heap へ確保する。
+    mov $4194304, %rdi
     mov $1, %rsi
     call calloc@PLT
     test %rax, %rax
     je .Lalloc_fail
     mov %rax, %r14
-    mov $1048576, %rcx
+    mov $4194304, %rcx
     mov %rcx, 8(%r14)
     mov $8192, %rcx
     mov %rcx, (%r14)
