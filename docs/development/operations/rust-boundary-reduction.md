@@ -1662,6 +1662,30 @@ availableは約 `7.68 GB`、使用率 `33%` だった。これは Linux current-
 Linux direct LSPのRust互換JSON/semantic projection、standalone Preview1 `io-read-stdin` runtime、component sidecar、公開 release
 asset acquisition、rollback archive実行、Mac/Linux packaged artifact provenance parityは未完了のため、TODOの `[~]` を維持する。
 
+### V2-16b / V2-16c / V2-16e current-source LSP wire projection (2026-08-02)
+
+clean `HEAD=5db1c2a4f5147469f24eaca97976e2e62cfb6455` で、LSP wire projectionの4 operationをMac Apple SiliconとLinux
+x86_64のcurrent-source native経路から確認した。Macは
+`ci-artifacts/native-release/aarch64-apple-darwin/current-5db1c2a4-lsp/` の actual `App.Cli` release artifactを生成し、
+gateは `1 passed` / `836.52s`、manifestは target `aarch64-apple-darwin`、`selfhost_fixed_point=true`、Mach-O arm64、
+program SHA-256 `4b2650908f2e55037ab6e76a6129aed038133e78839a135525fb9f03be1ff4d8`、artifact size `4,676 KiB` を記録した。
+direct `lsp --stdio` wire batchは exit `0`、stderr `0` bytesで、initialize capabilities object、hover range object、
+completion item object、formatting `TextEdit` objectを返した。
+
+Linuxは `ci-artifacts/native-linux-x86-hostgen-vm/5db1c2a4-lsp-stage1/` から stage0 packageを再生成し、manifestの target
+`x86_64-unknown-linux-gnu`、source commit、code `4,408,352` bytes、data `2,757` bytes、entrypoint `4,405,792`、
+function-start `3,418`、main function `3,427` を確認した。package/source-file smokeは exit `0` で、同packageを
+Lima `lsharp-linux-x86` 内の `native-selfhost-dev.sh lsp --stdio` に渡した direct wire batchも exit `0`、stderr `0` bytesで、
+同じ4種の object projectionを返した。stage2→stage3 fixed pointは
+`ci-artifacts/native-linux-x86-hostgen-vm/5db1c2a4-lsp-stage23-current/actual-selfregen-summary.json` で status `pass`、
+code length各 `11,408,204`、stdout各 `12,249,104` bytes、SHA-256各
+`b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr空を記録した。
+
+これは initialize/hover/completion/formattingの current-source native projection verified sliceである。definition/references/
+renameのURI/location/workspace edit、diagnosticsの標準Diagnostic shape、position base、standalone Preview1 `io-read-stdin`
+runtime、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged artifact provenance parityは未完了で、
+TODOの `V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま維持する。direct LSP確認後はVM workdirを削除し、Lima VMを停止した。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。

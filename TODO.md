@@ -1416,6 +1416,21 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `int-to-string` / `string-concat`経路と `42` の tiny output markerは stage2/stage3双方で一致したが、これは standalone Preview1
   `io-read-stdin` runtimeやLSP semantic parityの証拠ではない。Linux direct LSP JSON semantic projection、component sidecar、
   公開 release asset acquisition/rollback、Mac/Linux packaged artifact parityは残る。
+
+  2026-08-02 の current-source LSP projection batchでは、clean `HEAD=5db1c2a4f5147469f24eaca97976e2e62cfb6455` の
+  Mac Apple Silicon actual `App.Cli` release gateを一度だけ実行し、`1 passed` / `836.52s`、manifest target
+  `aarch64-apple-darwin`、`selfhost_fixed_point=true`、Mach-O arm64、program SHA-256
+  `4b2650908f2e55037ab6e76a6129aed038133e78839a135525fb9f03be1ff4d8`、artifact `4,676 KiB` を確認した。
+  同artifactの direct `lsp --stdio` wire batchは exit `0`、stderr `0` bytesで、initialize capabilities object、hover range object、
+  completion item object、formatting `TextEdit` objectを返した。Linux x86_64でも同じ source commitの stage1/package/source-file
+  smokeを再生成・実行し、stage1 manifestは code `4,408,352` bytes、data `2,757` bytes、entrypoint `4,405,792`、
+  function-start `3,418`、main function `3,427`、package/source-smoke manifestとtarget/source commitが一致した。
+  同packageをVM内の `native-selfhost-dev.sh lsp --stdio` に渡した direct wire batchも exit `0`、stderr `0` bytesで、同じ4種の
+  object projectionを確認した。stage2→stage3 fixed pointは status `pass`、code length各 `11,408,204`、stdout各 `12,249,104`
+  bytes、SHA-256各 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`で一致した。これは4 operationの
+  current-source native projectionを閉じる verified sliceであり、definition/references/renameのURI/location/workspace edit、
+  diagnosticsの標準Diagnostic shape、position base、component sidecar、公開 release asset acquisition/rollback、
+  Mac/Linux packaged artifact provenance parityの完了証拠ではない。Lima VMは検証後に停止し、task-owned workdirを削除した。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
@@ -1451,6 +1466,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これは current-source Mac App.Cli fixed-point/native runtimeの verified sliceであり、Linux x86_64の同一
   current-source gate、native stage0 compiler/package、全公開 command、release acquisition/rollback、両 targetの
   provenance parity、`LEGACY-BOOT-01` aggregateの完了証拠ではない。
+
+  2026-08-02 の current `HEAD=5db1c2a4f5147469f24eaca97976e2e62cfb6455` では、Mac/Linuxの両 supported targetで
+  `lsp --stdio` の initialize/hover/completion/formatting wire projectionを実native確認した。Macは actual release
+  `program.native`、Linuxは current-source stage0 packageをVM内の `native-selfhost-dev.sh` から実行し、両方とも
+  exit `0`、stderr空、object-shaped responseを返した。これは public command closure の LSP routing/projection verified
+  sliceを広げるが、全公開 command、definition/references/rename/diagnosticsのsemantic parity、component sidecar、
+  release acquisition/rollback、両 targetの packaged provenance、`LEGACY-TOOL-01` aggregateは残る。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
