@@ -2495,6 +2495,15 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: semantic fixture report producerの複数 fixture batchをRust oracle/native stage0で
+all-or-nothing staging boundaryへ揃えた。後段 fixtureのcompile/runtime failureではreportを書かず、producerが作成した
+per-fixture work/runtime directoryだけを逆順cleanupし、caller-owned sentinelと既存rootは保持する同一fake fixtureの
+RED→GREENを確認した。これは直前のsource_sha256、artifact/runtime digest、component rollbackとは別のproducer batch
+transaction boundaryである。single-fixture root semantics、current-source Mac/Linux producer/runtime、component instantiation、
+packaged/rollback parity、provider/auth、crash/power-loss durabilityは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は
+`[~]` のまま維持する。Evidence: [`decisions-v0.3-semantic-report-batch-transaction.md`](docs/adr/decisions-v0.3-semantic-report-batch-transaction.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 の verified partial: native component compile/build の explicit runtime evidence と packaged outputを一つの
 bounded local commitへ接続した。runtime evidenceは sibling temporary sidecarへ先に書き、既存 outputを backupした後に componentを
 promoteし、最後に sidecarを promoteする。output/evidence の test-only failpointを同一 fake fixtureへ注入し、どちらの失敗でも

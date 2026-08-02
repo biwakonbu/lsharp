@@ -19,6 +19,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -183,7 +184,12 @@ def select_fixtures(manifest: Dict[str, Any], fixture_ids: list[str], target: st
     return selected
 
 
-def fixture_work_dir(work_dir: pathlib.Path, index: int, batch_size: int) -> pathlib.Path:
+def fixture_work_dir(
+    work_dir: pathlib.Path,
+    index: int,
+    batch_size: int,
+    created_paths: list[pathlib.Path],
+) -> pathlib.Path:
     if batch_size == 1:
         return work_dir
     path = work_dir / f"{index:04d}"
@@ -193,10 +199,17 @@ def fixture_work_dir(work_dir: pathlib.Path, index: int, batch_size: int) -> pat
         path.mkdir()
     except OSError as error:
         raise ReportError(f"fixture work directory cannot be created: {path}: {error}") from error
+    created_paths.append(path)
     return path
 
 
-def fixture_runtime_dir(runtime_dir: pathlib.Path, fixture_dir: pathlib.Path, index: int, batch_size: int) -> pathlib.Path:
+def fixture_runtime_dir(
+    runtime_dir: pathlib.Path,
+    fixture_dir: pathlib.Path,
+    index: int,
+    batch_size: int,
+    created_paths: list[pathlib.Path],
+) -> pathlib.Path:
     if batch_size == 1:
         return runtime_dir
     path = runtime_dir / f"{index:04d}"
@@ -208,6 +221,7 @@ def fixture_runtime_dir(runtime_dir: pathlib.Path, fixture_dir: pathlib.Path, in
         path.mkdir()
     except OSError as error:
         raise ReportError(f"fixture runtime directory cannot be created: {path}: {error}") from error
+    created_paths.append(path)
     return path
 
 
@@ -252,12 +266,13 @@ def observe_fixture(
     wasmtime: pathlib.Path,
     wasm_tools: pathlib.Path,
     environment: Dict[str, str],
+    created_paths: list[pathlib.Path],
 ) -> Dict[str, Any]:
     source = root / pathlib.PurePosixPath(fixture["source"])
     source_bytes = source.read_bytes()
     source_text = source_bytes.decode("utf-8")
     source_sha256 = sha256(source)
-    fixture_dir = fixture_work_dir(work_dir, index, batch_size)
+    fixture_dir = fixture_work_dir(work_dir, index, batch_size, created_paths)
     # The Rust compile CLI applies formatting before compilation and may write
     # the formatted source back to the path it receives. Keep the manifest
     # fixture immutable by compiling a task-owned copy instead.
@@ -313,7 +328,9 @@ def observe_fixture(
     if not artifact.is_file() or artifact.is_symlink():
         raise ReportError("Rust oracle compile succeeded without a regular Wasm artifact")
     validate_wasm_artifact(artifact, wasm_tools, fixture_dir, environment)
-    execution_dir = fixture_runtime_dir(runtime_dir, fixture_dir, index, batch_size)
+    execution_dir = fixture_runtime_dir(
+        runtime_dir, fixture_dir, index, batch_size, created_paths
+    )
     materialize_runtime_inputs(fixture, execution_dir)
     runtime_command = [str(wasmtime), "run"]
     if "runtime_inputs" in fixture:
@@ -366,8 +383,22 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def cleanup_created_paths(created_paths: list[pathlib.Path]) -> None:
+    for path in reversed(created_paths):
+        try:
+            if path.is_symlink():
+                continue
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists():
+                path.unlink()
+        except OSError:
+            pass
+
+
 def main() -> int:
     arguments = parse_arguments()
+    created_paths: list[pathlib.Path] = []
     try:
         if not SOURCE_COMMIT.fullmatch(arguments.source_commit):
             raise ReportError("source_commit must be a 40-character lowercase commit")
@@ -405,10 +436,12 @@ def main() -> int:
                     wasmtime,
                     wasm_tools,
                     environment,
+                    created_paths,
                 )
             )
         write_report(arguments.output, report)
     except (OSError, json.JSONDecodeError, ManifestError, ReportError) as error:
+        cleanup_created_paths(created_paths)
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0

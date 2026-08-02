@@ -612,6 +612,44 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 b"hello.ls",
             )
 
+    def test_cleans_partial_batch_staging_after_late_compile_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "failing-batch-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            (work_dir / "caller-owned-sentinel").write_text("keep\n", encoding="utf-8")
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "source = pathlib.Path(sys.argv[2])\n"
+                "if source.name == 'argv-program-only.ls':\n"
+                "    sys.stderr.write('late compiler failure\\n')\n"
+                "    raise SystemExit(1)\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'first')\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_ids=["valid/adt-pattern", "valid/argv-program-only"],
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("compile failed", result.stderr.lower())
+            self.assertFalse(output.exists())
+            self.assertEqual(
+                sorted(path.name for path in work_dir.iterdir()),
+                ["caller-owned-sentinel"],
+            )
+
     def test_rejects_duplicate_fixture_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
