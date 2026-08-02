@@ -1732,6 +1732,26 @@ edit、diagnosticsの標準shape、standalone Preview1 `io-read-stdin` runtime�
 rollback、Mac/Linux packaged artifact provenance parity、`LEGACY-BOOT-01` aggregateの完了を意味しない。TODOの `[~]` と Rust
 oracle/bootstrap/host integration境界は維持する。
 
+### V2-16b / V2-16c / V2-16e current-source LSP standard URI navigation projection (2026-08-02)
+
+current `HEAD=79bde035095e71a2baa85532c0430a9d76ea2ca7` で、標準 nested LSP params の string URIを自己ホスト LSP stateへ保持し、
+definition / references の結果を URI付き `Location` object、renameの結果を URI-keyed `WorkspaceEdit` objectへ投影する変更を
+RED→GREENで固定した。旧経路の integer URIと配列 locationをREDで検出し、`test_e2e_selfhost_cli_lsp_stdio_standard_uri_navigation_contract`
+の同一実際 `lsp --stdio` fixtureで GREEN（`1 passed` / `319.24s`）を確認した。URI hashが負値になる入力を非負 map keyへ正規化し、
+standard `didOpen` / `didChange` の parser parameter shapeを `[uri, source, path, uri-text]` に揃えた。state-aware rendererは保存した
+wire URIをJSON stringとして escapeして再利用し、publish diagnostics / didOpen / didChangeにも同じ URI保持を適用した。numeric URIは
+既存互換のlegacy rendererへfallbackする。
+
+Evidence: `test_e2e_selfhost_lsp_state_preserves_wire_uri`、LSP docs/ops focused group（22 passed / 23 ignored）、
+`python3 scripts/ci/test-native-selfhost-lsp-stdio.py`（5 passed）、commit `79bde035`。definition/referencesの内部 locationは
+まだ point rangeであり、stateに実URIがない imported filesystem locationは `lsharp://document/<id>` synthetic URIへfallbackするため、
+full symbol range、cross-document URI provenance、diagnosticsの標準Diagnostic shapeは未完了である。
+
+これは current-source host-Wasm selfhost verified partialであり、current `HEAD=79bde035` のMac Apple Silicon / Linux x86_64
+native artifactをこのURI変更込みで再生成したdirect LSP gateではない。直前 `9175c6e5` のMac zero-basedとLinux fixed-point evidenceを
+current URI evidenceへ拡大解釈せず、native regeneration、standalone Preview1 runtime、component sidecar、release acquisition/rollback、
+Mac/Linux packaged provenance parity、LSP aggregateは TODOの `[~]` と Rust oracle/bootstrap/host integration境界を維持する。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。

@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の `origin/main` は `665623857282359b32dce2bda0cc37d3e9d7424e`。
+- 確認時点の `origin/main` は `79bde035095e71a2baa85532c0430a9d76ea2ca7`。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1448,6 +1448,18 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   SHA-256各 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr各 `0` bytesで一致した。Linux direct LSPの
   semantic projection自体はこのbatchでは再実行していないため、definition/references/renameのURI/location/workspace edit、
   diagnostics shape、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged artifact parityは残る。
+
+  さらに `79bde035095e71a2baa85532c0430a9d76ea2ca7` で、標準 nested LSP params の string URI を state に保持し、definition /
+  references を URI付き `Location` object、renameを URI-keyed `WorkspaceEdit` へ投影する host-Wasm verified partialを追加した。
+  RED は `test_e2e_selfhost_cli_lsp_stdio_standard_uri_navigation_contract` で、旧実装が integer URI と配列 locationを返すことを確認し、
+  GREEN は同じ実際の `lsp --stdio` fixtureで `1 passed` / `319.24s` となった。URI hashの負値を非負keyへ正規化し、standard `didOpen`
+  の `[uri, source, path, uri-text]` parameter shapeを固定したため、state-aware rendererは wire URIをJSON stringとして再利用する。
+  `test_e2e_selfhost_lsp_state_preserves_wire_uri` と LSP docs/ops focused group（22 passed / 23 ignored）、
+  `scripts/ci/test-native-selfhost-lsp-stdio.py`（5 passed）も確認した。numeric URIは既存互換のlegacy projectionを維持する。
+  definition/referencesの内部 location は現状 point range、open stateに実URIがない imported filesystem locationは
+  `lsharp://document/<id>` fallbackとなるため、full symbol range、cross-document URI provenance、diagnosticsの標準Diagnostic shapeは残る。
+  current `HEAD=79bde035` のMac/Linux native artifactをこのURI変更込みで再生成したdirect LSP gateは未実行であり、直前の `9175c6e5`
+  native evidenceをcurrent evidenceへ拡大解釈しない。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま残す。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
