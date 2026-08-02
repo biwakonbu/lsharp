@@ -2373,6 +2373,16 @@ fn cmd_add_in(project_dir: &Path, github_url: &str, tag: Option<&str>) -> miette
     Ok(())
 }
 
+struct InstallTransactionGuard {
+    path: PathBuf,
+}
+
+impl Drop for InstallTransactionGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
 fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     let config =
@@ -2391,11 +2401,27 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
         return Ok(());
     }
 
+    let transaction_dir = packages_dir.join(format!(".install-txn-{}", std::process::id()));
+    if transaction_dir.symlink_metadata().is_ok() {
+        return Err(miette::miette!(
+            "install transaction path already exists: {}",
+            transaction_dir.display()
+        ));
+    }
+    std::fs::create_dir(&transaction_dir)
+        .map_err(|e| driver_io_error(format!("install transaction staging の作成に失敗: {e}")))?;
+    let _transaction_guard = InstallTransactionGuard {
+        path: transaction_dir.clone(),
+    };
+
     let mut installed = 0u32;
     let mut skipped = 0u32;
     let mut resolved_entries = Vec::new();
+    let mut pending_promotions: Vec<(PathBuf, PathBuf, String)> = Vec::new();
+    let mut dependency_specs: Vec<_> = deps.iter().collect();
+    dependency_specs.sort_by(|(left, _), (right, _)| left.cmp(right));
 
-    for (name, spec) in deps {
+    for (name, spec) in dependency_specs {
         match spec {
             config::DependencySpec::Path { path } => {
                 let resolved = project_dir.join(path);
@@ -2429,45 +2455,35 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                     ));
                 }
 
-                #[cfg(unix)]
-                {
-                    let temporary_link = packages_dir.join(format!(
-                        ".{}.installing-{}",
-                        link_path
-                            .file_name()
-                            .and_then(|value| value.to_str())
-                            .unwrap_or("package"),
-                        std::process::id()
+                let staged_link = transaction_dir.join(
+                    link_path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("package"),
+                );
+                if staged_link.symlink_metadata().is_ok() {
+                    return Err(miette::miette!(
+                        "temporary path package already exists: {}",
+                        staged_link.display()
                     ));
-                    if temporary_link.symlink_metadata().is_ok() {
-                        return Err(miette::miette!(
-                            "temporary path package already exists: {}",
-                            temporary_link.display()
-                        ));
-                    }
-                    if let Err(error) = std::os::unix::fs::symlink(&abs_resolved, &temporary_link) {
-                        return Err(driver_io_error(format!(
-                            "シンボリックリンク作成に失敗 '{name}': {error}"
-                        )));
-                    }
-                    if let Err(error) = std::fs::rename(&temporary_link, &link_path) {
-                        let _ = std::fs::remove_file(&temporary_link);
-                        return Err(driver_io_error(format!(
-                            "シンボリックリンク install の確定に失敗 '{name}': {error}"
-                        )));
-                    }
                 }
-
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&abs_resolved, &staged_link).map_err(|error| {
+                    driver_io_error(format!("シンボリックリンク作成に失敗 '{name}': {error}"))
+                })?;
                 #[cfg(not(unix))]
-                std::fs::copy(&abs_resolved, &link_path)
+                std::fs::copy(&abs_resolved, &staged_link)
                     .map_err(|e| driver_io_error(format!("依存コピーに失敗 '{name}': {e}")))?;
 
-                let _ = generate_api_json_for_package(&link_path);
-                println!("  インストール: {name} -> {}", abs_resolved.display());
+                pending_promotions.push((
+                    staged_link,
+                    link_path,
+                    format!("{name} -> {}", abs_resolved.display()),
+                ));
                 resolved_entries.push(lockfile::LockEntry {
                     name: name.clone(),
                     version: resolver::package_version_text(&abs_resolved),
-                    source: dependency_source_string(spec, project_dir),
+                    source: source_id,
                 });
                 installed += 1;
             }
@@ -2503,48 +2519,37 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                     continue;
                 }
 
-                let temporary_path = packages_dir.join(format!(
-                    ".{}.tmp-{}",
+                let staged_path = transaction_dir.join(
                     dep_path
                         .file_name()
                         .and_then(|value| value.to_str())
                         .unwrap_or("package"),
-                    std::process::id()
-                ));
-                if temporary_path.symlink_metadata().is_ok() {
+                );
+                if staged_path.symlink_metadata().is_ok() {
                     return Err(miette::miette!(
                         "temporary git package path already exists: {}",
-                        temporary_path.display()
+                        staged_path.display()
                     ));
                 }
-                if let Err(error) =
-                    git_clone(git, branch.as_deref(), tag.as_deref(), &temporary_path)
+                if let Err(error) = git_clone(git, branch.as_deref(), tag.as_deref(), &staged_path)
                 {
-                    let _ = std::fs::remove_dir_all(&temporary_path)
-                        .or_else(|_| std::fs::remove_file(&temporary_path));
                     return Err(miette::miette!("git clone failed for {name}: {error}"));
                 }
-                if !temporary_path.join("lsharp.toml").is_file() {
-                    let _ = std::fs::remove_dir_all(&temporary_path)
-                        .or_else(|_| std::fs::remove_file(&temporary_path));
+                if !staged_path.join("lsharp.toml").is_file() {
                     return Err(miette::miette!(
                         "cloned dependency has no lsharp.toml: {}",
-                        temporary_path.display()
+                        staged_path.display()
                     ));
                 }
-                if let Err(error) = std::fs::rename(&temporary_path, &dep_path) {
-                    let _ = std::fs::remove_dir_all(&temporary_path)
-                        .or_else(|_| std::fs::remove_file(&temporary_path));
-                    return Err(driver_io_error(format!(
-                        "git package install の確定に失敗 '{name}': {error}"
-                    )));
-                }
-                let _ = generate_api_json_for_package(&dep_path);
-                println!("  インストール: {name} (git: {git})");
+                pending_promotions.push((
+                    staged_path.clone(),
+                    dep_path,
+                    format!("{name} (git: {git})"),
+                ));
                 resolved_entries.push(lockfile::LockEntry {
                     name: name.clone(),
-                    version: resolver::package_version_text(&dep_path),
-                    source: dependency_source_string(spec, project_dir),
+                    version: resolver::package_version_text(&staged_path),
+                    source: source_id,
                 });
                 installed += 1;
             }
@@ -2562,6 +2567,13 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
         }
     }
 
+    for (staged_path, final_path, description) in pending_promotions {
+        std::fs::rename(&staged_path, &final_path)
+            .map_err(|error| driver_io_error(format!("package install の確定に失敗: {error}")))?;
+        let _ = generate_api_json_for_package(&final_path);
+        println!("  インストール: {description}");
+    }
+
     println!("\nインストール完了: {installed} 個インストール, {skipped} 個スキップ");
 
     // ロックファイルを生成・書き出し
@@ -2573,6 +2585,8 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
         .map_err(|e| driver_io_error(format!("{}: {e}", lock_path.display())))?;
     println!("ロックファイルを生成しました: {}", lock_path.display());
     rebuild_installed_module_index(project_dir)?;
+    std::fs::remove_dir_all(&transaction_dir)
+        .map_err(|e| driver_io_error(format!("install transaction staging の回収に失敗: {e}")))?;
 
     Ok(())
 }

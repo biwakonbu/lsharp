@@ -2500,3 +2500,67 @@ fn test_cmd_install_version_dependency_rejects_signed_semver_requirement() {
 
     std::fs::remove_dir_all(&base_dir).unwrap();
 }
+
+#[test]
+fn test_cmd_install_mixed_path_and_cached_failure_keeps_state_unpromoted() {
+    let base_dir = std::env::temp_dir().join("lsharp_test_install_mixed_transaction");
+    let _ = std::fs::remove_dir_all(&base_dir);
+    let project_dir = base_dir.join("project");
+    let dependency_dir = base_dir.join("local-lib");
+    std::fs::create_dir_all(dependency_dir.join("src")).unwrap();
+    std::fs::create_dir_all(project_dir.join(".lsharp/packages")).unwrap();
+    std::fs::create_dir_all(project_dir.join(".lsharp/module-index")).unwrap();
+    std::fs::write(
+        dependency_dir.join("lsharp.toml"),
+        "[project]\nname = \"local-lib\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project_dir.join("lsharp.toml"),
+        "[dependencies]\n\"a-local-lib\" = { path = \"../local-lib\" }\n\"z-missing\" = \"1.0.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(project_dir.join(".lsharp/lock.toml"), "lock sentinel\n").unwrap();
+    std::fs::write(
+        project_dir.join(".lsharp/module-index/sentinel.path"),
+        "index sentinel\n",
+    )
+    .unwrap();
+
+    let source_id = format!("path:{}", dependency_dir.canonicalize().unwrap().display());
+    let destination = installed_package_dir(
+        &project_dir.join(".lsharp/packages"),
+        "a-local-lib",
+        &source_id,
+    );
+
+    let result = cmd_install_in(&project_dir);
+    assert!(
+        result.is_err(),
+        "後続 cached miss は install 全体を失敗させるべき"
+    );
+    assert!(
+        destination.symlink_metadata().is_err(),
+        "失敗時に path package destination を promote してはならない"
+    );
+    assert_eq!(
+        std::fs::read_to_string(project_dir.join(".lsharp/lock.toml")).unwrap(),
+        "lock sentinel\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(project_dir.join(".lsharp/module-index/sentinel.path")).unwrap(),
+        "index sentinel\n"
+    );
+    assert!(
+        std::fs::read_dir(project_dir.join(".lsharp/packages"))
+            .unwrap()
+            .all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".install-txn-")),
+        "失敗時に transaction staging を残してはならない"
+    );
+
+    std::fs::remove_dir_all(&base_dir).unwrap();
+}

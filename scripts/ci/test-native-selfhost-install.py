@@ -392,6 +392,39 @@ class NativeSelfhostInstallTest(unittest.TestCase):
             self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
             self.assertIn("invalid semver", result.stderr)
 
+    def test_mixed_path_and_cached_failure_keeps_state_unpromoted(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            project = root / "project"
+            dependency = root / "local-lib"
+            self.write_package(dependency, "local-lib", "1.0.0", {})
+            packages = project / ".lsharp" / "packages"
+            index = project / ".lsharp" / "module-index"
+            packages.mkdir(parents=True)
+            index.mkdir(parents=True)
+            (project / "lsharp.toml").write_text(
+                "[dependencies]\n"
+                '"a-local-lib" = { path = "../local-lib" }\n'
+                '"z-missing" = "1.0.0"\n',
+                encoding="utf-8",
+            )
+            lock = project / ".lsharp" / "lock.toml"
+            lock.write_text("lock sentinel\n", encoding="utf-8")
+            index_sentinel = index / "sentinel.path"
+            index_sentinel.write_text("index sentinel\n", encoding="utf-8")
+            environment, marker = self.poison_host_commands(root)
+
+            result = self.run_installer(project, environment)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
+            self.assertEqual(lock.read_text(encoding="utf-8"), "lock sentinel\n")
+            self.assertEqual(
+                index_sentinel.read_text(encoding="utf-8"), "index sentinel\n"
+            )
+            self.assertEqual(list(packages.glob("a-local-lib-*")), [])
+            self.assertEqual(list(packages.glob(".install-txn-*")), [])
+
     def test_empty_dependencies_rebuilds_module_index_and_writes_empty_lock(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

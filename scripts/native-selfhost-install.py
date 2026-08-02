@@ -429,26 +429,25 @@ def package_version_text(package_dir):
     return version
 
 
-def install_path_dependency(packages_dir, name, dependency_path, project_dir):
+def install_path_dependency(packages_dir, staging_dir, name, dependency_path, project_dir):
     source = path_source(project_dir, dependency_path)
     source_id = f"path:{source}"
     destination = installed_package_dir(packages_dir, name, source_id)
     if os.path.lexists(destination) and not destination.is_symlink():
         raise InstallError(f"refusing to replace non-symlink path package: {destination}")
-    temporary = temporary_path(packages_dir, destination.name)
+    staged = managed_child(staging_dir, destination.name)
     try:
-        os.symlink(str(source), str(temporary), target_is_directory=True)
-        os.replace(temporary, destination)
+        os.symlink(str(source), str(staged), target_is_directory=True)
     except OSError as error:
         raise InstallError(f"cannot create path dependency symlink for {name!r}: {error}") from error
-    finally:
-        if os.path.lexists(temporary):
-            remove_managed_path(temporary, packages_dir)
-    return {
-        "name": name,
-        "version": package_version_text(source),
-        "source": source_id,
-    }
+    return (
+        {
+            "name": name,
+            "version": package_version_text(source),
+            "source": source_id,
+        },
+        (staged, destination, f"{name} -> {source}"),
+    )
 
 
 def run_git_clone(git, branch, tag, destination):
@@ -467,9 +466,10 @@ def run_git_clone(git, branch, tag, destination):
     raise InstallError(f"git clone failed for {git}: {details}")
 
 
-def install_git_dependency(packages_dir, name, git, branch, tag):
+def install_git_dependency(packages_dir, staging_dir, name, git, branch, tag):
     source_id = git_source(git, branch, tag)
     destination = installed_package_dir(packages_dir, name, source_id)
+    promotion = None
     if os.path.lexists(destination):
         if destination.is_symlink():
             raise InstallError(f"refusing symlinked git package destination: {destination}")
@@ -479,21 +479,20 @@ def install_git_dependency(packages_dir, name, git, branch, tag):
             raise InstallError(f"existing git package has no lsharp.toml: {destination}")
         package_dir = destination
     else:
-        temporary = temporary_path(packages_dir, destination.name)
-        try:
-            run_git_clone(git, branch, tag, temporary)
-            if not (temporary / "lsharp.toml").is_file():
-                raise InstallError(f"cloned dependency has no lsharp.toml: {temporary}")
-            os.replace(temporary, destination)
-        finally:
-            if os.path.lexists(temporary):
-                remove_managed_path(temporary, packages_dir)
-        package_dir = destination
-    return {
-        "name": name,
-        "version": package_version_text(package_dir),
-        "source": source_id,
-    }
+        staged = managed_child(staging_dir, destination.name)
+        run_git_clone(git, branch, tag, staged)
+        if not (staged / "lsharp.toml").is_file():
+            raise InstallError(f"cloned dependency has no lsharp.toml: {staged}")
+        package_dir = staged
+        promotion = (staged, destination, f"{name} (git: {git})")
+    return (
+        {
+            "name": name,
+            "version": package_version_text(package_dir),
+            "source": source_id,
+        },
+        promotion,
+    )
 
 
 def parse_semver(value):
@@ -679,17 +678,40 @@ def install(project_dir):
     specs = dependency_specs(config)
     lsharp_dir = ensure_managed_directory(project_dir, ".lsharp")
     packages_dir = ensure_managed_directory(lsharp_dir, "packages")
-    entries = []
-    for name, kind, value, branch, tag in specs:
-        if kind == "path":
-            entries.append(install_path_dependency(packages_dir, name, value, project_dir))
-        elif kind == "git":
-            entries.append(install_git_dependency(packages_dir, name, value, branch, tag))
-        else:
-            entries.append(resolve_cached_version_dependency(packages_dir, name, value))
-    write_lockfile(lsharp_dir, entries)
-    rebuild_module_index(project_dir, lsharp_dir, packages_dir)
-    print(f"installed {len(entries)} dependency entries")
+    staging_dir = temporary_path(packages_dir, "install-txn")
+    try:
+        staging_dir.mkdir()
+    except OSError as error:
+        raise InstallError(f"cannot create install transaction staging {staging_dir}: {error}") from error
+    try:
+        entries = []
+        pending_promotions = []
+        for name, kind, value, branch, tag in specs:
+            if kind == "path":
+                entry, promotion = install_path_dependency(
+                    packages_dir, staging_dir, name, value, project_dir
+                )
+                entries.append(entry)
+                pending_promotions.append(promotion)
+            elif kind == "git":
+                entry, promotion = install_git_dependency(
+                    packages_dir, staging_dir, name, value, branch, tag
+                )
+                entries.append(entry)
+                if promotion is not None:
+                    pending_promotions.append(promotion)
+            else:
+                entries.append(resolve_cached_version_dependency(packages_dir, name, value))
+
+        for staged, destination, description in pending_promotions:
+            os.replace(staged, destination)
+            print(f"installed {description}")
+        write_lockfile(lsharp_dir, entries)
+        rebuild_module_index(project_dir, lsharp_dir, packages_dir)
+        print(f"installed {len(entries)} dependency entries")
+    finally:
+        if os.path.lexists(staging_dir):
+            remove_managed_path(staging_dir, packages_dir)
 
 
 def main(argv=None):

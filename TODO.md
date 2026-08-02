@@ -2428,3 +2428,13 @@ task-owned transaction boundaryを同一 Rust/native fixtureで固定するこ�
 別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
 再現 command: `cargo test -p lsharp-driver test_cmd_install_version_dependency_rejects_signed_semver_requirement -- --nocapture` と
 `python3 scripts/ci/test-native-selfhost-install.py -k signed_cached_version_requirement`。
+
+2026-08-02 に mixed path + cached-version dependencyの Rust/native dependency-resolution transaction boundaryを追加した。
+Rustはnativeと同じ名前順で依存を解決し、pathとfresh Gitは `.install-txn-*` へ staging、cached-versionは既存 cacheだけを参照する。
+全依存の解決が成功した後だけ final package promotion、lock.toml生成、module-index再構築を行い、後続 cached missでは
+先行 path destination、lock/index、staging residueを残さない RED→GREENを同一 fixtureで確認した。既存 valid installationは
+失敗した resolution phaseで置換しない。これは dependency-resolution failure boundaryの verified partial sliceであり、final rename・lock write・
+module-index I/O failure時の完全 rollback、registry/provider/auth取得、native MCP package-install semantics、current-source Linux runtime、
+Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-mixed-transaction.md`](docs/adr/decisions-v0.3-native-package-install-mixed-transaction.md)。
+次の RED は final promotionまたは lock/index I/O failure時にも先行 promotionを残さない rollback/atomic commit boundaryである。
