@@ -225,6 +225,34 @@ class SemanticFixtureDiffTest(unittest.TestCase):
             {item["field"] for item in projected["mismatches"]},
         )
 
+    def test_rejects_asymmetric_observation_state_as_mismatch(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        fixture_id = "valid/syntax-basic"
+        oracle_fixture = next(item for item in oracle["fixtures"] if item["id"] == fixture_id)
+        oracle_fixture["artifact"] = {
+            "status": "observed",
+            "sha256": ARTIFACT_DIGEST,
+            "size": 1,
+        }
+        oracle_fixture["runtime"] = {
+            "status": "observed",
+            "exit_code": 0,
+            "stdout": "42\n",
+            "stderr": "",
+            "artifact_sha256": ARTIFACT_DIGEST,
+        }
+
+        result = self.run_diff(oracle, native)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        projected = json.loads(result.stdout)
+        self.assertEqual(projected["status"], "mismatch")
+        self.assertEqual(
+            {item["field"] for item in projected["mismatches"]},
+            {"artifact.status", "runtime.status"},
+        )
+
     def test_rejects_stale_source_or_target_before_comparison(self):
         oracle = report_for("rust-oracle")
         native = report_for("native-stage0")

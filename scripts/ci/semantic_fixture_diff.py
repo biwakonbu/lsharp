@@ -275,7 +275,15 @@ def compare_reports(manifest: Mapping[str, Any], oracle: Dict[str, Any], native:
         if expected["kind"] == "valid":
             oracle_artifact = oracle_fixture["artifact"]
             native_artifact = native_fixture["artifact"]
-            if oracle_artifact["status"] == "observed" and native_artifact["status"] == "observed":
+            if oracle_artifact["status"] != native_artifact["status"]:
+                mismatch(
+                    mismatches,
+                    identifier,
+                    "artifact.status",
+                    oracle_artifact["status"],
+                    native_artifact["status"],
+                )
+            elif oracle_artifact["status"] == "observed":
                 if oracle_artifact != native_artifact:
                     mismatch(mismatches, identifier, "artifact", oracle_artifact, native_artifact)
             else:
@@ -283,7 +291,15 @@ def compare_reports(manifest: Mapping[str, Any], oracle: Dict[str, Any], native:
 
             oracle_runtime = oracle_fixture["runtime"]
             native_runtime = native_fixture["runtime"]
-            if oracle_runtime["status"] == "observed" and native_runtime["status"] == "observed":
+            if oracle_runtime["status"] != native_runtime["status"]:
+                mismatch(
+                    mismatches,
+                    identifier,
+                    "runtime.status",
+                    oracle_runtime["status"],
+                    native_runtime["status"],
+                )
+            elif oracle_runtime["status"] == "observed":
                 for field in ("exit_code", "stdout", "stderr", "artifact_sha256"):
                     if oracle_runtime[field] != native_runtime[field]:
                         mismatch(

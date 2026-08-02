@@ -2495,6 +2495,20 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: semantic fixture diff の Rust-oracle/native-stage0
+producer observation state parityを追加した。valid fixtureの artifact/runtime が片側だけ
+`observed` で他方が `pending` の場合、比較前に `artifact.status` / `runtime.status` の
+observable mismatchとして fail-closed にし、同じ `pending` は従来どおり pending、両側が
+`observed` の場合は既存の exact payload comparisonを継続する。同じ fake fixtureで
+asymmetric stateの RED→GREEN、all-pending、both-observed、既存 mismatchを
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v scripts/ci/test-semantic-fixture-diff.py`
+で確認した。report schemaは変更していない。これは full native producer parity、current-source
+Mac/Linux runtime、packaged/rollback parity、provider/authの完了証拠ではないため、EC-M3-04 /
+EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
+[`decisions-v0.3-semantic-observation-state-parity.md`](docs/adr/decisions-v0.3-semantic-observation-state-parity.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが
+稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 の verified partial: native semantic report producerの stage0 manifest→compiler runner identity bindingを追加した。
 従来は manifestの kind/target/source_commit と compiler/transport/materializerの relative path shapeだけを検証し、別の `--runner`を実行できた。
 manifestの `compiler` を regular executableとして検査し、resolved pathを明示 `--runner` と exact compareすることで、unbound/missing/symlink/non-executable
