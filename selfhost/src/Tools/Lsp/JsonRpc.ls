@@ -272,8 +272,17 @@
 (defn jsonrpc-handle-shutdown [request-id]
   (make-rpc-response request-id 0))
 
+(defn render-server-capabilities-json []
+  "{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"completionProvider\":{},\"definitionProvider\":true,\"referencesProvider\":true,\"renameProvider\":true,\"documentFormattingProvider\":true}}")
+
 (defn render-initialize-response [request-id]
-  (render-rpc-int-vector-response request-id (make-server-capabilities)))
+  (string-concat
+    "{\"jsonrpc\":\"2.0\",\"id\":"
+    (string-concat
+      (int-to-string request-id)
+      (string-concat
+        ",\"result\":"
+        (string-concat (render-server-capabilities-json) "}")))))
 
 (defn render-shutdown-response [request-id]
   (render-rpc-int-response request-id 0))

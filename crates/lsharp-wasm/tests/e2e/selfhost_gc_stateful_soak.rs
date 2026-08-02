@@ -499,7 +499,7 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak() {
     let iterations = 12usize;
 
     let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
-    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
+    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let open_body = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         open_source
@@ -577,7 +577,7 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry
     let iterations = 12usize;
 
     let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
-    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
+    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let open_body = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         open_source
@@ -674,7 +674,7 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetr
     let iterations = 12usize;
 
     let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
-    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
+    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let open_body = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         open_source

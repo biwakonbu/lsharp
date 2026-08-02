@@ -4778,7 +4778,7 @@ fn test_e2e_selfhost_cli_lsp_core() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_initialize_frame() {
-    let body = r#"{"jsonrpc":"2.0","id":7,"result":[1,1,1,1,1,1,1]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":7,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let harness = r#"
 (defn main []
@@ -5102,7 +5102,7 @@ fn test_e2e_selfhost_cli_lsp_transport_rename_frame() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_sequence_summary() {
-    let init_body = r#"{"jsonrpc":"2.0","id":3,"result":[1,1,1,1,1,1,1]}"#;
+    let init_body = r#"{"jsonrpc":"2.0","id":3,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let init_frame = format!("Content-Length: {}\r\n\r\n{}", init_body.len(), init_body);
     let shutdown_body = r#"{"jsonrpc":"2.0","id":4,"result":0}"#;
     let shutdown_frame = format!(
@@ -5335,7 +5335,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_frame_initialize() {
-    let body = r#"{"jsonrpc":"2.0","id":14,"result":[1,1,1,1,1,1,1]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":14,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let header = format!("Content-Length: {}\r\n\r\n", body.len());
     let harness = format!(
@@ -15515,7 +15515,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize() {
         request_body.len(),
         request_body
     );
-    let response_body = r#"{"jsonrpc":"2.0","id":21,"result":[1,1,1,1,1,1,1]}"#;
+    let response_body = r#"{"jsonrpc":"2.0","id":21,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -15547,7 +15547,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_sequence() {
         shutdown_body.len(),
         shutdown_body
     );
-    let init_response = r#"{"jsonrpc":"2.0","id":31,"result":[1,1,1,1,1,1,1]}"#;
+    let init_response = r#"{"jsonrpc":"2.0","id":31,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let shutdown_response = r#"{"jsonrpc":"2.0","id":32,"result":0}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",

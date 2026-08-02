@@ -29,7 +29,7 @@ fn test_e2e_selfhost_jsonrpc_parse_content_length() {
 /// LSP transport: JSON-RPC response が Content-Length 付き frame になること
 #[test]
 fn test_e2e_selfhost_jsonrpc_render_initialize_frame() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":[1,1,1,1,1,1,1]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#;
     let expected_frame = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let output = run_transport_harness(
         r#"
