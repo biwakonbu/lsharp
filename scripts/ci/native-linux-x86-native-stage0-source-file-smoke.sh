@@ -6,6 +6,7 @@ VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 HOSTGEN_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${VM_NAME}.lock}"
 STAGE0_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-}"
 SOURCE_SMOKE_EVIDENCE_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR:-}"
+REVIEW_ATTESTATION_REPORT_INPUT="${LSHARP_NATIVE_LINUX_X86_REVIEW_ATTESTATION_REPORT:-}"
 KEEP_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR:-0}"
 VM_MIN_FREE_BYTES="${LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES:-4294967296}"
 TRANSPORT_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE:-64}"
@@ -15,6 +16,7 @@ VM_WORK_DIR_CREATED=0
 VM_STARTED_BY_SMOKE=0
 SOURCE_SMOKE_EVIDENCE_DIR=""
 VM_SOURCE_SMOKE_EVIDENCE_DIR=""
+VM_REVIEW_ATTESTATION_REPORT=""
 
 cleanup() {
   local exit_status=$?
@@ -164,6 +166,10 @@ if [[ -n "${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}" ]]; then
     "native source-file smoke evidence writer"
   SOURCE_SMOKE_EVIDENCE_DIR="${SOURCE_SMOKE_EVIDENCE_DIR_INPUT}"
 fi
+if [[ -n "${REVIEW_ATTESTATION_REPORT_INPUT}" ]]; then
+  [[ -f "${REVIEW_ATTESTATION_REPORT_INPUT}" && ! -L "${REVIEW_ATTESTATION_REPORT_INPUT}" && -s "${REVIEW_ATTESTATION_REPORT_INPUT}" ]] \
+    || die "Linux review attestation report must be a non-empty regular file: ${REVIEW_ATTESTATION_REPORT_INPUT}"
+fi
 require_file "${ROOT_DIR}/tests/fixtures/validation/ec-m3-review-attestation-source.ls" \
   "EC-M3-04 review attestation source fixture"
 
@@ -220,6 +226,11 @@ if [[ -n "${SOURCE_SMOKE_EVIDENCE_DIR}" ]]; then
     "${VM_NAME}:${VM_WORK_DIR}/scripts/ci/write-native-source-smoke-evidence.py"
   VM_SOURCE_SMOKE_EVIDENCE_DIR="${VM_WORK_DIR}/source-smoke-evidence"
 fi
+if [[ -n "${REVIEW_ATTESTATION_REPORT_INPUT}" ]]; then
+  limactl copy "${REVIEW_ATTESTATION_REPORT_INPUT}" \
+    "${VM_NAME}:${VM_WORK_DIR}/review-attestation-report.json"
+  VM_REVIEW_ATTESTATION_REPORT="${VM_WORK_DIR}/review-attestation-report.json"
+fi
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls"
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json" \
@@ -240,6 +251,7 @@ limactl shell "${VM_NAME}" -- env \
   NATIVE_STAGE0_TRANSPORT_TIMEOUT_SECONDS="${TRANSPORT_TIMEOUT_SECONDS}" \
   NATIVE_SELFHOST_KEEP_STAGE_DIR=1 \
   NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR="${VM_SOURCE_SMOKE_EVIDENCE_DIR}" \
+  NATIVE_SELFHOST_REVIEW_ATTESTATION_REPORT="${VM_REVIEW_ATTESTATION_REPORT}" \
   bash "${VM_WORK_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
 smoke_status=$?
 set -e

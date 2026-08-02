@@ -1057,6 +1057,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   native source-file evidence writer が explicit `validation-attestation-json.stdout` の
   `review_attestations` projectionを evidence manifestへ保存し、report欠落時に証跡を作らない
   handoffも verified partial とした。
+  official two-target orchestrator の explicit `review-attestation-report` を Mac/Lima の各 source-file
+  smokeへ一度だけ伝播し、target別 evidence manifestの `review_attestations` と exact compareする
+  postflight、report-free routeの no-implicit projection、report欠落・片側不一致の pre/postflight
+  fail-closed を fake two-target harnessで verified partial とした。
   Linux current-source stage0、packaged artifact provenance、Mac/Linux runtime parityを
   `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
 - [~] `EC-M3-05` keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity

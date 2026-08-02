@@ -37,6 +37,7 @@ NATIVE_OFFICIAL_REVIEW_TRUST_STORE="${NATIVE_OFFICIAL_REVIEW_TRUST_STORE:-}"
 NATIVE_OFFICIAL_REVIEW_LIFECYCLE="${NATIVE_OFFICIAL_REVIEW_LIFECYCLE:-}"
 NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW="${NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW:-}"
 NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT:-}"
+NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT:-}"
 SMOKE_ROOT="${LSHARP_NATIVE_RELEASE_SMOKE_ROOT:-/tmp/lsharp-native-official-release-smoke}"
 MAX_DIST_KIB="${LSHARP_NATIVE_RELEASE_MAX_DIST_KIB:-1048576}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
@@ -236,10 +237,79 @@ PY
   fi
 }
 
+validate_review_attestation_report() {
+  [[ -z "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" ]] && return 0
+  [[ -n "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]] \
+    || { echo "ERROR: explicit review attestation report requires source smoke evidence root" >&2; exit 1; }
+  [[ -f "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" \
+    && ! -L "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" \
+    && -s "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" ]] \
+    || { echo "ERROR: review attestation report must be a non-empty regular file: ${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" >&2; exit 1; }
+  python3 - "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+try:
+    report = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"ERROR: review attestation report is invalid JSON: {path}: {error}")
+if not isinstance(report, dict) or not isinstance(report.get("review_attestations"), list):
+    raise SystemExit(
+        "ERROR: review attestation report must be a JSON object with review_attestations list: "
+        f"{path}"
+    )
+PY
+}
+
+validate_source_smoke_evidence_projection() {
+  local target="$1"
+  local evidence_dir="$2"
+  local manifest_path="${evidence_dir}/manifest.json"
+  [[ -n "${evidence_dir}" ]] || return 0
+  [[ -d "${evidence_dir}" && ! -L "${evidence_dir}" ]] \
+    || { echo "ERROR: source smoke evidence directory is unavailable for ${target}: ${evidence_dir}" >&2; exit 1; }
+  [[ -f "${manifest_path}" && ! -L "${manifest_path}" && -s "${manifest_path}" ]] \
+    || { echo "ERROR: source smoke evidence manifest is unavailable for ${target}: ${manifest_path}" >&2; exit 1; }
+  python3 - "${manifest_path}" "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" "${target}" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+report_path = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
+target = sys.argv[3]
+try:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"ERROR: source smoke evidence manifest is invalid JSON for {target}: {manifest_path}: {error}")
+if not isinstance(manifest, dict):
+    raise SystemExit(f"ERROR: source smoke evidence manifest must be a JSON object for {target}: {manifest_path}")
+if report_path:
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"ERROR: review attestation report is unreadable during postflight: {report_path}: {error}")
+    expected = report.get("review_attestations") if isinstance(report, dict) else None
+    if manifest.get("review_attestations") != expected:
+        raise SystemExit(
+            "ERROR: source smoke evidence review_attestations mismatch: "
+            f"target={target} manifest={manifest_path} report={report_path}"
+        )
+elif "review_attestations" in manifest:
+    raise SystemExit(
+        "ERROR: source smoke evidence contains implicit review_attestations without explicit report: "
+        f"target={target} manifest={manifest_path}"
+    )
+PY
+}
+
 NATIVE_OFFICIAL_REVIEW_ENV=()
 validate_review_snapshots
 validate_review_identity_inputs
 validate_source_smoke_evidence_root
+validate_review_attestation_report
 if [[ -n "${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}" ]]; then
   NATIVE_OFFICIAL_REVIEW_ENV=(
     "NATIVE_ONLY_REVIEW_TRUST_STORE=${NATIVE_OFFICIAL_REVIEW_TRUST_STORE}"
@@ -456,32 +526,24 @@ smoke_stage0_runtime() {
 
   case "${target}" in
     aarch64-apple-darwin)
-      if [[ -n "${evidence_dir}" ]]; then
-        NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR="${evidence_dir}" \
-          NATIVE_STAGE0_DIR="${stage0_dir}" \
-          NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
-          bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
-      else
+      NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR="${evidence_dir}" \
+        NATIVE_SELFHOST_REVIEW_ATTESTATION_REPORT="${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" \
         NATIVE_STAGE0_DIR="${stage0_dir}" \
-          NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
-          bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
-      fi
+        NATIVE_SELFHOST_SOURCE_ROOT="${ROOT_DIR}/selfhost" \
+        bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
       ;;
     x86_64-unknown-linux-gnu)
-      if [[ -n "${evidence_dir}" ]]; then
-        LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR="${evidence_dir}" \
-          LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="${stage0_dir}" \
-          bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
-      else
+      LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR="${evidence_dir}" \
+        LSHARP_NATIVE_LINUX_X86_REVIEW_ATTESTATION_REPORT="${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" \
         LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="${stage0_dir}" \
-          bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
-      fi
+        bash scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
       ;;
     *)
       echo "ERROR: unsupported native stage0 runtime target: ${target}" >&2
       exit 1
       ;;
   esac
+  validate_source_smoke_evidence_projection "${target}" "${evidence_dir}"
 }
 
 mkdir -p "${DIST_DIR}"

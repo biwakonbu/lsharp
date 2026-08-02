@@ -7,6 +7,7 @@ FAKE_ROOT="$TMP_ROOT/project"
 LOG_PATH="$TMP_ROOT/invocations.log"
 TRUST_STORE="$TMP_ROOT/trust-store.json"
 LIFECYCLE="$TMP_ROOT/review-lifecycle.jsonl"
+REVIEW_ATTESTATION_REPORT="$TMP_ROOT/review-attestation-report.json"
 SOURCE_COMMIT=""
 VERSION="v0.0.0-test"
 PATH_PREFIX="$TMP_ROOT/bin"
@@ -28,6 +29,11 @@ PROVIDER_ARTIFACT_BINDING_SMOKE_ROOT=""
 VM_COPY_FAILURE_SMOKE_ROOT=""
 RUNNING_VM_SMOKE_ROOT=""
 CLEANUP_FAILURE_SMOKE_ROOT=""
+MISSING_REPORT_SMOKE_ROOT=""
+REPORT_FREE_SMOKE_ROOT=""
+REPORT_FREE_EVIDENCE_ROOT=""
+MISMATCH_SMOKE_ROOT=""
+MISMATCH_EVIDENCE_ROOT=""
 TRAVERSAL_ROOT=""
 TRAVERSAL_BASE=""
 HOSTGEN_REPLAY_LOCK_PATH="/tmp/lsharp-native-official-snapshot-hostgen-lock.$$"
@@ -43,6 +49,11 @@ cleanup() {
   [[ -z "$VM_COPY_FAILURE_SMOKE_ROOT" ]] || rm -rf "$VM_COPY_FAILURE_SMOKE_ROOT"
   [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
   [[ -z "$CLEANUP_FAILURE_SMOKE_ROOT" ]] || rm -rf "$CLEANUP_FAILURE_SMOKE_ROOT"
+  [[ -z "$MISSING_REPORT_SMOKE_ROOT" ]] || rm -rf "$MISSING_REPORT_SMOKE_ROOT"
+  [[ -z "$REPORT_FREE_SMOKE_ROOT" ]] || rm -rf "$REPORT_FREE_SMOKE_ROOT"
+  [[ -z "$REPORT_FREE_EVIDENCE_ROOT" ]] || rm -rf "$REPORT_FREE_EVIDENCE_ROOT"
+  [[ -z "$MISMATCH_SMOKE_ROOT" ]] || rm -rf "$MISMATCH_SMOKE_ROOT"
+  [[ -z "$MISMATCH_EVIDENCE_ROOT" ]] || rm -rf "$MISMATCH_EVIDENCE_ROOT"
   [[ -z "$TRAVERSAL_ROOT" ]] || rm -rf "$TRAVERSAL_ROOT"
   [[ -z "$TRAVERSAL_BASE" ]] || rm -rf "$TRAVERSAL_BASE"
 }
@@ -54,6 +65,9 @@ mkdir -p "$FAKE_ROOT/scripts/ci" "$PATH_PREFIX" "$FAKE_ROOT/dist"
 FAKE_ROOT_CANONICAL="$(cd "$FAKE_ROOT" && pwd)"
 printf '%s\n' '{"keys":["release-key"]}' >"$TRUST_STORE"
 printf '%s\n' '{"review_id":"review:orchestrator/r1","sequence":1,"state":"active"}' >"$LIFECYCLE"
+cat >"$REVIEW_ATTESTATION_REPORT" <<'JSON'
+{"review_attestations":[{"review_id":"review:checkout/reviewer-001","subject_digest":"sha256:subject-001","source_commit":"0123456789abcdef","provenance_digest":"sha256:review-001","provider":"github","key_id":"org/reviews-2026","algorithm":"ed25519","signature":"AAECAw","issued_at":"2026-08-01T00:00:00Z","expires_at":"2026-09-01T00:00:00Z","sequence":3,"state":"unverified","canonical_bytes":[0,1,2],"span":{"start":12,"end":34}}]}
+JSON
 
 cp "$ROOT/scripts/ci/native-official-release-local.sh" "$FAKE_ROOT/scripts/ci/"
 cp "$ROOT/scripts/ci/verify-native-release-identity.py" "$FAKE_ROOT/scripts/ci/"
@@ -65,9 +79,23 @@ set -euo pipefail
 evidence="${NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR:-}"
 if [[ -n "$evidence" ]]; then
   mkdir -p "$evidence"
-  printf '%s\n' 'mac evidence' >"$evidence/manifest.json"
+  python3 - "${NATIVE_SELFHOST_REVIEW_ATTESTATION_REPORT:-}" "$evidence/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+report_path = pathlib.Path(sys.argv[1]) if sys.argv[1] else None
+if "FAKE_EXPECT_ATTESTATION_REPORT" in __import__("os").environ and not report_path:
+    raise SystemExit("fake Mac source smoke did not receive review attestation report")
+manifest = {"target": "aarch64-apple-darwin"}
+if report_path:
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    attestations = report["review_attestations"]
+    manifest["review_attestations"] = attestations
+pathlib.Path(sys.argv[2]).write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+PY
 fi
-printf '%s\n' "runtime mac stage0=${NATIVE_STAGE0_DIR:-} source=${NATIVE_SELFHOST_SOURCE_ROOT:-} evidence=$evidence" >>"$FAKE_LOG"
+printf '%s\n' "runtime mac stage0=${NATIVE_STAGE0_DIR:-} source=${NATIVE_SELFHOST_SOURCE_ROOT:-} evidence=$evidence report=${NATIVE_SELFHOST_REVIEW_ATTESTATION_REPORT:-}" >>"$FAKE_LOG"
 SH
 chmod +x "$FAKE_ROOT/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
 
@@ -77,9 +105,26 @@ set -euo pipefail
 evidence="${LSHARP_NATIVE_LINUX_X86_SOURCE_SMOKE_EVIDENCE_DIR:-}"
 if [[ -n "$evidence" ]]; then
   mkdir -p "$evidence"
-  printf '%s\n' 'linux evidence' >"$evidence/manifest.json"
+  python3 - "${LSHARP_NATIVE_LINUX_X86_REVIEW_ATTESTATION_REPORT:-}" "$evidence/manifest.json" <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+report_path = pathlib.Path(sys.argv[1]) if sys.argv[1] else None
+if "FAKE_EXPECT_ATTESTATION_REPORT" in os.environ and not report_path:
+    raise SystemExit("fake Linux source smoke did not receive review attestation report")
+manifest = {"target": "x86_64-unknown-linux-gnu"}
+if report_path:
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    attestations = report["review_attestations"]
+    if os.environ.get("FAKE_ATTESTATION_MODE") == "linux-mismatch":
+        attestations = [dict(attestations[0], state="verified")]
+    manifest["review_attestations"] = attestations
+pathlib.Path(sys.argv[2]).write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+PY
 fi
-printf '%s\n' "runtime linux stage0=${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-} evidence=$evidence" >>"$FAKE_LOG"
+printf '%s\n' "runtime linux stage0=${LSHARP_NATIVE_LINUX_X86_STAGE0_DIR:-} evidence=$evidence report=${LSHARP_NATIVE_LINUX_X86_REVIEW_ATTESTATION_REPORT:-}" >>"$FAKE_LOG"
 SH
 chmod +x "$FAKE_ROOT/scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh"
 
@@ -223,6 +268,39 @@ grep -F 'source smoke evidence root' <<<"$unsafe_evidence_output" >/dev/null \
 [[ ! -e "$UNSAFE_EVIDENCE_DIST" ]] \
   || { echo 'official gate created release output before evidence root preflight' >&2; exit 1; }
 
+MISSING_REPORT_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-missing-report.XXXXXX)"
+before_missing_report_log_lines=0
+if [[ -e "$LOG_PATH" ]]; then
+  before_missing_report_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+fi
+missing_report_output_path="$TMP_ROOT/missing-report-output.log"
+set +e
+FAKE_LOG="$LOG_PATH" \
+PATH="$PATH_PREFIX:$PATH" \
+VERSION="$VERSION" \
+SOURCE_COMMIT="$SOURCE_COMMIT" \
+DIST_DIR="$TMP_ROOT/missing-report-dist" \
+SMOKE_ROOT="$MISSING_REPORT_SMOKE_ROOT" \
+LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$MISSING_REPORT_SMOKE_ROOT" \
+NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$SOURCE_SMOKE_EVIDENCE_ROOT/missing-report" \
+NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="$TMP_ROOT/missing-review-attestation.json" \
+  bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" >"$missing_report_output_path" 2>&1
+missing_report_status=$?
+set -e
+missing_report_output="$(<"$missing_report_output_path")"
+[[ "$missing_report_status" -ne 0 ]] \
+  || { echo 'missing review attestation report was unexpectedly accepted' >&2; exit 1; }
+grep -F 'review attestation report' <<<"$missing_report_output" >/dev/null \
+  || { echo 'missing review attestation report diagnostic was missing' >&2; echo "$missing_report_output" >&2; exit 1; }
+after_missing_report_log_lines=0
+if [[ -e "$LOG_PATH" ]]; then
+  after_missing_report_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
+fi
+[[ "$after_missing_report_log_lines" == "$before_missing_report_log_lines" ]] \
+  || { echo 'official gate invoked a target before missing report preflight' >&2; exit 1; }
+[[ ! -e "$TMP_ROOT/missing-report-dist" ]] \
+  || { echo 'official gate created release output before missing report preflight' >&2; exit 1; }
+
 FAKE_LOG="$LOG_PATH" \
 PATH="$PATH_PREFIX:$PATH" \
 VERSION="$VERSION" \
@@ -231,6 +309,8 @@ DIST_DIR="$FAKE_ROOT/dist" \
 SMOKE_ROOT="$SMOKE_ROOT" \
 LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$SMOKE_ROOT" \
 NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$SOURCE_SMOKE_EVIDENCE_ROOT" \
+NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="$REVIEW_ATTESTATION_REPORT" \
+FAKE_EXPECT_ATTESTATION_REPORT=1 \
 NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
 NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
 MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
@@ -256,7 +336,83 @@ grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu eviden
   || { echo 'Mac source smoke evidence was not retained' >&2; exit 1; }
 [[ -s "$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" ]] \
   || { echo 'Linux source smoke evidence was not retained' >&2; exit 1; }
+python3 - "$REVIEW_ATTESTATION_REPORT" \
+  "$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin/manifest.json" \
+  "$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+expected = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["review_attestations"]
+for manifest_path in map(pathlib.Path, sys.argv[2:]):
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest.get("review_attestations") == expected, manifest_path
+PY
+grep -F "report=$REVIEW_ATTESTATION_REPORT" "$LOG_PATH" >/dev/null
 grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
+
+REPORT_FREE_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-report-free.XXXXXX)"
+REPORT_FREE_EVIDENCE_ROOT="$TMP_ROOT/report-free-evidence"
+FAKE_LOG="$LOG_PATH" \
+PATH="$PATH_PREFIX:$PATH" \
+VERSION="$VERSION" \
+SOURCE_COMMIT="$SOURCE_COMMIT" \
+DIST_DIR="$TMP_ROOT/report-free-dist" \
+SMOKE_ROOT="$REPORT_FREE_SMOKE_ROOT" \
+LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$REPORT_FREE_SMOKE_ROOT" \
+NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$REPORT_FREE_EVIDENCE_ROOT" \
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+  bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh"
+python3 \
+  "$REPORT_FREE_EVIDENCE_ROOT/aarch64-apple-darwin/manifest.json" \
+  "$REPORT_FREE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+for manifest_path in map(pathlib.Path, sys.argv[1:]):
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "review_attestations" not in manifest, manifest_path
+PY
+
+MISMATCH_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-mismatch.XXXXXX)"
+MISMATCH_EVIDENCE_ROOT="$(mktemp -d /tmp/lsharp-native-official-mismatch-evidence.XXXXXX)"
+mismatch_output_path="$TMP_ROOT/mismatch-output.log"
+set +e
+FAKE_LOG="$LOG_PATH" \
+PATH="$PATH_PREFIX:$PATH" \
+VERSION="$VERSION" \
+SOURCE_COMMIT="$SOURCE_COMMIT" \
+DIST_DIR="$TMP_ROOT/mismatch-dist" \
+SMOKE_ROOT="$MISMATCH_SMOKE_ROOT" \
+LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$MISMATCH_SMOKE_ROOT" \
+NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$MISMATCH_EVIDENCE_ROOT" \
+NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="$REVIEW_ATTESTATION_REPORT" \
+FAKE_EXPECT_ATTESTATION_REPORT=1 \
+FAKE_ATTESTATION_MODE=linux-mismatch \
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+  bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" >"$mismatch_output_path" 2>&1
+mismatch_status=$?
+set -e
+mismatch_output="$(<"$mismatch_output_path")"
+[[ "$mismatch_status" -ne 0 ]] \
+  || { echo 'target review attestation mismatch was unexpectedly accepted' >&2; exit 1; }
+grep -F 'source smoke evidence review_attestations mismatch' <<<"$mismatch_output" >/dev/null \
+  || { echo 'target review attestation mismatch diagnostic was missing' >&2; echo "$mismatch_output" >&2; exit 1; }
 
 before_provider_clock_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 PROVIDER_CLOCK_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-provider-clock.XXXXXX)"

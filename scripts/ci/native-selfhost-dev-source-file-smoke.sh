@@ -13,6 +13,7 @@ SOURCE_ROOT="${NATIVE_SELFHOST_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_SELFHOST_STAGE_DIR:-}"
 KEEP_STAGE_DIR="${NATIVE_SELFHOST_KEEP_STAGE_DIR:-0}"
 SOURCE_SMOKE_EVIDENCE_DIR="${NATIVE_SELFHOST_SOURCE_SMOKE_EVIDENCE_DIR:-}"
+REVIEW_ATTESTATION_REPORT_INPUT="${NATIVE_SELFHOST_REVIEW_ATTESTATION_REPORT:-}"
 SOURCE_SMOKE_EVIDENCE_WRITER="$ROOT/scripts/ci/write-native-source-smoke-evidence.py"
 WORK_DIR=""
 STAGE_DIR_CREATED=0
@@ -21,13 +22,17 @@ SMOKE_TARGET=""
 cleanup() {
   local status=$?
   if [[ -n "$SOURCE_SMOKE_EVIDENCE_DIR" && -d "$WORK_DIR" ]]; then
+    local writer_args=()
+    if [[ -n "$REVIEW_ATTESTATION_REPORT_INPUT" ]]; then
+      writer_args+=(--review-attestation-report "$REVIEW_ATTESTATION_REPORT_INPUT")
+    fi
     if ! python3 "$SOURCE_SMOKE_EVIDENCE_WRITER" \
       --evidence-dir "$SOURCE_SMOKE_EVIDENCE_DIR" \
       --work-dir "$WORK_DIR" \
       --stage0-manifest "$STAGE0_DIR/manifest.json" \
-      --review-attestation-report "$WORK_DIR/validation-attestation-json.stdout" \
       --target "$SMOKE_TARGET" \
-      --exit-code "$status"; then
+      --exit-code "$status" \
+      "${writer_args[@]}"; then
       echo "ERROR: failed to persist native source-file smoke evidence" >&2
       [[ "$status" -ne 0 ]] || status=1
     fi
@@ -69,6 +74,10 @@ if [[ -n "$SOURCE_SMOKE_EVIDENCE_DIR" ]]; then
   [[ ! -e "$SOURCE_SMOKE_EVIDENCE_DIR" && ! -L "$SOURCE_SMOKE_EVIDENCE_DIR" ]] \
     || die "native source-file smoke evidence directory already exists: $SOURCE_SMOKE_EVIDENCE_DIR"
   require_file "$SOURCE_SMOKE_EVIDENCE_WRITER" "native source-file smoke evidence writer"
+fi
+if [[ -n "$REVIEW_ATTESTATION_REPORT_INPUT" ]]; then
+  [[ -f "$REVIEW_ATTESTATION_REPORT_INPUT" && ! -L "$REVIEW_ATTESTATION_REPORT_INPUT" && -s "$REVIEW_ATTESTATION_REPORT_INPUT" ]] \
+    || die "review attestation report must be a non-empty regular file: $REVIEW_ATTESTATION_REPORT_INPUT"
 fi
 
 stage0_target="$(python3 - "$STAGE0_DIR/manifest.json" <<'PY'
