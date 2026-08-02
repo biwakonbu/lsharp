@@ -1571,7 +1571,7 @@ testsを通過した。さらにLinux x86_64 Lima VMで、`r14` heapを初期化
 
 これは string-concatのbounded allocation/copy/tagging ABIを閉じる verified sliceであり、full current-source stage2/
 stage3 transport/materialize/fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
-`substring` / `read-file` の残りのallocation helper、Mac/Linux release parityの証拠ではない。同じ
+`read-file` の残りのallocation helper、Mac/Linux release parityの証拠ではない。同じ
 stage2 replayをこの局所修正だけで再実行せず、次は残りのallocation boundaryを一つずつRED化してから、必要なLinux
 	stage2/stage3 gateを一回だけ実行する。ADR:
 `docs/adr/decisions-v0.3-native-linux-string-concat-bounded-heap.md`。
@@ -1596,9 +1596,26 @@ Lima `lsharp-linux-x86` のVM-side lock下で最小native programを実行し、
 
 これは signed int-to-string bounded allocationとlimit boundaryのverified sliceであり、full current-source stage2/
 stage3 transport/materialize/fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
-`substring` / `read-file` の残りのallocation helper、Mac/Linux release parityの証拠ではない。次は同じRED→focused
+`read-file` の残りのallocation helper、Mac/Linux release parityの証拠ではない。次は同じRED→focused
 GREEN単位で残りのallocation境界を選び、full stage2/stage3 gateは複数の局所修正をまとめた一回だけ実行する。ADR:
 `docs/adr/decisions-v0.3-native-linux-int-to-string-bounded-heap.md`。
+
+### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
+
+Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。
+`r14` native heapのcursor/limitを使う bounded allocationへ置き換え、`8 + (end - start)` を16-byte境界へ alignし、
+limit超過時はcursorを変更せず nullを返す。String header、payload copy、high-bit tag、signed range handling、
+callee-saved ABIは維持した。helperは145 bytesから147 bytesへ増えたため、後続helper offset、append length、rel32
+targetを実測byte vectorへ同期した。
+
+REDは `test_native_codegen_x86_substring_uses_bounded_heap_cursor` で旧 mmap syscall byte sequenceを検出した。
+GREENは同テスト、`end - start` length回帰、147-byte emitter、substring/concat call-site、trailer offset、function
+metadata targetのfocused testsを通過した。host-side Linux x86 object smoke matrixにも substring objectを含む。
+
+これは substring bounded allocation/copy/tagging ABIの verified sliceであり、current-source VM object runtime、full
+stage2/stage3 transport/materialize/fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
+read-file runtime evidence、Mac/Linux release parityの証拠ではない。ADR:
+`docs/adr/decisions-v0.3-native-linux-substring-bounded-heap.md`。
 
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 

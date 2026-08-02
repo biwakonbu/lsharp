@@ -1450,7 +1450,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `+2` に同期した。Lima `lsharp-linux-x86` の最小Linux x86_64実行では、dynamic tagged `"ab"` と `"Z"` を
   `r14` heapへ渡し、連結結果長 `3` を exit code `3` として確認した。これは bounded string-concat allocation/copy/tagging
   の verified sliceであり、full stage2/stage3 fixed-point、current-source Linux stage0 source-file smoke、package
-  acquisition/release/rollback、`substring` / `read-file` の残りの allocation contract、両 target
+  acquisition/release/rollback、`read-file` の残りの allocation contract、両 target
   release parityの証拠には数えない。ADR:
   `docs/adr/decisions-v0.3-native-linux-string-concat-bounded-heap.md`。
   続けて `emit-x86-selfhost-int-to-string-helper` の固定32-byte `mmap` allocationを、`r14` native heapのcursor
@@ -1462,9 +1462,19 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   同期した。生成byte列とclangで再構成したobject bytesは160 bytesで一致した。Lima `lsharp-linux-x86` では
   `-42` を `-42` として出力し、`limit=cursor+31` の `rax=0` / cursor不変と `+32` の成功を同じVM-side lockで確認した。
   これは signed int-to-string bounded allocationとlimit boundaryのverified sliceであり、full stage2/stage3 fixed-point、
-  current-source Linux stage0 source-file smoke、package acquisition/release/rollback、`substring` / `read-file` の
-  残りのallocation contract、両 target release parityの証拠には数えない。ADR:
-  `docs/adr/decisions-v0.3-native-linux-int-to-string-bounded-heap.md`。
+  current-source Linux stage0 source-file smoke、package acquisition/release/rollback、`read-file` の残りの
+  allocation contract、両 target release parityの証拠には数えない。ADR:
+`docs/adr/decisions-v0.3-native-linux-int-to-string-bounded-heap.md`。
+  さらに Linux x86 selfhost `emit-x86-selfhost-substring-helper` の per-allocation mmapを、materializer-owned `r14`
+  native heapのcursor/limitを使う bounded allocationへ置き換えた。`8 + (end - start)` を16-byte境界へ alignし、
+  limit超過時はcursorを変更せず nullを返し、既存の signed range、String header、payload copy、high-bit tag、callee-saved
+  ABIを維持した。helperは145→147 bytesとなり、後続helper offset、append length、rel32 targetを同期した。REDでは
+  `test_native_codegen_x86_substring_uses_bounded_heap_cursor` が旧 mmap syscall byte sequenceを検出し、GREENでは同テスト、
+  `end - start` length、emitter/call-site/trailer/function-metadataの focused testsが passした。host-side Linux x86 object
+  smoke matrixにも substring objectを含む。これは substring bounded allocationの verified sliceであり、current-source VM
+  object runtime、full stage2/stage3 fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
+  `read-file` runtime evidence、Mac/Linux release parityの証拠では数えない。ADR:
+  `docs/adr/decisions-v0.3-native-linux-substring-bounded-heap.md`。
 
 ## ISSUES-derived quality and runtime work
 
