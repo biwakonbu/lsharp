@@ -40,6 +40,49 @@ STAGE0_DIR="$TMP_ROOT/stage0"
 STAGE0_MANIFEST="$STAGE0_DIR/manifest.json"
 ATTESTATION_REPORT="$TMP_ROOT/validation-attestation-json.stdout"
 mkdir -p "$WORK_DIR" "$STAGE0_DIR/bin"
+
+CLEANUP_FUNCTION="$TMP_ROOT/source-smoke-cleanup-function.sh"
+python3 - "$SOURCE_SMOKE" "$CLEANUP_FUNCTION" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+start = source.index("cleanup() {")
+end = source.index("\ndie() {", start)
+pathlib.Path(sys.argv[2]).write_text(source[start:end] + "\n", encoding="utf-8")
+PY
+cat >"$TMP_ROOT/cleanup-probe.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+source "$CLEANUP_FUNCTION"
+
+WORK_DIR="$TMP_ROOT/cleanup-work"
+SOURCE_SMOKE_EVIDENCE_DIR="$TMP_ROOT/cleanup-evidence"
+SOURCE_SMOKE_EVIDENCE_WRITER="$TMP_ROOT/cleanup-writer.py"
+STAGE0_DIR="$TMP_ROOT/cleanup-stage0"
+SMOKE_TARGET="aarch64-apple-darwin"
+REVIEW_ATTESTATION_REPORT_INPUT=""
+STAGE_DIR=""
+STAGE_DIR_CREATED=0
+KEEP_STAGE_DIR=0
+mkdir -p "$WORK_DIR" "$SOURCE_SMOKE_EVIDENCE_DIR" "$STAGE0_DIR"
+
+python3() {
+  [[ "$1" == "$SOURCE_SMOKE_EVIDENCE_WRITER" ]] || return 91
+  : >"$SOURCE_SMOKE_EVIDENCE_DIR/writer-invoked"
+}
+
+cleanup
+SH
+chmod +x "$TMP_ROOT/cleanup-probe.sh"
+if ! TMP_ROOT="$TMP_ROOT" CLEANUP_FUNCTION="$CLEANUP_FUNCTION" \
+  bash "$TMP_ROOT/cleanup-probe.sh"; then
+  fail "source smoke cleanup must tolerate an empty optional writer argument list"
+fi
+[[ -f "$TMP_ROOT/cleanup-evidence/writer-invoked" ]] \
+  || fail "source smoke cleanup did not invoke the evidence writer"
+
 printf 'decls:1\n' >"$WORK_DIR/parse.stdout"
 printf 'compile-bytes' >"$WORK_DIR/compile.wasm"
 printf 'build-bytes' >"$WORK_DIR/build.wasm"

@@ -22,18 +22,19 @@ SMOKE_TARGET=""
 cleanup() {
   local status=$?
   if [[ -n "$SOURCE_SMOKE_EVIDENCE_DIR" && -d "$WORK_DIR" ]]; then
-    local writer_args=()
+    local writer_command=(
+      python3 "$SOURCE_SMOKE_EVIDENCE_WRITER"
+      --evidence-dir "$SOURCE_SMOKE_EVIDENCE_DIR"
+      --work-dir "$WORK_DIR"
+      --stage0-dir "$STAGE0_DIR"
+      --stage0-manifest "$STAGE0_DIR/manifest.json"
+      --target "$SMOKE_TARGET"
+      --exit-code "$status"
+    )
     if [[ -n "$REVIEW_ATTESTATION_REPORT_INPUT" ]]; then
-      writer_args+=(--review-attestation-report "$REVIEW_ATTESTATION_REPORT_INPUT")
+      writer_command+=(--review-attestation-report "$REVIEW_ATTESTATION_REPORT_INPUT")
     fi
-    if ! python3 "$SOURCE_SMOKE_EVIDENCE_WRITER" \
-      --evidence-dir "$SOURCE_SMOKE_EVIDENCE_DIR" \
-      --work-dir "$WORK_DIR" \
-      --stage0-dir "$STAGE0_DIR" \
-      --stage0-manifest "$STAGE0_DIR/manifest.json" \
-      --target "$SMOKE_TARGET" \
-      --exit-code "$status" \
-      "${writer_args[@]}"; then
+    if ! "${writer_command[@]}"; then
       echo "ERROR: failed to persist native source-file smoke evidence" >&2
       [[ "$status" -ne 0 ]] || status=1
     fi
