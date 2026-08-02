@@ -1697,6 +1697,41 @@ experimental native archiveで、Linux x86_64 assetは存在しない。取得�
 current source commit/provenanceを持たないため、`HEAD=5db1c2a4` の release evidenceや両 target packaged parityには採用しない。
 current-source release archive、実 provider asset acquisition、rollback archiveの実行は引き続き外部 release作業として残る。
 
+### V2-16b / V2-16c / V2-16e current-source LSP zero-based position and Linux fixed point (2026-08-02)
+
+current `HEAD=9175c6e50f4a6845ae97836b3ac6897102f3dd52` で、LSP wireの incoming Positionを内部1-based座標へ加算し、hover rangeと
+formatting TextEdit rangeを外向き0-based座標へ減算する修正を反映した。focused REDは incoming `line=0,character=6` が mock
+type-infoと0,0 rangeへ崩れ、formattingが1-based rangeを返すことを確認し、GREENは同fixtureの zero-based hover/formattingを確認した。
+
+Mac Apple Siliconの `scripts/ci/native-macos-aarch64-selfhost-release.sh` は `1 passed` で、artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-9175c6e5-lsp-zero-based/` の manifestは target
+`aarch64-apple-darwin`、source commit同値、`selfhost_fixed_point=true`、program SHA-256
+`8106ebcb373da7d4b4183ee23b3a87b423afce5e2300e956fdb8915031865d18` を記録し、programは Mach-O arm64だった。同artifactの
+direct `lsp --stdio` は exit `0`、stderr空で、numeric URIの hover range `0:6 -> 0:12` と formatting TextEdit range
+`0:0 -> 1:3` を返した。
+
+Linux x86_64では host actual stage1を `287.20s` で fresh生成し、manifestの target/source commit、code `4,408,352` bytes、data
+`2,757` bytes、entrypoint `4,405,792`、function-start `3,418`、main function `3,427` を実バイトと照合した。これを
+`lsharp-native-selfhost-stage0` packageへ materializeし、package manifestの target/source commitを検証した。同packageの
+`native-linux-x86-native-stage0-source-file-smoke.sh` は chunk `64` / timeout `900` で exit `0`、parse/check/fmt/test/validation/
+compile/buildを成功させ、compile/buildは各 `2,559` bytes、SHA-256
+`afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00` だった。成功経路では `cargo`、`rustc`、host `lsharp`、
+Rust fallbackを使用していない。
+
+同じ current stage1を `LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1_ARTIFACT_DIR` で再利用し、Lima
+`lsharp-linux-x86` の VM-side lock下で stage2→stage3 transport/materialize/compareを一度だけ実行した。
+`actual-selfregen-summary.json` は target `x86_64-unknown-linux-gnu`、host `Linux x86_64`、`status=pass`、stage2/stage3 code
+length各 `11,408,204`、stdout各 `12,249,104` bytes、stdout SHA-256一致
+`b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr各 `0` bytesを記録した。stage2/stage3の full
+stdoutは byte-for-byteで一致したが、別個の `stage2-tiny-summary.txt` は生成されていないため、tiny int/stringを独立した runtime
+evidenceとしては扱わない。検証後は VM workdirと両 lockを回収し、Lima VMを停止した。
+
+これは current-source Macの zero-based hover/formatting wire contractと、Linuxの stage1/package/source-file/stage2-stage3
+fixed-point verified sliceである。Linux direct LSP semantic projection、definition/references/renameのURI/location/workspace
+edit、diagnosticsの標準shape、standalone Preview1 `io-read-stdin` runtime、component sidecar、公開 release asset acquisition/
+rollback、Mac/Linux packaged artifact provenance parity、`LEGACY-BOOT-01` aggregateの完了を意味しない。TODOの `[~]` と Rust
+oracle/bootstrap/host integration境界は維持する。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。

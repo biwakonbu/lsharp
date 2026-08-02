@@ -1435,6 +1435,19 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `wasm-tools` が `wasi_snapshot_preview1::fd_write` importを解決できず exit `1`、stderrに component encode failureを返し、
   component artifactを作成しなかった。この明示的外部 packaging拒否は正しい fail-closed boundaryだが、component sidecarの
   Rust-free実装完了やstandalone component runtimeの証拠ではない。
+
+  さらに current `HEAD=9175c6e50f4a6845ae97836b3ac6897102f3dd52` で LSP wire positionを更新した。Mac Apple Siliconの
+  actual `App.Cli` release gateは `1 passed`、manifestは target `aarch64-apple-darwin`、`selfhost_fixed_point=true`、program
+  SHA-256 `8106ebcb373da7d4b4183ee23b3a87b423afce5e2300e956fdb8915031865d18`、artifact `4,676 KiB` を記録した。同artifactの
+  direct `lsp --stdio` batchは exit `0` / stderr空で、numeric URIの hover が `line=0,character=6` から `line=0,character=12`、
+  formatting が `line=0,character=0` から `line=1,character=3` の zero-based wire rangeを返した。Linux x86_64では同じ current
+  sourceから stage1を `287.20s` で fresh生成し、manifestは code `4,408,352` bytes、data `2,757` bytes、entrypoint `4,405,792`、
+  function-start `3,418`、main function `3,427`、source commit/target一致だった。package/source-file smokeは exit `0`、compile/build
+  は各 `2,559` bytes、SHA-256 `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00` で、同stage1を再利用した
+  stage2→stage3 transport/materialize/compareは status `pass`、code length各 `11,408,204`、stdout各 `12,249,104` bytes、
+  SHA-256各 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr各 `0` bytesで一致した。Linux direct LSPの
+  semantic projection自体はこのbatchでは再実行していないため、definition/references/renameのURI/location/workspace edit、
+  diagnostics shape、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged artifact parityは残る。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
