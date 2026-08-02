@@ -1618,6 +1618,29 @@ def verify_review_verification_receipt_projection(report, receipt):
         raise ToolError("native validate receipt projection mismatch")
 
 
+def verify_review_attestation_receipt_projection(report, receipt):
+    """receipt が存在する場合、source attestation projection の対象も同じ fact に束ねる。"""
+    if receipt is None or "review_attestations" not in report:
+        return
+    matches = [
+        attestation
+        for attestation in report["review_attestations"]
+        if attestation.get("review_id") == receipt["review_id"]
+    ]
+    if len(matches) != 1:
+        raise ToolError("native validate receipt attestation projection is missing or ambiguous")
+    attestation = matches[0]
+    if attestation.get("state") != "verified":
+        raise ToolError("native validate receipt attestation state mismatch")
+    for field in ("provider", "key_id", "algorithm"):
+        if attestation.get(field) != receipt[field]:
+            raise ToolError(f"native validate receipt attestation {field} mismatch")
+    canonical_bytes = bytes(attestation["canonical_bytes"])
+    digest = "sha256:" + hashlib.sha256(canonical_bytes).hexdigest()
+    if digest != receipt["attestation_digest"]:
+        raise ToolError("native validate receipt attestation canonical digest mismatch")
+
+
 def verify_review_verification_receipt_manifest_projection(manifest, receipt):
     if receipt is None:
         return
@@ -1704,6 +1727,7 @@ def call_validate(program, arguments, temporary_directory):
     report = parse_json_output(completed)
     validate_report_output(report)
     verify_review_verification_receipt_projection(report, receipt)
+    verify_review_attestation_receipt_projection(report, receipt)
     reject_provider_semantic_states(report, provider_digests, receipt)
     if include_manifest:
         if manifest_path is None or not manifest_path.is_file():

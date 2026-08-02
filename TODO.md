@@ -2281,3 +2281,14 @@ current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollba
 M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、
 別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。Evidence:
 [`decisions-v0.3-native-mcp-review-attestation-report.md`](docs/adr/decisions-v0.3-native-mcp-review-attestation-report.md)。
+
+2026-08-02 に explicit verification receipt と native MCP source-owned `review_attestations[]` の binding parity を追加した。
+receipt がある report で同じ `review_id` の attestation projection が欠落・曖昧、`verified` でない、provider/key/algorithm が不一致、または
+canonical bytes の SHA-256 が receipt の `attestation_digest` と一致しない場合を、MCP downstream projection 前に
+`native validate receipt attestation ...` で fail-closed にする RED→GREENを固定した。これは Rust が明示 trust store で検証済みとした
+receipt fact の identity/material handoffであり、native shim に暗号署名検証や provider/auth取得を追加するものではない。
+native MCP 95 tests、Rust receipt 4 tests、Rust source-attestation focused test、source-file evidence、official two-target fake gateを確認した。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+live provider/auth取得・署名意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-review-attestation-receipt-binding.md`](docs/adr/decisions-v0.3-native-mcp-review-attestation-receipt-binding.md)。
