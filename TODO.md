@@ -12,6 +12,46 @@
 `[x]` は使わない。日付別の進捗ログ、個別 test 名、artifact hash、完了済み phase はここへ蓄積せず、
 設計、ADR、test、artifact、運用記録を参照する。
 
+## Checkpoint — 2026-08-02
+
+ここは一度区切って再開するための current truth である。完了済みの細かな test 名や hash を backlog の完了項目へ
+昇格させず、判断と代表 evidence は ADR へ置く。
+
+### 現在地
+
+- 確認時点の `origin/main` は `89de36805439fda34040ab63f0919c7f4ed34a2e`。
+- 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
+  `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
+- Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
+  `main` へ push する。Cloud の HTTPS credential がない場合も commit SHA と検証結果を保存して local 適用へ切り替える。
+- Rust/native parity、native no-execution、必要な artifact/runtime boundary、対象 target の evidence が揃うまで、
+  Rust-free 完了や項目全体の完了を宣言しない。
+
+### 直近の verified partial（完了項目には移さない）
+
+- installed package の既存 `docs/api.json` は regular non-symlink file のみを package-owned metadata として読む。
+- `.lsharp/packages/<entry>` 自体は regular non-symlink directory のみを discovery 対象にする。
+- regular package directory 内の `lsharp.toml` symlink は discovery から除外し、explicit package API は既存 not-found で fail-closed にする。
+
+代表 ADR: [`decisions-v0.3-native-mcp-package-api-regular-file-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-api-regular-file-boundary.md)、
+[`decisions-v0.3-native-mcp-installed-package-directory-ownership.md`](docs/adr/decisions-v0.3-native-mcp-installed-package-directory-ownership.md)、
+[`decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md)。
+
+### 再開時の次の一件
+
+- [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
+  外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
+  Rust/native の同一 fixture で閉じる。実装前に RED を追加し、外部 source の name/content/metadata を応答へ投影しないこと、
+  native program no-execution、Rust/native parity を確認する。
+  個別 source file、`docs/` directory、その他 nested tree、installer、provider/auth、current-source runtime、
+  Mac/Linux packaged/rollback parity はこの一件に含めない。
+
+### まだ完了扱いにできない理由
+
+- `src/`、個別 source、`docs/` を含む nested tree 全体の ownership は未閉鎖。
+- installer / registry / provider/auth / 実 Ed25519 / current-source Mac/Linux runtime / packaged parity は未検証。
+- Linux replay・stage regeneration・full build は current-source manifest、expected replay lock、VM ownership が揃うまで保留。
+
 ## Next milestone — v0.3 review provenance / lifecycle
 
 正本: [`v0.3-review-provenance-lifecycle.md`](docs/development/planning/v0.3-review-provenance-lifecycle.md)

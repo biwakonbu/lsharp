@@ -16,6 +16,66 @@
 > **改善方針**: [docs/development/planning/improvement-roadmap.md](docs/development/planning/improvement-roadmap.md)
 > **新設計**: [docs/development/planning/improvement-designs/](docs/development/planning/improvement-designs/README.md)
 
+## 2026-08-02 現在の checkpoint（作業再開用）
+
+この節は、次の作業を再開するときに最初に読む現在地である。問題 ID の正本は以下の既存台帳であり、
+日付ごとの細かなログや完了判定は ADR・仕様・検証記録へ分離する。
+
+### 現在の事実
+
+- 確認時点の `origin/main` は `89de36805439fda34040ab63f0919c7f4ed34a2e`
+  (`fix: reject symlinked installed package manifests`)。この commit は、Cloud で作成した検証済み
+  slice を task-owned worktree へ適用し、Rust/native parity と focused gate を通したうえで公開したもの。
+- canonical な問題台帳は本ファイル（`ISSUES.md`）、未完タスクの正本は [`TODO.md`](TODO.md) である。
+  `ISSUE.md` という別名の台帳は作らず、二重管理を避ける。
+- `/Users/biwakonbu/github/lsharp` の root checkout は複数セッションが共有しており、確認時点で競合中の差分と
+  未追跡ファイルがある。通常作業では編集・pull・reset の対象にせず、専用 worktree を
+  `/Users/biwakonbu/github/tmp/<task>/` に作り、完了後に自分が所有するものだけを削除する。
+- L# の正本実装は Rust と native selfhost stage0 の二系統で、Rust は oracle/bootstrap/rollback のために残す。
+  Rust-free の完了判定には parser → 型推論 → lowering → codegen → runtime → 公開 command の境界と、
+  Mac Apple Silicon / Linux x86_64 の必要な実行証跡が要る。focused test、summary、stale artifact、Rust host
+  fallback の成功だけでは完了としない。
+
+### 目指す次版と運用の判断
+
+- 現在の active milestone は v0.3 review provenance / lifecycle であり、次版の形は
+  [`v0.4-lsharp-next-shape.md`](docs/development/planning/v0.4-lsharp-next-shape.md) と
+  [`v0.4-milestone-01.md`](docs/development/planning/v0.4-milestone-01.md) に分けて設計する。
+- Cloud は実装・RED→GREEN・task-only commit の場所、local の task-owned worktree は結果を main へ適用し、
+  まとめて検証して push する場所とする。Cloud の HTTPS credential がなくても、commit は捨てず、SHA・
+  parent・remote・merge-base・left/right・検証結果を残して local 適用へ進む。
+- 完了項目は ADR / 仕様 / evidence に移し、`TODO.md` から削除する。partial parity、Rust-only、
+  external boundary、未検証 ABI は `[~]` のまま残し、`[x]` は使わない。
+
+### 直近で閉じた installed-package ownership の境界
+
+以下は package root の外部 path を Rust/native MCP が package-owned として投影しないための verified partial である。
+いずれも installer、live provider/auth、実 target runtime、Mac/Linux packaged parity まで閉じたものではない。
+
+| 境界 | 現在の契約 | 記録 |
+|---|---|---|
+| `docs/api.json` | 既存 metadata は regular non-symlink file のみ読む | [`decisions-v0.3-native-mcp-package-api-regular-file-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-api-regular-file-boundary.md) |
+| `.lsharp/packages/<entry>` | package entry 自体は regular non-symlink directory のみ列挙する | [`decisions-v0.3-native-mcp-installed-package-directory-ownership.md`](docs/adr/decisions-v0.3-native-mcp-installed-package-directory-ownership.md) |
+| `lsharp.toml` | regular package directory 内で manifest が存在する場合、symlink は無視し、explicit API は既存 not-found で fail-closed | [`decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md) |
+
+### 未完了の境界と再開点
+
+- `src/` ディレクトリ自体が外部 directory への symlink の場合の source traversal / in-memory package API generation は
+  まだ実装していない。次の RED は、同一 fixture で外部 source の name/content/metadata が応答へ投影されないことと、
+  Rust/native の既存 not-found または empty contract を固定すること。Cloud への follow-up はこの checkpoint 指示で停止した。
+- 個別 source file、`docs/` directory、その他 nested entry 全体、installer が取得した tree、provider/auth、
+  current-source runtime、Mac/Linux packaged/rollback parity は別の残件である。ひとつの slice を越えて一括完了扱いにしない。
+- Linux replay / stage regeneration / full build は、current-source manifest・expected replay lock・VM ownership が揃わない間は起動しない。
+  同様に live provider/auth と実 Ed25519 は offline contract の証拠へ拡大解釈しない。
+
+### 作業を再開するときの gate
+
+1. `git fetch origin main`、root/worktree/status、TODO の active item、対象 artifact/VM 状態を確認する。
+2. 一つの observable contract の RED を Rust/native の同一 fixture で追加し、失敗値を確認してから実装する。
+3. focused GREEN、必要な Rust/native/fake batch、rustfmt/Python syntax、docs audit、`git diff --check` をまとめて実行する。
+4. evidence を ADR と TODO に反映し、task-relevant files だけを commit/push する。push 後に `HEAD == origin/main`、
+   worktree、remote branch、残タスクを再監査する。
+
 ---
 
 ## サマリー
@@ -47,6 +107,7 @@
 | [I-06](#i-06) | Property/limit slice はあるが full fuzz/leak/perf gate が未完 | 中 | in-design | [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md) |
 | [I-07](#i-07) | rooting guard は部分実装、全 source/runtime 境界が未完 | 中 | in-design | imp-07 |
 | [I-08](#i-08) | テスト配置が巨大 E2E に集中 | 中 | in-design | imp-07 |
+| [I-09](#i-09) | installed package の nested source ownership が未完 | 中 | in-design | v0.3 MCP package ownership ADR |
 
 ### ドキュメント (DOC)
 
@@ -333,6 +394,26 @@
   `selfhost_bootstrap_four_layer.rs` 11779 行。分布の機械可視化は `scripts/test-distribution.py`。
 - **関連**: I-01 (テストのインライン配置がファイル肥大の一因)。
   改善設計は [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md) (増強方針) と imp-06 (分割方針)。
+
+<a id="i-09"></a>
+### I-09: installed package の nested source ownership が未完
+
+- **影響度**: 中 / **状態**: in-design
+- **内容**: package entry、`lsharp.toml`、`docs/api.json` の直下 ownership boundary は Rust/native MCP で
+  verified partial になったが、regular な `.lsharp/packages/<entry>` 内の `src/` directory、個別 source、
+  `docs/` directory、その他 nested tree を package-owned input として扱う規則は閉じていない。外部 directory を
+  symlink 経由で source traversal / in-memory package API generation が辿れば、package 外の source identity、content、
+  metadata が search / project context / package API へ投影される可能性がある。
+- **根拠**:
+  - `docs/adr/decisions-v0.3-native-mcp-package-api-regular-file-boundary.md`
+  - `docs/adr/decisions-v0.3-native-mcp-installed-package-directory-ownership.md`
+  - `docs/adr/decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md`
+  - `TODO.md` の `EC-M3-05` / `M3-05-N9` verified partial 記録
+- **次の識別実験**: regular package directory 内の `src/` directory symlink と外部 source fixture を一つだけ追加し、
+  実際の source traversal surface の既存 not-found / empty / ignore 契約を Rust/native の RED で固定する。個別 source、
+  `docs/`、installer、provider、runtime の完了へ拡張しない。
+- **残る境界**: installer が取得した tree、live provider/auth、current-source Mac/Linux runtime、packaged/rollback parity、
+  実 Ed25519 は未検証であり、`EC-M3-05` と `M3-05-N9` は `[~]` を維持する。
 
 ---
 
