@@ -2272,3 +2272,12 @@ provider/auth取得、current-source Linux runtime、Mac/Linux両 targetの pack
 EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが
 現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
 Evidence: [`decisions-v0.3-native-mcp-report-manifest-projection-parity.md`](docs/adr/decisions-v0.3-native-mcp-report-manifest-projection-parity.md)。
+
+2026-08-02 に native MCP `lsharp_validate` report の `review_attestations[]` source-attestation projection parityを追加した。
+Rust canonical reportと同じ14フィールド（named identity、canonical bytes、state、span、expires_at、positive sequence）を native
+output schema と postflight validatorへ接続し、valid fixtureを受理しつつ missing/extra/invalid state/byte overflow/span不正を
+fail-closed にする RED→GREENを固定した。これは report wire/projection の verified partial sliceであり、署名意味検証、live provider/auth取得、
+current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-01〜05 と
+M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが現HEADに一致せず、
+別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。Evidence:
+[`decisions-v0.3-native-mcp-review-attestation-report.md`](docs/adr/decisions-v0.3-native-mcp-review-attestation-report.md)。

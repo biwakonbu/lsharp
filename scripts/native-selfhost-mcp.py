@@ -238,6 +238,73 @@ MANIFEST_OUTPUT_SCHEMA = {
     },
 }
 
+
+def review_attestation_projection_schema():
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "review_id",
+            "subject_digest",
+            "source_commit",
+            "provenance_digest",
+            "provider",
+            "key_id",
+            "algorithm",
+            "signature",
+            "issued_at",
+            "expires_at",
+            "sequence",
+            "state",
+            "canonical_bytes",
+            "span",
+        ],
+        "properties": {
+            "review_id": {
+                "type": "string",
+                "pattern": r"^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            },
+            "subject_digest": {"type": "string", "minLength": 1},
+            "source_commit": {"type": "string", "minLength": 1},
+            "provenance_digest": {"type": "string", "minLength": 1},
+            "provider": {"type": "string", "minLength": 1},
+            "key_id": {"type": "string", "minLength": 1},
+            "algorithm": {"const": "ed25519"},
+            "signature": {"type": "string", "pattern": r"^[A-Za-z0-9_-]+$"},
+            "issued_at": {
+                "type": "string",
+                "pattern": CANONICAL_UTC_TIMESTAMP_PATTERN,
+            },
+            "expires_at": {
+                "type": ["string", "null"],
+                "pattern": CANONICAL_UTC_TIMESTAMP_PATTERN,
+            },
+            "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": U64_MAX,
+            },
+            "state": {
+                "type": "string",
+                "enum": ["verified", "unverified", "stale", "revoked"],
+            },
+            "canonical_bytes": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 0, "maximum": 255},
+            },
+            "span": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["start", "end"],
+                "properties": {
+                    "start": {"type": "integer", "minimum": 0},
+                    "end": {"type": "integer", "minimum": 0},
+                },
+            },
+        },
+    }
+
+
 VALIDATE_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -322,6 +389,10 @@ VALIDATE_OUTPUT_SCHEMA = {
                     "receipt": review_verification_receipt_schema(),
                 },
             },
+        },
+        "review_attestations": {
+            "type": "array",
+            "items": review_attestation_projection_schema(),
         },
         "manifest": MANIFEST_OUTPUT_SCHEMA,
     },
@@ -1315,6 +1386,97 @@ def validate_review_verification(value, index):
             raise ToolError(f"{label}.receipt is invalid: {error}") from error
 
 
+def validate_review_attestation(value, index):
+    label = f"native validate report review_attestations[{index}]"
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must be an object")
+    allowed = {
+        "review_id",
+        "subject_digest",
+        "source_commit",
+        "provenance_digest",
+        "provider",
+        "key_id",
+        "algorithm",
+        "signature",
+        "issued_at",
+        "expires_at",
+        "sequence",
+        "state",
+        "canonical_bytes",
+        "span",
+    }
+    required = (
+        "review_id",
+        "subject_digest",
+        "source_commit",
+        "provenance_digest",
+        "provider",
+        "key_id",
+        "algorithm",
+        "signature",
+        "issued_at",
+        "expires_at",
+        "sequence",
+        "state",
+        "canonical_bytes",
+        "span",
+    )
+    unknown = sorted(set(value).difference(allowed))
+    if unknown:
+        raise ToolError(f"{label} has unknown field: {unknown[0]}")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise ToolError(f"{label} is missing field: {missing[0]}")
+    if not isinstance(value["review_id"], str) or re.fullmatch(
+        r"review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value["review_id"]
+    ) is None:
+        raise ToolError(f"{label}.review_id has invalid format")
+    for name in (
+        "subject_digest",
+        "source_commit",
+        "provenance_digest",
+        "provider",
+        "key_id",
+    ):
+        if not isinstance(value[name], str) or not value[name].strip():
+            raise ToolError(f"{label}.{name} must be a non-empty string")
+    if value["algorithm"] != "ed25519":
+        raise ToolError(f"{label}.algorithm must be ed25519")
+    if not isinstance(value["signature"], str) or re.fullmatch(
+        r"[A-Za-z0-9_-]+", value["signature"]
+    ) is None:
+        raise ToolError(f"{label}.signature must be unpadded base64url")
+    for name in ("issued_at", "expires_at"):
+        timestamp = value[name]
+        if timestamp is not None and (
+            not isinstance(timestamp, str)
+            or CANONICAL_UTC_TIMESTAMP_RE.fullmatch(timestamp) is None
+        ):
+            raise ToolError(f"{label}.{name} must be a canonical UTC timestamp or null")
+    sequence = value["sequence"]
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or not 1 <= sequence <= U64_MAX:
+        raise ToolError(f"{label}.sequence must be a positive integer")
+    if value["state"] not in ("verified", "unverified", "stale", "revoked"):
+        raise ToolError(f"{label}.state must be one of verified, unverified, stale, revoked")
+    canonical_bytes = value["canonical_bytes"]
+    if not isinstance(canonical_bytes, list):
+        raise ToolError(f"{label}.canonical_bytes must be an array")
+    for byte_index, byte in enumerate(canonical_bytes):
+        if isinstance(byte, bool) or not isinstance(byte, int) or not 0 <= byte <= 255:
+            raise ToolError(f"{label}.canonical_bytes[{byte_index}] must be a byte")
+    span = value["span"]
+    if not isinstance(span, dict):
+        raise ToolError(f"{label}.span must be an object")
+    unknown_span = sorted(set(span).difference({"start", "end"}))
+    if unknown_span:
+        raise ToolError(f"{label}.span has unknown field: {unknown_span[0]}")
+    for name in ("start", "end"):
+        position = span.get(name)
+        if isinstance(position, bool) or not isinstance(position, int) or position < 0:
+            raise ToolError(f"{label}.span.{name} must be a non-negative integer")
+
+
 def validate_review_verification_receipt_value(value):
     validator_path = pathlib.Path(__file__).parent / "ci" / "verify-native-review-verification-receipt.py"
     spec = importlib.util.spec_from_file_location(
@@ -1387,7 +1549,12 @@ def validate_report_output(value):
         "stale_reviews",
         "stale_evidence",
     )
-    allowed = set(required) | {"review_evidence_identity", "review_verifications", "manifest"}
+    allowed = set(required) | {
+        "review_evidence_identity",
+        "review_verifications",
+        "review_attestations",
+        "manifest",
+    }
     unknown = sorted(set(value).difference(allowed))
     if unknown:
         raise ToolError(f"native validate report has unknown field: {unknown[0]}")
@@ -1403,6 +1570,8 @@ def validate_report_output(value):
         validate_trace_gap(gap, index)
     for index, verification in enumerate(value.get("review_verifications", [])):
         validate_review_verification(verification, index)
+    for index, attestation in enumerate(value.get("review_attestations", [])):
+        validate_review_attestation(attestation, index)
     for name in (
         "open_questions",
         "independent_reviews",
