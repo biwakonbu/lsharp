@@ -27,6 +27,7 @@ from semantic_fixture_matrix import ManifestError, SUPPORTED_TARGETS, project_ma
 
 SOURCE_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
+ABI_EXPECTATIONS = pathlib.Path(__file__).resolve().parent / "semantic-fixture-artifact-expectations.json"
 IMPORT = re.compile(r'\(import\s+"([^"\\]*(?:\\.[^"\\]*)*)"\s+"([^"\\]*(?:\\.[^"\\]*)*)"\s+\((\w+)')
 TABLE = re.compile(r"\(table(?:\s+\(;\d+;\))?\s+(\d+)(?:\s+(\d+))?\s+(\w+)")
 EXPORT = re.compile(r'\(export\s+"([^"\\]*(?:\\.[^"\\]*)*)"\s+\((\w+)')
@@ -149,8 +150,36 @@ def select_fixture(manifest: Dict[str, Any], fixture_id: str, target: str) -> Di
     return fixture
 
 
+def load_expected_abi(path: pathlib.Path, fixture_id: str) -> Dict[str, List[Dict[str, Any]]]:
+    if path.is_symlink() or not path.is_file():
+        raise ProjectionError(f"expected ABI contract must be a regular file: {path}")
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ProjectionError(f"expected ABI contract cannot be read: {path}") from error
+    if not isinstance(document, dict) or document.get("schema_version") != 1:
+        raise ProjectionError("expected ABI contract has an unsupported schema")
+    fixtures = document.get("fixtures")
+    if not isinstance(fixtures, dict) or fixture_id not in fixtures:
+        raise ProjectionError(f"expected ABI contract is missing fixture: {fixture_id}")
+    expected = fixtures[fixture_id]
+    if not isinstance(expected, dict):
+        raise ProjectionError(f"expected ABI contract is not an object: {fixture_id}")
+    result = {}
+    for field in ("imports", "tables", "exports"):
+        value = expected.get(field)
+        if not isinstance(value, list):
+            raise ProjectionError(f"expected ABI contract field is not an array: {fixture_id}.{field}")
+        result[field] = value
+    return result
+
+
 def project_fixture(
-    fixture: Dict[str, Any], root: pathlib.Path, artifact: pathlib.Path, wasm_tools: pathlib.Path
+    fixture: Dict[str, Any],
+    root: pathlib.Path,
+    artifact: pathlib.Path,
+    wasm_tools: pathlib.Path,
+    expected_abi: Dict[str, List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
     source = root / pathlib.PurePosixPath(fixture["source"])
     if source.is_symlink() or not source.is_file():
@@ -166,6 +195,11 @@ def project_fixture(
         raise ProjectionError(f"{fixture['id']} declares imports but artifact has none")
     if "ftable" in required and not projection["tables"]:
         raise ProjectionError(f"{fixture['id']} declares ftable but artifact has no table")
+    for field in ("imports", "tables", "exports"):
+        if projection[field] != expected_abi[field]:
+            raise ProjectionError(
+                f"{fixture['id']} {field} does not match expected ABI contract"
+            )
     relative_source = source.relative_to(root).as_posix()
     return {
         "id": fixture["id"],
@@ -222,6 +256,7 @@ def main() -> int:
             )
         wasm_tools = require_executable(arguments.wasm_tools, "wasm-tools")
         artifact = require_artifact(arguments.artifact)
+        expected_abi = load_expected_abi(ABI_EXPECTATIONS, arguments.fixture_id)
         raw_manifest = json.loads(arguments.manifest.read_text(encoding="utf-8"))
         manifest = project_manifest(require_object(raw_manifest, "manifest"), root)
         fixture = select_fixture(manifest, arguments.fixture_id, arguments.target)
@@ -231,7 +266,7 @@ def main() -> int:
             "producer": "static-wasm-artifact",
             "target": arguments.target,
             "source_commit": arguments.source_commit,
-            "fixtures": [project_fixture(fixture, root, artifact, wasm_tools)],
+            "fixtures": [project_fixture(fixture, root, artifact, wasm_tools, expected_abi)],
         }
         write_output(arguments.output, result)
     except (OSError, UnicodeError, json.JSONDecodeError, ManifestError, ProjectionError) as error:

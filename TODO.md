@@ -2617,3 +2617,11 @@ source/ftable/import bytesを出す証拠、component instantiation、Mac/Linux 
 EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-semantic-source-artifact-projection.md`](docs/adr/decisions-v0.3-semantic-source-artifact-projection.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+2026-08-02 の verified partial: `v4-m1-07` static source→artifact projectionの non-empty-only確認を、fixture-level exact ABI contractへ拡張した。
+`semantic-fixture-artifact-expectations.json`で `valid/nested-record-pattern` の ordered imports、static table/ftable shape、exportsを固定し、fake artifactの
+shape driftは projection sidecar生成前に fail-closed にする。同一 fake fixtureで既存 projection success、Rust/native sidecar diff、report/runtime digest bindingと
+table shape drift/no-evidenceを RED→GREENで確認した。これは report schemaや既存 runtime receiptを変更しない offline/fake verified partialであり、current-source
+Rust/native producer parity、component instantiation、Mac/Linux runtime、packaged/rollback parity、provider/authの証拠ではない。
+EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
+[`decisions-v0.3-semantic-source-artifact-exact-abi.md`](docs/adr/decisions-v0.3-semantic-source-artifact-exact-abi.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。

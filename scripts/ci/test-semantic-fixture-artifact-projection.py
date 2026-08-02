@@ -114,6 +114,29 @@ class SemanticFixtureArtifactProjectionTest(unittest.TestCase):
             self.assertIn("projection", result.stderr.lower())
             self.assertFalse(output.exists())
 
+    def test_rejects_shape_drift_against_exact_fixture_abi_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            tool = root / "drifting-wasm-tools.py"
+            artifact = root / "artifact.wasm"
+            output = root / "projection.json"
+            artifact.write_bytes(b"\x00asm\x01\x00\x00\x00fake")
+            make_executable(
+                tool,
+                "#!/usr/bin/env python3\n"
+                "print('(module')\n"
+                "print('  (import \\\"env\\\" \\\"print\\\" (func $print))')\n"
+                "print('  (table 4 7 funcref)')\n"
+                "print('  (export \\\"_start\\\" (func $start))')\n"
+                "print(')')\n",
+            )
+
+            result = run_projection(root, tool, artifact, output)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("expected ABI", result.stderr)
+            self.assertFalse(output.exists())
+
     def test_rejects_stale_source_commit_before_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
