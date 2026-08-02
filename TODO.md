@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の `origin/main` は `89de36805439fda34040ab63f0919c7f4ed34a2e`。
+- 確認時点の `origin/main` は `3f6c49976f75a5099d524f08ea85cc1698935cbb`。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1405,6 +1405,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   Mac Apple Siliconの current-source `program.native` でも no-arg helpと `parse` fileを postflight
   実行し、exit `0` / stderr `0` を確認した。ただしこれは単一 release artifactの smokeであり、
   Linux x86_64 stage0の `check` / `parse`、全公開 commandの native matrix、release provenanceは残る。
+  さらに current `HEAD=3f6c49976f75a5099d524f08ea85cc1698935cbb` から、
+  `scripts/ci/native-macos-aarch64-selfhost-release.sh` を一度だけ実行して App.Cli native releaseを再生成した。
+  manifestは target `aarch64-apple-darwin`、同じ `source_commit`、`selfhost_fixed_point=true`、program SHA-256
+  `a1dac9ff7146fbfd012c6e299df786c3c6c00680e3849cfb98abdeb1efcd76de` を記録し、生成物は Mach-O arm64だった。
+  `--version` は `lsharp 0.1.0`、stdout 12 bytes、stderr 0 bytes、E2Eは `1 passed` / `896.66s` で成功した。
+  artifactは ignored な `ci-artifacts/native-release/aarch64-apple-darwin/current-3f6c4997/` に保持した。
+  これは current-source Mac App.Cli fixed-point/native runtimeの verified sliceであり、Linux x86_64の同一
+  current-source gate、native stage0 compiler/package、全公開 command、release acquisition/rollback、両 targetの
+  provenance parity、`LEGACY-BOOT-01` aggregateの完了証拠ではない。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、

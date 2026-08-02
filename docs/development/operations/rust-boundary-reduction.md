@@ -1617,6 +1617,26 @@ stage2/stage3 transport/materialize/fixed-point、Linux native stage0 source-fil
 read-file runtime evidence、Mac/Linux release parityの証拠ではない。ADR:
 `docs/adr/decisions-v0.3-native-linux-substring-bounded-heap.md`。
 
+### EC-M1-01 current-source Mac Apple Silicon App.Cli native gate (2026-08-02)
+
+current `HEAD=3f6c49976f75a5099d524f08ea85cc1698935cbb` の clean worktreeから、
+`scripts/ci/native-macos-aarch64-selfhost-release.sh` を一度だけ実行して actual stage2/stage3 fixed-pointを経た
+App.Cli native release programを生成した。manifestは target `aarch64-apple-darwin`、同じ `source_commit`、
+`selfhost_fixed_point=true`、program SHA-256 `a1dac9ff7146fbfd012c6e299df786c3c6c00680e3849cfb98abdeb1efcd76de`
+を記録し、programは Mach-O 64-bit arm64だった。`--version` は `lsharp 0.1.0`、stdout 12 bytes、stderr 0 bytes。
+
+Evidence: `LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR=/tmp/lsharp-native-macos-aarch64-release-3f6c4997
+LSHARP_NATIVE_MACOS_AARCH64_CARGO_TARGET_DIR=/tmp/lsharp-native-macos-aarch64-release-cargo-3f6c4997
+LSHARP_NATIVE_MACOS_AARCH64_RELEASE_LOCK_DIR=/tmp/lsharp-native-macos-aarch64-release-3f6c4997.lock bash
+scripts/ci/native-macos-aarch64-selfhost-release.sh`、
+`test_e2e_native_macos_aarch64_actual_app_cli_release_program`（1 passed、896.66s）。artifactは
+`ci-artifacts/native-release/aarch64-apple-darwin/current-3f6c4997/` に保持し、Cargo targetとlockは cleanup済み。
+
+これは current-source Mac App.Cli fixed-point/native runtimeの verified sliceであり、Linux x86_64の同一
+current-source gate、native stage0 compiler/package、全公開 command、release acquisition/rollback、両 targetの
+provenance parity、EC-M1-01/`LEGACY-BOOT-01` aggregateの完了を意味しない。TODOの `[~]` と Rust oracle /
+bootstrap / host integration境界は維持する。
+
 ### V2-16c actual selfhost CLI check file boundary (2026-08-02)
 
 `App.Cli` の `check <file>` argv contractを ignored testから通常の actual Wasm E2Eへ昇格した。
