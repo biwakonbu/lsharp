@@ -42,6 +42,7 @@ SMOKE_ROOT="${LSHARP_NATIVE_RELEASE_SMOKE_ROOT:-/tmp/lsharp-native-official-rele
 MAX_DIST_KIB="${LSHARP_NATIVE_RELEASE_MAX_DIST_KIB:-1048576}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 HOSTGEN_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${VM_NAME}.lock}"
+STAGED_DIST_DIR="${SMOKE_ROOT}/release-dist"
 
 require_safe_cleanup_path() {
   local path="$1"
@@ -529,7 +530,7 @@ package_target() {
   # review_evidence_identity は producer の explicit input がある場合だけ伝播する。
   local identity_path="${artifact_dir}/review-evidence-identity.json"
   local archive_base="lsharp-${VERSION}-${target}"
-  local archive_path="${DIST_DIR}/${archive_base}.tar.gz"
+  local archive_path="${STAGED_DIST_DIR}/${archive_base}.tar.gz"
 
   require_file "${program_path}" "${target} actual App.Cli program"
   require_file "${manifest_path}" "${target} actual App.Cli manifest"
@@ -542,7 +543,7 @@ package_target() {
       TARGET="${target}" \
       VERSION="${VERSION}" \
       SOURCE_COMMIT="${SOURCE_COMMIT}" \
-      DIST_DIR="${DIST_DIR}" \
+      DIST_DIR="${STAGED_DIST_DIR}" \
       NATIVE_ONLY_RELEASE=1 \
       NATIVE_ONLY_PROGRAM="${program_path}" \
       NATIVE_ONLY_PROGRAM_MANIFEST="${manifest_path}" \
@@ -553,7 +554,7 @@ package_target() {
       TARGET="${target}" \
       VERSION="${VERSION}" \
       SOURCE_COMMIT="${SOURCE_COMMIT}" \
-      DIST_DIR="${DIST_DIR}" \
+      DIST_DIR="${STAGED_DIST_DIR}" \
       NATIVE_ONLY_RELEASE=1 \
       NATIVE_ONLY_PROGRAM="${program_path}" \
       NATIVE_ONLY_PROGRAM_MANIFEST="${manifest_path}" \
@@ -568,7 +569,7 @@ package_target() {
 package_stage0_target() {
   local target="$1"
   local stage0_dir="$2"
-  local archive_path="${DIST_DIR}/lsharp-stage0-${VERSION}-${target}.tar.gz"
+  local archive_path="${STAGED_DIST_DIR}/lsharp-stage0-${VERSION}-${target}.tar.gz"
   local identity_path="${stage0_dir}/review-evidence-identity.json"
   local identity_args=()
 
@@ -589,13 +590,13 @@ package_stage0_target() {
     --version "${VERSION}" \
     --stage0-dir "${stage0_dir}" \
     --source-commit "${SOURCE_COMMIT}" \
-    --output-dir "${DIST_DIR}" \
+    --output-dir "${STAGED_DIST_DIR}" \
     "${identity_args[@]}"
   require_file "${archive_path}" "${target} native stage0 archive"
 }
 
 release_base_url() {
-  python3 - "${DIST_DIR}" <<'PY'
+  python3 - "${STAGED_DIST_DIR}" <<'PY'
 from pathlib import Path
 import sys
 
@@ -649,8 +650,8 @@ smoke_stage0_runtime() {
   validate_source_smoke_evidence_projection "${target}" "${evidence_dir}"
 }
 
-mkdir -p "${DIST_DIR}"
 rm -rf "${SMOKE_ROOT}"
+mkdir -p "${STAGED_DIST_DIR}"
 
 package_target \
   "aarch64-apple-darwin" \
@@ -663,13 +664,18 @@ package_target \
 package_stage0_target "aarch64-apple-darwin" "${MACOS_STAGE0_DIR}"
 package_stage0_target "x86_64-unknown-linux-gnu" "${LINUX_STAGE0_DIR}"
 
-bash scripts/checksum.sh "${DIST_DIR}" > "${DIST_DIR}/checksums.txt"
+bash scripts/checksum.sh "${STAGED_DIST_DIR}" > "${STAGED_DIST_DIR}/checksums.txt"
 RELEASE_BASE_URL="$(release_base_url)"
 smoke_stage0_fetch "aarch64-apple-darwin" "${RELEASE_BASE_URL}"
 smoke_stage0_runtime "aarch64-apple-darwin"
 smoke_stage0_fetch "x86_64-unknown-linux-gnu" "${RELEASE_BASE_URL}"
 smoke_stage0_runtime "x86_64-unknown-linux-gnu"
 validate_source_smoke_evidence_pair
+
+mkdir -p "${DIST_DIR}"
+while IFS= read -r -d '' staged_path; do
+  mv "${staged_path}" "${DIST_DIR}/$(basename "${staged_path}")"
+done < <(find "${STAGED_DIST_DIR}" -mindepth 1 -maxdepth 1 -type f -print0)
 
 dist_kib="$(du -sk "${DIST_DIR}" | awk '{print $1}')"
 if (( dist_kib > MAX_DIST_KIB )); then

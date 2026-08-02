@@ -439,13 +439,16 @@ grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
 
 CROSS_TARGET_MISMATCH_EVIDENCE_ROOT="$TMP_ROOT/cross-target-mismatch-evidence"
 CROSS_TARGET_MISMATCH_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-cross-target-mismatch.XXXXXX)"
+CROSS_TARGET_MISMATCH_DIST="$TMP_ROOT/cross-target-mismatch-dist"
+mkdir -p "$CROSS_TARGET_MISMATCH_DIST"
+printf '%s\n' 'preserve-existing-release-output' >"$CROSS_TARGET_MISMATCH_DIST/existing-sentinel.txt"
 set +e
 cross_target_mismatch_output_path="$TMP_ROOT/cross-target-mismatch-output.log"
 FAKE_LOG="$LOG_PATH" \
 PATH="$PATH_PREFIX:$PATH" \
 VERSION="$VERSION" \
 SOURCE_COMMIT="$SOURCE_COMMIT" \
-DIST_DIR="$TMP_ROOT/cross-target-mismatch-dist" \
+DIST_DIR="$CROSS_TARGET_MISMATCH_DIST" \
 SMOKE_ROOT="$CROSS_TARGET_MISMATCH_SMOKE_ROOT" \
 LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$CROSS_TARGET_MISMATCH_SMOKE_ROOT" \
 NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$CROSS_TARGET_MISMATCH_EVIDENCE_ROOT" \
@@ -468,6 +471,12 @@ cross_target_mismatch_output="$(<"$cross_target_mismatch_output_path")"
   || { echo 'cross-target evidence projection mismatch was unexpectedly accepted' >&2; exit 1; }
 grep -F 'source smoke evidence cross-target projection mismatch' <<<"$cross_target_mismatch_output" >/dev/null \
   || { echo 'cross-target evidence projection mismatch diagnostic was missing' >&2; echo "$cross_target_mismatch_output" >&2; exit 1; }
+[[ -f "$CROSS_TARGET_MISMATCH_DIST/existing-sentinel.txt" ]] \
+  || { echo 'late source smoke failure removed existing release output' >&2; exit 1; }
+if find "$CROSS_TARGET_MISMATCH_DIST" -maxdepth 1 -type f -name '*.tar.gz' -print -quit | grep -q .; then
+  echo 'late source smoke failure published staged release archives' >&2
+  exit 1
+fi
 ! grep -F 'native official release local gate: OK' <<<"$cross_target_mismatch_output" >/dev/null \
   || { echo 'cross-target evidence projection mismatch reached release success' >&2; exit 1; }
 
