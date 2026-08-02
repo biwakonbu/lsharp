@@ -35,6 +35,47 @@ ALLOWED_STATUS = {"pass", "pending", "mismatch"}
 AGGREGATE_LAYOUT = ("ci-artifacts", "v4-m1-01")
 
 
+def require_cross_target_parity(
+    reference: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> None:
+    """Reject target reports that disagree on target-independent observations.
+
+    Artifact bytes are target-specific and are intentionally excluded.  A
+    pending runtime is also not compared with an observed runtime because the
+    aggregate must preserve the existing pending-target boundary.
+    """
+
+    reference_ids = [fixture["id"] for fixture in reference["fixtures"]]
+    candidate_ids = [fixture["id"] for fixture in candidate["fixtures"]]
+    if reference_ids != candidate_ids:
+        raise ObservationError("cross-target fixture scope mismatch")
+    for reference_fixture, candidate_fixture in zip(
+        reference["fixtures"], candidate["fixtures"]
+    ):
+        identifier = reference_fixture["id"]
+        for producer in ("oracle", "native"):
+            for field in ("source_sha256", "diagnostics", "exit_code"):
+                reference_value = reference_fixture[field][producer]
+                candidate_value = candidate_fixture[field][producer]
+                if reference_value != candidate_value:
+                    raise ObservationError(
+                        "cross-target semantic parity mismatch: "
+                        f"fixture={identifier} producer={producer} field={field}"
+                    )
+            reference_runtime = reference_fixture["runtime"][producer]
+            candidate_runtime = candidate_fixture["runtime"][producer]
+            if (
+                reference_runtime["status"] == "observed"
+                and candidate_runtime["status"] == "observed"
+            ):
+                for field in ("exit_code", "stdout", "stderr"):
+                    if reference_runtime[field] != candidate_runtime[field]:
+                        raise ObservationError(
+                            "cross-target semantic parity mismatch: "
+                            f"fixture={identifier} producer={producer} runtime.{field}"
+                        )
+
+
 def relative_path(path: pathlib.Path, root: pathlib.Path, label: str) -> str:
     try:
         return path.absolute().relative_to(root).as_posix()
@@ -111,6 +152,7 @@ def load_aggregate(
 
 def aggregate(index: Mapping[str, Any], manifest: Mapping[str, Any], root: pathlib.Path) -> Dict[str, Any]:
     target_results = []
+    target_audits = []
     selected_ids: List[str] = None
     for entry in index["indexes"]:
         target_index = load_target_index(entry["path"], root, manifest, index["source_commit"])
@@ -123,6 +165,7 @@ def aggregate(index: Mapping[str, Any], manifest: Mapping[str, Any], root: pathl
         elif target_index["selected_ids"] != selected_ids:
             raise ObservationError("target indexes must select the same fixture scope")
         result = audit_target(target_index, manifest)
+        target_audits.append(result)
         target_results.append(
             {
                 "target": entry["target"],
@@ -134,6 +177,8 @@ def aggregate(index: Mapping[str, Any], manifest: Mapping[str, Any], root: pathl
                 "mismatches": result["mismatches"],
             }
         )
+
+    require_cross_target_parity(target_audits[0], target_audits[1])
 
     if any(result["status"] == "mismatch" for result in target_results):
         status = "mismatch"

@@ -144,6 +144,21 @@ def rewrite_target_to_single_fixture(index_path: pathlib.Path) -> None:
     comparison_path.write_text(json.dumps(comparison), encoding="utf-8")
 
 
+def rewrite_target_shared_observation(
+    index_path: pathlib.Path, fixture_index: int, field: str, value
+) -> None:
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    for report_field in ("oracle_report", "native_report"):
+        report_path = ROOT / index[report_field]
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        report["fixtures"][fixture_index][field] = value
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    comparison_path = ROOT / index["comparison"]
+    comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    comparison_path.write_text(json.dumps(comparison), encoding="utf-8")
+
+
 @contextmanager
 def scenario(observed: tuple[bool, bool] = (True, True), status: str = "pass"):
     source_root = ARTIFACT_ROOT / "v4-m1-01" / SOURCE_COMMIT
@@ -287,6 +302,16 @@ class SemanticFixtureEvidenceAggregateTest(unittest.TestCase):
             result = self.run_aggregate(index_path)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("current", result.stderr.lower())
+
+    def test_rejects_cross_target_source_observation_mismatch(self):
+        with scenario() as (index_path, index_paths):
+            rewrite_target_shared_observation(
+                ROOT / index_paths[1], 1, "source_sha256", "sha256:" + "c" * 64
+            )
+            result = self.run_aggregate(index_path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("cross-target", result.stderr.lower())
+
 
 
 if __name__ == "__main__":

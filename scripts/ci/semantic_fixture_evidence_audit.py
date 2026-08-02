@@ -236,6 +236,10 @@ def fixture_projection(
         "id": identifier,
         "command": entry["command"],
         "negative_gates": entry["negative_gates"],
+        "source_sha256": {
+            "oracle": oracle_fixture["source_sha256"],
+            "native": native_fixture["source_sha256"],
+        },
         "diagnostics": {
             "oracle": oracle_fixture["diagnostics"],
             "native": native_fixture["diagnostics"],
