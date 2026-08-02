@@ -78,6 +78,14 @@ def decode_output(value: bytes) -> str:
     return value.decode("utf-8", errors="replace")
 
 
+def build_producer_environment() -> Dict[str, str]:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("LSHARP_")
+    }
+    environment["LSHARP_DISABLE_EMBEDDED_COMPONENT"] = "1"
+    return environment
+
+
 def validate_wasm_artifact(
     artifact: pathlib.Path,
     wasm_tools: pathlib.Path,
@@ -441,9 +449,7 @@ def main() -> int:
         manifest = project_manifest(require_object(raw_manifest, "manifest"), root)
         fixtures = select_fixtures(manifest, arguments.fixture_ids, arguments.target)
 
-        environment = os.environ.copy()
-        environment["LSHARP_DISABLE_EMBEDDED_COMPONENT"] = "1"
-        environment.pop("LSHARP_PATH", None)
+        environment = build_producer_environment()
         report = {
             "schema_version": 1,
             "suite": "v4-m1-01",

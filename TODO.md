@@ -2691,3 +2691,12 @@ boundaryである。Rust oracleはstage0 manifestを入力としないためこ�
 parity、component instantiation、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。
 Evidence: [`decisions-v0.3-native-report-stage0-payload-closure.md`](docs/adr/decisions-v0.3-native-report-stage0-payload-closure.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+2026-08-02 の verified partial: semantic report producerの child environment isolationをRust/nativeで揃えた。compiler、native runner、wasm-tools、Wasmtimeへ渡す環境から
+ambientな `LSHARP_*` を全て除去し、Rust oracleだけが明示 `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` を再設定する。`LSHARP_PATH`、provider URL、install
+failpointを親環境へ注入する fake fixtureで、Rust childが explicit guardだけ、native childがゼロの `LSHARP_*` になる RED→GREENを確認した。
+これは manifest→runner identity、runner cwd isolation、stage0 payload closure、source/ABI/runtime/report admissionとは別の environment isolation
+contractであり、live provider/auth取得や暗号意味検証を追加していない。Rust producer 20 tests、native producer 23 testsと fixture/differential/
+evidence/aggregate/docs/whitespaceの focused batchがGREENである。current-source Mac/Linux runtime、full native producer parity、packaged/rollback parity、
+provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
+[`decisions-v0.3-semantic-producer-environment-isolation.md`](docs/adr/decisions-v0.3-semantic-producer-environment-isolation.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。

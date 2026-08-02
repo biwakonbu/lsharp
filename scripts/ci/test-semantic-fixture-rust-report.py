@@ -157,6 +157,54 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             )
             self.assertEqual((root / "compiler.log").read_text(encoding="utf-8"), "1")
 
+    def test_does_not_inherit_ambient_lsharp_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "environment-compiler.py"
+            wasmtime = root / "fake-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            environment_log = root / "environment.log"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import os, pathlib, sys\n"
+                f"pathlib.Path({str(environment_log)!r}).write_text(\n"
+                "    '\\n'.join(f'{key}={os.environ[key]}' for key in sorted(os.environ) if key.startswith('LSHARP_')),\n"
+                "    encoding='utf-8',\n"
+                ")\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
+            )
+            make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+            ambient = {
+                "LSHARP_PATH": "/tmp/ambient-component",
+                "LSHARP_PROVIDER_URL": "https://ambient.invalid/provider",
+                "LSHARP_TEST_INSTALL_FAILPOINT": "promotion:1",
+            }
+            previous = {key: os.environ.get(key) for key in ambient}
+            os.environ.update(ambient)
+            try:
+                result = self.run_producer(
+                    root,
+                    compiler,
+                    wasmtime,
+                    output,
+                    work_dir,
+                    fixture_id="valid/syntax-basic",
+                )
+            finally:
+                for key, value in previous.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                environment_log.read_text(encoding="utf-8"),
+                "LSHARP_DISABLE_EMBEDDED_COMPONENT=1",
+            )
+
     def test_rejects_invalid_wasm_before_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
