@@ -359,7 +359,7 @@ fn collect_lsp_actual_stdio_repeated_sequence_proxy_workload() -> serde_json::Va
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         change_source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[["helper",3,"helper"]]}"#;
+    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let formatting_response =
         "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\\n(he)\\n\"]]}";
 

@@ -716,6 +716,44 @@ fn test_e2e_selfhost_lsp_completion_returns_keywords() {
     );
 }
 
+/// TEST-LSP-13b: completion item の wire response は LSP object を投影すること
+#[test]
+fn test_e2e_selfhost_lsp_completion_frame_projects_item_objects() {
+    let source = selfhost_lsp_runtime_bundle();
+    let harness = r#"
+(module Main)
+(defn main []
+  (let [items
+          (push-object-vector-local
+            (push-object-vector-local (vector-new 2)
+              (lsp-make-completion-item "if" 14 "if"))
+            (lsp-make-completion-item "name" 3 "name"))]
+    (print-string (lsp-render-completion-frame 11 items))))
+"#;
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    let body = r#"{"jsonrpc":"2.0","id":11,"result":[{"label":"if","kind":14,"insertText":"if"},{"label":"name","kind":3,"insertText":"name"}]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    assert_eq!(output, expected, "completion response は LSP item object を返すべき");
+}
+
+/// TEST-LSP-13c: formatting TextEdit の wire response は LSP object を投影すること
+#[test]
+fn test_e2e_selfhost_lsp_formatting_frame_projects_text_edit_object() {
+    let source = selfhost_lsp_runtime_bundle();
+    let harness = r#"
+(module Main)
+(defn main []
+  (let [edits (push-object-vector-local
+                (vector-new 1)
+                (make-text-edit 1 2 3 4 "formatted"))]
+    (print-string (lsp-render-formatting-frame 12 edits))))
+"#;
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    let body = r#"{"jsonrpc":"2.0","id":12,"result":[{"range":{"start":{"line":1,"character":2},"end":{"line":3,"character":4}},"newText":"formatted"}]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    assert_eq!(output, expected, "formatting response は LSP TextEdit object を返すべき");
+}
+
 /// TEST-LSP-14: sort-diagnostics が source 優先 → severity → line → col の順で並べること
 #[test]
 fn test_e2e_selfhost_lsp_diagnostic_ordering_source_priority() {

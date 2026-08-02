@@ -88,13 +88,13 @@
     kind-text (int-to-string (vector-get item 1))
     insert-text (vector-get item 2)
     insert-json (json-escape-string insert-text)
-    payload-0 "[\""
+    payload-0 "{\"label\":\""
     payload-1 (string-concat payload-0 label-json)
-    payload-2 (string-concat payload-1 "\",")
+    payload-2 (string-concat payload-1 "\",\"kind\":")
     payload-3 (string-concat payload-2 kind-text)
-    payload-4 (string-concat payload-3 ",\"")
+    payload-4 (string-concat payload-3 ",\"insertText\":\"")
     payload-5 (string-concat payload-4 insert-json)]
-    (string-concat payload-5 "\"]")))
+    (string-concat payload-5 "\"}")))
 
 (defn lsp-render-completion-items-json-loop [items idx len out]
   (if (>= idx len)
@@ -115,17 +115,11 @@
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-text-edit-json [edit]
-  (let [payload-0 "["
-    payload-1 (string-concat payload-0 (int-to-string (vector-get edit 0)))
-    payload-2 (string-concat payload-1 ",")
-    payload-3 (string-concat payload-2 (int-to-string (vector-get edit 1)))
-    payload-4 (string-concat payload-3 ",")
-    payload-5 (string-concat payload-4 (int-to-string (vector-get edit 2)))
-    payload-6 (string-concat payload-5 ",")
-    payload-7 (string-concat payload-6 (int-to-string (vector-get edit 3)))
-    payload-8 (string-concat payload-7 ",\"")
-    payload-9 (string-concat payload-8 (json-escape-string (vector-get edit 4)))]
-    (string-concat payload-9 "\"]")))
+  (let [payload-0 "{\"range\":"
+    payload-1 (string-concat payload-0 (lsp-render-range-json edit))
+    payload-2 (string-concat payload-1 ",\"newText\":\"")
+    payload-3 (string-concat payload-2 (json-escape-string (vector-get edit 4)))]
+    (string-concat payload-3 "\"}")))
 
 (defn lsp-render-text-edits-json-loop [edits idx len out]
   (if (>= idx len)
