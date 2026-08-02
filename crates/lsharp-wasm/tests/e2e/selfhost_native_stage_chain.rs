@@ -2908,6 +2908,36 @@ fn test_native_linux_x86_hostgen_vm_script_copies_stage_debug_source_tree() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_copies_reusable_stage1_payload_files() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let body = shell_function_body(&script, "copy_actual_stage_debug_artifact");
+
+    for file in [
+        "stage1-code.bin",
+        "stage1-data.bin",
+        "entrypoint-offset.txt",
+        "function-start-len.txt",
+        "main-func-idx.txt",
+        "manifest.json",
+        "seed.ls",
+    ] {
+        assert!(
+            body.contains(file),
+            "stage1 debug artifact は replay 再利用に必要な {file} を回収するべき"
+        );
+    }
+    assert!(
+        body.contains(
+            r#"limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/${file}" "${ARTIFACT_DIR}/${debug_dir}/${file}""#
+        ),
+        "stage1 debug artifact は allowlist の payload file を artifact dir へコピーするべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
