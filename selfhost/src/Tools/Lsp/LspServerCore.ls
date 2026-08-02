@@ -61,8 +61,9 @@
     v7 (push-object-vector-local v6 (ref-new (map-new))) ;; uri -> source
     v8 (push-object-vector-local v7 (ref-new (vector-new 8))) ;; open uri list
     v9 (push-object-vector-local v8 (ref-new "")) ;; current path
-    v10 (push-object-vector-local v9 (ref-new (map-new)))] ;; uri -> path
-    v10))
+    v10 (push-object-vector-local v9 (ref-new (map-new))) ;; uri -> path
+    v11 (push-object-vector-local v10 (ref-new (map-new)))] ;; uri -> wire URI
+    v11))
 
 (defn server-state-doc-count [state]
   (ref-get (vector-get state 2)))
@@ -100,6 +101,12 @@
 (defn server-state-document-paths-ref [state]
   (vector-get state 9))
 
+(defn server-state-uri-texts [state]
+  (ref-get (vector-get state 10)))
+
+(defn server-state-uri-texts-ref [state]
+  (vector-get state 10))
+
 (defn server-state-uri-known-loop [uris idx count uri]
   (if (>= idx count)
     0
@@ -131,6 +138,10 @@
         "")
       stored)))
 
+(defn server-state-uri-text-for-uri [state uri]
+  (let [stored (ref-map-get-safe (server-state-uri-texts-ref state) uri)]
+    (if (= stored 0) "" stored)))
+
 (defn server-state-source-length [state]
   (string-length (server-state-source state)))
 
@@ -143,19 +154,27 @@
 (defn server-state-note-request [state]
   (ref-set (vector-get state 5) (+ (server-state-request-count state) 1)))
 
-(defn server-state-set-document-with-path [state uri src path]
+(defn server-state-set-document-with-path-and-uri [state uri src path uri-text]
   (let [effective-path (if (> (string-length path) 0) path (server-state-path-for-uri state uri))
+    effective-uri-text (if (> (string-length uri-text) 0) uri-text (server-state-uri-text-for-uri state uri))
     next-paths (if (> (string-length effective-path) 0)
       (ref-map-insert-object-safe (server-state-document-paths-ref state) uri effective-path)
-      (server-state-document-paths state))]
+      (server-state-document-paths state))
+    next-uri-texts (if (> (string-length effective-uri-text) 0)
+      (ref-map-insert-object-safe (server-state-uri-texts-ref state) uri effective-uri-text)
+      (server-state-uri-texts state))]
     (do
       (ref-set (vector-get state 3) uri)
       (ref-set (vector-get state 4) src)
       (ref-set (server-state-documents-ref state) (ref-map-insert-object-safe (server-state-documents-ref state) uri src))
       (ref-set (vector-get state 8) effective-path)
       (ref-set (server-state-document-paths-ref state) next-paths)
+      (ref-set (server-state-uri-texts-ref state) next-uri-texts)
       (server-state-remember-uri state uri)
       0)))
+
+(defn server-state-set-document-with-path [state uri src path]
+  (server-state-set-document-with-path-and-uri state uri src path ""))
 
 (defn server-state-set-document [state uri src]
   (server-state-set-document-with-path state uri src ""))
@@ -164,13 +183,16 @@
   (server-state-open-document-with-path state uri src ""))
 
 (defn server-state-open-document-with-path [state uri src path]
+  (server-state-open-document-with-path-and-uri state uri src path ""))
+
+(defn server-state-open-document-with-path-and-uri [state uri src path uri-text]
   (let [current-count (server-state-doc-count state)
     known-src (server-state-source-for-uri state uri)
     next-count (if (> (string-length known-src) 0)
       current-count
       (+ current-count 1))]
     (do
-      (server-state-set-document-with-path state uri src path)
+      (server-state-set-document-with-path-and-uri state uri src path uri-text)
       (ref-set (vector-get state 2) next-count)
       (string-length src))))
 
@@ -178,8 +200,11 @@
   (server-state-change-document-with-path state uri src ""))
 
 (defn server-state-change-document-with-path [state uri src path]
+  (server-state-change-document-with-path-and-uri state uri src path ""))
+
+(defn server-state-change-document-with-path-and-uri [state uri src path uri-text]
   (do
-    (server-state-set-document-with-path state uri src path)
+    (server-state-set-document-with-path-and-uri state uri src path uri-text)
     (string-length src)))
 
 ;; JsonRpc.ls と揃えた method hash
@@ -232,7 +257,12 @@
   (do
     (server-state-note-request state)
     (if (= (lsp-has-document-param params) 1)
-      (server-state-open-document-with-path state (lsp-nav-uri params) (lsp-document-src params) (lsp-document-path params))
+      (server-state-open-document-with-path-and-uri
+        state
+        (lsp-nav-uri params)
+        (lsp-document-src params)
+        (lsp-document-path params)
+        (lsp-document-uri-text params))
       params)))
 
 ;; textDocument/didChange: ドキュメント変更通知
@@ -241,7 +271,12 @@
   (do
     (server-state-note-request state)
     (if (= (lsp-has-document-param params) 1)
-      (server-state-change-document-with-path state (lsp-nav-uri params) (lsp-document-src params) (lsp-document-path params))
+      (server-state-change-document-with-path-and-uri
+        state
+        (lsp-nav-uri params)
+        (lsp-document-src params)
+        (lsp-document-path params)
+        (lsp-document-uri-text params))
       params)))
 
 ;; textDocument/publishDiagnostics: 診断通知 payload を決定的 JSON に整形
@@ -291,6 +326,9 @@
 
 (defn lsp-document-path [params]
   (if (> (lsp-param-count params) 2) (vector-get params 2) ""))
+
+(defn lsp-document-uri-text [params]
+  (if (> (lsp-param-count params) 3) (vector-get params 3) ""))
 
 (defn lsp-session-src [params state]
   (if (= (lsp-has-source-param params) 1)
@@ -393,11 +431,27 @@
 (defn lsp-render-error-frame [request-id error-code error-message]
   (render-rpc-error-response-frame request-id error-code error-message))
 
+(defn lsp-render-uri-value-json [state uri]
+  (let [uri-text (server-state-uri-text-for-uri state uri)]
+    (if (> (string-length uri-text) 0)
+      (string-concat "\"" (string-concat (json-escape-string uri-text) "\""))
+      (int-to-string uri))))
+
 (defn lsp-render-publish-diagnostics-frame [uri diagnostics]
   (let [uri-text (int-to-string uri)
     diagnostics-json (render-diagnostics-json diagnostics)
     payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":"
     payload-1 (string-concat payload-0 uri-text)
+    payload-2 (string-concat payload-1 ",\"diagnostics\":")
+    payload-3 (string-concat payload-2 diagnostics-json)
+    payload (string-concat payload-3 "}}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-publish-diagnostics-frame-with-state [state uri diagnostics]
+  (let [uri-json (lsp-render-uri-value-json state uri)
+    diagnostics-json (render-diagnostics-json diagnostics)
+    payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":"
+    payload-1 (string-concat payload-0 uri-json)
     payload-2 (string-concat payload-1 ",\"diagnostics\":")
     payload-3 (string-concat payload-2 diagnostics-json)
     payload (string-concat payload-3 "}}")]
@@ -413,11 +467,31 @@
     payload (string-concat payload-3 "}}")]
     (render-json-rpc-frame payload)))
 
+(defn lsp-render-didopen-frame-with-state [state uri source-bytes]
+  (let [uri-json (lsp-render-uri-value-json state uri)
+    bytes-text (int-to-string source-bytes)
+    payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"uri\":"
+    payload-1 (string-concat payload-0 uri-json)
+    payload-2 (string-concat payload-1 ",\"sourceBytes\":")
+    payload-3 (string-concat payload-2 bytes-text)
+    payload (string-concat payload-3 "}}")]
+    (render-json-rpc-frame payload)))
+
 (defn lsp-render-didchange-frame [uri source-bytes]
   (let [uri-text (int-to-string uri)
     bytes-text (int-to-string source-bytes)
     payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"uri\":"
     payload-1 (string-concat payload-0 uri-text)
+    payload-2 (string-concat payload-1 ",\"sourceBytes\":")
+    payload-3 (string-concat payload-2 bytes-text)
+    payload (string-concat payload-3 "}}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-didchange-frame-with-state [state uri source-bytes]
+  (let [uri-json (lsp-render-uri-value-json state uri)
+    bytes-text (int-to-string source-bytes)
+    payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"uri\":"
+    payload-1 (string-concat payload-0 uri-json)
     payload-2 (string-concat payload-1 ",\"sourceBytes\":")
     payload-3 (string-concat payload-2 bytes-text)
     payload (string-concat payload-3 "}}")]
@@ -476,6 +550,12 @@
 
 (defn lsp-string-hash [src]
   (lsp-string-hash-loop src 0 (string-length src) 0))
+
+(defn lsp-uri-key-from-text [uri-text]
+  (let [hash (lsp-string-hash uri-text)]
+    (if (< hash 0)
+      (- 0 hash)
+      (if (= hash 0) 2 hash))))
 
 (defn lsp-substring-hash [src start end]
   (lsp-string-hash-loop src start end 0))

@@ -1477,23 +1477,23 @@
         (if (= method-id (lsp-method-shutdown))
           (lsp-render-shutdown-frame request-id)
           (if (= method-id (lsp-method-did-open))
-            (lsp-render-didopen-frame uri (server-state-source-length state))
+            (lsp-render-didopen-frame-with-state state uri (server-state-source-length state))
             (if (= method-id (lsp-method-did-change))
-              (lsp-render-didchange-frame uri (server-state-source-length state))
+              (lsp-render-didchange-frame-with-state state uri (server-state-source-length state))
               (if (= method-id (lsp-method-goto-def))
-                (lsp-render-location-frame request-id result)
+                (lsp-render-location-frame-with-state request-id state result)
                 (if (= method-id (lsp-method-hover))
                   (lsp-render-hover-frame request-id result)
                   (if (= method-id (lsp-method-references))
-                    (lsp-render-locations-frame request-id result)
+                    (lsp-render-locations-frame-with-state request-id state result)
                     (if (= method-id (lsp-method-completion))
                       (lsp-render-completion-frame request-id result)
                       (if (= method-id (lsp-method-formatting))
                         (lsp-render-formatting-frame request-id result)
                         (if (= method-id (lsp-method-rename))
-                          (lsp-render-rename-frame request-id result)
+                          (lsp-render-rename-frame-with-state request-id state result)
                           (if (= method-id (lsp-method-publish-diagnostics))
-                            (lsp-render-publish-diagnostics-frame uri (vector-get params 1))
+                            (lsp-render-publish-diagnostics-frame-with-state state uri (vector-get params 1))
                             (lsp-render-error-frame request-id (lsp-transport-method-not-found-code) "Method not found")))))))))))))]
     (if (= reject-after-shutdown 1)
       rendered
@@ -1682,6 +1682,15 @@
         end (lsp-stdio-find-string-end-loop body (+ pos (string-length pattern)) len)]
         (lsp-stdio-json-unescape body start end)))))
 
+(defn lsp-stdio-body-uri-text [body]
+  (lsp-stdio-body-string-field body "\"uri\":\""))
+
+(defn lsp-stdio-body-uri-key [body]
+  (let [uri-text (lsp-stdio-body-uri-text body)]
+    (if (> (string-length uri-text) 0)
+      (lsp-uri-key-from-text uri-text)
+      (lsp-stdio-body-int-field body "\"uri\":"))))
+
 (defn lsp-stdio-body-id [body]
   (let [len (string-length body)
     id-pos (lsp-stdio-find-pattern-loop body "\"id\":" 0 len)]
@@ -1720,7 +1729,7 @@
     with-position
     (push-int-vector-local
       (push-int-vector-local
-        (push-int-vector-local params (lsp-stdio-body-int-field body "\"uri\":"))
+        (push-int-vector-local params (lsp-stdio-body-uri-key body))
         (+ (lsp-stdio-body-int-field body "\"line\":") 1))
       (+ (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":") 1))]
     (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
@@ -1729,16 +1738,18 @@
 
 (defn lsp-stdio-document-params [body]
   (let [with-uri
-    (push-int-vector-local (vector-new 2) (lsp-stdio-body-int-field body "\"uri\":"))]
+    (push-int-vector-local (vector-new 2) (lsp-stdio-body-uri-key body))]
     (let [with-source
       (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
         (push-object-vector-local with-uri (lsp-stdio-body-string-field body "\"source\":\""))
         (if (= (lsp-stdio-body-has-field body "\"text\":\"") 1)
           (push-object-vector-local with-uri (lsp-stdio-body-string-field body "\"text\":\""))
           with-uri))]
-      (if (= (lsp-stdio-body-has-field body "\"path\":\"") 1)
-        (push-object-vector-local with-source (lsp-stdio-body-string-field body "\"path\":\""))
-        with-source))))
+      (let [with-path
+        (if (= (lsp-stdio-body-has-field body "\"path\":\"") 1)
+          (push-object-vector-local with-source (lsp-stdio-body-string-field body "\"path\":\""))
+          (push-object-vector-local with-source ""))]
+        (push-object-vector-local with-path (lsp-stdio-body-uri-text body))))))
 
 (defn lsp-stdio-rename-params [body]
   (let [params (vector-new 5)]
@@ -1746,7 +1757,7 @@
       (push-object-vector-local
         (push-int-vector-local
           (push-int-vector-local
-            (push-int-vector-local params (lsp-stdio-body-int-field body "\"uri\":"))
+            (push-int-vector-local params (lsp-stdio-body-uri-key body))
             (+ (lsp-stdio-body-int-field body "\"line\":") 1))
           (+ (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":") 1))
         (lsp-stdio-body-string-field body "\"source\":\""))
@@ -1783,9 +1794,11 @@
         (push-object-vector-local diagnostics (lsp-stdio-diagnostic body source-pos))))))
 
 (defn lsp-stdio-publish-diagnostics-params [body]
-  (let [uri (lsp-stdio-body-int-field body "\"uri\":")
+  (let [uri (lsp-stdio-body-uri-key body)
     diagnostics (lsp-stdio-diagnostics-loop body 0 (string-length body) (vector-new 4))]
-    (push-object-vector-local (push-int-vector-local (vector-new 2) uri) diagnostics)))
+    (push-object-vector-local
+      (push-object-vector-local (push-int-vector-local (vector-new 2) uri) diagnostics)
+      (lsp-stdio-body-uri-text body))))
 
 (defn lsp-stdio-body-params [body]
   (let [method-id (lsp-stdio-body-method body)]

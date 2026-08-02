@@ -5077,6 +5077,122 @@ fn test_e2e_selfhost_cli_lsp_stdio_zero_based_position_contract() {
     );
 }
 
+/// TEST-CLI-02-M9f-uri: nested LSP params の URI を保持し、Location / WorkspaceEdit の wire object へ投影すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_standard_uri_navigation_contract() {
+    let source = "(defn helper [x] x)\n(defn main [] (helper 1))";
+    let uri = "file:///tmp/lsharp-uri-contract.ls";
+    let did_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{}","languageId":"lsharp","version":1,"text":"{}"}}}}}}"#,
+        uri,
+        source.replace('\n', "\\n")
+    );
+    let definition_body = format!(
+        r#"{{"jsonrpc":"2.0","id":93,"method":"textDocument/definition","params":{{"textDocument":{{"uri":"{}"}},"position":{{"line":1,"character":15}}}}}}"#,
+        uri
+    );
+    let references_body = format!(
+        r#"{{"jsonrpc":"2.0","id":94,"method":"textDocument/references","params":{{"textDocument":{{"uri":"{}"}},"position":{{"line":1,"character":15}},"context":{{"includeDeclaration":true}}}}}}"#,
+        uri
+    );
+    let rename_body = format!(
+        r#"{{"jsonrpc":"2.0","id":95,"method":"textDocument/rename","params":{{"textDocument":{{"uri":"{}"}},"position":{{"line":1,"character":15}},"newName":"value"}}}}"#,
+        uri
+    );
+    let stdin = [did_open_body, definition_body, references_body, rename_body]
+        .into_iter()
+        .map(|body| lsp_frame(&body))
+        .collect::<String>();
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let frames = parse_lsp_stdio_frames(&output);
+
+    let definition = frames
+        .iter()
+        .find(|frame| frame.get("id") == Some(&serde_json::json!(93)))
+        .expect("definition response が必要");
+    assert_eq!(
+        definition,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 93,
+            "result": {
+                "uri": uri,
+                "range": {
+                    "start": {"line": 0, "character": 6},
+                    "end": {"line": 0, "character": 6}
+                }
+            }
+        }),
+        "definition は URI付き Location object を返すべき: {output}"
+    );
+
+    let references = frames
+        .iter()
+        .find(|frame| frame.get("id") == Some(&serde_json::json!(94)))
+        .expect("references response が必要");
+    assert_eq!(
+        references,
+        &serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 94,
+            "result": [
+                {
+                    "uri": uri,
+                    "range": {
+                        "start": {"line": 0, "character": 6},
+                        "end": {"line": 0, "character": 6}
+                    }
+                },
+                {
+                    "uri": uri,
+                    "range": {
+                        "start": {"line": 1, "character": 15},
+                        "end": {"line": 1, "character": 15}
+                    }
+                }
+            ]
+        }),
+        "references は URI付き Location 配列を返すべき: {output}"
+    );
+
+    let rename = frames
+        .iter()
+        .find(|frame| frame.get("id") == Some(&serde_json::json!(95)))
+        .expect("rename response が必要");
+    let expected_rename = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 95,
+        "result": {"changes": {}}
+    });
+    let mut expected_rename = expected_rename;
+    expected_rename["result"]["changes"][uri] = serde_json::json!([
+        {
+            "range": {
+                "start": {"line": 0, "character": 6},
+                "end": {"line": 0, "character": 12}
+            },
+            "newText": "value"
+        },
+        {
+            "range": {
+                "start": {"line": 1, "character": 15},
+                "end": {"line": 1, "character": 21}
+            },
+            "newText": "value"
+        }
+    ]);
+    assert_eq!(
+        rename,
+        &expected_rename,
+        "rename は URI keyed WorkspaceEdit を返すべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-M9e: selfhost/src/App/Cli.ls の LSP transport helper が formatting request を framed response にできること
 #[test]
 #[ignore]

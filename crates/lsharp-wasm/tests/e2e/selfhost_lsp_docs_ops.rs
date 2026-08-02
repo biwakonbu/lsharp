@@ -598,6 +598,50 @@ fn test_e2e_selfhost_lsp_hover_frame_projects_range_object() {
     assert_eq!(output, expected, "hover response は LSP range object を返すべき");
 }
 
+/// TEST-LSP-10c: didOpen が wire URI を state に保持し、位置応答で再利用すること
+#[test]
+fn test_e2e_selfhost_lsp_state_preserves_wire_uri() {
+    let source = selfhost_lsp_runtime_bundle();
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        uri-key (lsp-uri-key-from-text "file:///tmp/lsharp-state-uri.ls")
+        params (push-object-vector-local
+                 (push-object-vector-local
+                   (push-object-vector-local
+                     (push-int-vector-local (vector-new 2) uri-key)
+                     "(defn main [] 0)")
+                   "")
+                 "file:///tmp/lsharp-state-uri.ls")
+        _ (handle-didOpen params state)]
+    (do
+      (print-string (server-state-uri-text-for-uri state uri-key))
+      (print-string "\n")
+      (print-string (lsp-render-location-frame-with-state
+        7
+        state
+          (push-int-vector-local
+            (push-int-vector-local
+            (push-int-vector-local (vector-new 3) uri-key)
+            1)
+          7)))
+      0)))
+"#;
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    let mut lines = output.lines();
+    assert_eq!(
+        lines.next(),
+        Some("file:///tmp/lsharp-state-uri.ls"),
+        "didOpen は wire URI を state に保存すべき"
+    );
+    let frame = output
+        .strip_prefix("file:///tmp/lsharp-state-uri.ls\n")
+        .expect("state URI prefix");
+    let body = r#"{"jsonrpc":"2.0","id":7,"result":{"uri":"file:///tmp/lsharp-state-uri.ls","range":{"start":{"line":0,"character":6},"end":{"line":0,"character":6}}}}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    assert_eq!(frame, expected, "state URI は Location wire に投影されるべき");
+}
+
 /// TEST-LSP-11: handle-goto-definition がソース位置構造を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_definition_returns_location() {

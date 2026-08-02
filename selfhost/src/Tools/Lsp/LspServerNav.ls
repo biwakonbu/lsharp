@@ -82,6 +82,58 @@
     payload (string-concat payload-3 "]}")]
     (render-json-rpc-frame payload)))
 
+(defn lsp-render-location-json-with-uri [location uri-text]
+  (let [line (vector-get location 1)
+    col (vector-get location 2)
+    range (make-range line col line col)
+    payload-0 "{\"uri\":\""
+    payload-1 (string-concat payload-0 (json-escape-string uri-text))
+    payload-2 (string-concat payload-1 "\",\"range\":")
+    payload-3 (string-concat payload-2 (lsp-render-wire-range-json range))]
+    (string-concat payload-3 "}")))
+
+(defn lsp-render-wire-uri-text-for-state [state uri]
+  (let [stored (server-state-uri-text-for-uri state uri)]
+    (if (> (string-length stored) 0)
+      stored
+      (string-concat "lsharp://document/" (int-to-string uri)))))
+
+(defn lsp-render-location-json-with-state [state location]
+  (lsp-render-location-json-with-uri
+    location
+    (lsp-render-wire-uri-text-for-state state (vector-get location 0))))
+
+(defn lsp-render-locations-json-loop-with-state [state locations idx len out]
+  (if (>= idx len)
+    out
+    (let [elem-text (lsp-render-location-json-with-state state (vector-get locations idx))
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
+      (lsp-render-locations-json-loop-with-state state locations (+ idx 1) len next-out))))
+
+(defn lsp-render-location-frame-with-state [request-id state location]
+  (let [uri-text (server-state-uri-text-for-uri state (vector-get location 0))]
+    (if (> (string-length uri-text) 0)
+      (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+        payload-1 (string-concat payload-0 (int-to-string request-id))
+        payload-2 (string-concat payload-1 ",\"result\":")
+        payload-3 (string-concat payload-2 (lsp-render-location-json-with-state state location))]
+        (render-json-rpc-frame (string-concat payload-3 "}")))
+      (lsp-render-location-frame request-id location))))
+
+(defn lsp-render-locations-frame-with-state [request-id state locations]
+  (if (> (vector-length locations) 0)
+    (let [first-uri (server-state-uri-text-for-uri state (vector-get (vector-get locations 0) 0))]
+      (if (> (string-length first-uri) 0)
+        (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+          payload-1 (string-concat payload-0 (int-to-string request-id))
+          payload-2 (string-concat payload-1 ",\"result\":[")
+          payload-3 (string-concat payload-2 (lsp-render-locations-json-loop-with-state state locations 0 (vector-length locations) ""))]
+          (render-json-rpc-frame (string-concat payload-3 "]}")))
+        (lsp-render-locations-frame request-id locations)))
+    (lsp-render-locations-frame request-id locations)))
+
 (defn lsp-render-completion-item-json [item]
   (let [label (vector-get item 0)
     label-json (json-escape-string label)
@@ -167,6 +219,41 @@
       (lsp-render-workspace-changes-json-loop changes 0 (vector-length changes) ""))
     payload (string-concat payload-3 "]}")]
     (render-json-rpc-frame payload)))
+
+(defn lsp-render-workspace-change-member-with-uri [change uri-text]
+  (let [edits (vector-get change 1)
+    payload-0 "\""
+    payload-1 (string-concat payload-0 (json-escape-string uri-text))
+    payload-2 (string-concat payload-1 "\":[")
+    payload-3 (string-concat payload-2
+      (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))]
+    (string-concat payload-3 "]")))
+
+(defn lsp-render-rename-changes-json-loop-with-state [state changes idx len out]
+  (if (>= idx len)
+    out
+    (let [change (vector-get changes idx)
+      uri (vector-get change 0)
+      uri-text (lsp-render-wire-uri-text-for-state state uri)
+      elem-text (lsp-render-workspace-change-member-with-uri change uri-text)
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
+      (lsp-render-rename-changes-json-loop-with-state state changes (+ idx 1) len next-out))))
+
+(defn lsp-render-rename-frame-with-state [request-id state changes]
+  (if (> (vector-length changes) 0)
+    (let [first-uri (vector-get (vector-get changes 0) 0)
+      first-uri-text (server-state-uri-text-for-uri state first-uri)]
+      (if (> (string-length first-uri-text) 0)
+        (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+          payload-1 (string-concat payload-0 (int-to-string request-id))
+          payload-2 (string-concat payload-1 ",\"result\":{\"changes\":{")
+          payload-3 (string-concat payload-2
+            (lsp-render-rename-changes-json-loop-with-state state changes 0 (vector-length changes) ""))]
+          (render-json-rpc-frame (string-concat payload-3 "}}}")))
+        (lsp-render-rename-frame request-id changes)))
+    (lsp-render-rename-frame request-id changes)))
 
 ;; === 位置/オフセット変換 ===
 
