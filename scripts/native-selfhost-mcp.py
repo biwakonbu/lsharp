@@ -1465,6 +1465,13 @@ def verify_review_verification_receipt_manifest_projection(manifest, receipt):
         raise ToolError("native validate manifest receipt projection mismatch")
 
 
+def verify_report_manifest_projection(report, manifest):
+    """report 内 manifest があれば emit 出力と同じ graph を投影していることを確認する。"""
+    report_manifest = report.get("manifest")
+    if report_manifest is not None and report_manifest != manifest:
+        raise ToolError("native validate report manifest projection mismatch")
+
+
 def verify_identity_projection(
     report, expected_identity, include_manifest, allow_existing_manifest_identity
 ):
@@ -1537,6 +1544,7 @@ def call_validate(program, arguments, temporary_directory):
         except (OSError, json.JSONDecodeError, ValueError) as error:
             raise ToolError(f"native emitted manifest が不正です: {error}") from error
         validate_manifest_output(manifest)
+        verify_report_manifest_projection(report, manifest)
         verify_review_verification_receipt_manifest_projection(manifest, receipt)
         report["manifest"] = manifest
         validate_report_output(report)

@@ -2262,3 +2262,13 @@ selfhost lifecycle reducer 1件がGREENである。これは lifecycle producer 
 live provider/auth取得・署名検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは
 未検証のため、EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-lifecycle-declaration-order-parity.md`](docs/adr/decisions-v0.3-native-lifecycle-declaration-order-parity.md)。
+
+2026-08-02 に native MCP `lsharp_validate --include-manifest` の report/manifest projection parityを追加した。Rust canonical
+と同じ graph から投影されるべき report 内 `manifest` と別途 emit された manifest が、どちらも schema-valid でも異なる場合を
+`native validate report manifest projection mismatch` で fail-closed に拒否する RED→GREENを fake native harness で固定した。
+report に embedded manifest が無い既存 native producerは維持し、receipt/provider identity/schema の個別契約を再実装しない。
+これは native MCP の report/manifest semantic parity の verified partial sliceであり、native cryptographic verification、live
+provider/auth取得、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。current-source manifest/expected replay lockが
+現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+Evidence: [`decisions-v0.3-native-mcp-report-manifest-projection-parity.md`](docs/adr/decisions-v0.3-native-mcp-report-manifest-projection-parity.md)。

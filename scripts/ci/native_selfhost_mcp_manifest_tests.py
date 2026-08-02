@@ -139,6 +139,38 @@ def assert_validate_rejects_invalid_emitted_manifest(test):
             test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
 
 
+def assert_validate_rejects_report_manifest_mismatch(test):
+    """report 内と emit 出力の manifest が異なる場合は fail-closed にする。"""
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "include_manifest": True,
+                    },
+                },
+            ),
+            root,
+            report_mode="embedded-manifest-mismatch",
+        )
+
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        test.assertIn(
+            "native validate report manifest projection mismatch",
+            response["result"]["content"][0]["text"],
+        )
+        test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
+
+
 def assert_validate_rejects_duplicate_manifest_input_before_native(test):
     duplicate_manifest = (
         '{"schema_version":1,"schema_version":1,"nodes":[],"evidence":[],"edges":[]}'
