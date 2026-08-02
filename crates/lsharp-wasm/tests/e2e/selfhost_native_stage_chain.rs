@@ -27080,6 +27080,10 @@ fn linux_x86_selfhost_substring_length_object_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_selfhost_read_file_length_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(&[(3, 1), (67, 0), (64, 0), (51, 0)], 0)
+}
+
 fn linux_x86_selfhost_string_concat_length_object_bytes() -> Vec<u8> {
     linux_x86_selfhost_function_meta_object_bytes(
         &[(3, 1), (67, 0), (3, 2), (67, 0), (70, 0), (51, 0)],
@@ -41983,6 +41987,40 @@ fn test_e2e_native_linux_x86_host_generates_substring_elf_object_artifact() {
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 substring object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02h2: host 側 selfhost が read-file helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_read_file_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_READ_FILE_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_READ_FILE_OBJECT_ARTIFACT に Linux x86_64 read-file object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 read-file object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_read_file_length_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 read-file ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 read-file ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 read-file object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 read-file object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 read-file object artifact は生成 ELF object をそのまま保存すること"
     );
 }
 

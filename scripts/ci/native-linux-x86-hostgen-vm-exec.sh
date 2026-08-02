@@ -425,6 +425,7 @@ PRINT_OBJECT_ARTIFACT="${ARTIFACT_DIR}/print-program.o"
 VECTOR_OBJECT_ARTIFACT="${ARTIFACT_DIR}/vector-program.o"
 REF_OBJECT_ARTIFACT="${ARTIFACT_DIR}/ref-program.o"
 SUBSTRING_OBJECT_ARTIFACT="${ARTIFACT_DIR}/substring-program.o"
+READ_FILE_OBJECT_ARTIFACT="${ARTIFACT_DIR}/read-file-program.o"
 STRING_CONCAT_OBJECT_ARTIFACT="${ARTIFACT_DIR}/string-concat-program.o"
 MAP_OBJECT_ARTIFACT="${ARTIFACT_DIR}/map-program.o"
 MAP_REF_OBJECT_ARTIFACT="${ARTIFACT_DIR}/map-ref-program.o"
@@ -668,6 +669,16 @@ if [[ ! -s "${SUBSTRING_OBJECT_ARTIFACT}" ]]; then
   exit 1
 fi
 
+LSHARP_NATIVE_LINUX_X86_READ_FILE_OBJECT_ARTIFACT="${READ_FILE_OBJECT_ARTIFACT}" \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
+  e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_read_file_elf_object_artifact \
+  -- --exact --ignored
+
+if [[ ! -s "${READ_FILE_OBJECT_ARTIFACT}" ]]; then
+  echo "ERROR: host read-file ELF object artifact was not generated: ${READ_FILE_OBJECT_ARTIFACT}" >&2
+  exit 1
+fi
+
 LSHARP_NATIVE_LINUX_X86_STRING_CONCAT_OBJECT_ARTIFACT="${STRING_CONCAT_OBJECT_ARTIFACT}" \
   CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_string_concat_elf_object_artifact \
@@ -751,6 +762,7 @@ if [[ "${REUSE_ACTUAL_STAGE2}" -ne 1 && ( "${REUSE_ACTUAL_STAGE1}" -ne 1 || "${O
   limactl copy "${VECTOR_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/vector-program.o"
   limactl copy "${REF_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/ref-program.o"
   limactl copy "${SUBSTRING_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/substring-program.o"
+  limactl copy "${READ_FILE_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/read-file-program.o"
   limactl copy "${STRING_CONCAT_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/string-concat-program.o"
   limactl copy "${MAP_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/map-program.o"
   limactl copy "${MAP_REF_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/map-ref-program.o"
@@ -1304,6 +1316,47 @@ cat >substring-object-summary.json <<JSON
     "object-runtime.o",
     "substring-object-linker-response.txt",
     "substring-object-program.native"
+  ]
+}
+JSON
+
+cat >read-file-object-linker-response.txt <<'EOF_RESPONSE'
+-o
+read-file-object-program.native
+read-file-program.o
+object-runtime.o
+EOF_RESPONSE
+
+cc @read-file-object-linker-response.txt
+
+printf 'payload' >read-file-target.txt
+set +e
+./read-file-object-program.native read-file-target.txt >read-file-object-stdout.txt 2>read-file-object-stderr.txt
+read_file_object_actual_exit_code=$?
+set -e
+
+read_file_expected_exit_code=7
+if [[ "${read_file_object_actual_exit_code}" -ne "${read_file_expected_exit_code}" ]]; then
+  echo "ERROR: read-file-object-program.native actual_exit_code=${read_file_object_actual_exit_code}, expected ${read_file_expected_exit_code}" >&2
+  exit 1
+fi
+
+cat >read-file-object-summary.json <<JSON
+{
+  "target": "x86_64-unknown-linux-gnu",
+  "host_os": "${HOST_OS}",
+  "host_arch": "${HOST_ARCH}",
+  "status": "pass",
+  "scope": "host-side selfhost-generated ELF object executes read-file plus string-length helpers in local Linux x86_64 VM",
+  "argv": ["read-file-target.txt"],
+  "expected_exit_code": ${read_file_expected_exit_code},
+  "actual_exit_code": ${read_file_object_actual_exit_code},
+  "canonical_files": [
+    "read-file-program.o",
+    "object-runtime.o",
+    "read-file-object-linker-response.txt",
+    "read-file-target.txt",
+    "read-file-object-program.native"
   ]
 }
 JSON
@@ -2383,7 +2436,7 @@ VM_SCRIPT
 vm_exec_status=$?
 set -e
 
-for file in program.s runtime.s program.o argv-program.o argv-char-program.o print-program.o vector-program.o ref-program.o substring-program.o string-concat-program.o map-program.o map-ref-program.o map-size-program.o file-exists-program.o code-program.o runtime.o linker-response.txt program.native stdout.txt stderr.txt summary.json object-runtime.s object-runtime.o object-linker-response.txt object-program.native object-stdout.txt object-stderr.txt object-summary.json argv-object-linker-response.txt argv-object-program.native argv-object-stdout.txt argv-object-stderr.txt argv-object-summary.json argv-char-object-linker-response.txt argv-char-object-program.native argv-char-object-stdout.txt argv-char-object-stderr.txt argv-char-object-summary.json print-object-linker-response.txt print-object-program.native print-object-stdout.txt print-object-stderr.txt print-object-summary.json vector-object-linker-response.txt vector-object-program.native vector-object-stdout.txt vector-object-stderr.txt vector-object-summary.json ref-object-linker-response.txt ref-object-program.native ref-object-stdout.txt ref-object-stderr.txt ref-object-summary.json substring-object-linker-response.txt substring-object-program.native substring-object-stdout.txt substring-object-stderr.txt substring-object-summary.json string-concat-object-linker-response.txt string-concat-object-program.native string-concat-object-stdout.txt string-concat-object-stderr.txt string-concat-object-summary.json map-object-linker-response.txt map-object-program.native map-object-stdout.txt map-object-stderr.txt map-object-summary.json map-ref-object-linker-response.txt map-ref-object-program.native map-ref-object-stdout.txt map-ref-object-stderr.txt map-ref-object-summary.json map-size-object-linker-response.txt map-size-object-program.native map-size-object-stdout.txt map-size-object-stderr.txt map-size-object-summary.json file-exists-target.txt file-exists-object-linker-response.txt file-exists-object-program.native file-exists-object-stdout.txt file-exists-object-stderr.txt file-exists-object-summary.json actual-stage1-progress.txt actual-stage1-progress-stderr.txt actual-stage2-stdout.txt actual-stage2-stderr.txt actual-stage2-metadata.txt actual-stage2-metadata-stderr.txt actual-stage3-metadata.txt actual-stage3-metadata-stderr.txt actual-stage3-progress.txt actual-stage3-progress-stderr.txt actual-stage3-normal-setup.txt actual-stage3-normal-setup-stderr.txt actual-stage3-normal-payload-shape.txt actual-stage3-normal-payload-shape-stderr.txt actual-stage3-raw-payload-boundary.txt actual-stage3-raw-payload-boundary-stderr.txt actual-stage3-raw-payload-production-boundary.txt actual-stage3-raw-payload-production-boundary-stderr.txt actual-stage3-stdout.txt actual-stage3-stderr.txt actual-stage3-target-smoke-stdout.txt actual-stage3-target-smoke-stderr.txt actual-selfregen-summary.json; do
+for file in program.s runtime.s program.o argv-program.o argv-char-program.o print-program.o vector-program.o ref-program.o substring-program.o read-file-program.o string-concat-program.o map-program.o map-ref-program.o map-size-program.o file-exists-program.o code-program.o runtime.o linker-response.txt program.native stdout.txt stderr.txt summary.json object-runtime.s object-runtime.o object-linker-response.txt object-program.native object-stdout.txt object-stderr.txt object-summary.json argv-object-linker-response.txt argv-object-program.native argv-object-stdout.txt argv-object-stderr.txt argv-object-summary.json argv-char-object-linker-response.txt argv-char-object-program.native argv-char-object-stdout.txt argv-char-object-stderr.txt argv-char-object-summary.json print-object-linker-response.txt print-object-program.native print-object-stdout.txt print-object-stderr.txt print-object-summary.json vector-object-linker-response.txt vector-object-program.native vector-object-stdout.txt vector-object-stderr.txt vector-object-summary.json ref-object-linker-response.txt ref-object-program.native ref-object-stdout.txt ref-object-stderr.txt ref-object-summary.json substring-object-linker-response.txt substring-object-program.native substring-object-stdout.txt substring-object-stderr.txt substring-object-summary.json read-file-object-linker-response.txt read-file-object-program.native read-file-object-stdout.txt read-file-object-stderr.txt read-file-object-summary.json read-file-target.txt string-concat-object-linker-response.txt string-concat-object-program.native string-concat-object-stdout.txt string-concat-object-stderr.txt string-concat-object-summary.json map-object-linker-response.txt map-object-program.native map-object-stdout.txt map-object-stderr.txt map-object-summary.json map-ref-object-linker-response.txt map-ref-object-program.native map-ref-object-stdout.txt map-ref-object-stderr.txt map-ref-object-summary.json map-size-object-linker-response.txt map-size-object-program.native map-size-object-stdout.txt map-size-object-stderr.txt map-size-object-summary.json file-exists-target.txt file-exists-object-linker-response.txt file-exists-object-program.native file-exists-object-stdout.txt file-exists-object-stderr.txt file-exists-object-summary.json actual-stage1-progress.txt actual-stage1-progress-stderr.txt actual-stage2-stdout.txt actual-stage2-stderr.txt actual-stage2-metadata.txt actual-stage2-metadata-stderr.txt actual-stage3-metadata.txt actual-stage3-metadata-stderr.txt actual-stage3-progress.txt actual-stage3-progress-stderr.txt actual-stage3-normal-setup.txt actual-stage3-normal-setup-stderr.txt actual-stage3-normal-payload-shape.txt actual-stage3-normal-payload-shape-stderr.txt actual-stage3-raw-payload-boundary.txt actual-stage3-raw-payload-boundary-stderr.txt actual-stage3-raw-payload-production-boundary.txt actual-stage3-raw-payload-production-boundary-stderr.txt actual-stage3-stdout.txt actual-stage3-stderr.txt actual-stage3-target-smoke-stdout.txt actual-stage3-target-smoke-stderr.txt actual-selfregen-summary.json; do
   if limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${file}"; then
     limactl copy "${VM_NAME}:${VM_WORK_DIR}/${file}" "${ARTIFACT_DIR}/${file}"
   fi
