@@ -183,6 +183,10 @@ def package_component(program, wasm_tools, command, source, output):
                     f"{temporary_component}"
                 )
             validate_wasm_artifact("wasm-tools", temporary_component)
+            run_command(
+                [str(wasm_tools), "validate", str(temporary_component)],
+                "wasm-tools semantic validation",
+            )
 
             try:
                 os.replace(temporary_component, output)

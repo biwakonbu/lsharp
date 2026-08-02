@@ -75,6 +75,18 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             ) as log:
                 log.write(json.dumps(record) + "\\n")
 
+            if arguments[:1] == ["validate"]:
+                if len(arguments) != 2:
+                    raise SystemExit(92)
+                input_path = pathlib.Path(arguments[1])
+                if not input_path.is_file() or not input_path.read_bytes().startswith(b"\\x00asm"):
+                    raise SystemExit(93)
+                mode = os.environ.get("FAKE_WASM_TOOLS_MODE", "success")
+                if mode == "semantic-invalid":
+                    sys.stderr.write("fake wasm-tools semantic validation failure\\n")
+                    raise SystemExit(24)
+                raise SystemExit(0)
+
             if len(arguments) != 5 or arguments[:2] != ["component", "new"] or arguments[3] != "-o":
                 sys.stderr.write("unexpected wasm-tools arguments: " + repr(arguments) + "\\n")
                 raise SystemExit(92)
@@ -189,7 +201,7 @@ class NativeSelfhostComponentTest(unittest.TestCase):
         native_records = self.read_records(root, "native.jsonl")
         wasm_tools_records = self.read_records(root, "wasm-tools.jsonl")
         self.assertEqual(len(native_records), 1)
-        self.assertEqual(len(wasm_tools_records), 1)
+        self.assertEqual(len(wasm_tools_records), 2)
 
         native_arguments = native_records[0]["arguments"]
         self.assertEqual(
@@ -211,6 +223,9 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             ],
         )
         temporary_component = pathlib.Path(wasm_tools_arguments[4])
+        self.assertEqual(
+            wasm_tools_records[1]["arguments"], ["validate", str(temporary_component)]
+        )
         self.assertEqual(temporary_component.parent, output.parent)
         self.assertFalse(core_output.exists())
         self.assertFalse(temporary_component.exists())
@@ -399,6 +414,33 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             self.assertFalse(pathlib.Path(wasm_tools_records[0]["arguments"][4]).exists())
             self.assert_no_forbidden_command(root)
 
+    def test_semantically_invalid_component_is_rejected_before_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            environment["FAKE_WASM_TOOLS_MODE"] = "semantic-invalid"
+
+            result = self.run_helper(program, source, output, environment)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                b"wasm-tools semantic validation exited with status 24", result.stderr
+            )
+            self.assertIn(b"fake wasm-tools semantic validation failure", result.stderr)
+            self.assertEqual(output.read_bytes(), b"existing-component")
+            wasm_tools_records = self.read_records(root, "wasm-tools.jsonl")
+            self.assertEqual(len(wasm_tools_records), 2)
+            self.assertEqual(wasm_tools_records[1]["arguments"][0], "validate")
+            self.assertFalse(pathlib.Path(wasm_tools_records[0]["arguments"][4]).exists())
+            self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
+            self.assert_no_forbidden_command(root)
+
     def test_missing_wasm_tools_fails_before_running_native_program(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
@@ -471,7 +513,7 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             native_records = self.read_records(root, "native.jsonl")
             wasm_tools_records = self.read_records(root, "wasm-tools.jsonl")
             self.assertEqual(len(native_records), 1)
-            self.assertEqual(len(wasm_tools_records), 1)
+            self.assertEqual(len(wasm_tools_records), 2)
             self.assertFalse(pathlib.Path(native_records[0]["arguments"][3]).exists())
             self.assertFalse(pathlib.Path(wasm_tools_records[0]["arguments"][4]).exists())
             self.assert_no_forbidden_command(root)

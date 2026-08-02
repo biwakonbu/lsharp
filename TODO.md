@@ -2486,6 +2486,15 @@ Rust installer 22 tests、native installer 18 tests、Rust format、Python synta
 EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-package-install-path-input-fail-closed.md`](docs/adr/decisions-v0.3-native-package-install-path-input-fail-closed.md)。
 current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 に native component compile/build の semantic validation boundaryを追加した。byte-shape検査を通過した
+temporary componentを atomic replace前に明示 `wasm-tools validate` へ渡し、semantic invalid時は validatorの exit/stderrを保持して
+既存 outputを変更せず、temporary componentを cleanupする。同一 fake fixtureで `component new` → `validate` の順序、既存 failure、
+invalid bytes、stderr/exit、explicit tool、atomic replaceを focused GREENで確認した。これは外部 validatorによる semantic validationの
+verified partialであり、component instantiation、source/ftable/import parity、standalone runtime、provider/auth、current-source Linux runtime、
+Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 に native component compile/build の artifact postflightを追加した。native programの core outputと
 wasm-tools component new の packaged outputを、atomic promotion前に non-symlink regular file・non-empty Wasm magic
 ('\0asm')として検査する。同じ fake component fixtureで、invalid coreは wasm-tools 実行前に拒否し、invalid packaged
