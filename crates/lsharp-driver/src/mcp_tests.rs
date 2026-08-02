@@ -863,6 +863,46 @@ description = "context fixture"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_package_discovery_ignores_symlinked_manifest() {
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_manifest_symlink_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let package = root.join(".lsharp/packages/linked-config-9.0.0");
+        std::fs::create_dir_all(package.join("docs")).unwrap();
+        let external_manifest = root.join("external-lsharp.toml");
+        std::fs::write(
+            &external_manifest,
+            "[project]\nname = \"linked-config\"\nversion = \"9.0.0\"\n",
+        )
+        .unwrap();
+        symlink(&external_manifest, package.join("lsharp.toml")).unwrap();
+        std::fs::write(
+            package.join("docs/api.json"),
+            r#"{"package":"linked-config","version":"9.0.0","modules":[]}"#,
+        )
+        .unwrap();
+
+        let arguments = json!({"project_dir": root.display().to_string()});
+        let search = call_tool("lsharp_search", &arguments).unwrap();
+        assert_eq!(search["packages"], json!([]));
+        let context = call_tool("lsharp_project_context", &arguments).unwrap();
+        assert_eq!(context["installedPackages"], json!([]));
+        let error = call_tool(
+            "lsharp_package_api",
+            &json!({"project_dir": root.display().to_string(), "name": "linked-config"}),
+        )
+        .expect_err("symlink manifest package は explicit lookup でも拒否するべき");
+        assert!(error.contains("見つかりません"), "{error}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn test_project_context_tool_projects_sorted_dependencies_and_packages() {
         let root = std::env::temp_dir().join(format!("lsharp_mcp_context_{}", std::process::id()));

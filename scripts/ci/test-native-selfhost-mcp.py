@@ -9,7 +9,7 @@ import tempfile
 import textwrap
 import unittest
 from native_selfhost_mcp_error_tests import assert_errors_lookup, assert_errors_reject_invalid_arguments
-from native_selfhost_mcp_package_tests import assert_install_is_explicit_external_boundary, assert_package_api_generates_from_native_doc, assert_package_api_projects_local_api_json, assert_package_api_rejects_identity_mismatch, assert_package_api_rejects_invalid_arguments, assert_package_api_rejects_malformed_native_doc, assert_package_api_rejects_symlinked_api_json, assert_package_discovery_ignores_symlink_directories, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
+from native_selfhost_mcp_package_tests import assert_install_is_explicit_external_boundary, assert_package_api_generates_from_native_doc, assert_package_api_projects_local_api_json, assert_package_api_rejects_identity_mismatch, assert_package_api_rejects_invalid_arguments, assert_package_api_rejects_malformed_native_doc, assert_package_api_rejects_symlinked_api_json, assert_package_discovery_ignores_symlink_directories, assert_package_discovery_ignores_symlinked_manifest, assert_search_projects_local_packages, assert_search_rejects_invalid_arguments
 from native_selfhost_mcp_context_tests import (
     assert_project_context_projects_local_metadata,
     assert_project_context_rejects_ambiguous_dependency_sources,
@@ -818,6 +818,9 @@ class NativeSelfhostMcpTest(unittest.TestCase):
         assert_package_api_rejects_malformed_native_doc(self)
     def test_package_discovery_ignores_symlink_directories(self):
         assert_package_discovery_ignores_symlink_directories(self)
+
+    def test_package_discovery_ignores_symlinked_manifest(self):
+        assert_package_discovery_ignores_symlinked_manifest(self)
     def test_initialize_tools_and_supported_calls_stay_native_only(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

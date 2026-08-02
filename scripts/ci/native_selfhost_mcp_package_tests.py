@@ -132,6 +132,64 @@ def assert_package_discovery_ignores_symlink_directories(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_package_discovery_ignores_symlinked_manifest(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = root / ".lsharp" / "packages" / "linked-config-9.0.0"
+        (package / "docs").mkdir(parents=True)
+        external_manifest = root / "external-lsharp.toml"
+        external_manifest.write_text(
+            '[project]\nname = "linked-config"\nversion = "9.0.0"\n',
+            encoding="utf-8",
+        )
+        (package / "lsharp.toml").symlink_to(external_manifest)
+        (package / "docs" / "api.json").write_text(
+            '{"package":"linked-config","version":"9.0.0","modules":[]}',
+            encoding="utf-8",
+        )
+
+        payload = b"".join(
+            [
+                request(
+                    1,
+                    "tools/call",
+                    {"name": "lsharp_search", "arguments": {"project_dir": str(root)}},
+                ),
+                request(
+                    2,
+                    "tools/call",
+                    {
+                        "name": "lsharp_project_context",
+                        "arguments": {"project_dir": str(root)},
+                    },
+                ),
+                request(
+                    3,
+                    "tools/call",
+                    {
+                        "name": "lsharp_package_api",
+                        "arguments": {
+                            "project_dir": str(root),
+                            "name": "linked-config",
+                        },
+                    },
+                ),
+            ]
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        test.assertEqual(len(responses), 3)
+        test.assertEqual(responses[0]["result"]["structuredContent"]["packages"], [])
+        test.assertEqual(
+            responses[1]["result"]["structuredContent"]["installedPackages"], []
+        )
+        test.assertTrue(responses[2]["result"]["isError"])
+        test.assertIn("見つかりません", responses[2]["result"]["content"][0]["text"])
+        test.assertFalse((root / "native.log").exists())
+
+
 def assert_search_rejects_invalid_arguments(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

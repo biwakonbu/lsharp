@@ -297,10 +297,18 @@ fn installed_package_dirs(project_dir: &Path) -> Vec<PathBuf> {
                 .ok()
                 .filter(|file_type| file_type.is_dir() && !file_type.is_symlink())
                 .map(|_| entry.path())
+                .filter(|path| package_manifest_is_owned(path))
         })
         .collect();
     paths.sort();
     paths
+}
+
+fn package_manifest_is_owned(package_dir: &Path) -> bool {
+    match std::fs::symlink_metadata(package_dir.join("lsharp.toml")) {
+        Ok(metadata) => !metadata.file_type().is_symlink(),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 fn find_installed_package_dir(project_dir: &Path, name: &str) -> Option<PathBuf> {
