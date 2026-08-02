@@ -1054,6 +1054,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   field order、nullable `expires_at`、canonical bytes、span と native source-file smoke の
   report/manifest fixture contract を追加検証した。Mac current-source stage0 producer/package/source-file
   smoke は実行済みで、native MCP receipt の report→manifest review projectionも verified partial とした。
+  native source-file evidence writer が explicit `validation-attestation-json.stdout` の
+  `review_attestations` projectionを evidence manifestへ保存し、report欠落時に証跡を作らない
+  handoffも verified partial とした。
   Linux current-source stage0、packaged artifact provenance、Mac/Linux runtime parityを
   `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
 - [~] `EC-M3-05` keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity

@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--evidence-dir", required=True)
     parser.add_argument("--work-dir", required=True)
     parser.add_argument("--stage0-manifest", required=True)
+    parser.add_argument("--review-attestation-report")
     parser.add_argument("--target", required=True, choices=sorted(TARGETS))
     parser.add_argument("--exit-code", required=True, type=int)
     return parser.parse_args()
@@ -81,6 +82,21 @@ def command_outputs(work_dir: Path) -> list[str]:
     )
 
 
+def load_review_attestation_report(path: Path) -> list[object]:
+    if path.is_symlink() or not path.is_file() or not path.stat().st_size:
+        fail(f"review attestation report is not a non-empty regular file: {path}")
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        fail(f"review attestation report is invalid: {error}")
+    if not isinstance(report, dict):
+        fail("review attestation report must be a JSON object")
+    attestations = report.get("review_attestations")
+    if not isinstance(attestations, list):
+        fail("review attestation report must contain review_attestations array")
+    return attestations
+
+
 def first_symlink(path: Path) -> Path | None:
     for root, directories, files in os.walk(path, topdown=True, followlinks=False):
         for name in sorted((*directories, *files)):
@@ -110,6 +126,11 @@ def main() -> int:
 
     stage0_manifest = Path(args.stage0_manifest)
     manifest, stage0_digest = load_stage0_manifest(stage0_manifest, args.target)
+    review_attestations = None
+    if args.review_attestation_report:
+        review_attestations = load_review_attestation_report(
+            Path(args.review_attestation_report)
+        )
 
     parent = evidence_dir.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -121,7 +142,7 @@ def main() -> int:
             fail(f"source smoke evidence contains a symlink: {staged_symlink}")
         shutil.copy2(stage0_manifest, staging / "stage0-manifest.json")
         (staging / "exit.code").write_text(f"{args.exit_code}\n", encoding="ascii")
-        evidence = {
+        evidence: dict[str, object] = {
             "kind": "lsharp-native-selfhost-source-smoke-evidence",
             "target": args.target,
             "source_commit": manifest["source_commit"],
@@ -130,6 +151,8 @@ def main() -> int:
             "artifacts": artifact_metadata(work_dir),
             "command_outputs": command_outputs(work_dir),
         }
+        if review_attestations is not None:
+            evidence["review_attestations"] = review_attestations
         (staging / "manifest.json").write_text(
             json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

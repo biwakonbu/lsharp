@@ -25,6 +25,7 @@ cleanup() {
       --evidence-dir "$SOURCE_SMOKE_EVIDENCE_DIR" \
       --work-dir "$WORK_DIR" \
       --stage0-manifest "$STAGE0_DIR/manifest.json" \
+      --review-attestation-report "$WORK_DIR/validation-attestation-json.stdout" \
       --target "$SMOKE_TARGET" \
       --exit-code "$status"; then
       echo "ERROR: failed to persist native source-file smoke evidence" >&2
