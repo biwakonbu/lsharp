@@ -345,14 +345,28 @@ def observe_fixture(
         capture_output=True,
         check=False,
     )
+    observed_stdout = decode_output(runtime_result.stdout)
+    observed_stderr = decode_output(runtime_result.stderr)
     expected_runtime = fixture.get("expected", {}).get("runtime", {})
     expected_exit_code = expected_runtime.get("exit_code")
     if expected_exit_code is not None and runtime_result.returncode != expected_exit_code:
-        detail = decode_output(runtime_result.stderr).strip() or decode_output(runtime_result.stdout).strip()
+        detail = observed_stderr.strip() or observed_stdout.strip()
         raise ReportError(
             "Rust oracle runtime exit "
             f"{runtime_result.returncode} does not match expected exit {expected_exit_code}"
             + (f": {detail}" if detail else "")
+        )
+    expected_stdout = expected_runtime.get("stdout")
+    if expected_stdout is not None and observed_stdout != expected_stdout:
+        raise ReportError(
+            "Rust oracle runtime stdout does not match expected stdout: "
+            f"expected={expected_stdout!r} observed={observed_stdout!r}"
+        )
+    expected_stderr = expected_runtime.get("stderr")
+    if expected_stderr is not None and observed_stderr != expected_stderr:
+        raise ReportError(
+            "Rust oracle runtime stderr does not match expected stderr: "
+            f"expected={expected_stderr!r} observed={observed_stderr!r}"
         )
     if sha256(source) != source_sha256:
         raise ReportError("source fixture changed during Rust oracle observation")
@@ -369,8 +383,8 @@ def observe_fixture(
         "runtime": {
             "status": "observed",
             "exit_code": runtime_result.returncode,
-            "stdout": decode_output(runtime_result.stdout),
-            "stderr": decode_output(runtime_result.stderr),
+            "stdout": observed_stdout,
+            "stderr": observed_stderr,
             "artifact_sha256": sha256(artifact),
         },
     }

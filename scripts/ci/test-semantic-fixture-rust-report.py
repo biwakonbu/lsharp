@@ -220,7 +220,7 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                     "source.write_text('(defn main [] 99)\\n', encoding='utf-8')\n"
                     "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
                 )
-                make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+                make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n0\\n'\n")
                 result = self.run_producer(
                     root,
                     compiler,
@@ -310,6 +310,40 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             self.assertIn("expected", result.stderr.lower())
             self.assertFalse(output.exists())
 
+    def test_rejects_unexpected_runtime_output_before_report(self):
+        cases = [
+            ("stdout", "#!/bin/sh\nprintf 'unexpected\\n'\n"),
+            ("stderr", "#!/bin/sh\nprintf '42\\n'\nprintf 'unexpected\\n' >&2\n"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "fake-compiler.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
+            )
+            for index, (stream, body) in enumerate(cases):
+                wasmtime = root / f"unexpected-{stream}-wasmtime.py"
+                output = root / f"unexpected-{stream}.json"
+                (work_dir / stream).mkdir()
+                make_executable(wasmtime, body)
+                result = self.run_producer(
+                    root,
+                    compiler,
+                    wasmtime,
+                    output,
+                    work_dir / stream,
+                    fixture_id="valid/syntax-basic",
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"runtime {stream}", result.stderr.lower())
+                self.assertIn("expected", result.stderr.lower())
+                self.assertFalse(output.exists())
+
     def test_materializes_declared_runtime_input_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -331,7 +365,7 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 "from pathlib import Path\n"
                 "if '--dir=.' not in sys.argv:\n"
                 "    raise SystemExit('runtime input directory was not preopened')\n"
-                "print(Path('input.txt').read_text(encoding='utf-8'))\n",
+                "print(Path('input.txt').read_text(encoding='utf-8'), end='')\n",
             )
             result = self.run_producer(
                 root,
@@ -343,7 +377,7 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(report["fixtures"][0]["runtime"]["stdout"], "payload\n")
+            self.assertEqual(report["fixtures"][0]["runtime"]["stdout"], "payload")
             self.assertEqual((work_dir / "input.txt").read_text(encoding="utf-8"), "payload")
 
     def test_preopens_explicit_empty_runtime_directory_for_missing_file(self):
@@ -666,7 +700,7 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 "    raise SystemExit(1)\n"
                 "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'first')\n",
             )
-            make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n'\n")
+            make_executable(wasmtime, "#!/bin/sh\nprintf '42\\n0\\n'\n")
 
             result = self.run_producer(
                 root,

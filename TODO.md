@@ -2495,6 +2495,14 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: semantic fixture report producer の stdout/stderr admission を Rust/native で揃えた。
+valid fixture の `expected.runtime.stdout` / `stderr` と Wasmtimeの実出力が不一致なら、exit `0` でも report生成前に stream-specific fail-closed とする
+同一 fake fixtureを RED→GREEN で確認した。runtime exit admission、receipt、artifact digest、source/ftable/import、batch cleanupの再実装ではない。
+実 target runtime、current-source Mac/Linux producer parity、packaged/rollback parity、provider/authは未検証のため EC-M3-04 / EC-M3-05 と
+M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-semantic-runtime-output-admission.md`](docs/adr/decisions-v0.3-semantic-runtime-output-admission.md)。current-source manifest/expected replay lockが現HEADに一致せず、
+別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 の verified partial: semantic fixture report producer の runtime exit admission を Rust/native で揃えた。
 valid fixture の `expected.runtime.exit_code` と Wasmtime の exit code が不一致なら report生成前に fail-closed とする同一 fake fixtureを RED→GREEN で確認した。
 これは runtime-evidence receipt、artifact digest binding、batch cleanup、component rollback、source/ftable/import projectionの再実装ではなく、runtime observation
