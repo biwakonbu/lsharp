@@ -1431,6 +1431,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   current-source native projectionを閉じる verified sliceであり、definition/references/renameのURI/location/workspace edit、
   diagnosticsの標準Diagnostic shape、position base、component sidecar、公開 release asset acquisition/rollback、
   Mac/Linux packaged artifact provenance parityの完了証拠ではない。Lima VMは検証後に停止し、task-owned workdirを削除した。
+  同じ current Mac `program.native` に `native-selfhost-component.py --command compile` を渡した実native boundaryでは、
+  `wasm-tools` が `wasi_snapshot_preview1::fd_write` importを解決できず exit `1`、stderrに component encode failureを返し、
+  component artifactを作成しなかった。この明示的外部 packaging拒否は正しい fail-closed boundaryだが、component sidecarの
+  Rust-free実装完了やstandalone component runtimeの証拠ではない。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
@@ -1620,6 +1624,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   smokeを再実行してGREENを確認した。これは Mac current-source stage0 package/source-file smokeの verified
   sliceであり、公開 release asset acquisition、rollback実行、全公開 command、component sidecar、Linux/Mac
   packaged artifact parity、`LEGACY-BOOT-01` aggregateの完了証拠ではない。
+
+  実 provider assetの確認では、GitHub release `v0.1.0-native-rc1`（`2026-05-11T13:23:20Z` 公開）は
+  `aarch64-apple-darwin` の experimental archiveのみを持ち、Linux x86_64 assetが存在しなかった。archive SHA-256は
+  `cd1a5df9db240eb155fe5b2fc9d6c24f721d6f078a870cfad4954724820725a0` だが、embedded manifestは stage hashのみで
+  current source commit/provenanceを持たないため、`HEAD=5db1c2a4` の release evidenceや両 target packaged parityには
+  採用しない。current-source release archiveの生成、provider acquisition、rollback archive実行は未完の外部 release
+  boundaryとして残す。
 
 ## ISSUES-derived quality and runtime work
 

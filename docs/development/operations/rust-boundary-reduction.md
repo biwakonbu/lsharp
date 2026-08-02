@@ -1686,6 +1686,17 @@ renameのURI/location/workspace edit、diagnosticsの標準Diagnostic shape、po
 runtime、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged artifact provenance parityは未完了で、
 TODOの `V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま維持する。direct LSP確認後はVM workdirを削除し、Lima VMを停止した。
 
+同じ current Mac `program.native` に `native-selfhost-component.py --command compile` を渡した実native component boundaryは
+exit `1`、artifactなしで終了した。stderrは `wasm-tools` の component encode時に
+`wasi_snapshot_preview1::fd_write` importを解決できないことを示した。これは component sidecarを曖昧に成功扱いしない
+fail-closed external packaging boundaryの証拠であり、Rust-free component実装やstandalone component runtimeの証拠ではない。
+
+公開 provider assetも確認した。GitHub release `v0.1.0-native-rc1` は `2026-05-11T13:23:20Z` 公開の Mac arm64のみの
+experimental native archiveで、Linux x86_64 assetは存在しない。取得した archiveの SHA-256は
+`cd1a5df9db240eb155fe5b2fc9d6c24f721d6f078a870cfad4954724820725a0` だが、embedded `manifest.json` は stage hashだけで
+current source commit/provenanceを持たないため、`HEAD=5db1c2a4` の release evidenceや両 target packaged parityには採用しない。
+current-source release archive、実 provider asset acquisition、rollback archiveの実行は引き続き外部 release作業として残る。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。
