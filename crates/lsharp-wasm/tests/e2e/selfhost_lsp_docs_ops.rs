@@ -642,6 +642,44 @@ fn test_e2e_selfhost_lsp_state_preserves_wire_uri() {
     assert_eq!(frame, expected, "state URI は Location wire に投影されるべき");
 }
 
+/// TEST-LSP-10d: document 更新後の publishDiagnostics refresh が wire URI を保持すること
+#[test]
+fn test_e2e_selfhost_lsp_transport_diagnostics_preserves_wire_uri() {
+    let source = selfhost_cli_runtime_bundle();
+    let uri = "file:///tmp/lsharp-diagnostic-uri.ls";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        uri-key (lsp-uri-key-from-text "{uri}")
+        params (push-object-vector-local
+                 (push-object-vector-local
+                   (push-object-vector-local
+                     (push-int-vector-local (vector-new 2) uri-key)
+                     ")")
+                   "")
+                 "{uri}")
+        request (push-object-vector-local
+                 (push-int-vector-local
+                   (push-int-vector-local
+                     (push-int-vector-local (vector-new 4) 2)
+                     0)
+                   (lsp-method-did-open))
+                 params)]
+    (print-string (lsp-transport-dispatch-request state request))))
+"#
+    );
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    let expected = format!(
+        r#""method":"textDocument/publishDiagnostics","params":{{"uri":"{}""#,
+        uri
+    );
+    assert!(
+        output.contains(&expected),
+        "diagnostics refresh は wire URI を JSON string として返すべき: {output}"
+    );
+}
+
 /// TEST-LSP-11: handle-goto-definition がソース位置構造を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_definition_returns_location() {

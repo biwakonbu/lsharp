@@ -1458,7 +1458,7 @@
       previous-diagnostics (lsp-source-all-diagnostics previous-src)
       current-diagnostics (lsp-source-all-diagnostics current-src)]
       (if (> (+ (vector-length previous-diagnostics) (vector-length current-diagnostics)) 0)
-        (string-concat rendered (lsp-render-publish-diagnostics-frame uri current-diagnostics))
+        (string-concat rendered (lsp-render-publish-diagnostics-frame-with-state state uri current-diagnostics))
         rendered))
     rendered))
 (defn lsp-transport-dispatch-request [state request]
