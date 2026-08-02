@@ -1397,6 +1397,25 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   境界で拒否され、Wasm runtime証拠にはしていない。Linux x86_64 current HEADの同opcode stage0/package/runtime、
   component sidecar、release asset acquisition/rollback、Mac/Linux packaged parityは未検証のため、`V2-16b` /
   `V2-16c` / `V2-16e` と aggregateは `[~]` のまま残す。
+
+  さらに 2026-08-03 の current Linux x86_64 verified partialとして、clean `HEAD=113d3785a54e0d4af0bc970edfe45c234a96449d`
+  から read-stdin helperを含む actual stage1を `302.68s` で生成し、manifestの target、source commit、code `4,408,352`
+  bytes、data `2,757` bytes、entrypoint `4,405,792`、function-start `3,418`、main function `3,427` を確認した。
+  stage1 artifactを `lsharp-native-selfhost-stage0` packageへ変換し、target `x86_64-unknown-linux-gnu`、compiler、transport
+  driver、materializer、source commitを確認した。hostgen実行時に source commit env が未指定だったため、生成byte列と clean HEADの
+  一致を確認した後に保存 manifestの provenance fieldだけを補正している。これは source commitの実行時検証を省略した証拠ではないが、
+  artifact manifestの生成時自動記録としては扱わない。
+  同packageの current-source native stage0 source-file smokeは exit `0` で、parse/check/fmt、通常/metadata test、compile/build、
+  validation positive/negativeを通過し、`compile.wasm` / `build.wasm` は各 `2,559` bytes、SHA-256
+  `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`、stage0 manifest/payload SHA-256はそれぞれ
+  `8f05341f559400a6df0de7c73cc357dcdd3caa8f5ebaf280888923a0c4522dd6` / `f7d152eccbe02ff4bcf10bd8f48494a1d8fef2b6c94b5a58a795324ae0b30dda6`
+  だった。成功経路では `cargo`、`rustc`、host `lsharp`、Rust fallbackをblocklistしている。
+  同じ current-source stage1を再利用した stage2→stage3 transport/materialize/compareは status `pass`、stage2/stage3 manifestの
+  source commitとtargetが一致し、code length各 `11,408,204`、stdout各 `1,434,730` lines、stdout SHA-256各
+  `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr各 `0` bytesで一致した。stage2 seedの
+  `int-to-string` / `string-concat`経路と `42` の tiny output markerは stage2/stage3双方で一致したが、これは standalone Preview1
+  `io-read-stdin` runtimeやLSP semantic parityの証拠ではない。Linux direct LSP JSON semantic projection、component sidecar、
+  公開 release asset acquisition/rollback、Mac/Linux packaged artifact parityは残る。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
@@ -1438,7 +1457,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   Rust oracle/host integration の隔離を閉じる。2026-08-02 に current `main` の Mac Apple Silicon
   native App.Cli releaseを再生成し、stage2/stage3 fixed-point、source commit、target、artifact
   digest、`--version` smokeを確認した。Linux x86_64のcurrent-source package/acquisition、
-  release archive、rollback実行、両 targetのprovenance parityは残る。さらに同日、現行 commitの
+  release archive、rollback実行、両 targetのprovenance parityは残る。さらに 2026-08-03 に、現行 commitの
+  Linux x86_64 stage1/package/source-file smokeと、同stage1を再利用した stage2→stage3 fixed-pointを実行した。
+  stage1 manifestは target `x86_64-unknown-linux-gnu`、source commit `113d3785a54e0d4af0bc970edfe45c234a96449d`、
+  code `4,408,352` bytes、data `2,757` bytes、entrypoint `4,405,792`、function-start `3,418`、main function `3,427`。
+  package manifestとsource-file smoke evidenceも同じ source commitを持ち、source-file smokeは exit `0`、compile/buildは各
+  `2,559` bytesでSHA-256 `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`。
+  stage2/stage3 fixed-pointは code length各 `11,408,204`、stdout SHA-256各
+  `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr空で passした。
+  これは current-source Linux native coreの verified partialを広げるが、公開 release asset acquisition、rollback archiveの
+  実行、Mac/Linux packaged provenance parity、component sidecarの完了証拠には数えない。さらに同日、現行 commitの
   Linux x86_64 stage1 host payloadを `333.21s` で生成し、code `4,393,425` bytes、data `2,757`
   bytes、entrypoint `4,390,965`、function-start `3,409` を確認した。Lima VMでこのstage1を
   materializeし、metadata range `0..1` を実行した診断 gateは `status=diagnostic`、stdout `8,353`

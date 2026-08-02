@@ -1633,6 +1633,35 @@ stage3 transport/materialize/fixed-point、Linux native stage0 source-file smoke
 GREEN単位で残りのallocation境界を選び、full stage2/stage3 gateは複数の局所修正をまとめた一回だけ実行する。ADR:
 `docs/adr/decisions-v0.3-native-linux-int-to-string-bounded-heap.md`。
 
+### V2-16b / V2-16c / V2-16e Linux x86 current read-stdin fixed point (2026-08-03)
+
+read-stdin helperを含む clean `HEAD=113d3785a54e0d4af0bc970edfe45c234a96449d` の actual Linux x86_64 stage1を
+`302.68s` で生成した。stage1 manifestは target `x86_64-unknown-linux-gnu`、source commit同値、code `4,408,352` bytes、
+data `2,757` bytes、entrypoint `4,405,792`、function-start `3,418`、main function `3,427`。stage1は
+`lsharp-native-selfhost-stage0` packageへ変換し、compiler、transport driver、materializer、manifest provenanceを確認した。
+hostgen起動時の source commit envが未指定だったため、生成byte列と clean HEADを確認して保存 manifestの provenance fieldのみを
+補正した。以後の package/source smokeとstage2/stage3 manifestは current commitを自動記録しているため、この補正済みstage1 manifestを
+「生成時自動記録」の証拠とは分類しない。
+
+packageを使った current-source native stage0 source-file smokeは exit `0` で、parse/check/fmt、通常/metadata test、compile/build、
+validation positive/negativeを完走した。evidenceは
+`ci-artifacts/native-linux-x86-hostgen-vm/113d3785-read-stdin-source-smoke-evidence/manifest.json` に保存し、
+compile/buildは各 `2,559` bytes、SHA-256 `afd1638e444a7e8c371dc1d17550479fcc5e4efbbb9e9dbdffa8551933d71a00`、
+stage0 manifest/payload SHA-256は `8f05341f559400a6df0de7c73cc357dcdd3caa8f5ebaf280888923a0c4522dd6` /
+`f7d152eccbe02ff4bcf10bd8f48494a1d8fef2b6c94b5a58a795324ae0b30dda6` だった。成功経路は `cargo`、`rustc`、host `lsharp`、
+Rust fallbackを使用しない。
+
+同じstage1を再利用した `stage2 -> stage3 -> materialize -> compare` は Lima `lsharp-linux-x86` で status `pass` となった。
+stage2/stage3 manifestは target/source commitとも一致し、code length各 `11,408,204`、stdout各 `1,434,730` lines、
+stdout SHA-256各 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr各 `0` bytesで一致した。
+stage2 seedの `int-to-string` / `string-concat` 経路と `42` tiny markerもstage3と一致した。`actual-selfregen-summary.json` は
+旧schemaのため `source_commit=null` であり、provenance根拠には使わず、stage manifestを正本とする。
+
+検証後は VM workdirを削除し、Lima VMを停止した。VMは 4 CPU / 16 GiB RAM / 12 GiB diskの既存構成を維持し、gate前のroot filesystem
+availableは約 `7.68 GB`、使用率 `33%` だった。これは Linux current-source native coreの verified partialである。
+Linux direct LSPのRust互換JSON/semantic projection、standalone Preview1 `io-read-stdin` runtime、component sidecar、公開 release
+asset acquisition、rollback archive実行、Mac/Linux packaged artifact provenance parityは未完了のため、TODOの `[~]` を維持する。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。
