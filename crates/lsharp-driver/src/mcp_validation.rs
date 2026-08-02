@@ -1,4 +1,5 @@
 fn validate_tool(arguments: &Value) -> Result<Value, String> {
+    reject_live_provider_auth_arguments(arguments)?;
     let review_inputs = review_input_arguments(arguments)?;
     let review_context = review_verification_context(arguments)?;
     let (mut graph, source_attestations) = validation_graph(arguments)?;
@@ -73,6 +74,28 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
         report["manifest"] = graph.to_manifest_json_value();
     }
     Ok(report)
+}
+
+fn reject_live_provider_auth_arguments(arguments: &Value) -> Result<(), String> {
+    const LIVE_PROVIDER_AUTH_ARGUMENTS: [&str; 6] = [
+        "provider_url",
+        "provider_api_url",
+        "provider_auth_token",
+        "provider_token",
+        "auth_token",
+        "auth_context",
+    ];
+
+    if LIVE_PROVIDER_AUTH_ARGUMENTS
+        .iter()
+        .any(|name| arguments.get(*name).is_some())
+    {
+        return Err(
+            "live provider/auth acquisition is an external boundary; use explicit offline snapshots"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn review_input_arguments(arguments: &Value) -> Result<crate::review_input::ReviewInputs, String> {

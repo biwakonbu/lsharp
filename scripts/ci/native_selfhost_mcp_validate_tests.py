@@ -330,7 +330,14 @@ def assert_receipt_verification_clock_context_binding(test):
 
 
 def assert_live_provider_auth_inputs_are_external(test):
-    for argument_name in ("provider_url", "provider_auth_token", "auth_token"):
+    for argument_name in (
+        "provider_url",
+        "provider_api_url",
+        "provider_auth_token",
+        "provider_token",
+        "auth_token",
+        "auth_context",
+    ):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
             program = test.write_fake_program(root)

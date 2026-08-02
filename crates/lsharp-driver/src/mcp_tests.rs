@@ -527,6 +527,32 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_tool_rejects_live_provider_auth_before_validation() {
+        for argument_name in [
+            "provider_url",
+            "provider_api_url",
+            "provider_auth_token",
+            "provider_token",
+            "auth_token",
+            "auth_context",
+        ] {
+            let error = call_tool(
+                "lsharp_validate",
+                &json!({
+                    "source": "(defn main [] true)",
+                    argument_name: "https://provider.example.invalid/reviews"
+                }),
+            )
+            .expect_err("live provider/auth input は validation 前に拒否するべき");
+
+            assert_eq!(
+                error,
+                "live provider/auth acquisition is an external boundary; use explicit offline snapshots"
+            );
+        }
+    }
+
+    #[test]
     fn test_validate_tool_accepts_manifest_input() {
         let manifest = json!({
             "schema_version": 1,
