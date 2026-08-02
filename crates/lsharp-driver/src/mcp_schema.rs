@@ -33,6 +33,16 @@ fn tool_input_schema(name: &str) -> Value {
             },
             "required": ["error_code"]
         }),
+        "lsharp_install" => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "project_dir": { "type": "string", "minLength": 1 }
+            },
+            "oneOf": [{ "required": ["name"] }]
+        }),
         "lsharp_package_api" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",

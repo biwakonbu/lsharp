@@ -318,3 +318,48 @@ def assert_package_api_rejects_invalid_arguments(test):
         test.assertIn("modules[0].extra", responses[6]["result"]["content"][0]["text"])
         test.assertIn("duplicate JSON object key: package", responses[7]["result"]["content"][0]["text"])
         test.assertFalse((root / "native.log").exists())
+
+
+def assert_install_is_explicit_external_boundary(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        metadata = {
+            root / "lsharp.toml": b'[project]\nname = "demo"\n',
+            root / ".lsharp" / "lock.toml": b"sentinel-lock\n",
+            root / ".lsharp" / "module-index.json": b"sentinel-index\n",
+        }
+        for path, contents in metadata.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+
+        payload = b"".join(
+            [
+                request(1, "tools/list"),
+                request(
+                    2,
+                    "tools/call",
+                    {
+                        "name": "lsharp_install",
+                        "arguments": {"name": "demo", "project_dir": str(root)},
+                    },
+                ),
+            ]
+        )
+        result = test.run_shim(program, payload, root)
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        responses = test.responses(result.stdout)
+        install_tool = next(
+            tool for tool in responses[0]["result"]["tools"] if tool["name"] == "lsharp_install"
+        )
+        test.assertEqual(install_tool["inputSchema"]["oneOf"], [{"required": ["name"]}])
+        test.assertFalse(install_tool["inputSchema"]["additionalProperties"])
+        response = responses[1]
+        test.assertTrue(response["result"]["isError"])
+        test.assertEqual(
+            response["result"]["content"][0]["text"],
+            "native MCP package installation requires an explicit external provider adapter",
+        )
+        for path, contents in metadata.items():
+            test.assertEqual(path.read_bytes(), contents)
+        test.assertFalse((root / "native.log").exists())

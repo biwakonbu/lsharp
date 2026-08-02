@@ -562,6 +562,16 @@ TOOLS = [
         {"additionalProperties": False},
     ),
     tool_descriptor(
+        "lsharp_install",
+        "package install は明示的な external provider adapter が必要です",
+        {
+            "name": {"type": "string", "minLength": 1},
+            "project_dir": {"type": "string", "minLength": 1},
+        },
+        ["name"],
+        input_schema_extra={"additionalProperties": False},
+    ),
+    tool_descriptor(
         "lsharp_search",
         "ローカルにインストール済みの L# package を検索する (native offline subset)",
         {
@@ -613,6 +623,7 @@ CANONICAL_TOOL_ORDER = (
     "lsharp_stdlib_api",
     "lsharp_compile_run",
     "lsharp_errors",
+    "lsharp_install",
     "lsharp_search",
 )
 TOOLS = sorted(TOOLS, key=lambda tool: CANONICAL_TOOL_ORDER.index(tool["name"]))
@@ -1860,6 +1871,19 @@ def call_tool(program, name, arguments):
                     value = call_errors(arguments)
                 except ErrorLookupError as error:
                     raise ToolError(str(error)) from error
+            elif name == "lsharp_install":
+                reject_unknown_arguments(arguments, {"name", "project_dir"}, "lsharp_install")
+                package_name = arguments.get("name")
+                if not isinstance(package_name, str) or not package_name.strip():
+                    raise ToolError("lsharp_install の name は空でない文字列が必要です")
+                project_dir = arguments.get("project_dir")
+                if project_dir is not None and (
+                    not isinstance(project_dir, str) or not project_dir.strip()
+                ):
+                    raise ToolError("lsharp_install の project_dir は空でない文字列が必要です")
+                raise ToolError(
+                    "native MCP package installation requires an explicit external provider adapter"
+                )
             elif name == "lsharp_search":
                 try:
                     value = call_search(arguments)

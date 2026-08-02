@@ -12,6 +12,7 @@ mod tests {
         assert!(names.contains(&"lsharp_completion"));
         assert!(names.contains(&"lsharp_package_api"));
         assert!(names.contains(&"lsharp_stdlib_api"));
+        assert!(names.contains(&"lsharp_install"));
     }
 
     #[test]
@@ -1015,6 +1016,48 @@ entry = "src/main.ls"
         )
         .expect_err("project_dir の数値は reject するべき");
         assert!(invalid_project.contains("project_dir"));
+    }
+
+    #[test]
+    fn test_install_tool_is_an_explicit_external_boundary_without_mutation() {
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_install_boundary_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".lsharp")).unwrap();
+        let metadata = [
+            (root.join("lsharp.toml"), b"project-sentinel\n".as_slice()),
+            (
+                root.join(".lsharp/lock.toml"),
+                b"lock-sentinel\n".as_slice(),
+            ),
+            (
+                root.join(".lsharp/module-index.json"),
+                b"index-sentinel\n".as_slice(),
+            ),
+        ];
+        for (path, contents) in &metadata {
+            std::fs::write(path, contents).unwrap();
+        }
+
+        let input = tool_input_schema("lsharp_install");
+        assert_eq!(input["additionalProperties"], json!(false));
+        assert_eq!(input["oneOf"], json!([{ "required": ["name"] }]));
+
+        let error = call_tool(
+            "lsharp_install",
+            &json!({"name": "demo", "project_dir": root.display().to_string()}),
+        )
+        .expect_err("native MCP install は provider adapter なしで実行しないべき");
+        assert_eq!(
+            error,
+            "native MCP package installation requires an explicit external provider adapter"
+        );
+        for (path, contents) in &metadata {
+            assert_eq!(std::fs::read(path).unwrap(), *contents);
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

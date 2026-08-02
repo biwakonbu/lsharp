@@ -43,6 +43,10 @@ pub fn list_tools() -> Vec<McpTool> {
         tool("lsharp_compile_run", "compile と実行結果を返す"),
         tool("lsharp_errors", "エラーコードの説明を返す"),
         tool(
+            "lsharp_install",
+            "package install は明示的な external provider adapter が必要です",
+        ),
+        tool(
             "lsharp_search",
             "ローカルインストール済みパッケージを検索する",
         ),
@@ -63,9 +67,39 @@ pub fn call_tool(name: &str, arguments: &Value) -> Result<Value, String> {
         "lsharp_stdlib_api" => stdlib_api_tool(arguments),
         "lsharp_compile_run" => compile_run_tool(arguments),
         "lsharp_errors" => errors_tool(arguments),
+        "lsharp_install" => install_tool(arguments),
         "lsharp_search" => search_tool(arguments),
         _ => Err("tool not found".to_string()),
     }
+}
+
+fn install_tool(arguments: &Value) -> Result<Value, String> {
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| "lsharp_install の arguments は object が必要です".to_string())?;
+    if let Some(unknown) = object
+        .keys()
+        .find(|key| !matches!(key.as_str(), "name" | "project_dir"))
+    {
+        return Err(format!("lsharp_install の未知の引数: {unknown}"));
+    }
+    match arguments.get("name") {
+        Some(Value::String(name)) if !name.trim().is_empty() => {}
+        Some(_) => return Err("lsharp_install の name は空でない文字列が必要です".to_string()),
+        None => return Err("lsharp_install の name は必須です".to_string()),
+    }
+    if let Some(project_dir) = arguments.get("project_dir") {
+        match project_dir {
+            Value::String(path) if !path.trim().is_empty() => {}
+            _ => {
+                return Err("lsharp_install の project_dir は空でない文字列が必要です".to_string());
+            }
+        }
+    }
+    Err(
+        "native MCP package installation requires an explicit external provider adapter"
+            .to_string(),
+    )
 }
 
 fn search_tool(arguments: &Value) -> Result<Value, String> {
