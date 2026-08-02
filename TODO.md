@@ -2389,3 +2389,11 @@ verified partial sliceである。M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は 
 current-source Linux runtime、Mac/Linux packaged/rollback bytes parityは未検証である。current-source manifest/expected replay lockは
 現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行。
 Evidence: [`decisions-v0.3-native-official-source-smoke-payload-binding.md`](docs/adr/decisions-v0.3-native-official-source-smoke-payload-binding.md)。
+
+2026-08-02 に official two-target source-smoke postflightへ fetched stage0 manifest/source identity bindingを追加した。
+target、current `SOURCE_COMMIT`、fetched `manifest.json` の SHA-256、`stage0_payload_sha256` を target evidenceへ exact compareし、
+payloadまたはmanifest digest改変を `source smoke evidence stage0 identity mismatch` で拒否する fake RED→GREENを確認した verified
+partial sliceである。M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残し、live provider/auth、native crypto、
+current-source Linux runtime、Mac/Linux packaged/rollback bytes parityは未検証である。current-source manifest/expected replay lockは
+現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行。
+Evidence: [`decisions-v0.3-native-official-stage0-identity-binding.md`](docs/adr/decisions-v0.3-native-official-stage0-identity-binding.md)。

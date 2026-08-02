@@ -268,12 +268,13 @@ validate_source_smoke_evidence_projection() {
   local evidence_dir="$2"
   local manifest_path="${evidence_dir}/manifest.json"
   local stage0_dir="${SMOKE_ROOT}/stage0-${target}"
+  local source_commit="${SOURCE_COMMIT}"
   [[ -n "${evidence_dir}" ]] || return 0
   [[ -d "${evidence_dir}" && ! -L "${evidence_dir}" ]] \
     || { echo "ERROR: source smoke evidence directory is unavailable for ${target}: ${evidence_dir}" >&2; exit 1; }
   [[ -f "${manifest_path}" && ! -L "${manifest_path}" && -s "${manifest_path}" ]] \
     || { echo "ERROR: source smoke evidence manifest is unavailable for ${target}: ${manifest_path}" >&2; exit 1; }
-  python3 - "${manifest_path}" "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" "${target}" "${stage0_dir}" <<'PY'
+  python3 - "${manifest_path}" "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" "${target}" "${stage0_dir}" "${source_commit}" <<'PY'
 import hashlib
 import json
 import os
@@ -284,6 +285,7 @@ manifest_path = pathlib.Path(sys.argv[1])
 report_path = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 target = sys.argv[3]
 stage0_dir = pathlib.Path(sys.argv[4])
+expected_source_commit = sys.argv[5]
 try:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as error:
@@ -292,6 +294,23 @@ if not isinstance(manifest, dict):
     raise SystemExit(f"ERROR: source smoke evidence manifest must be a JSON object for {target}: {manifest_path}")
 if stage0_dir.is_symlink() or not stage0_dir.is_dir():
     raise SystemExit(f"ERROR: fetched stage0 directory is unavailable for {target}: {stage0_dir}")
+stage0_manifest_path = stage0_dir / "manifest.json"
+if stage0_manifest_path.is_symlink() or not stage0_manifest_path.is_file():
+    raise SystemExit(f"ERROR: fetched stage0 manifest is unavailable for {target}: {stage0_manifest_path}")
+try:
+    stage0_manifest = json.loads(stage0_manifest_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"ERROR: fetched stage0 manifest is invalid for {target}: {stage0_manifest_path}: {error}")
+if not isinstance(stage0_manifest, dict):
+    raise SystemExit(f"ERROR: fetched stage0 manifest must be an object for {target}: {stage0_manifest_path}")
+stage0_manifest_digest = hashlib.sha256(stage0_manifest_path.read_bytes()).hexdigest()
+if stage0_manifest.get("target") != target or stage0_manifest.get("source_commit") != expected_source_commit:
+    raise SystemExit(
+        "ERROR: fetched stage0 manifest identity mismatch: "
+        f"target={target} expected_source_commit={expected_source_commit} "
+        f"actual_target={stage0_manifest.get('target')!r} "
+        f"actual_source_commit={stage0_manifest.get('source_commit')!r}"
+    )
 for root, directories, files in os.walk(stage0_dir, topdown=True, followlinks=False):
     for name in sorted((*directories, *files)):
         candidate = pathlib.Path(root) / name
@@ -311,11 +330,19 @@ for path in sorted(stage0_dir.rglob("*")):
 if not records:
     raise SystemExit(f"ERROR: fetched stage0 directory contains no regular payload for {target}: {stage0_dir}")
 expected_payload_digest = hashlib.sha256(b"".join(records)).hexdigest()
-if manifest.get("stage0_payload_sha256") != expected_payload_digest:
+if (
+    manifest.get("target") != target
+    or manifest.get("source_commit") != expected_source_commit
+    or manifest.get("stage0_manifest_sha256") != stage0_manifest_digest
+    or manifest.get("stage0_payload_sha256") != expected_payload_digest
+):
     raise SystemExit(
-        "ERROR: source smoke evidence stage0_payload_sha256 mismatch: "
-        f"target={target} manifest={manifest_path} expected={expected_payload_digest} "
-        f"actual={manifest.get('stage0_payload_sha256')!r}"
+        "ERROR: source smoke evidence stage0 identity mismatch: "
+        f"target={target} manifest={manifest_path} expected_source_commit={expected_source_commit} "
+        f"expected_stage0_manifest_sha256={stage0_manifest_digest} "
+        f"actual_source_commit={manifest.get('source_commit')!r} "
+        f"actual_stage0_manifest_sha256={manifest.get('stage0_manifest_sha256')!r} "
+        f"actual_stage0_payload_sha256={manifest.get('stage0_payload_sha256')!r}"
     )
 if report_path:
     try:
