@@ -2553,3 +2553,14 @@ registry/network/auth取得を追加しない external boundaryである。live 
 native MCP package-install semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。
 Evidence: [`decisions-v0.3-native-package-install-registry-external-boundary.md`](docs/adr/decisions-v0.3-native-package-install-registry-external-boundary.md)。
 current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
+2026-08-02 の verified partial: semantic fixture の source→Wasm artifact projection→runtime/evidence bindingを追加した。
+`valid/nested-record-pattern` が宣言する `ftable` / `imports` を対象に、明示 `wasm-tools print` の ordered imports、table shape、exportsと
+source/artifact digestを別 sidecar (`v4-m1-07`)へ投影し、Rust-oracle/native-stage0 sidecarを exact compareする。既存 reportを渡した場合は
+sidecarの artifact digestが report artifact、および observed runtime artifact digestと一致しないと fail-closed になる。同一 fake fixtureで
+projection success、helper failure前の no-evidence、Rust/native table mismatch、既存 runtime reportへの digest bindingを RED→GREENで確認した。
+これは report schemaを拡張しない offline static artifact/evidence boundaryの verified partialであり、現行 Rust/native producerが実 targetで同じ
+source/ftable/import bytesを出す証拠、component instantiation、Mac/Linux current-source runtime、packaged/rollback parity、provider/authの証拠ではない。
+EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-semantic-source-artifact-projection.md`](docs/adr/decisions-v0.3-semantic-source-artifact-projection.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
