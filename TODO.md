@@ -2303,3 +2303,14 @@ current-source manifest/expected replay lockは現HEADに一致せず、別セ�
 native cryptographic/live provider/auth semantic verification、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
 EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-provider-attestation-semantic-boundary.md`](docs/adr/decisions-v0.3-native-mcp-provider-attestation-semantic-boundary.md)。
+
+2026-08-02 に explicit verification receipt と provider snapshot context の coherency boundaryを追加した。receiptと
+trust-store/review-lifecycle snapshotを同時に渡す場合、receiptの `trust_store_digest` が今回の raw trust-store bytesから計算した digest、
+または明示された provider digestと一致しなければ native起動前に `receipt trust-store digest mismatch` で fail-closed にする RED→GREENを固定した。
+これは receipt→attestation projection、snapshot regular-file/nonempty/digest、provider semantic state拒否とは別の context bindingである。
+receipt schemaに lifecycle digestはないため、lifecycle意味検証・live provider/auth取得・native暗号検証は追加せず、Rust receiptのtrust-store identityだけを照合する。
+native MCP 97 tests、native receipt 3 tests、Rust receipt 4 tests、Rust source-attestation focused test、source-file evidence、official two-target fake gateを確認した。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+native cryptographic/live provider/auth semantic verification、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-review-receipt-provider-context.md`](docs/adr/decisions-v0.3-native-mcp-review-receipt-provider-context.md)。

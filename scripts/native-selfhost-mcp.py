@@ -1503,6 +1503,16 @@ def load_review_verification_receipt(path_value):
         raise ToolError(f"native MCP review verification receipt が不正です: {error}") from error
 
 
+def verify_receipt_provider_snapshot_binding(receipt, provider_digests, arguments):
+    if receipt is None:
+        return
+    expected_trust_store_digest = provider_digests.get("review_trust_store_digest")
+    if expected_trust_store_digest is None:
+        expected_trust_store_digest = arguments.get("review_trust_store_digest")
+    if expected_trust_store_digest is not None and receipt["trust_store_digest"] != expected_trust_store_digest:
+        raise ToolError("native MCP receipt trust-store digest mismatch with provider snapshot")
+
+
 def validate_review_evidence_identity(value):
     label = "native validate report review_evidence_identity"
     if not isinstance(value, dict):
@@ -1722,6 +1732,7 @@ def call_validate(program, arguments, temporary_directory):
     receipt = None
     if "review_verification_receipt" in arguments:
         receipt = load_review_verification_receipt(arguments["review_verification_receipt"])
+        verify_receipt_provider_snapshot_binding(receipt, provider_digests, arguments)
         command.extend(("--review-verification-receipt", arguments["review_verification_receipt"]))
     command.extend(identity_arguments(arguments, provider_digest_names))
     command.extend(provider_flags)
