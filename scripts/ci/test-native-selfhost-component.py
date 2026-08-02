@@ -146,6 +146,9 @@ class NativeSelfhostComponentTest(unittest.TestCase):
                 raise SystemExit(31)
             if os.environ.get("FAKE_WASMTIME_MODE") == "mutate":
                 component.write_bytes(b"\\x00asmmutated-after-runtime")
+            if os.environ.get("FAKE_WASMTIME_MODE") == "output":
+                sys.stdout.write("component-ok\\n")
+                sys.stderr.write("runtime-note\\n")
             """,
         )
 
@@ -191,6 +194,7 @@ class NativeSelfhostComponentTest(unittest.TestCase):
         command="compile",
         wasm_tools=None,
         wasmtime=None,
+        runtime_evidence=None,
     ):
         self.assertTrue(HELPER.is_file(), "native selfhost component helper is missing")
         arguments = [
@@ -209,6 +213,8 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             arguments.extend(("--wasm-tools", str(wasm_tools)))
         if wasmtime is not None:
             arguments.extend(("--wasmtime", str(wasmtime)))
+        if runtime_evidence is not None:
+            arguments.extend(("--runtime-evidence", str(runtime_evidence)))
         return subprocess.run(
             arguments,
             capture_output=True,
@@ -387,6 +393,47 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(b"runtime changed", result.stderr.lower())
             self.assertEqual(output.read_bytes(), b"existing-component")
+            self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
+
+    def test_component_runtime_writes_source_and_artifact_bound_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            evidence = root / "evidence" / "runtime.json"
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            wasmtime = self.write_fake_wasmtime(root / "wasmtime")
+            environment["FAKE_WASMTIME_MODE"] = "output"
+
+            result = self.run_helper(
+                program,
+                source,
+                output,
+                environment,
+                wasmtime=wasmtime,
+                runtime_evidence=evidence,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", "replace"))
+            receipt = json.loads(evidence.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["kind"], "lsharp-native-component-runtime-evidence")
+            self.assertEqual(receipt["command"], "compile")
+            self.assertEqual(receipt["source"], str(source.resolve()))
+            self.assertEqual(receipt["source_sha256"].startswith("sha256:"), True)
+            self.assertEqual(receipt["component_sha256"].startswith("sha256:"), True)
+            self.assertEqual(
+                receipt["runtime"],
+                {
+                    "status": "observed",
+                    "exit_code": 0,
+                    "stdout": "component-ok\n",
+                    "stderr": "runtime-note\n",
+                },
+            )
+            self.assertEqual(output.read_bytes(), b"\x00asmfake-component")
             self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
             self.assert_no_forbidden_command(root)
 

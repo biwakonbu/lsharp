@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import json
 import os
 import pathlib
 import shutil
@@ -28,6 +29,11 @@ def parse_arguments(argv):
         "--wasmtime",
         metavar="PATH",
         help="optionally run the temporary component with an external wasmtime",
+    )
+    parser.add_argument(
+        "--runtime-evidence",
+        metavar="PATH",
+        help="write explicit component runtime evidence; requires --wasmtime",
     )
     parser.add_argument("--command", required=True, choices=("compile", "build"))
     parser.add_argument("--source", required=True, metavar="FILE")
@@ -76,6 +82,27 @@ def validate_output(value):
     return output
 
 
+def validate_runtime_evidence(value):
+    evidence = pathlib.Path(value).expanduser()
+    if not evidence.is_absolute():
+        evidence = pathlib.Path.cwd() / evidence
+    if evidence.exists() or evidence.is_symlink():
+        raise ComponentPackagingError(
+            f"runtime evidence path already exists: {evidence}"
+        )
+    try:
+        evidence.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise ComponentPackagingError(
+            f"failed to create runtime evidence directory {evidence.parent}: {error}"
+        ) from error
+    if not evidence.parent.is_dir():
+        raise ComponentPackagingError(
+            f"runtime evidence parent is not a directory: {evidence.parent}"
+        )
+    return evidence
+
+
 def validate_wasm_artifact(label, path):
     if path.is_symlink() or not path.is_file():
         raise ComponentPackagingError(f"{label} produced invalid Wasm artifact: {path}")
@@ -101,6 +128,37 @@ def sha256(path):
             f"failed to read component runtime artifact {path}: {error}"
         ) from error
     return digest.hexdigest()
+
+
+def decode_runtime_output(value):
+    return value.decode("utf-8", errors="replace")
+
+
+def write_runtime_evidence(path, value):
+    temporary = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        os.close(descriptor)
+        temporary = pathlib.Path(temporary_name)
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        temporary = None
+    except OSError as error:
+        raise ComponentPackagingError(
+            f"failed to write runtime evidence {path}: {error}"
+        ) from error
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
 
 
 def find_wasm_tools(value):
@@ -151,6 +209,32 @@ def run_command(arguments, label):
     forward_stderr(completed.stderr)
 
 
+def run_runtime(wasmtime, temporary_component):
+    try:
+        completed = subprocess.run(
+            [str(wasmtime), "run", str(temporary_component)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as error:
+        raise ComponentPackagingError(
+            f"failed to execute wasmtime component runtime: {error}"
+        ) from error
+    if completed.returncode != 0:
+        raise ComponentPackagingError(
+            f"wasmtime component runtime exited with status {completed.returncode}",
+            completed.stderr,
+        )
+    forward_stderr(completed.stderr)
+    return {
+        "status": "observed",
+        "exit_code": completed.returncode,
+        "stdout": decode_runtime_output(completed.stdout),
+        "stderr": decode_runtime_output(completed.stderr),
+    }
+
+
 def create_temporary_component_path(output):
     try:
         descriptor, temporary_name = tempfile.mkstemp(
@@ -180,7 +264,9 @@ def cleanup_temporary_component(path):
         ) from error
 
 
-def package_component(program, wasm_tools, wasmtime, command, source, output):
+def package_component(
+    program, wasm_tools, wasmtime, runtime_evidence, command, source, output
+):
     temporary_component = None
     primary_error = None
     try:
@@ -219,14 +305,25 @@ def package_component(program, wasm_tools, wasmtime, command, source, output):
                 "wasm-tools semantic validation",
             )
             runtime_artifact_sha256 = sha256(temporary_component)
+            runtime_observation = None
             if wasmtime is not None:
-                run_command(
-                    [str(wasmtime), "run", str(temporary_component)],
-                    "wasmtime component runtime",
-                )
+                runtime_observation = run_runtime(wasmtime, temporary_component)
                 if sha256(temporary_component) != runtime_artifact_sha256:
                     raise ComponentPackagingError(
                         "wasmtime runtime changed component bytes; refusing promotion"
+                    )
+                if runtime_evidence is not None:
+                    write_runtime_evidence(
+                        runtime_evidence,
+                        {
+                            "schema_version": 1,
+                            "kind": "lsharp-native-component-runtime-evidence",
+                            "command": command,
+                            "source": str(source),
+                            "source_sha256": "sha256:" + sha256(source),
+                            "component_sha256": "sha256:" + runtime_artifact_sha256,
+                            "runtime": runtime_observation,
+                        },
                     )
 
             try:
@@ -272,7 +369,24 @@ def main(argv=None):
         output = validate_output(args.output)
         wasm_tools = find_wasm_tools(args.wasm_tools)
         wasmtime = find_wasmtime(args.wasmtime) if args.wasmtime else None
-        package_component(program, wasm_tools, wasmtime, args.command, source, output)
+        if args.runtime_evidence and wasmtime is None:
+            raise ComponentPackagingError(
+                "runtime evidence requires an explicit --wasmtime runtime"
+            )
+        runtime_evidence = (
+            validate_runtime_evidence(args.runtime_evidence)
+            if args.runtime_evidence
+            else None
+        )
+        package_component(
+            program,
+            wasm_tools,
+            wasmtime,
+            runtime_evidence,
+            args.command,
+            source,
+            output,
+        )
     except ComponentPackagingError as error:
         write_error(error)
         return 1

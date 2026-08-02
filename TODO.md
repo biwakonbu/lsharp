@@ -2533,6 +2533,15 @@ current-source Mac/Linux runtime、packaged App.Cli/rollback bytes parity、live
 M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-official-cross-target-source-smoke-projection.md`](docs/adr/decisions-v0.3-native-official-cross-target-source-smoke-projection.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: explicit component runtimeの実行結果を source/artifactへ結合した。
+`--runtime-evidence PATH` を `--wasmtime PATH` と組み合わせた場合だけ、semantic validation後の source digest、temporary component digest、runtime exit/stdout/stderrを
+atomic sidecarへ記録し、receipt生成成功後に限り packaged promotionする。fake native→component new→validate→wasmtime fixtureで16 testsがGREENとなり、
+output identity、runtime mutation、既存 output保持、temporary cleanupを確認した。これは直前の static source/ftable/import projectionや bytes mutation guardとは別の
+component instantiation/runtime evidence boundaryであり、report schemaは追加していない。real component instantiation、Rust/native producer parity、
+current-source Mac/Linux runtime、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。
+Evidence: [`decisions-v0.3-native-component-runtime-evidence.md`](docs/adr/decisions-v0.3-native-component-runtime-evidence.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 の verified partial: native component の explicit `wasmtime run` と packaged promotionの artifact identityを接続した。
 `wasm-tools validate` 後の temporary component digestを runtime前に固定し、runtimeが成功しても bytesを変更していた場合は `os.replace` 前に
 fail-closed にする。同一 fake native→component new→validate→wasmtime fixtureで、成功経路、runtime mutation拒否、既存 output保持、temporary
