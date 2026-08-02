@@ -2420,17 +2420,43 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                 let abs_resolved = canonicalize_driver_path(&resolved)?;
                 let source_id = dependency_source_string(spec, project_dir);
                 let link_path = installed_package_dir(&packages_dir, name, &source_id);
-                // 既存のシンボリックリンクがあれば削除
-                if link_path.exists() || link_path.symlink_metadata().is_ok() {
-                    std::fs::remove_file(&link_path)
-                        .or_else(|_| std::fs::remove_dir_all(&link_path))
-                        .map_err(|e| driver_io_error(format!("既存リンクの削除に失敗: {e}")))?;
+                if let Ok(metadata) = link_path.symlink_metadata()
+                    && !metadata.file_type().is_symlink()
+                {
+                    return Err(miette::miette!(
+                        "refusing to replace non-symlink path package: {}",
+                        link_path.display()
+                    ));
                 }
 
                 #[cfg(unix)]
-                std::os::unix::fs::symlink(&abs_resolved, &link_path).map_err(|e| {
-                    driver_io_error(format!("シンボリックリンク作成に失敗 '{name}': {e}"))
-                })?;
+                {
+                    let temporary_link = packages_dir.join(format!(
+                        ".{}.installing-{}",
+                        link_path
+                            .file_name()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or("package"),
+                        std::process::id()
+                    ));
+                    if temporary_link.symlink_metadata().is_ok() {
+                        return Err(miette::miette!(
+                            "temporary path package already exists: {}",
+                            temporary_link.display()
+                        ));
+                    }
+                    if let Err(error) = std::os::unix::fs::symlink(&abs_resolved, &temporary_link) {
+                        return Err(driver_io_error(format!(
+                            "シンボリックリンク作成に失敗 '{name}': {error}"
+                        )));
+                    }
+                    if let Err(error) = std::fs::rename(&temporary_link, &link_path) {
+                        let _ = std::fs::remove_file(&temporary_link);
+                        return Err(driver_io_error(format!(
+                            "シンボリックリンク install の確定に失敗 '{name}': {error}"
+                        )));
+                    }
+                }
 
                 #[cfg(not(unix))]
                 std::fs::copy(&abs_resolved, &link_path)

@@ -90,6 +90,13 @@ class NativeSelfhostInstallTest(unittest.TestCase):
             current[key.strip()] = json.loads(value.strip())
         return entries
 
+    def fnv1a64(self, value):
+        hashed = 0xCBF29CE484222325
+        for byte in value.encode("utf-8"):
+            hashed ^= byte
+            hashed = (hashed * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+        return f"{hashed:016x}"
+
     def test_installs_path_dependency_with_exported_module_index_and_lock(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
@@ -334,6 +341,33 @@ class NativeSelfhostInstallTest(unittest.TestCase):
             self.assertIn("refusing symlinked managed directory", result.stderr)
             self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep\n")
+
+    def test_refuses_existing_non_symlink_package_destination_without_touching_it(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            project = root / "project"
+            project.mkdir()
+            dependency = root / "dependency"
+            self.write_package(dependency, "demo", "1.0.0", {"Demo.ls": "(module Demo)\n"})
+            (project / "lsharp.toml").write_text(
+                '[dependencies.demo]\npath = "../dependency"\n',
+                encoding="utf-8",
+            )
+            packages = project / ".lsharp" / "packages"
+            packages.mkdir(parents=True)
+            source_id = f"path:{dependency.resolve()}"
+            destination = packages / f"demo-{self.fnv1a64(source_id)[:8]}"
+            destination.mkdir()
+            sentinel = destination / "sentinel"
+            sentinel.write_text("preserve\n", encoding="utf-8")
+            environment, marker = self.poison_host_commands(root)
+
+            result = self.run_installer(project, environment)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("refusing to replace non-symlink path package", result.stderr)
+            self.assertFalse(marker.exists(), "Cargo/lsharp fallback must not run")
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
 
     def test_requires_an_explicit_existing_project_dir(self):
         result = subprocess.run(

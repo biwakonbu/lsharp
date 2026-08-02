@@ -2397,3 +2397,13 @@ partial sliceである。M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` の
 current-source Linux runtime、Mac/Linux packaged/rollback bytes parityは未検証である。current-source manifest/expected replay lockは
 現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行。
 Evidence: [`decisions-v0.3-native-official-stage0-identity-binding.md`](docs/adr/decisions-v0.3-native-official-stage0-identity-binding.md)。
+
+2026-08-02 に offline path-package installationの Rust/native destination
+boundary parityを追加した。既存の `.lsharp/packages/<name>-<source-hash>` が通常 file/directoryなら、Rust `cmd_install`
+も native installer と同じ `refusing to replace non-symlink path package` で拒否し、sentinelを保持する。
+既存 symlinkの更新は task-owned temporary symlinkを `rename` で確定し、失敗時に一時物だけを回収する。
+同一 path dependency fixtureの RED→GREEN を Rust 5 tests と native install 8 testsで確認した。これは MCPに新しい
+install routeを追加せず、offline package-installの mutation safetyに限定した verified partial sliceである。
+Git/registry取得は外部/provider boundary、native MCP package projection、current-source Linux runtime、Mac/Linux両 targetの
+packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-destination-boundary.md`](docs/adr/decisions-v0.3-native-package-install-destination-boundary.md)。

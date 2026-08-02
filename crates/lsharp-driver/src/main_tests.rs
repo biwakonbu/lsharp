@@ -1606,6 +1606,54 @@ fn test_cmd_install_path_dependency() {
 }
 
 #[test]
+fn test_cmd_install_path_dependency_refuses_existing_non_symlink_destination() {
+    let base_dir = std::env::temp_dir().join(format!(
+        "lsharp_test_install_destination_collision_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&base_dir);
+    std::fs::create_dir_all(&base_dir).unwrap();
+
+    let dep_dir = base_dir.join("mylib");
+    std::fs::create_dir_all(dep_dir.join("src")).unwrap();
+    std::fs::write(
+        dep_dir.join("lsharp.toml"),
+        "[project]\nname = \"mylib\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(dep_dir.join("src/Lib.ls"), "(module Lib)\n").unwrap();
+    std::fs::write(
+        base_dir.join("lsharp.toml"),
+        "[dependencies.mylib]\npath = \"mylib\"\n",
+    )
+    .unwrap();
+
+    let packages_dir = base_dir.join(".lsharp/packages");
+    std::fs::create_dir_all(&packages_dir).unwrap();
+    let source_id = format!("path:{}", dep_dir.canonicalize().unwrap().display());
+    let destination = installed_package_dir(&packages_dir, "mylib", &source_id);
+    std::fs::create_dir_all(&destination).unwrap();
+    let sentinel = destination.join("sentinel");
+    std::fs::write(&sentinel, "preserve\n").unwrap();
+
+    let error = cmd_install_in(&base_dir)
+        .expect_err("既存の非 symlink package destination は fail-closed であるべき");
+    assert!(
+        error
+            .to_string()
+            .contains("refusing to replace non-symlink path package"),
+        "unexpected install error: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&sentinel).unwrap(),
+        "preserve\n",
+        "既存 destination は install failure 後も保持されるべき"
+    );
+
+    std::fs::remove_dir_all(&base_dir).unwrap();
+}
+
+#[test]
 fn test_cmd_install_path_dependency_writes_module_index_for_exported_modules() {
     let base_dir = std::env::temp_dir().join("lsharp_test_install_module_index");
     let _ = std::fs::remove_dir_all(&base_dir);
