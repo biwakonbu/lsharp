@@ -2381,3 +2381,11 @@ M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。live provi
 current-source Linux runtime、Mac/Linux packaged/rollback bytes parityは未検証である。current-source manifest/expected replay lockは
 現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行。
 Evidence: [`decisions-v0.3-source-smoke-fetched-payload-binding.md`](docs/adr/decisions-v0.3-source-smoke-fetched-payload-binding.md)。
+
+2026-08-02 に official two-target orchestrator の target source-smoke postflightへ、fetched
+`${SMOKE_ROOT}/stage0-${target}` と evidence manifestの `stage0_payload_sha256` exact cross-checkを追加した。
+fake Mac/Linux matching projectionと、Linux digest改変を `stage0_payload_sha256 mismatch` で拒否する RED→GREENを確認した
+verified partial sliceである。M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残し、live provider/auth、native crypto、
+current-source Linux runtime、Mac/Linux packaged/rollback bytes parityは未検証である。current-source manifest/expected replay lockは
+現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行。
+Evidence: [`decisions-v0.3-native-official-source-smoke-payload-binding.md`](docs/adr/decisions-v0.3-native-official-source-smoke-payload-binding.md)。

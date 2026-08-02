@@ -30,6 +30,7 @@ VM_COPY_FAILURE_SMOKE_ROOT=""
 RUNNING_VM_SMOKE_ROOT=""
 CLEANUP_FAILURE_SMOKE_ROOT=""
 MISSING_REPORT_SMOKE_ROOT=""
+PAYLOAD_MISMATCH_SMOKE_ROOT=""
 REPORT_FREE_SMOKE_ROOT=""
 REPORT_FREE_EVIDENCE_ROOT=""
 MISMATCH_SMOKE_ROOT=""
@@ -50,6 +51,7 @@ cleanup() {
   [[ -z "$RUNNING_VM_SMOKE_ROOT" ]] || rm -rf "$RUNNING_VM_SMOKE_ROOT"
   [[ -z "$CLEANUP_FAILURE_SMOKE_ROOT" ]] || rm -rf "$CLEANUP_FAILURE_SMOKE_ROOT"
   [[ -z "$MISSING_REPORT_SMOKE_ROOT" ]] || rm -rf "$MISSING_REPORT_SMOKE_ROOT"
+  [[ -z "$PAYLOAD_MISMATCH_SMOKE_ROOT" ]] || rm -rf "$PAYLOAD_MISMATCH_SMOKE_ROOT"
   [[ -z "$REPORT_FREE_SMOKE_ROOT" ]] || rm -rf "$REPORT_FREE_SMOKE_ROOT"
   [[ -z "$REPORT_FREE_EVIDENCE_ROOT" ]] || rm -rf "$REPORT_FREE_EVIDENCE_ROOT"
   [[ -z "$MISMATCH_SMOKE_ROOT" ]] || rm -rf "$MISMATCH_SMOKE_ROOT"
@@ -81,13 +83,28 @@ if [[ -n "$evidence" ]]; then
   mkdir -p "$evidence"
   python3 - "${NATIVE_SELFHOST_REVIEW_ATTESTATION_REPORT:-}" "$evidence/manifest.json" <<'PY'
 import json
+import hashlib
+import os
 import pathlib
 import sys
 
 report_path = pathlib.Path(sys.argv[1]) if sys.argv[1] else None
-if "FAKE_EXPECT_ATTESTATION_REPORT" in __import__("os").environ and not report_path:
+if "FAKE_EXPECT_ATTESTATION_REPORT" in os.environ and not report_path:
     raise SystemExit("fake Mac source smoke did not receive review attestation report")
-manifest = {"target": "aarch64-apple-darwin"}
+stage0_dir = pathlib.Path(os.environ["NATIVE_STAGE0_DIR"])
+records = []
+for path in sorted(stage0_dir.rglob("*")):
+    if path.is_file() and not path.is_symlink():
+        records.append(
+            path.relative_to(stage0_dir).as_posix().encode()
+            + b"\0"
+            + str(path.stat().st_size).encode()
+            + b"\0"
+            + hashlib.sha256(path.read_bytes()).hexdigest().encode()
+            + b"\n"
+        )
+payload_digest = hashlib.sha256(b"".join(records)).hexdigest()
+manifest = {"target": "aarch64-apple-darwin", "stage0_payload_sha256": payload_digest}
 if report_path:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     attestations = report["review_attestations"]
@@ -107,6 +124,7 @@ if [[ -n "$evidence" ]]; then
   mkdir -p "$evidence"
   python3 - "${LSHARP_NATIVE_LINUX_X86_REVIEW_ATTESTATION_REPORT:-}" "$evidence/manifest.json" <<'PY'
 import json
+import hashlib
 import os
 import pathlib
 import sys
@@ -114,13 +132,28 @@ import sys
 report_path = pathlib.Path(sys.argv[1]) if sys.argv[1] else None
 if "FAKE_EXPECT_ATTESTATION_REPORT" in os.environ and not report_path:
     raise SystemExit("fake Linux source smoke did not receive review attestation report")
-manifest = {"target": "x86_64-unknown-linux-gnu"}
+stage0_dir = pathlib.Path(os.environ["LSHARP_NATIVE_LINUX_X86_STAGE0_DIR"])
+records = []
+for path in sorted(stage0_dir.rglob("*")):
+    if path.is_file() and not path.is_symlink():
+        records.append(
+            path.relative_to(stage0_dir).as_posix().encode()
+            + b"\0"
+            + str(path.stat().st_size).encode()
+            + b"\0"
+            + hashlib.sha256(path.read_bytes()).hexdigest().encode()
+            + b"\n"
+        )
+payload_digest = hashlib.sha256(b"".join(records)).hexdigest()
+manifest = {"target": "x86_64-unknown-linux-gnu", "stage0_payload_sha256": payload_digest}
 if report_path:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     attestations = report["review_attestations"]
     if os.environ.get("FAKE_ATTESTATION_MODE") == "linux-mismatch":
         attestations = [dict(attestations[0], state="verified")]
     manifest["review_attestations"] = attestations
+if os.environ.get("FAKE_PAYLOAD_MODE") == "linux-mismatch":
+    manifest["stage0_payload_sha256"] = "wrong-linux-payload"
 pathlib.Path(sys.argv[2]).write_text(json.dumps(manifest) + "\n", encoding="utf-8")
 PY
 fi
@@ -308,6 +341,7 @@ SOURCE_COMMIT="$SOURCE_COMMIT" \
 DIST_DIR="$FAKE_ROOT/dist" \
 SMOKE_ROOT="$SMOKE_ROOT" \
 LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$SMOKE_ROOT" \
+KEEP_WORK_DIR=1 \
 NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$SOURCE_SMOKE_EVIDENCE_ROOT" \
 NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="$REVIEW_ATTESTATION_REPORT" \
 FAKE_EXPECT_ATTESTATION_REPORT=1 \
@@ -338,15 +372,35 @@ grep -F "runtime linux stage0=$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu eviden
   || { echo 'Linux source smoke evidence was not retained' >&2; exit 1; }
 python3 - "$REVIEW_ATTESTATION_REPORT" \
   "$SOURCE_SMOKE_EVIDENCE_ROOT/aarch64-apple-darwin/manifest.json" \
-  "$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" <<'PY'
+  "$SOURCE_SMOKE_EVIDENCE_ROOT/x86_64-unknown-linux-gnu/manifest.json" \
+  "$SMOKE_ROOT/stage0-aarch64-apple-darwin" \
+  "$SMOKE_ROOT/stage0-x86_64-unknown-linux-gnu" <<'PY'
+import hashlib
 import json
 import pathlib
 import sys
 
 expected = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["review_attestations"]
-for manifest_path in map(pathlib.Path, sys.argv[2:]):
+for manifest_path, stage0_dir_arg in zip(
+    map(pathlib.Path, sys.argv[2:4]),
+    sys.argv[4:6],
+):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest.get("review_attestations") == expected, manifest_path
+    stage0_dir = pathlib.Path(stage0_dir_arg)
+    records = []
+    for path in sorted(stage0_dir.rglob("*")):
+        if path.is_file() and not path.is_symlink():
+            records.append(
+                path.relative_to(stage0_dir).as_posix().encode()
+                + b"\0"
+                + str(path.stat().st_size).encode()
+                + b"\0"
+                + hashlib.sha256(path.read_bytes()).hexdigest().encode()
+                + b"\n"
+            )
+    expected_payload = hashlib.sha256(b"".join(records)).hexdigest()
+    assert manifest["stage0_payload_sha256"] == expected_payload, manifest_path
 PY
 grep -F "report=$REVIEW_ATTESTATION_REPORT" "$LOG_PATH" >/dev/null
 grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
@@ -413,6 +467,37 @@ mismatch_output="$(<"$mismatch_output_path")"
   || { echo 'target review attestation mismatch was unexpectedly accepted' >&2; exit 1; }
 grep -F 'source smoke evidence review_attestations mismatch' <<<"$mismatch_output" >/dev/null \
   || { echo 'target review attestation mismatch diagnostic was missing' >&2; echo "$mismatch_output" >&2; exit 1; }
+
+PAYLOAD_MISMATCH_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-payload-mismatch.XXXXXX)"
+payload_mismatch_output_path="$TMP_ROOT/payload-mismatch-output.log"
+set +e
+FAKE_LOG="$LOG_PATH" \
+PATH="$PATH_PREFIX:$PATH" \
+VERSION="$VERSION" \
+SOURCE_COMMIT="$SOURCE_COMMIT" \
+DIST_DIR="$TMP_ROOT/payload-mismatch-dist" \
+SMOKE_ROOT="$PAYLOAD_MISMATCH_SMOKE_ROOT" \
+LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$PAYLOAD_MISMATCH_SMOKE_ROOT" \
+NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$TMP_ROOT/payload-mismatch-evidence" \
+NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="$REVIEW_ATTESTATION_REPORT" \
+FAKE_EXPECT_ATTESTATION_REPORT=1 \
+FAKE_PAYLOAD_MODE=linux-mismatch \
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+  bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" >"$payload_mismatch_output_path" 2>&1
+payload_mismatch_status=$?
+set -e
+payload_mismatch_output="$(<"$payload_mismatch_output_path")"
+[[ "$payload_mismatch_status" -ne 0 ]] \
+  || { echo 'target stage0 payload mismatch was unexpectedly accepted' >&2; exit 1; }
+grep -F 'source smoke evidence stage0_payload_sha256 mismatch' <<<"$payload_mismatch_output" >/dev/null \
+  || { echo 'target stage0 payload mismatch diagnostic was missing' >&2; echo "$payload_mismatch_output" >&2; exit 1; }
 
 before_provider_clock_log_lines="$(wc -l <"$LOG_PATH" | tr -d '[:space:]')"
 PROVIDER_CLOCK_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-provider-clock.XXXXXX)"

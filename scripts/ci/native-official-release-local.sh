@@ -267,25 +267,56 @@ validate_source_smoke_evidence_projection() {
   local target="$1"
   local evidence_dir="$2"
   local manifest_path="${evidence_dir}/manifest.json"
+  local stage0_dir="${SMOKE_ROOT}/stage0-${target}"
   [[ -n "${evidence_dir}" ]] || return 0
   [[ -d "${evidence_dir}" && ! -L "${evidence_dir}" ]] \
     || { echo "ERROR: source smoke evidence directory is unavailable for ${target}: ${evidence_dir}" >&2; exit 1; }
   [[ -f "${manifest_path}" && ! -L "${manifest_path}" && -s "${manifest_path}" ]] \
     || { echo "ERROR: source smoke evidence manifest is unavailable for ${target}: ${manifest_path}" >&2; exit 1; }
-  python3 - "${manifest_path}" "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" "${target}" <<'PY'
+  python3 - "${manifest_path}" "${NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT}" "${target}" "${stage0_dir}" <<'PY'
+import hashlib
 import json
+import os
 import pathlib
 import sys
 
 manifest_path = pathlib.Path(sys.argv[1])
 report_path = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 target = sys.argv[3]
+stage0_dir = pathlib.Path(sys.argv[4])
 try:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as error:
     raise SystemExit(f"ERROR: source smoke evidence manifest is invalid JSON for {target}: {manifest_path}: {error}")
 if not isinstance(manifest, dict):
     raise SystemExit(f"ERROR: source smoke evidence manifest must be a JSON object for {target}: {manifest_path}")
+if stage0_dir.is_symlink() or not stage0_dir.is_dir():
+    raise SystemExit(f"ERROR: fetched stage0 directory is unavailable for {target}: {stage0_dir}")
+for root, directories, files in os.walk(stage0_dir, topdown=True, followlinks=False):
+    for name in sorted((*directories, *files)):
+        candidate = pathlib.Path(root) / name
+        if candidate.is_symlink():
+            raise SystemExit(f"ERROR: fetched stage0 directory contains a symlink for {target}: {candidate}")
+records = []
+for path in sorted(stage0_dir.rglob("*")):
+    if path.is_file() and not path.is_symlink():
+        records.append(
+            path.relative_to(stage0_dir).as_posix().encode("utf-8")
+            + b"\0"
+            + str(path.stat().st_size).encode("ascii")
+            + b"\0"
+            + hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii")
+            + b"\n"
+        )
+if not records:
+    raise SystemExit(f"ERROR: fetched stage0 directory contains no regular payload for {target}: {stage0_dir}")
+expected_payload_digest = hashlib.sha256(b"".join(records)).hexdigest()
+if manifest.get("stage0_payload_sha256") != expected_payload_digest:
+    raise SystemExit(
+        "ERROR: source smoke evidence stage0_payload_sha256 mismatch: "
+        f"target={target} manifest={manifest_path} expected={expected_payload_digest} "
+        f"actual={manifest.get('stage0_payload_sha256')!r}"
+    )
 if report_path:
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
