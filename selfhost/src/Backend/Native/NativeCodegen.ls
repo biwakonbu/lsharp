@@ -803,7 +803,9 @@
           1
           (if (= opcode 86)
             1
-            0))))))
+            (if (= opcode 91)
+              1
+              0)))))))
 
 (defn is-one-pop-reducer-opcode [opcode]
   (if (= opcode 11)
@@ -8969,7 +8971,7 @@
                                                     (if (>= current-depth 3) (+ 12 (* (- current-depth 3) 14)) 5)
                                                   (if (= opcode 73)
                                                     7
-                                                    (if (= opcode 86)
+                                                    (if (if (= opcode 86) true (= opcode 91))
                                                       (if (>= current-depth 2) (+ 14 (* (- current-depth 2) 14)) (if (= current-depth 1) 7 5))
                                                       (if (= opcode 87)
                                                         7
@@ -10149,6 +10151,54 @@
         (root_pop)
         0))))
 
+;; x86_64 read-stdin helper: stdin を bounded native heap の tagged String として返す。
+(defn emit-x86-selfhost-read-stdin-helper []
+  (let [
+    part1 (byte-vector-4 65 84 73 139)
+    part2 (byte-vector-4 14 72 133 201)
+    part3 (byte-vector-4 117 5 185 0)
+    part4 (byte-vector-4 32 0 0 72)
+    part5 (byte-vector-4 137 207 72 129)
+    part6 (byte-vector-4 193 16 0 32)
+    part7 (byte-vector-4 0 73 139 86)
+    part8 (byte-vector-4 8 72 57 209)
+    part9 (byte-vector-4 119 65 76 1)
+    part10 (byte-vector-4 247 73 137 252)
+    part11 (byte-vector-4 49 255 73 141)
+    part12 (byte-vector-4 116 36 8 186)
+    part13 (byte-vector-4 0 0 32 0)
+    part14 (byte-vector-4 49 192 15 5)
+    part15 (byte-vector-4 72 133 192 120)
+    part16 (byte-vector-4 38 73 141 148)
+    part17 (byte-vector-4 36 16 0 32)
+    part18 (byte-vector-4 0 76 41 242)
+    part19 (byte-vector-4 73 137 22 65)
+    part20 (byte-vector-4 199 4 36 5)
+    part21 (byte-vector-4 0 0 0 65)
+    part22 (byte-vector-4 137 68 36 4)
+    part23 (byte-vector-4 76 137 224 72)
+    part24 (byte-vector-4 15 186 232 63)
+    part25 (byte-vector-4 65 92 195 49)
+    part26 (byte-vector-4 192 65 92 195)
+    group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
+    group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
+    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
+    group4 (concat-five-byte-vectors-rooted part16 part17 part18 part19 part20)
+    group5 (concat-five-byte-vectors-rooted part21 part22 part23 part24 part25)
+    head (concat-five-byte-vectors-rooted group1 group2 group3 group4 group5)]
+    (concat-three-byte-vectors-rooted head part26 (vector-new 0))))
+
+(defn append-x86-selfhost-read-stdin-helper-rooted [result]
+  (do
+    (root_push result)
+    (let [native (emit-x86-selfhost-read-stdin-helper)]
+      (do
+        (root_push native)
+        (append-native-bytes-rooted result native 104)
+        (root_pop)
+        (root_pop)
+        0))))
+
 ;; x86_64 write-file helper: String path/content を Linux write syscall で保存する。
 (defn emit-x86-selfhost-write-file-helper []
   (let [
@@ -10576,6 +10626,9 @@
 (defn x86-selfhost-int-to-string-helper-size []
   160)
 
+(defn x86-selfhost-read-stdin-helper-size []
+  104)
+
 (defn x86-selfhost-helper-trailer-size [import-count]
   (+ (x86-import-stub-size import-count)
      (+ (x86-selfhost-command-line-arg-helper-size)
@@ -10603,7 +10656,8 @@
                                                                      (+ (x86-selfhost-proc-exit-helper-size)
                                                                         (+ (x86-selfhost-write-file-helper-size)
                                                                            (+ (x86-selfhost-write-file-bytes-helper-size)
-                                                                              (x86-selfhost-int-to-string-helper-size))))))))))))))))))))))))))))
+                                                                              (+ (x86-selfhost-int-to-string-helper-size)
+                                                                                 (x86-selfhost-read-stdin-helper-size)))))))))))))))))))))))))))))
 
 (defn x86-helper-base-offset [import-stub-offset import-count]
   (+ import-stub-offset (x86-import-stub-size import-count)))
@@ -10686,6 +10740,9 @@
 (defn x86-selfhost-int-to-string-helper-offset [import-stub-offset import-count]
   (+ (x86-helper-base-offset import-stub-offset import-count) 2222))
 
+(defn x86-selfhost-read-stdin-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 2382))
+
 (defn is-selfhost-runtime-opcode-x86-core [opcode]
   (if (= opcode 64)
     1
@@ -10729,15 +10786,19 @@
                                         1
                                         (if (= opcode 86)
                                           1
-                                          (if (= opcode 87)
+                                          (if (= opcode 91)
                                             1
-                                            (if (= opcode 88)
-                                              1
-                                              0))))))))))))))))))))))))
+                                            (if (= opcode 87)
+                                            1
+                                              (if (= opcode 88)
+                                                1
+                                                0)))))))))))))))))))))))))
 
 (defn codegen-selfhost-runtime-bundle-x86-core [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
-  (if (= opcode 86)
-    (let [target-offset (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+  (if (if (= opcode 86) true (= opcode 91))
+    (let [target-offset (if (= opcode 86)
+                          (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                          (x86-selfhost-read-stdin-helper-offset import-stub-offset import-count))
       call-next-offset (native-call-rel-next-offset-x86 0 current-depth)
       call-rel (- target-offset (+ current-offset call-next-offset))
       call-rel-bytes (emit-call-rel32 call-rel)]
@@ -11331,19 +11392,23 @@
               frame-base-slot-count
               current-depth)
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
-        (if (= opcode 86)
+        (if (if (= opcode 86) true (= opcode 91))
           (do
             (if (= current-depth 0)
               (append-call-rel32-x86
                 result
-                (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                (- (if (= opcode 86)
+                     (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                     (x86-selfhost-read-stdin-helper-offset import-stub-offset import-count))
                    (+ (x86-current-emitted-offset result emit-start-base) 5)))
               (if (= current-depth 1)
                 (do
                   (append-x86-byte result 80)
                   (append-call-rel32-x86
                     result
-                    (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                    (- (if (= opcode 86)
+                         (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                         (x86-selfhost-read-stdin-helper-offset import-stub-offset import-count))
                        (+ (x86-current-emitted-offset result emit-start-base) 5)))
                   (append-x86-byte result 89))
                 (do
@@ -11352,7 +11417,9 @@
                   (append-x86-byte result 80)
                   (append-call-rel32-x86
                     result
-                    (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                    (- (if (= opcode 86)
+                         (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                         (x86-selfhost-read-stdin-helper-offset import-stub-offset import-count))
                        (+ (x86-current-emitted-offset result emit-start-base) 5)))
                   (append-x86-byte result 89))))
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
@@ -14200,6 +14267,7 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-write-file-helper) 187)
           (append-native-bytes-rooted result (emit-x86-selfhost-write-file-bytes-helper) 255)
           (append-native-bytes-rooted result (emit-x86-selfhost-int-to-string-helper) 160)
+          (append-native-bytes-rooted result (emit-x86-selfhost-read-stdin-helper) 104)
           (ref-get result))]
         (do
           (root_pop)
@@ -15800,6 +15868,55 @@
         (root_pop)
         0))))
 
+;; AArch64 read-stdin helper: stdin を bounded native heap の tagged String として返す。
+(defn emit-aarch64-selfhost-read-stdin-helper []
+  (let [result (ref-new (vector-new 156))]
+    (do
+      (root_push result)
+      (append-encoded-u32-rooted result 3036676501)
+      (append-encoded-u32-rooted result 3531603968)
+      (append-encoded-u32-rooted result 3533709313)
+      (append-encoded-u32-rooted result 3531604066)
+      (append-encoded-u32-rooted result 3531735107)
+      (append-encoded-u32-rooted result 2457862148)
+      (append-encoded-u32-rooted result 3531603973)
+      (append-encoded-u32-rooted result 3531610288)
+      (append-encoded-u32-rooted result 3556773889)
+      (append-encoded-u32-rooted result 1409287042)
+      (append-encoded-u32-rooted result 2852127733)
+      (append-encoded-u32-rooted result 3533701174)
+      (append-encoded-u32-rooted result 3533702168)
+      (append-encoded-u32-rooted result 2432705282)
+      (append-encoded-u32-rooted result 2432703554)
+      (append-encoded-u32-rooted result 3544448066)
+      (append-encoded-u32-rooted result 3548246082)
+      (append-encoded-u32-rooted result 2853569504)
+      (append-encoded-u32-rooted result 2332164822)
+      (append-encoded-u32-rooted result 2332033699)
+      (append-encoded-u32-rooted result 1384120356)
+      (append-encoded-u32-rooted result 3103785060)
+      (append-encoded-u32-rooted result 706216932)
+      (append-encoded-u32-rooted result 3103786084)
+      (append-encoded-u32-rooted result 2852127737)
+      (append-encoded-u32-rooted result 2852324346)
+      (append-encoded-u32-rooted result 3531603968)
+      (append-encoded-u32-rooted result 2432704609)
+      (append-encoded-u32-rooted result 2853700578)
+      (append-encoded-u32-rooted result 3531604080)
+      (append-encoded-u32-rooted result 3556773889)
+      (append-encoded-u32-rooted result 1409286338)
+      (append-encoded-u32-rooted result 2852127736)
+      (append-encoded-u32-rooted result 3103786840)
+      (append-encoded-u32-rooted result 3538944004)
+      (append-encoded-u32-rooted result 2852389664)
+      (append-encoded-u32-rooted result 3596551104)
+      (append-encoded-u32-rooted result 2854159328)
+      (append-encoded-u32-rooted result 3596551104)
+      (let [final (ref-get result)]
+        (do
+          (root_pop)
+          final)))))
+
 (defn aarch64-import-stub-count [import-count]
   (if (> import-count 0) import-count 1))
 
@@ -15890,8 +16007,11 @@
 (defn aarch64-selfhost-int-to-string-helper-offset [import-stub-offset import-count]
   (+ (aarch64-helper-base-offset import-stub-offset import-count) 3120))
 
+(defn aarch64-selfhost-read-stdin-helper-offset [import-stub-offset import-count]
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 3296))
+
 (defn aarch64-selfhost-helper-trailer-size [import-count]
-  (+ (aarch64-selfhost-int-to-string-helper-offset 0 import-count) 176))
+  (+ (aarch64-selfhost-read-stdin-helper-offset 0 import-count) 156))
 
 (defn aarch64-bundle-initial-capacity [import-stub-offset import-count]
   (+ import-stub-offset (aarch64-selfhost-helper-trailer-size import-count)))
@@ -17868,9 +17988,11 @@
                     (if (= current-depth 1) 16 12))
                   (if (= opcode 86)
                     (native-produce-one-size-aarch64 12 current-depth)
-                    (if (= opcode 61)
-                      12
-                      (native-selfhost-runtime-helper-tail-size-aarch64 opcode current-depth))))))))))))
+                    (if (= opcode 91)
+                      (native-produce-one-size-aarch64 12 current-depth)
+                      (if (= opcode 61)
+                        12
+                        (native-selfhost-runtime-helper-tail-size-aarch64 opcode current-depth)))))))))))))
 
 (defn native-instr-size-aarch64-core [opcode operand function-metas current-depth]
   (if (= (is-control-opcode opcode) 1)
@@ -18940,11 +19062,13 @@
                       (- (aarch64-selfhost-map-new-helper-offset import-stub-offset import-count) (+ current-offset 4)))
                     frame-base-slot-count
                     current-depth)
-                  (if (= opcode 86)
+                  (if (if (= opcode 86) true (= opcode 91))
                     (let [prefix-size (native-produce-one-prefix-size-aarch64 12 current-depth)]
                       (emit-produce-one-bundle-aarch64
                         (emit-aarch64-helper-call-preserving-prev-and-lr
-                          (- (aarch64-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                          (- (if (= opcode 86)
+                               (aarch64-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                               (aarch64-selfhost-read-stdin-helper-offset import-stub-offset import-count))
                              (+ current-offset (+ prefix-size 4))))
                         frame-base-slot-count
                         current-depth))
@@ -20380,6 +20504,7 @@
             (append-native-bytes-rooted result (emit-aarch64-selfhost-write-file-helper) 224)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-write-file-bytes-helper) 308)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-int-to-string-helper) 176)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-read-stdin-helper) 156)
             (ref-get result))]
           (do
             (root_pop)

@@ -89,6 +89,7 @@
 (defn ir-command-line-args [] 86)
 (defn ir-print-string [] 87)
 (defn ir-proc-exit [] 88)
+(defn ir-read-stdin [] 91)
 
 ;; === 命令構築 ===
 

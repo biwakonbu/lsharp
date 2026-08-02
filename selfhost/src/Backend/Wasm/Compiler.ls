@@ -504,7 +504,7 @@
 (defn alloc-builtin-op [bop] (if (= bop 54) true (= bop 56)))
 
 (defn env-slot-builtin-op [bop] (if (= bop 50) true (if (= bop 53) true (if (= bop 55) true (if (= bop 58) true (if (= bop 63) true (if (= bop 65) true (= bop 66))))))))
-(defn nullary-builtin-op [bop] (if (= bop 75) true (= bop 86)))
+(defn nullary-builtin-op [bop] (if (= bop 75) true (if (= bop 86) true (= bop 91))))
 (defn ternary-builtin-op [bop] (= bop 69))
 
 (defn apply-args-safe-for-ftable [node arg-idx arg-count]
