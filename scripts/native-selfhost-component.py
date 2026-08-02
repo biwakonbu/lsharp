@@ -70,6 +70,20 @@ def validate_output(value):
     return output
 
 
+def validate_wasm_artifact(label, path):
+    if path.is_symlink() or not path.is_file():
+        raise ComponentPackagingError(f"{label} produced invalid Wasm artifact: {path}")
+    try:
+        with path.open("rb") as artifact:
+            magic = artifact.read(4)
+    except OSError as error:
+        raise ComponentPackagingError(
+            f"{label} produced invalid Wasm artifact: {path}: {error}"
+        ) from error
+    if magic != b"\x00asm":
+        raise ComponentPackagingError(f"{label} produced invalid Wasm artifact: {path}")
+
+
 def find_wasm_tools(value):
     if value is not None:
         return validate_executable("wasm-tools", value)
@@ -149,6 +163,7 @@ def package_component(program, wasm_tools, command, source, output):
                 raise ComponentPackagingError(
                     f"native program did not create core Wasm output: {core_output}"
                 )
+            validate_wasm_artifact("native program", core_output)
 
             temporary_component = create_temporary_component_path(output)
             run_command(
@@ -167,6 +182,7 @@ def package_component(program, wasm_tools, command, source, output):
                     "wasm-tools did not create component output: "
                     f"{temporary_component}"
                 )
+            validate_wasm_artifact("wasm-tools", temporary_component)
 
             try:
                 os.replace(temporary_component, output)

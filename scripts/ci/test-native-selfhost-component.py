@@ -48,6 +48,10 @@ class NativeSelfhostComponentTest(unittest.TestCase):
                 sys.stderr.write("fake native failure\\n")
                 raise SystemExit(17)
 
+            if mode == "invalid-core":
+                output.write_bytes(b"not-wasm")
+                raise SystemExit(0)
+
             output.write_bytes(b"\\x00asmfake-core")
             if mode == "warning":
                 sys.stderr.write("fake native warning\\n")
@@ -88,6 +92,10 @@ class NativeSelfhostComponentTest(unittest.TestCase):
                 raise SystemExit(23)
             if mode == "directory":
                 output.mkdir()
+                raise SystemExit(0)
+
+            if mode == "invalid-output":
+                output.write_bytes(b"not-wasm")
                 raise SystemExit(0)
 
             output.write_bytes(b"\\x00asmfake-component")
@@ -343,6 +351,51 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             self.assertEqual(len(native_records), 1)
             self.assertEqual(len(wasm_tools_records), 1)
             self.assertFalse(pathlib.Path(native_records[0]["arguments"][3]).exists())
+            self.assertFalse(pathlib.Path(wasm_tools_records[0]["arguments"][4]).exists())
+            self.assert_no_forbidden_command(root)
+
+    def test_invalid_native_core_is_rejected_before_wasm_tools_and_replace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            environment["FAKE_NATIVE_MODE"] = "invalid-core"
+
+            result = self.run_helper(program, source, output, environment)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"native program produced invalid Wasm artifact", result.stderr)
+            self.assertEqual(output.read_bytes(), b"existing-component")
+            self.assertEqual(len(self.read_records(root, "native.jsonl")), 1)
+            self.assertEqual(self.read_records(root, "wasm-tools.jsonl"), [])
+            self.assert_no_forbidden_command(root)
+
+    def test_invalid_packaged_component_is_rejected_before_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            environment["FAKE_WASM_TOOLS_MODE"] = "invalid-output"
+
+            result = self.run_helper(program, source, output, environment)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"wasm-tools produced invalid Wasm artifact", result.stderr)
+            self.assertEqual(output.read_bytes(), b"existing-component")
+            native_records = self.read_records(root, "native.jsonl")
+            wasm_tools_records = self.read_records(root, "wasm-tools.jsonl")
+            self.assertEqual(len(native_records), 1)
+            self.assertEqual(len(wasm_tools_records), 1)
             self.assertFalse(pathlib.Path(wasm_tools_records[0]["arguments"][4]).exists())
             self.assert_no_forbidden_command(root)
 

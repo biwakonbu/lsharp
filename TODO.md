@@ -2486,6 +2486,18 @@ Rust installer 22 tests、native installer 18 tests、Rust format、Python synta
 EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-package-install-path-input-fail-closed.md`](docs/adr/decisions-v0.3-native-package-install-path-input-fail-closed.md)。
 current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 に native component compile/build の artifact postflightを追加した。native programの core outputと
+wasm-tools component new の packaged outputを、atomic promotion前に non-symlink regular file・non-empty Wasm magic
+('\0asm')として検査する。同じ fake component fixtureで、invalid coreは wasm-tools 実行前に拒否し、invalid packaged
+bytesは既存 outputを置換せず fail-closedにする RED→GREENを確認した。既存の child failure、stderr/exit forwarding、
+temporary cleanup、explicit tool、atomic replace casesも維持する。これは native byte-shape postflightの verified
+partialであり、Wasm semantic validation、source/ftable/import parity、standalone runtime、live provider/auth、
+current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、EC-M3-04 / EC-M3-05 と
+M3-04-N1 / M3-05-N9 は [~] のまま残す。Evidence:
+[`decisions-v0.3-native-component-artifact-postflight.md`](docs/adr/decisions-v0.3-native-component-artifact-postflight.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、
+Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 に official two-target source-smoke manifest の cross-target projection parityを追加した。Mac/Linux各 targetの
 個別 stage0/source/report検証に加え、target固有の `target` / stage0 manifest digest / payload digest 以外の key set と
 JSON値を両manifest間で exact compareし、Linuxだけの追加projectionを gate成功へ昇格させない。同一 fake fixtureで正常な
