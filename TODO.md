@@ -2486,6 +2486,15 @@ Rust installer 22 tests、native installer 18 tests、Rust format、Python synta
 EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-package-install-path-input-fail-closed.md`](docs/adr/decisions-v0.3-native-package-install-path-input-fail-closed.md)。
 current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 に official two-target source-smoke manifest の cross-target projection parityを追加した。Mac/Linux各 targetの
+個別 stage0/source/report検証に加え、target固有の `target` / stage0 manifest digest / payload digest 以外の key set と
+JSON値を両manifest間で exact compareし、Linuxだけの追加projectionを gate成功へ昇格させない。同一 fake fixtureで正常な
+target-specific digest差を許容し、Linux-only fieldを fail-closed にする RED→GREENを確認した。これは official shell
+orchestratorの offline/fake evidence shape boundaryであり、Rust canonical verifierや実 native producer/runtimeの証拠ではない。
+current-source Mac/Linux runtime、packaged App.Cli/rollback bytes parity、live provider/auth、Rust/native producer parityは未検証のため、
+M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-official-cross-target-source-smoke-projection.md`](docs/adr/decisions-v0.3-native-official-cross-target-source-smoke-projection.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 に package installer の stale transaction ownership boundaryを Rust/nativeで揃えた。管理対象 packages directoryに
 `.install-txn-*` が残っている場合、unknown ownerの stagingを暗黙に再利用せず、
 `install transaction staging already exists; refusing to reuse unknown owner` で promotion前に fail-closed にする。同一 fixtureで

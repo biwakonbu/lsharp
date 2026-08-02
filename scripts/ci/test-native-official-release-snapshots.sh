@@ -32,6 +32,7 @@ CLEANUP_FAILURE_SMOKE_ROOT=""
 MISSING_REPORT_SMOKE_ROOT=""
 PAYLOAD_MISMATCH_SMOKE_ROOT=""
 IDENTITY_MISMATCH_SMOKE_ROOT=""
+CROSS_TARGET_MISMATCH_SMOKE_ROOT=""
 REPORT_FREE_SMOKE_ROOT=""
 REPORT_FREE_EVIDENCE_ROOT=""
 MISMATCH_SMOKE_ROOT=""
@@ -54,6 +55,7 @@ cleanup() {
   [[ -z "$MISSING_REPORT_SMOKE_ROOT" ]] || rm -rf "$MISSING_REPORT_SMOKE_ROOT"
   [[ -z "$PAYLOAD_MISMATCH_SMOKE_ROOT" ]] || rm -rf "$PAYLOAD_MISMATCH_SMOKE_ROOT"
   [[ -z "$IDENTITY_MISMATCH_SMOKE_ROOT" ]] || rm -rf "$IDENTITY_MISMATCH_SMOKE_ROOT"
+  [[ -z "$CROSS_TARGET_MISMATCH_SMOKE_ROOT" ]] || rm -rf "$CROSS_TARGET_MISMATCH_SMOKE_ROOT"
   [[ -z "$REPORT_FREE_SMOKE_ROOT" ]] || rm -rf "$REPORT_FREE_SMOKE_ROOT"
   [[ -z "$REPORT_FREE_EVIDENCE_ROOT" ]] || rm -rf "$REPORT_FREE_EVIDENCE_ROOT"
   [[ -z "$MISMATCH_SMOKE_ROOT" ]] || rm -rf "$MISMATCH_SMOKE_ROOT"
@@ -174,6 +176,8 @@ if os.environ.get("FAKE_PAYLOAD_MODE") == "linux-mismatch":
     manifest["stage0_payload_sha256"] = "wrong-linux-payload"
 if os.environ.get("FAKE_IDENTITY_MODE") == "linux-mismatch":
     manifest["stage0_manifest_sha256"] = "wrong-linux-manifest"
+if os.environ.get("FAKE_CROSS_TARGET_MODE") == "linux-extra-field":
+    manifest["target_only_projection"] = {"target": "x86_64-unknown-linux-gnu"}
 pathlib.Path(sys.argv[2]).write_text(json.dumps(manifest) + "\n", encoding="utf-8")
 PY
 fi
@@ -432,6 +436,40 @@ for manifest_path, stage0_dir_arg in zip(
 PY
 grep -F "report=$REVIEW_ATTESTATION_REPORT" "$LOG_PATH" >/dev/null
 grep -F "limactl stop lsharp-linux-x86" "$LOG_PATH" >/dev/null
+
+CROSS_TARGET_MISMATCH_EVIDENCE_ROOT="$TMP_ROOT/cross-target-mismatch-evidence"
+CROSS_TARGET_MISMATCH_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-cross-target-mismatch.XXXXXX)"
+set +e
+cross_target_mismatch_output_path="$TMP_ROOT/cross-target-mismatch-output.log"
+FAKE_LOG="$LOG_PATH" \
+PATH="$PATH_PREFIX:$PATH" \
+VERSION="$VERSION" \
+SOURCE_COMMIT="$SOURCE_COMMIT" \
+DIST_DIR="$TMP_ROOT/cross-target-mismatch-dist" \
+SMOKE_ROOT="$CROSS_TARGET_MISMATCH_SMOKE_ROOT" \
+LSHARP_NATIVE_RELEASE_SMOKE_ROOT="$CROSS_TARGET_MISMATCH_SMOKE_ROOT" \
+NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT="$CROSS_TARGET_MISMATCH_EVIDENCE_ROOT" \
+NATIVE_OFFICIAL_REVIEW_ATTESTATION_REPORT="$REVIEW_ATTESTATION_REPORT" \
+FAKE_EXPECT_ATTESTATION_REPORT=1 \
+FAKE_CROSS_TARGET_MODE=linux-extra-field \
+NATIVE_OFFICIAL_REVIEW_TRUST_STORE="$TRUST_STORE" \
+NATIVE_OFFICIAL_REVIEW_LIFECYCLE="$LIFECYCLE" \
+MACOS_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-aarch64-apple-darwin" \
+LINUX_APP_CLI_ARTIFACT_DIR="$TMP_ROOT/artifact-x86_64-unknown-linux-gnu" \
+MACOS_STAGE0_DIR="$TMP_ROOT/stage0-aarch64-apple-darwin" \
+LINUX_STAGE0_DIR="$TMP_ROOT/stage0-x86_64-unknown-linux-gnu" \
+MACOS_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-aarch64-apple-darwin.tar.gz" \
+LINUX_ROLLBACK_ARCHIVE="$TMP_ROOT/rollback-x86_64-unknown-linux-gnu.tar.gz" \
+  bash "$FAKE_ROOT/scripts/ci/native-official-release-local.sh" >"$cross_target_mismatch_output_path" 2>&1
+cross_target_mismatch_status=$?
+set -e
+cross_target_mismatch_output="$(<"$cross_target_mismatch_output_path")"
+[[ "$cross_target_mismatch_status" -ne 0 ]] \
+  || { echo 'cross-target evidence projection mismatch was unexpectedly accepted' >&2; exit 1; }
+grep -F 'source smoke evidence cross-target projection mismatch' <<<"$cross_target_mismatch_output" >/dev/null \
+  || { echo 'cross-target evidence projection mismatch diagnostic was missing' >&2; echo "$cross_target_mismatch_output" >&2; exit 1; }
+! grep -F 'native official release local gate: OK' <<<"$cross_target_mismatch_output" >/dev/null \
+  || { echo 'cross-target evidence projection mismatch reached release success' >&2; exit 1; }
 
 REPORT_FREE_SMOKE_ROOT="$(mktemp -d /tmp/lsharp-native-official-report-free.XXXXXX)"
 REPORT_FREE_EVIDENCE_ROOT="$TMP_ROOT/report-free-evidence"

@@ -363,6 +363,51 @@ elif "review_attestations" in manifest:
 PY
 }
 
+validate_source_smoke_evidence_pair() {
+  local macos_evidence_dir="${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}/aarch64-apple-darwin"
+  local linux_evidence_dir="${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}/x86_64-unknown-linux-gnu"
+  [[ -n "${NATIVE_OFFICIAL_SOURCE_SMOKE_EVIDENCE_ROOT}" ]] || return 0
+  python3 - "${macos_evidence_dir}/manifest.json" "${linux_evidence_dir}/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+mac_path, linux_path = map(pathlib.Path, sys.argv[1:])
+try:
+    mac_manifest = json.loads(mac_path.read_text(encoding="utf-8"))
+    linux_manifest = json.loads(linux_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"ERROR: source smoke evidence cross-target projection is unreadable: {error}")
+if not isinstance(mac_manifest, dict) or not isinstance(linux_manifest, dict):
+    raise SystemExit(
+        "ERROR: source smoke evidence cross-target projection mismatch: "
+        "both target manifests must be JSON objects"
+    )
+if mac_manifest.get("target") != "aarch64-apple-darwin" or linux_manifest.get("target") != "x86_64-unknown-linux-gnu":
+    raise SystemExit(
+        "ERROR: source smoke evidence cross-target projection mismatch: "
+        f"unexpected targets mac={mac_manifest.get('target')!r} linux={linux_manifest.get('target')!r}"
+    )
+
+target_specific_fields = {"target", "stage0_manifest_sha256", "stage0_payload_sha256"}
+mac_shared_keys = set(mac_manifest) - target_specific_fields
+linux_shared_keys = set(linux_manifest) - target_specific_fields
+if mac_shared_keys != linux_shared_keys:
+    missing_on_linux = sorted(mac_shared_keys - linux_shared_keys)
+    missing_on_mac = sorted(linux_shared_keys - mac_shared_keys)
+    raise SystemExit(
+        "ERROR: source smoke evidence cross-target projection mismatch: "
+        f"shared key set differs missing_on_linux={missing_on_linux!r} missing_on_mac={missing_on_mac!r}"
+    )
+for key in sorted(mac_shared_keys):
+    if mac_manifest[key] != linux_manifest[key]:
+        raise SystemExit(
+            "ERROR: source smoke evidence cross-target projection mismatch: "
+            f"shared field {key!r} differs"
+        )
+PY
+}
+
 NATIVE_OFFICIAL_REVIEW_ENV=()
 validate_review_snapshots
 validate_review_identity_inputs
@@ -624,6 +669,7 @@ smoke_stage0_fetch "aarch64-apple-darwin" "${RELEASE_BASE_URL}"
 smoke_stage0_runtime "aarch64-apple-darwin"
 smoke_stage0_fetch "x86_64-unknown-linux-gnu" "${RELEASE_BASE_URL}"
 smoke_stage0_runtime "x86_64-unknown-linux-gnu"
+validate_source_smoke_evidence_pair
 
 dist_kib="$(du -sk "${DIST_DIR}" | awk '{print $1}')"
 if (( dist_kib > MAX_DIST_KIB )); then
