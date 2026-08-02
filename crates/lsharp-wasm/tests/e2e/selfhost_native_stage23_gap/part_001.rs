@@ -217,7 +217,7 @@ fn test_native_codegen_x86_string_slice_concat_helper_call_sites_resolve_offsets
     assert_eq!(
         lines,
         vec![
-            5046, 5193, 12, 72, 139, 149, 248, 255, 255, 255, 232, 170, 7, 0, 0, 5, 232, 68, 8, 0,
+            5047, 5194, 12, 72, 139, 149, 248, 255, 255, 255, 232, 171, 7, 0, 0, 5, 232, 69, 8, 0,
             0,
         ],
         "x86_64 substring/string-concat helper call sites は trailer offset を指す call を出す必要がある"
@@ -258,8 +258,8 @@ fn test_native_codegen_x86_map_and_file_helper_call_sites_resolve_offsets() {
     assert_eq!(
         lines,
         vec![
-            5390, 5465, 5482, 5586, 5725, 5, 232, 9, 5, 0, 0, 7, 81, 232, 83, 5, 0, 0, 89, 12, 72,
-            139, 149, 248, 255, 255, 255, 232, 94, 5, 0, 0, 5, 232, 205, 5, 0, 0, 7, 81, 232, 87,
+            5391, 5466, 5483, 5587, 5726, 5, 232, 10, 5, 0, 0, 7, 81, 232, 84, 5, 0, 0, 89, 12, 72,
+            139, 149, 248, 255, 255, 255, 232, 95, 5, 0, 0, 5, 232, 206, 5, 0, 0, 7, 81, 232, 88,
             6, 0, 0, 89,
         ],
         "x86_64 map/file helper call sites は trailer offset を指す call を出す必要がある"
@@ -295,7 +295,7 @@ fn test_native_codegen_x86_runtime_helper_emitters_return_executable_byte_vector
         lines,
         vec![
             18, 72, 133, 192, 124, 10, 76, 57, 224, 125, 5, 73, 139, 4, 199, 195, 49, 192, 195,
-            207, 83, 65, 84, 65, 85, 69, 49, 237, 49, 192, 65, 93, 65, 92, 91, 195, 52, 72, 133,
+            208, 83, 65, 84, 65, 85, 69, 49, 237, 49, 192, 65, 93, 65, 92, 91, 195, 52, 72, 133,
             192, 116, 44, 121, 9, 72, 15, 186, 240, 63, 139, 64, 4, 195, 72, 61, 0, 0, 0, 64, 115,
             7, 76, 1, 240, 139, 64, 4, 195, 72, 49, 201, 128, 60, 8, 0, 116, 5, 72, 255, 193, 235,
             245, 72, 137, 200, 195, 49, 192, 195, 71, 72, 133, 192, 120, 63, 72, 133, 201, 116, 58,
@@ -559,13 +559,13 @@ fn test_native_codegen_x86_read_file_helper_uses_linux_syscalls() {
         lines,
         vec![
             184, 2, 0, 0, 0, // open
-            34, 0, 0, 0, // MAP_PRIVATE | MAP_ANONYMOUS
-            184, 9, 0, 0, 0, // mmap
-            184, 0, 0, 0, 0, // read
-            184, 3, 0, 0, 0, // close
-            184, 3, 0, 0, 0, // close on failure
+            72, 129, 193, 16, // cursor + 0x200010
+            209, 119, 77, 76, 1, // heap limit check
+            50, 73, 141, 148, 36, // object address + read buffer
+            223, 184, 3, 0, 0, // close
+            223, 184, 3, 0, 0, // close on failure
         ],
-        "x86_64 Linux read-file helper は Linux syscall 番号と mmap flags を使う必要がある"
+        "x86_64 Linux read-file helper は open/read/close ABI と bounded heap limit check を保持する必要がある"
     );
 }
 

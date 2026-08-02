@@ -9130,10 +9130,10 @@ fn test_native_codegen_x86_read_file_helper_uses_2m_cap_for_selfhost_sources() {
 
     assert!(
         source.contains("最大 2MiB")
-            && helper.contains("part23 (byte-vector-4 0 32 0 186)")
-            && helper.contains("part35 (byte-vector-4 0 0 32 0)")
-            && helper_size.contains("207"),
-        "Linux x86 stage2 は約 1MiB の NativeCodegen.ls を read-file するため、x86 helper は 2MiB の mmap/read cap を同じ 207 bytes 内で持つべき"
+            && helper.contains("part23 (byte-vector-4 117 5 185 0)")
+            && helper.contains("part35 (byte-vector-4 72 133 192 120)")
+            && helper_size.contains("208"),
+        "Linux x86 stage2 は約 1MiB の NativeCodegen.ls を read-file するため、x86 helper は bounded heap cursor と 2MiB read cap を持つべき"
     );
 }
 
@@ -10876,8 +10876,8 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
         "x86 vector-new helper の実バイト長更新に合わせて size helper と trailer append 長も 119 に同期するべき"
     );
     assert!(
-        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 569)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1551)"),
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 570)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1552)"),
         "x86 vector-new helper の拡張後は後続 runtime helper offset も +37 へ同期するべき"
     );
 }
@@ -10960,17 +10960,17 @@ fn test_native_codegen_x86_map_new_helper_adds_heap_base_before_header() {
         "x86 map-new helper の base 加算を含む実バイト長と trailer append 長は 75 bytes に同期するべき"
     );
     assert!(
-        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1368)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1385)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1489)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1551)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1628)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1712)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1716)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1767)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1779)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1966)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2221)"),
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1369)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1386)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1490)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1552)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1629)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1713)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1717)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1768)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1780)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1967)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2222)"),
         "x86 map-new helper の拡張後は map-remove を含む後続 runtime helper offset も同期するべき"
     );
 }
@@ -11127,9 +11127,9 @@ fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
         "x86 vector-get helper の実バイト長更新に合わせて size helper と trailer append 長も 47 に同期するべき"
     );
     assert!(
-        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 633)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1489)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1551)"),
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 634)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1490)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1552)"),
         "x86 vector-get helper の短縮 tag guard 後は map-get/map-remove を含む後続 runtime helper offset と同期するべき"
     );
 }
@@ -13049,7 +13049,7 @@ fn test_native_codegen_x86_print_string_helper_resolves_static_data_offset() {
     );
     assert!(
         size_body.contains("\n  51)")
-            && proc_exit_offset_body.contains("1767")
+            && proc_exit_offset_body.contains("1768")
             && bundle_writer.contains(
                 "(append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)"
             ),

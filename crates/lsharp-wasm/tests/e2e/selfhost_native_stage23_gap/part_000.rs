@@ -631,8 +631,8 @@ fn test_native_codegen_x86_command_line_arg_and_read_file_call_sites_resolve_hel
     assert_eq!(
         lines,
         vec![
-            4097, 4115, 4322, 4374, 4445, 7, 81, 232, 251, 11, 0, 0, 89, 7, 81, 232, 13, 12, 0, 0,
-            89, 7, 81, 232, 220, 12, 0, 0, 89, 5, 232, 17, 13, 0, 0, 7, 81, 232, 87, 13, 0, 0, 89,
+            4097, 4115, 4323, 4375, 4446, 7, 81, 232, 251, 11, 0, 0, 89, 7, 81, 232, 13, 12, 0, 0,
+            89, 7, 81, 232, 221, 12, 0, 0, 89, 5, 232, 18, 13, 0, 0, 7, 81, 232, 88, 13, 0, 0, 89,
         ],
         "x86_64 CommandLineArg/ReadFile/StringLength/StringCharAt/Print call site は helper call を実バイトで出す必要がある"
     );
@@ -671,8 +671,8 @@ fn test_native_codegen_x86_cli_runtime_call_sites_resolve_helper_offsets() {
     assert_eq!(
         lines,
         vec![
-            5807, 5811, 5862, 1, 0, 0, 5, 232, 170, 18, 0, 0, 7, 81, 232, 173, 18, 0, 0, 89, 7, 81,
-            232, 224, 18, 0, 0, 89,
+            5810, 5814, 5865, 1, 0, 0, 5, 232, 173, 18, 0, 0, 7, 81, 232, 176, 18, 0, 0, 89, 7, 81,
+            232, 227, 18, 0, 0, 89,
         ],
         "x86_64 command-line-args/print-string/proc-exit call site は stack effect と trailer offset を一致させる必要がある"
     );

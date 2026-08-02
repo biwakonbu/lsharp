@@ -10068,7 +10068,7 @@
     (concat-five-byte-vectors-rooted group1 group2 group3 group4 part21)))
 
 ;; x86_64 ReadFile helper: raw C string / tagged L# string path を受け取り、
-;; syscall で最大 2MiB を mmap した tagged string として返す。
+;; r14 の bounded native heap へ最大 2MiB を読み込んだ tagged string として返す。
 (defn emit-x86-selfhost-read-file-helper []
   (let [
     part1 (byte-vector-4 83 65 84 65)
@@ -10089,40 +10089,40 @@
     part16 (byte-vector-4 0 49 246 49)
     part17 (byte-vector-4 210 15 5 77)
     part18 (byte-vector-4 133 237 116 3)
-    part19 (byte-vector-4 76 137 236 114)
-    part20 (byte-vector-4 122 72 133 192)
-    part21 (byte-vector-4 120 117 137 195)
-    part22 (byte-vector-4 49 255 190 16)
-    part23 (byte-vector-4 0 32 0 186)
-    part24 (byte-vector-4 3 0 0 0)
-    part25 (byte-vector-4 65 186 34 0)
-    part26 (byte-vector-4 0 0 65 184)
-    part27 (byte-vector-4 255 255 255 255)
-    part28 (byte-vector-4 69 49 201 184)
-    part29 (byte-vector-4 9 0 0 0)
-    part30 (byte-vector-4 15 5 114 70)
-    part31 (byte-vector-4 72 133 192 120)
-    part32 (byte-vector-4 65 73 137 196)
-    part33 (byte-vector-4 137 223 73 141)
-    part34 (byte-vector-4 116 36 8 186)
-    part35 (byte-vector-4 0 0 32 0)
-    part36 (byte-vector-4 184 0 0 0)
-    part37 (byte-vector-4 0 15 5 114)
-    part38 (byte-vector-4 41 72 133 192)
-    part39 (byte-vector-4 120 36 65 199)
-    part40 (byte-vector-4 4 36 5 0)
-    part41 (byte-vector-4 0 0 65 137)
-    part42 (byte-vector-4 68 36 4 137)
-    part43 (byte-vector-4 223 184 3 0)
-    part44 (byte-vector-4 0 0 15 5)
-    part45 (byte-vector-4 76 137 224 72)
-    part46 (byte-vector-4 15 186 232 63)
-    part47 (byte-vector-4 65 93 65 92)
-    part48 (byte-vector-4 91 195 137 223)
-    part49 (byte-vector-4 184 3 0 0)
-    part50 (byte-vector-4 0 15 5 49)
-    part51 (byte-vector-4 192 65 93 65)
-    part52 (byte-vector-3 92 91 195)
+    part19 (byte-vector-4 76 137 236 72)
+    part20 (byte-vector-4 133 192 120 120)
+    part21 (byte-vector-4 137 195 73 139)
+    part22 (byte-vector-4 14 72 133 201)
+    part23 (byte-vector-4 117 5 185 0)
+    part24 (byte-vector-4 32 0 0 72)
+    part25 (byte-vector-4 137 207 72 129)
+    part26 (byte-vector-4 193 16 0 32)
+    part27 (byte-vector-4 0 73 139 86)
+    part28 (byte-vector-4 8 72 57 209)
+    part29 (byte-vector-4 119 77 76 1)
+    part30 (byte-vector-4 247 73 137 252)
+    part31 (byte-vector-4 137 223 73 141)
+    part32 (byte-vector-4 116 36 8 186)
+    part33 (byte-vector-4 0 0 32 0)
+    part34 (byte-vector-4 49 192 15 5)
+    part35 (byte-vector-4 72 133 192 120)
+    part36 (byte-vector-4 50 73 141 148)
+    part37 (byte-vector-4 36 16 0 32)
+    part38 (byte-vector-4 0 76 41 242)
+    part39 (byte-vector-4 73 137 22 65)
+    part40 (byte-vector-4 199 4 36 5)
+    part41 (byte-vector-4 0 0 0 65)
+    part42 (byte-vector-4 137 68 36 4)
+    part43 (byte-vector-4 137 223 184 3)
+    part44 (byte-vector-4 0 0 0 15)
+    part45 (byte-vector-4 5 76 137 224)
+    part46 (byte-vector-4 72 15 186 232)
+    part47 (byte-vector-4 63 65 93 65)
+    part48 (byte-vector-4 92 91 195 137)
+    part49 (byte-vector-4 223 184 3 0)
+    part50 (byte-vector-4 0 0 15 5)
+    part51 (byte-vector-4 49 192 65 93)
+    part52 (byte-vector-4 65 92 91 195)
     group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
     group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
     group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
@@ -10144,7 +10144,7 @@
     (let [native (emit-x86-selfhost-read-file-helper)]
       (do
         (root_push native)
-        (append-native-bytes-rooted result native 207)
+        (append-native-bytes-rooted result native 208)
         (root_pop)
         (root_pop)
         0))))
@@ -10502,7 +10502,7 @@
   18)
 
 (defn x86-selfhost-read-file-helper-size []
-  207)
+  208)
 
 (defn x86-selfhost-string-length-helper-size []
   52)
@@ -10615,76 +10615,76 @@
   (+ (x86-helper-base-offset import-stub-offset import-count) 18))
 
 (defn x86-selfhost-string-length-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 225))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 226))
 
 (defn x86-selfhost-string-char-at-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 277))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 278))
 
 (defn x86-selfhost-print-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 348))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 349))
 
 (defn x86-selfhost-vector-new-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 450))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 451))
 
 (defn x86-selfhost-vector-length-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 569))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 570))
 
 (defn x86-selfhost-vector-get-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 586))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 587))
 
 (defn x86-selfhost-vector-push-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 633))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 634))
 
 (defn x86-selfhost-ref-new-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 838))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 839))
 
 (defn x86-selfhost-ref-get-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 911))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 912))
 
 (defn x86-selfhost-ref-set-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 929))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 930))
 
 (defn x86-selfhost-substring-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 949))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 950))
 
 (defn x86-selfhost-string-concat-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1096))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1097))
 
 (defn x86-selfhost-map-new-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1293))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1294))
 
 (defn x86-selfhost-map-size-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1368))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1369))
 
 (defn x86-selfhost-map-insert-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1385))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1386))
 
 (defn x86-selfhost-map-get-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1489))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1490))
 
 (defn x86-selfhost-map-remove-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1551))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1552))
 
 (defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1628))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1629))
 
 (defn x86-selfhost-command-line-args-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1712))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1713))
 
 (defn x86-selfhost-print-string-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1716))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1717))
 
 (defn x86-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1767))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1768))
 
 (defn x86-selfhost-write-file-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1779))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1780))
 
 (defn x86-selfhost-write-file-bytes-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1966))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1967))
 
 (defn x86-selfhost-int-to-string-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 2221))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 2222))
 
 (defn is-selfhost-runtime-opcode-x86-core [opcode]
   (if (= opcode 64)

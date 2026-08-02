@@ -114,6 +114,24 @@ fn test_native_codegen_x86_substring_uses_bounded_heap_cursor() {
 }
 
 #[test]
+fn test_native_codegen_x86_read_file_uses_bounded_heap_cursor() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-read-file-bounded-heap",
+        r#"  (let [helper (emit-x86-selfhost-read-file-helper)]
+    (do
+      (print-bytes-loop helper 0 (vector-length helper))
+      0))"#,
+    );
+
+    assert!(
+        !lines
+            .windows(7)
+            .any(|window| window == [184, 9, 0, 0, 0, 15, 5]),
+        "x86_64 read-file helper は per-file mmap allocation を発行せず、bounded native heap cursor を使うべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_ref_new_preserves_initial_value_in_bounded_heap() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-ref-new-bounded-heap-preserve",
