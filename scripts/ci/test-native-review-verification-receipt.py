@@ -29,6 +29,29 @@ class NativeVerificationReceiptTests(unittest.TestCase):
                 check=False,
             )
 
+    def run_verify_with_trust_store(
+        self, value: dict, trust_store: dict
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory(prefix="lsharp-verification-receipt-trust-") as directory:
+            root = pathlib.Path(directory)
+            receipt_path = root / "receipt.json"
+            trust_store_path = root / "trust-store.json"
+            receipt_path.write_text(json.dumps(value), encoding="utf-8")
+            trust_store_path.write_text(json.dumps(trust_store), encoding="utf-8")
+            return subprocess.run(
+                [
+                    sys.executable,
+                    str(VERIFY),
+                    str(receipt_path),
+                    "--trust-store",
+                    str(trust_store_path),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
     def valid_receipt(self) -> dict:
         return {
             "review_id": "review:orders/reviewer-001",
@@ -59,6 +82,78 @@ class NativeVerificationReceiptTests(unittest.TestCase):
         result = self.run_verify(value)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("valid UTC date", result.stderr)
+
+    def test_active_trust_store_identity_is_required_for_handoff(self) -> None:
+        trust_store = {
+            "keys": [
+                {
+                    "provider": "github",
+                    "key_id": "org/reviews-2026",
+                    "algorithm": "ed25519",
+                    "public_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+                    "active": True,
+                },
+                {
+                    "provider": "github",
+                    "key_id": "org/reviews-2025",
+                    "algorithm": "ed25519",
+                    "public_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+                    "active": False,
+                },
+            ]
+        }
+        result = self.run_verify_with_trust_store(self.valid_receipt(), trust_store)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("active trust identity: github/ed25519=org/reviews-2026", result.stdout)
+
+    def test_inactive_or_other_trust_store_identity_is_rejected(self) -> None:
+        value = self.valid_receipt()
+        trust_store = {
+            "keys": [
+                {
+                    "provider": "github",
+                    "key_id": "org/other-2026",
+                    "algorithm": "ed25519",
+                    "public_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+                    "active": True,
+                }
+            ]
+        }
+        result = self.run_verify_with_trust_store(value, trust_store)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("active trust identity mismatch", result.stderr)
+
+    def test_invalid_trust_store_is_rejected_before_handoff(self) -> None:
+        result = self.run_verify_with_trust_store(
+            self.valid_receipt(), {"keys": [{"provider": "github"}]}
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("trust store", result.stderr)
+
+    def test_symlink_trust_store_is_rejected_before_handoff(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lsharp-verification-receipt-link-") as directory:
+            root = pathlib.Path(directory)
+            receipt_path = root / "receipt.json"
+            target = root / "trust-store-target.json"
+            link = root / "trust-store.json"
+            receipt_path.write_text(json.dumps(self.valid_receipt()), encoding="utf-8")
+            target.write_text(json.dumps({"keys": []}), encoding="utf-8")
+            link.symlink_to(target)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(VERIFY),
+                    str(receipt_path),
+                    "--trust-store",
+                    str(link),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("regular non-symlink file", result.stderr)
 
 
 if __name__ == "__main__":

@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import pathlib
 import re
+import stat
 import sys
 from datetime import datetime
 
@@ -92,15 +94,62 @@ def validate(path: pathlib.Path) -> dict[str, object]:
     return validate_value(value)
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        return fail(f"usage: {argv[0]} RECEIPT_JSON")
+def validate_trust_store_identity(
+    value: dict[str, object], trust_store_path: pathlib.Path
+) -> tuple[str, str, str]:
     try:
-        value = validate(pathlib.Path(argv[1]))
+        file_stat = trust_store_path.lstat()
+    except OSError as error:
+        raise ValueError(f"trust store cannot be read: {trust_store_path}: {error}") from error
+    if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
+        raise ValueError(
+            f"trust store must be a regular non-symlink file: {trust_store_path}"
+        )
+    validator_path = pathlib.Path(__file__).with_name("verify-native-review-trust-store.py")
+    spec = importlib.util.spec_from_file_location(
+        "lsharp_native_review_trust_store", validator_path
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("trust store validator is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        active = module.validate(trust_store_path)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"trust store validation failed: {error}") from error
+    identity = (value["provider"], value["algorithm"], value["key_id"])
+    matches = [candidate for candidate in active if candidate == identity]
+    if len(matches) != 1:
+        raise ValueError(
+            "active trust identity mismatch: "
+            f"receipt={value['provider']}/{value['algorithm']}={value['key_id']}"
+        )
+    return matches[0]
+
+
+def main(argv: list[str]) -> int:
+    trust_store_path = None
+    if len(argv) == 2:
+        receipt_path = pathlib.Path(argv[1])
+    elif len(argv) == 4 and argv[2] == "--trust-store":
+        receipt_path = pathlib.Path(argv[1])
+        trust_store_path = pathlib.Path(argv[3])
+    else:
+        return fail(
+            f"usage: {argv[0]} RECEIPT_JSON [--trust-store TRUST_STORE_JSON]"
+        )
+    try:
+        value = validate(receipt_path)
+        active_identity = None
+        if trust_store_path is not None:
+            active_identity = validate_trust_store_identity(value, trust_store_path)
     except ValueError as error:
         return fail(str(error))
     print(f"verification receipt: {value['review_id']}={value['state']}")
     print(f"canonical receipt bytes: {canonical_bytes(value).hex()}")
+    if active_identity is not None:
+        provider, algorithm, key_id = active_identity
+        print(f"active trust identity: {provider}/{algorithm}={key_id}")
     return 0
 
 
