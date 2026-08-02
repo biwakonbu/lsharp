@@ -170,7 +170,6 @@ def assert_receipt_provider_snapshot_context_binding(test):
     trust_bytes = b"trust snapshot\n"
     lifecycle_bytes = b"lifecycle snapshot\n"
     trust_digest = "sha256:" + hashlib.sha256(trust_bytes).hexdigest()
-    lifecycle_digest = "sha256:" + hashlib.sha256(lifecycle_bytes).hexdigest()
     cases = (
         (trust_digest, False),
         ("sha256:" + "0" * 64, True),
@@ -207,10 +206,8 @@ def assert_receipt_provider_snapshot_context_binding(test):
                     {
                         "name": "lsharp_validate",
                         "arguments": {
-                            "source": "(defn main [] true)",
-                            "trust_store": str(trust_store),
-                            "review_lifecycle": str(lifecycle),
-                            "review_lifecycle_digest": lifecycle_digest,
+                        "source": "(defn main [] true)",
+                            "review_trust_store_digest": trust_digest,
                             "review_verification_receipt": str(receipt),
                         },
                     },
@@ -226,6 +223,57 @@ def assert_receipt_provider_snapshot_context_binding(test):
                 test.assertFalse((root / "native.log").exists())
             else:
                 test.assertFalse(response["result"]["isError"])
+
+
+def assert_receipt_lifecycle_snapshot_is_fail_closed(test):
+    cases = ("snapshot", "digest")
+    for lifecycle_input in cases:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = test.write_fake_program(root)
+            receipt = root / "receipt.json"
+            arguments = {
+                "source": "(defn main [] true)",
+                "review_verification_receipt": str(receipt),
+            }
+            if lifecycle_input == "snapshot":
+                trust_store = root / "trust.json"
+                lifecycle = root / "lifecycle.json"
+                trust_store.write_bytes(b"trust snapshot\n")
+                lifecycle.write_bytes(b"lifecycle snapshot\n")
+                trust_store_digest = "sha256:" + hashlib.sha256(trust_store.read_bytes()).hexdigest()
+                arguments.update(
+                    {"trust_store": str(trust_store), "review_lifecycle": str(lifecycle)}
+                )
+            else:
+                trust_store_digest = "sha256:" + "b" * 64
+                arguments["review_lifecycle_digest"] = "sha256:" + "c" * 64
+            receipt.write_text(
+                json.dumps(
+                    {
+                        "review_id": "review:orders/reviewer-001",
+                        "state": "verified",
+                        "provider": "github",
+                        "key_id": "org/reviews-2026",
+                        "algorithm": "ed25519",
+                        "attestation_digest": "sha256:" + "a" * 64,
+                        "trust_store_digest": trust_store_digest,
+                        "verification_now": "2026-08-02T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = test.run_shim(
+                program,
+                request(1, "tools/call", {"name": "lsharp_validate", "arguments": arguments}),
+                root,
+                report_mode="receipt-valid",
+            )
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn("lifecycle semantic binding", response["result"]["content"][0]["text"])
+            test.assertFalse((root / "native.log").exists())
 
 
 def review_verification_receipt_for_attestation():

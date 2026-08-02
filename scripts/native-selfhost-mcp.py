@@ -1513,6 +1513,15 @@ def verify_receipt_provider_snapshot_binding(receipt, provider_digests, argument
         raise ToolError("native MCP receipt trust-store digest mismatch with provider snapshot")
 
 
+def reject_receipt_lifecycle_semantic_binding(receipt, arguments):
+    if receipt is None:
+        return
+    if "review_lifecycle" in arguments or "review_lifecycle_digest" in arguments:
+        raise ToolError(
+            "native MCP receipt cannot establish lifecycle semantic binding without lifecycle-bound receipt"
+        )
+
+
 def validate_review_evidence_identity(value):
     label = "native validate report review_evidence_identity"
     if not isinstance(value, dict):
@@ -1733,6 +1742,7 @@ def call_validate(program, arguments, temporary_directory):
     if "review_verification_receipt" in arguments:
         receipt = load_review_verification_receipt(arguments["review_verification_receipt"])
         verify_receipt_provider_snapshot_binding(receipt, provider_digests, arguments)
+        reject_receipt_lifecycle_semantic_binding(receipt, arguments)
         command.extend(("--review-verification-receipt", arguments["review_verification_receipt"]))
     command.extend(identity_arguments(arguments, provider_digest_names))
     command.extend(provider_flags)

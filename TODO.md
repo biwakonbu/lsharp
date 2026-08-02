@@ -2314,3 +2314,15 @@ current-source manifest/expected replay lockは現HEADに一致せず、別セ�
 native cryptographic/live provider/auth semantic verification、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
 EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-review-receipt-provider-context.md`](docs/adr/decisions-v0.3-native-mcp-review-receipt-provider-context.md)。
+
+2026-08-02 に receipt schemaへ lifecycle digestを追加せず、receiptと lifecycle snapshot/digest の組み合わせを native MCPが
+暗黙の lifecycle semantic verification として扱わない fail-closed boundaryを追加した。receiptが指定され、`review_lifecycle` pathまたは
+`review_lifecycle_digest`が同時に渡された場合は、canonical receiptがsignature/trust-store factだけを持ち lifecycle identityを持たないため、
+native起動前に `native MCP receipt cannot establish lifecycle semantic binding without lifecycle-bound receipt` で拒否する。
+explicit trust-store digestだけの receipt pathは従来どおり、Rust verified signature handoffとして受理する。これは receipt/provider trust-store coherency、
+receipt→attestation projection、provider semantic state拒否とは別の lifecycle binding contractである。native MCP 98 tests、native receipt 3 tests、
+Rust receipt 4 tests、Rust source-attestation focused test、source-file evidence、official two-target fake gateを確認した。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+native cryptographic verification、live provider/auth acquisition、current-source Linux runtime、Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、
+EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-review-receipt-lifecycle-boundary.md`](docs/adr/decisions-v0.3-native-mcp-review-receipt-lifecycle-boundary.md)。
