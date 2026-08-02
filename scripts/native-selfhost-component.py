@@ -161,6 +161,26 @@ def write_runtime_evidence(path, value):
                 pass
 
 
+def create_temporary_path(path, label):
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        os.close(descriptor)
+        temporary_path = pathlib.Path(temporary_name)
+        temporary_path.unlink()
+        return temporary_path
+    except OSError as error:
+        raise ComponentPackagingError(
+            f"failed to create temporary {label} in {path.parent}: {error}"
+        ) from error
+
+
+def test_failpoint(name):
+    if os.environ.get("LSHARP_TEST_COMPONENT_FAILPOINT") == name:
+        raise ComponentPackagingError(f"test failpoint: {name}")
+
+
 def find_wasm_tools(value):
     if value is not None:
         return validate_executable("wasm-tools", value)
@@ -268,6 +288,11 @@ def package_component(
     program, wasm_tools, wasmtime, runtime_evidence, command, source, output
 ):
     temporary_component = None
+    temporary_evidence = None
+    previous_output = None
+    output_promoted = False
+    evidence_promoted = False
+    committed = False
     primary_error = None
     try:
         with tempfile.TemporaryDirectory(prefix="native-selfhost-component-") as directory:
@@ -313,8 +338,11 @@ def package_component(
                         "wasmtime runtime changed component bytes; refusing promotion"
                     )
                 if runtime_evidence is not None:
+                    temporary_evidence = create_temporary_path(
+                        runtime_evidence, "runtime evidence"
+                    )
                     write_runtime_evidence(
-                        runtime_evidence,
+                        temporary_evidence,
                         {
                             "schema_version": 1,
                             "kind": "lsharp-native-component-runtime-evidence",
@@ -326,6 +354,12 @@ def package_component(
                         },
                     )
 
+            if (output.exists() or output.is_symlink()) and not (
+                output.is_dir() and not output.is_symlink()
+            ):
+                previous_output = create_temporary_path(output, "output backup")
+                os.replace(output, previous_output)
+            test_failpoint("output-promote")
             try:
                 os.replace(temporary_component, output)
             except OSError as error:
@@ -333,6 +367,21 @@ def package_component(
                     f"failed to atomically replace output {output}: {error}"
                 ) from error
             temporary_component = None
+            output_promoted = True
+            if temporary_evidence is not None:
+                test_failpoint("evidence-promote")
+                try:
+                    os.replace(temporary_evidence, runtime_evidence)
+                except OSError as error:
+                    raise ComponentPackagingError(
+                        f"failed to atomically replace runtime evidence {runtime_evidence}: {error}"
+                    ) from error
+                temporary_evidence = None
+                evidence_promoted = True
+            if previous_output is not None:
+                cleanup_temporary_component(previous_output)
+                previous_output = None
+            committed = True
     except ComponentPackagingError as error:
         primary_error = error
         raise
@@ -341,6 +390,34 @@ def package_component(
             f"failed to manage temporary core output: {error}"
         ) from error
     finally:
+        if not committed:
+            if evidence_promoted:
+                try:
+                    runtime_evidence.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    pass
+            if output_promoted:
+                try:
+                    output.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    pass
+            if previous_output is not None:
+                try:
+                    os.replace(previous_output, output)
+                    previous_output = None
+                except OSError:
+                    pass
+            if temporary_evidence is not None:
+                try:
+                    temporary_evidence.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    pass
         if temporary_component is not None:
             try:
                 cleanup_temporary_component(temporary_component)

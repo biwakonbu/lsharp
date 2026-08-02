@@ -2495,6 +2495,17 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: native component compile/build の explicit runtime evidence と packaged outputを一つの
+bounded local commitへ接続した。runtime evidenceは sibling temporary sidecarへ先に書き、既存 outputを backupした後に componentを
+promoteし、最後に sidecarを promoteする。output/evidence の test-only failpointを同一 fake fixtureへ注入し、どちらの失敗でも
+既存 outputを復元し、sidecarと component/evidence temporary residueを残さない RED→GREENを確認した。これは既存の component
+runtime、artifact digest、source/ftable/import projection の再実装ではなく、runtime→evidence→package の partial-state防止に限定する。
+real component instantiation、Rust/native producer parity、current-source Mac/Linux runtime、packaged/rollback parity、provider/auth、
+crash/power-loss filesystem semanticsは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。
+Evidence: [`decisions-v0.3-native-component-runtime-evidence-atomic-commit.md`](docs/adr/decisions-v0.3-native-component-runtime-evidence-atomic-commit.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・
+stage regeneration・full buildは未実行である。再現 command: `python3 scripts/ci/test-native-selfhost-component.py`。
+
 2026-08-02 に native component compile/build の opt-in runtime postflightを追加した。`--wasmtime PATH` が明示された場合だけ、byte-shape検査と
 `wasm-tools validate` の後、atomic replace前に `wasmtime run <temporary-component>` を実行する。成功時の runtime invocationと cleanup、runtime exit
 `31` 時の stderr/exit、既存 output保持、temporary cleanupを同一 fake fixtureで RED→GREENにした。既定 compile/buildは Wasmtimeを起動しない。

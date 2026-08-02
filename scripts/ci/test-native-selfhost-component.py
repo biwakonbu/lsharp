@@ -401,6 +401,7 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             source = root / "input.ls"
             source.write_text("(defn main [] 0)\\n", encoding="utf-8")
             output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
             evidence = root / "evidence" / "runtime.json"
             program = self.write_fake_native_program(root)
             environment, tools_directory = self.make_environment(root)
@@ -435,6 +436,70 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             )
             self.assertEqual(output.read_bytes(), b"\x00asmfake-component")
             self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
+            self.assert_no_forbidden_command(root)
+
+    def test_runtime_evidence_commit_failure_rolls_back_output_and_sidecar(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            evidence = root / "evidence" / "runtime.json"
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            wasmtime = self.write_fake_wasmtime(root / "wasmtime")
+            environment["FAKE_WASMTIME_MODE"] = "output"
+            environment["LSHARP_TEST_COMPONENT_FAILPOINT"] = "evidence-promote"
+
+            result = self.run_helper(
+                program,
+                source,
+                output,
+                environment,
+                wasmtime=wasmtime,
+                runtime_evidence=evidence,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"evidence-promote", result.stderr)
+            self.assertEqual(output.read_bytes(), b"existing-component")
+            self.assertFalse(evidence.exists())
+            self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
+            self.assertEqual(list(evidence.parent.glob(".runtime.json.*.tmp")), [])
+            self.assert_no_forbidden_command(root)
+
+    def test_output_commit_failure_rolls_back_existing_output_and_sidecar(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            evidence = root / "evidence" / "runtime.json"
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            wasmtime = self.write_fake_wasmtime(root / "wasmtime")
+            environment["FAKE_WASMTIME_MODE"] = "output"
+            environment["LSHARP_TEST_COMPONENT_FAILPOINT"] = "output-promote"
+
+            result = self.run_helper(
+                program,
+                source,
+                output,
+                environment,
+                wasmtime=wasmtime,
+                runtime_evidence=evidence,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"output-promote", result.stderr)
+            self.assertEqual(output.read_bytes(), b"existing-component")
+            self.assertFalse(evidence.exists())
+            self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
+            self.assertEqual(list(evidence.parent.glob(".runtime.json.*.tmp")), [])
             self.assert_no_forbidden_command(root)
 
     def test_forwards_successful_native_and_wasm_tools_stderr(self):
