@@ -295,6 +295,8 @@ def _dependency_summary(name, spec, project_dir):
     git = spec["git"]
     if not isinstance(git, str) or not git.strip():
         raise PackageLookupError(f"{dependency_name}.git は空でない文字列が必要です")
+    if "://" in git and "@" in git.split("://", 1)[1].split("/", 1)[0]:
+        raise PackageLookupError(f"{dependency_name}.git に credentials を含められません")
     for key in ("branch", "tag"):
         if key in spec and (not isinstance(spec[key], str) or not spec[key].strip()):
             raise PackageLookupError(f"{dependency_name}.{key} は空でない文字列が必要です")

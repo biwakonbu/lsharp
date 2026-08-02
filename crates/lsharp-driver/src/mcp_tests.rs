@@ -942,6 +942,12 @@ git = ""
 "#,
                 "git は空でない",
             ),
+            (
+                r#"[dependencies.bad]
+git = "https://token@example.invalid/bad.git"
+"#,
+                "credentials を含められません",
+            ),
         ];
         for (dependency, expected_message) in cases {
             std::fs::write(

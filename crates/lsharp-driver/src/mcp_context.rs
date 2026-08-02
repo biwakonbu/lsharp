@@ -105,6 +105,19 @@ fn validate_project_context_dependency_sources(project_dir: &Path) -> Result<(),
                     "dependencies.{name}.git は空でない文字列が必要です"
                 ));
             }
+            if git
+                .split_once("://")
+                .is_some_and(|(_, remainder)| {
+                    remainder
+                        .split('/')
+                        .next()
+                        .is_some_and(|authority| authority.contains('@'))
+                })
+            {
+                return Err(format!(
+                    "dependencies.{name}.git に credentials を含められません"
+                ));
+            }
             for key in ["branch", "tag"] {
                 if let Some(value) = spec.get(key) {
                     let value = value

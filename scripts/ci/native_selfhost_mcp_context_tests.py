@@ -144,6 +144,12 @@ git = ""
 """,
                 "git は空でない",
             ),
+            (
+                """[dependencies.bad]
+git = "https://token@example.invalid/bad.git"
+""",
+                "credentials を含められません",
+            ),
         ]
         for case_index, (dependency, expected_message) in enumerate(cases, start=1):
             (root / "lsharp.toml").write_text(
