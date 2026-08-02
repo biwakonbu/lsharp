@@ -276,6 +276,59 @@ def assert_receipt_lifecycle_snapshot_is_fail_closed(test):
             test.assertFalse((root / "native.log").exists())
 
 
+def assert_receipt_verification_clock_context_binding(test):
+    cases = (
+        ("2026-08-02T00:00:00Z", False),
+        ("2026-08-01T23:59:59Z", True),
+    )
+    for receipt_now, should_reject in cases:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = test.write_fake_program(root)
+            receipt = root / "receipt.json"
+            receipt.write_text(
+                json.dumps(
+                    {
+                        "review_id": "review:orders/reviewer-001",
+                        "state": "verified",
+                        "provider": "github",
+                        "key_id": "org/reviews-2026",
+                        "algorithm": "ed25519",
+                        "attestation_digest": "sha256:" + "a" * 64,
+                        "trust_store_digest": "sha256:" + "b" * 64,
+                        "verification_now": receipt_now,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = test.run_shim(
+                program,
+                request(
+                    1,
+                    "tools/call",
+                    {
+                        "name": "lsharp_validate",
+                        "arguments": {
+                            "source": "(defn main [] true)",
+                            "review_subject_digest": "sha256:subject",
+                            "review_source_commit": "a" * 40,
+                            "review_artifact_digest": "sha256:artifact",
+                            "review_now": "2026-08-02T00:00:00Z",
+                            "review_verification_receipt": str(receipt),
+                        },
+                    },
+                ),
+                root,
+                report_mode="receipt-valid",
+            )
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertEqual(response["result"]["isError"], should_reject)
+            if should_reject:
+                test.assertIn("verification clock mismatch", response["result"]["content"][0]["text"])
+                test.assertFalse((root / "native.log").exists())
+
+
 def review_verification_receipt_for_attestation():
     return {
         "review_id": "review:checkout/reviewer-001",

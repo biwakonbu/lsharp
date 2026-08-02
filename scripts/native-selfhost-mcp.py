@@ -1513,6 +1513,14 @@ def verify_receipt_provider_snapshot_binding(receipt, provider_digests, argument
         raise ToolError("native MCP receipt trust-store digest mismatch with provider snapshot")
 
 
+def verify_receipt_verification_clock_binding(receipt, arguments):
+    if receipt is None or "review_now" not in arguments:
+        return
+    review_now = require_string(arguments, "review_now")
+    if receipt["verification_now"] != review_now:
+        raise ToolError("native MCP receipt verification clock mismatch with review context")
+
+
 def reject_receipt_lifecycle_semantic_binding(receipt, arguments):
     if receipt is None:
         return
@@ -1742,6 +1750,7 @@ def call_validate(program, arguments, temporary_directory):
     if "review_verification_receipt" in arguments:
         receipt = load_review_verification_receipt(arguments["review_verification_receipt"])
         verify_receipt_provider_snapshot_binding(receipt, provider_digests, arguments)
+        verify_receipt_verification_clock_binding(receipt, arguments)
         reject_receipt_lifecycle_semantic_binding(receipt, arguments)
         command.extend(("--review-verification-receipt", arguments["review_verification_receipt"]))
     command.extend(identity_arguments(arguments, provider_digest_names))

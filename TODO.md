@@ -2326,3 +2326,14 @@ current-source manifest/expected replay lockは現HEADに一致せず、別セ�
 native cryptographic verification、live provider/auth acquisition、current-source Linux runtime、Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、
 EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-review-receipt-lifecycle-boundary.md`](docs/adr/decisions-v0.3-native-mcp-review-receipt-lifecycle-boundary.md)。
+
+2026-08-02 に explicit `review_now` context と `ReviewVerificationReceipt.verification_now` の coherency boundaryを追加した。
+receiptが指定され、caller identityが明示される場合は、Rust外部 verifierが作った verified factの検証時刻と現在の review contextが
+完全一致しなければ native起動前に `native MCP receipt verification clock mismatch with review context` で拒否する。
+一致するreceipt＋identityは従来どおり受理する。receipt schemaへ lifecycle digestを追加せず、lifecycle semantic verification、trust-store digest coherency、
+receipt projectionとは別の external verification context contractである。native MCP 99 tests、native receipt 3 tests、Rust receipt 4 tests、
+Rust source-attestation focused test、release identity 33 tests、source-file evidence、official two-target fake gateを確認した。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+native cryptographic verification、live provider/auth acquisition、current-source Linux runtime、Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、
+EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-review-receipt-verification-clock.md`](docs/adr/decisions-v0.3-native-mcp-review-receipt-verification-clock.md)。
