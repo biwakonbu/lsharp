@@ -261,6 +261,79 @@ grep -F "artifact_digest" <<<"$artifact_mismatch_output" >/dev/null \
 [[ ! -e "$ARTIFACT_MISMATCH_DIST_DIR/lsharp-stage0-${VERSION}-artifact-mismatch-${TARGET}.tar.gz" ]] \
   || fail "stage0 artifact digest mismatch left a release archive"
 
+REAL_TAR="$(command -v tar)"
+TAMPER_TAR="$TMP_ROOT/tamper-tar"
+TAMPER_TAR_BIN="$TMP_ROOT/tamper-tar-bin"
+TAMPER_DIST_DIR="$TMP_ROOT/tampered-archive-dist"
+mkdir -p "$TAMPER_TAR_BIN"
+cat >"$TAMPER_TAR" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+REAL_TAR="${NATIVE_STAGE0_RELEASE_REAL_TAR:?}"
+"$REAL_TAR" "$@"
+archive=""
+create_archive=0
+args=("$@")
+for ((index = 0; index < ${#args[@]} - 1; index++)); do
+  arg="${args[index]}"
+  [[ "$arg" == -*c* ]] && create_archive=1
+  if [[ "$arg" == -*f* || "$arg" == --file ]]; then
+    archive="${args[index + 1]}"
+    break
+  fi
+done
+if [[ "$create_archive" == 1 && -n "$archive" && "${NATIVE_STAGE0_RELEASE_TEST_TAMPER_ARCHIVE:-}" == 1 ]]; then
+  unpacked="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-stage0-tamper.XXXXXX")"
+  trap 'rm -rf "$unpacked"' EXIT
+  "$REAL_TAR" -xzf "$archive" -C "$unpacked"
+  python3 - "$unpacked" <<'PY'
+import json
+import pathlib
+import sys
+
+root = next(path for path in pathlib.Path(sys.argv[1]).iterdir() if path.is_dir())
+manifest_path = root / "manifest.json"
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+manifest["source_commit"] = "f" * 40
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
+  root="$(find "$unpacked" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+  root_name="$(basename "$root")"
+  tampered="$archive.tampered"
+  (
+    cd "$unpacked"
+    "$REAL_TAR" -czf "$tampered" "$root_name"
+  )
+  mv -f "$tampered" "$archive"
+fi
+SH
+chmod +x "$TAMPER_TAR"
+ln -s "$TAMPER_TAR" "$TAMPER_TAR_BIN/tar"
+set +e
+tampered_archive_output="$(
+  NATIVE_STAGE0_RELEASE_REAL_TAR="$REAL_TAR" \
+    NATIVE_STAGE0_RELEASE_TEST_TAMPER_ARCHIVE=1 \
+    NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
+    PATH="$TAMPER_TAR_BIN:$HOST_BIN:$PATH" \
+    "$RELEASE_PACKAGE" \
+      --target "$TARGET" \
+      --version "${VERSION}-tampered-archive" \
+      --stage0-dir "$STAGE0_DIR" \
+      --source-commit "$SOURCE_COMMIT" \
+      --review-evidence-identity "$IDENTITY_PATH" \
+      --review-trust-store "$TRUST_STORE_PATH" \
+      --review-lifecycle "$LIFECYCLE_PATH" \
+      --output-dir "$TAMPER_DIST_DIR" 2>&1
+)"
+tampered_archive_status=$?
+set -e
+[[ "$tampered_archive_status" -ne 0 ]] \
+  || fail "tampered native stage0 release archive was published"
+grep -F "archive round-trip provenance validation failed" <<<"$tampered_archive_output" >/dev/null \
+  || fail "tampered archive rejection did not expose a stable diagnostic"
+[[ ! -e "$TAMPER_DIST_DIR/lsharp-stage0-${VERSION}-tampered-archive-${TARGET}.tar.gz" ]] \
+  || fail "tampered archive rejection left a release archive"
+
 EMBEDDED_CONFLICT_STAGE0="$TMP_ROOT/embedded-conflict-stage0"
 EMBEDDED_CONFLICT_DIST_DIR="$TMP_ROOT/embedded-conflict-dist"
 CONFLICT_IDENTITY_PATH="$TMP_ROOT/conflicting-identity.json"

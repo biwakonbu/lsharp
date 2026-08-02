@@ -2348,3 +2348,16 @@ release identity 33 tests、source-file evidence、official two-target fake gate
 native cryptographic verification、live provider/auth実取得、current-source Linux runtime、Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、
 EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-live-provider-auth-boundary.md`](docs/adr/decisions-v0.3-native-mcp-live-provider-auth-boundary.md)。
+
+2026-08-02 に packaged stage0 release archive の offline round-trip provenance binding を追加した。生成前の
+stage0 packageを検証した後も、公開直前に archive を task-owned temporary directoryへ展開し、regular/symlink-free
+package、target/source commit、evidence identity、payload checksums、生成前 treeとの完全一致を再検証する。
+fake `tar` が archive manifest の source commitを書き換える RED を従来実装が公開してしまうことを確認し、
+`archive round-trip provenance validation failed` で拒否し invalid output archiveも残さない GREEN を
+`bash scripts/ci/test-native-stage0-release-package.sh` で固定した。これは既存 archive input、manifest、
+anchor/checksum、identity、atomic installの再実装ではない、packaged provenanceの verified partial sliceである。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため
+Linux replay・stage regeneration・full buildは未実行である。live provider/auth実取得・native cryptographic verification、
+current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-stage0-archive-round-trip-provenance.md`](docs/adr/decisions-v0.3-stage0-archive-round-trip-provenance.md)。

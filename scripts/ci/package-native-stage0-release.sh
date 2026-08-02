@@ -321,4 +321,31 @@ validate_native_stage0_package "$PACKAGE_DIR" "$TARGET" "$SOURCE_COMMIT"
 [[ -s "$ARCHIVE_TMP" ]] || die "native stage0 release archive was not created: $ARCHIVE_TMP"
 mv -f "$ARCHIVE_TMP" "$ARCHIVE_PATH"
 
+ARCHIVE_VERIFY_DIR="$(mktemp -d "$WORK_DIR/.archive-round-trip.XXXXXX")"
+archive_round_trip_die() {
+  rm -f "$ARCHIVE_PATH"
+  die "archive round-trip provenance validation failed: $1"
+}
+if ! tar -xzf "$ARCHIVE_PATH" -C "$ARCHIVE_VERIFY_DIR"; then
+  archive_round_trip_die "archive could not be extracted"
+fi
+ARCHIVE_VERIFY_PACKAGE="$ARCHIVE_VERIFY_DIR/$ARCHIVE_ROOT_NAME"
+if ! validate_native_stage0_package \
+  "$ARCHIVE_VERIFY_PACKAGE" \
+  "$TARGET" \
+  "$SOURCE_COMMIT" \
+  >/dev/null 2>"$ARCHIVE_VERIFY_DIR/validation-error"; then
+  validation_error="$(<"$ARCHIVE_VERIFY_DIR/validation-error")"
+  archive_round_trip_die "${validation_error:-invalid extracted package}"
+fi
+ARCHIVE_VERIFY_CHECKSUMS="$ARCHIVE_VERIFY_DIR/actual-checksums.txt"
+"$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/checksum.sh" \
+  "$ARCHIVE_VERIFY_PACKAGE" >"$ARCHIVE_VERIFY_CHECKSUMS"
+if ! cmp -s "$ARCHIVE_VERIFY_PACKAGE/checksums.txt" "$ARCHIVE_VERIFY_CHECKSUMS"; then
+  archive_round_trip_die "extracted package checksums do not match"
+fi
+if ! diff -ru "$PACKAGE_DIR" "$ARCHIVE_VERIFY_PACKAGE" >/dev/null; then
+  archive_round_trip_die "archive payload differs from the packaged stage0"
+fi
+
 echo "native stage0 release archive: $ARCHIVE_PATH"
