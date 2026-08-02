@@ -879,6 +879,75 @@ branch = "main"
     }
 
     #[test]
+    fn test_project_context_tool_rejects_ambiguous_dependency_sources() {
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_context_ambiguous_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/main.ls"), "(defn main [] true)\n").unwrap();
+        let cases = [
+            (
+                r#"[dependencies.bad]
+path = "./libs/bad"
+git = "https://example.invalid/bad.git"
+"#,
+                "path または git",
+            ),
+            (
+                r#"[dependencies.bad]
+path = "./libs/bad"
+branch = "main"
+"#,
+                "path には",
+            ),
+            (
+                r#"[dependencies.bad]
+path = "./libs/bad"
+checksum = "sha256:bad"
+"#,
+                "未知",
+            ),
+            (
+                r#"[dependencies.bad]
+git = ""
+"#,
+                "git は空でない",
+            ),
+        ];
+        for (dependency, expected_message) in cases {
+            std::fs::write(
+                root.join("lsharp.toml"),
+                format!(
+                    r#"[project]
+name = "ambiguous-context"
+entry = "src/main.ls"
+
+{dependency}"#,
+                ),
+            )
+            .unwrap();
+
+            let error = call_tool(
+                "lsharp_project_context",
+                &json!({"project_dir": root.display().to_string()}),
+            )
+            .expect_err("不正な依存元は project_context で拒否するべき");
+            assert!(
+                error.contains("dependencies.bad"),
+                "unexpected error: {error}"
+            );
+            assert!(
+                error.contains(expected_message),
+                "unexpected error: {error}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn test_search_tool_rejects_unknown_or_non_string_arguments() {
         let unknown = call_tool("lsharp_search", &json!({"unknown": true}))
             .expect_err("未知引数は reject するべき");

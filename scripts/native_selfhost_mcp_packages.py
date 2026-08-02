@@ -193,10 +193,10 @@ def _fallback_config_data(text):
             project.setdefault("exports", {})["modules"] = [item for item in value if isinstance(item, str)]
         elif section == "dependencies" and isinstance(value, str):
             dependencies[key] = value
-        elif section.startswith("dependencies.") and key in {"path", "git", "branch", "tag"}:
+        elif section.startswith("dependencies."):
             name = section[len("dependencies.") :]
             spec = dependencies.setdefault(name, {})
-            if isinstance(spec, dict) and isinstance(value, str):
+            if isinstance(spec, dict):
                 spec[key] = value
     return {"project": project, "dependencies": dependencies}
 
@@ -262,23 +262,50 @@ def call_search(arguments):
 
 
 def _dependency_summary(name, spec, project_dir):
+    dependency_name = f"dependencies.{name}"
     if isinstance(spec, str):
+        if not spec.strip():
+            raise PackageLookupError(f"{dependency_name} の version は空にできません")
         return {"name": name, "version": spec, "source": "registry"}
     if not isinstance(spec, dict):
-        return None
-    if isinstance(spec.get("path"), str):
+        raise PackageLookupError(
+            f"{dependency_name} は version 文字列または source table が必要です"
+        )
+    unknown = sorted(set(spec).difference({"path", "git", "branch", "tag"}))
+    if unknown:
+        raise PackageLookupError(
+            f"{dependency_name} に未知の依存元属性があります: {', '.join(unknown)}"
+        )
+    has_path = "path" in spec
+    has_git = "git" in spec
+    if has_path == has_git:
+        raise PackageLookupError(
+            f"{dependency_name} は path または git の一つだけを指定してください"
+        )
+    if has_path:
         path = spec["path"]
+        if not isinstance(path, str) or not path.strip():
+            raise PackageLookupError(f"{dependency_name}.path は空でない文字列が必要です")
+        if "branch" in spec or "tag" in spec:
+            raise PackageLookupError(
+                f"{dependency_name} の path には branch/tag を指定できません"
+            )
         resolved_path = str(pathlib.Path(path)) if pathlib.Path(path).is_absolute() else f"{project_dir}/{path}"
         return {"name": name, "source": "path", "path": resolved_path}
-    if isinstance(spec.get("git"), str):
+    git = spec["git"]
+    if not isinstance(git, str) or not git.strip():
+        raise PackageLookupError(f"{dependency_name}.git は空でない文字列が必要です")
+    for key in ("branch", "tag"):
+        if key in spec and (not isinstance(spec[key], str) or not spec[key].strip()):
+            raise PackageLookupError(f"{dependency_name}.{key} は空でない文字列が必要です")
+    if isinstance(git, str):
         return {
             "name": name,
             "source": "git",
-            "git": spec["git"],
+            "git": git,
             "branch": spec.get("branch") if isinstance(spec.get("branch"), str) else None,
             "tag": spec.get("tag") if isinstance(spec.get("tag"), str) else None,
         }
-    return None
 
 
 def call_project_context(arguments):
@@ -305,9 +332,9 @@ def call_project_context(arguments):
     if not isinstance(dependencies, dict):
         dependencies = {}
     summaries = [
-        summary
+        _dependency_summary(name, spec, project_path)
         for name, spec in sorted(dependencies.items())
-        if isinstance(name, str) and (summary := _dependency_summary(name, spec, project_path)) is not None
+        if isinstance(name, str)
     ]
     return {
         "project": {

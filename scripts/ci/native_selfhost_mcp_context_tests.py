@@ -108,3 +108,65 @@ def assert_project_context_rejects_invalid_arguments(test):
         test.assertIn("未知", responses[0]["result"]["content"][0]["text"])
         test.assertIn("project_dir", responses[1]["result"]["content"][0]["text"])
         test.assertFalse((root / "native.log").exists())
+
+
+def assert_project_context_rejects_ambiguous_dependency_sources(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        (root / "src").mkdir()
+        (root / "src" / "main.ls").write_text("(defn main [] true)\n", encoding="utf-8")
+        cases = [
+            (
+                """[dependencies.bad]
+path = "./libs/bad"
+git = "https://example.invalid/bad.git"
+""",
+                "path または git",
+            ),
+            (
+                """[dependencies.bad]
+path = "./libs/bad"
+branch = "main"
+""",
+                "path には",
+            ),
+            (
+                """[dependencies.bad]
+path = "./libs/bad"
+checksum = "sha256:bad"
+""",
+                "未知",
+            ),
+            (
+                """[dependencies.bad]
+git = ""
+""",
+                "git は空でない",
+            ),
+        ]
+        for case_index, (dependency, expected_message) in enumerate(cases, start=1):
+            (root / "lsharp.toml").write_text(
+                """[project]
+name = "ambiguous-context"
+entry = "src/main.ls"
+
+""" + dependency,
+                encoding="utf-8",
+            )
+            result = test.run_shim(
+                program,
+                request(
+                    case_index,
+                    "tools/call",
+                    {"name": "lsharp_project_context", "arguments": {"project_dir": str(root)}},
+                ),
+                root,
+            )
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            error_text = response["result"]["content"][0]["text"]
+            test.assertIn("dependencies.bad", error_text)
+            test.assertIn(expected_message, error_text)
+        test.assertFalse((root / "native.log").exists())

@@ -14,6 +14,7 @@ fn project_context_tool(arguments: &Value) -> Result<Value, String> {
             return Err("lsharp_project_context の project_dir は文字列が必要です".to_string());
         }
     };
+    validate_project_context_dependency_sources(&project_dir)?;
     let cfg = config::load_config(&project_dir);
     let mut dependencies = cfg
         .dependencies
@@ -32,6 +33,91 @@ fn project_context_tool(arguments: &Value) -> Result<Value, String> {
         "dependencies": dependencies,
         "installedPackages": installed_packages(&project_dir),
     }))
+}
+
+fn validate_project_context_dependency_sources(project_dir: &Path) -> Result<(), String> {
+    let config_path = project_dir.join("lsharp.toml");
+    let Ok(content) = std::fs::read_to_string(&config_path) else {
+        return Ok(());
+    };
+    let value: toml::Value = toml::from_str(&content).map_err(|error| {
+        format!(
+            "lsharp_project_context の lsharp.toml が不正です: {}: {error}",
+            config_path.display()
+        )
+    })?;
+    let Some(dependencies) = value.get("dependencies") else {
+        return Ok(());
+    };
+    let dependencies = dependencies
+        .as_table()
+        .ok_or_else(|| "lsharp_project_context の dependencies は table が必要です".to_string())?;
+    for (name, spec) in dependencies {
+        let Some(spec) = spec.as_table() else {
+            let version = spec.as_str().ok_or_else(|| {
+                format!("dependencies.{name} は version 文字列または source table が必要です")
+            })?;
+            if version.trim().is_empty() {
+                return Err(format!("dependencies.{name} の version は空にできません"));
+            }
+            continue;
+        };
+        let unknown = spec
+            .keys()
+            .filter(|key| !matches!(key.as_str(), "path" | "git" | "branch" | "tag"))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown.is_empty() {
+            return Err(format!(
+                "dependencies.{name} に未知の依存元属性があります: {}",
+                unknown.join(", ")
+            ));
+        }
+        let has_path = spec.contains_key("path");
+        let has_git = spec.contains_key("git");
+        if has_path == has_git {
+            return Err(format!(
+                "dependencies.{name} は path または git の一つだけを指定してください"
+            ));
+        }
+        if has_path {
+            let path = spec
+                .get("path")
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| format!("dependencies.{name}.path は空でない文字列が必要です"))?;
+            if path.trim().is_empty() {
+                return Err(format!(
+                    "dependencies.{name}.path は空でない文字列が必要です"
+                ));
+            }
+            if spec.contains_key("branch") || spec.contains_key("tag") {
+                return Err(format!(
+                    "dependencies.{name} の path には branch/tag を指定できません"
+                ));
+            }
+        } else {
+            let git = spec
+                .get("git")
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| format!("dependencies.{name}.git は空でない文字列が必要です"))?;
+            if git.trim().is_empty() {
+                return Err(format!(
+                    "dependencies.{name}.git は空でない文字列が必要です"
+                ));
+            }
+            for key in ["branch", "tag"] {
+                if let Some(value) = spec.get(key) {
+                    let value = value
+                        .as_str()
+                        .ok_or_else(|| format!("dependencies.{name}.{key} は文字列が必要です"))?;
+                    if value.trim().is_empty() {
+                        return Err(format!("dependencies.{name}.{key} は空にできません"));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn package_api_tool(arguments: &Value) -> Result<Value, String> {
