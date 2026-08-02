@@ -308,6 +308,23 @@ fn find_installed_package_dir(project_dir: &Path, name: &str) -> Option<PathBuf>
 
 fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
     let api_path = package_dir.join("docs").join("api.json");
+    let cfg = config::load_config(package_dir);
+    let package = if cfg.project.name.is_empty() {
+        package_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("package")
+            .to_string()
+    } else {
+        cfg.project.name.clone()
+    };
+    let version = if cfg.project.version.is_empty() {
+        "0.1.0".to_string()
+    } else {
+        cfg.project.version.clone()
+    };
+    let expected_identity =
+        (!cfg.project.name.is_empty()).then_some((package.as_str(), version.as_str()));
     if api_path.exists() {
         let content =
             std::fs::read_to_string(&api_path).map_err(|e| mcp_io_error(api_path.display(), e))?;
@@ -320,29 +337,37 @@ fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
             ));
         }
         validate_package_api_value(&value, &api_path)?;
+        validate_package_api_identity(&value, &api_path, expected_identity)?;
         return Ok(value);
     }
 
-    let cfg = config::load_config(package_dir);
-    let package = if cfg.project.name.is_empty() {
-        package_dir
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("package")
-            .to_string()
-    } else {
-        cfg.project.name
-    };
-    let version = if cfg.project.version.is_empty() {
-        "0.1.0".to_string()
-    } else {
-        cfg.project.version
-    };
     let api = api_doc::build_api_doc_for_package(package_dir, &package, &version)
         .map_err(|e| e.to_string())?;
     let value = serde_json::to_value(api).map_err(|e| e.to_string())?;
     validate_package_api_value(&value, &api_path)?;
+    validate_package_api_identity(&value, &api_path, expected_identity)?;
     Ok(value)
+}
+
+fn validate_package_api_identity(
+    value: &Value,
+    api_path: &Path,
+    expected_identity: Option<(&str, &str)>,
+) -> Result<(), String> {
+    let Some((expected_package, expected_version)) = expected_identity else {
+        return Ok(());
+    };
+    let actual_package = value["package"].as_str().unwrap_or_default();
+    let actual_version = value["version"].as_str().unwrap_or_default();
+    if actual_package != expected_package || actual_version != expected_version {
+        return Err(format!(
+            "{}: api.json identity mismatch: expected package '{}' version '{}'",
+            api_path.display(),
+            expected_package,
+            expected_version
+        ));
+    }
+    Ok(())
 }
 
 fn validate_package_api_value(value: &Value, api_path: &Path) -> Result<(), String> {

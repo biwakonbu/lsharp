@@ -1189,6 +1189,50 @@ entry = "src/main.ls"
     }
 
     #[test]
+    fn test_package_api_tool_rejects_api_identity_mismatch() {
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_api_identity_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let package_dir = root.join(".lsharp/packages/demo-1.0.0");
+        std::fs::create_dir_all(package_dir.join("docs")).unwrap();
+        std::fs::write(
+            package_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+
+        for (package, version) in [("other", "1.0.0"), ("demo", "2.0.0")] {
+            std::fs::write(
+                package_dir.join("docs/api.json"),
+                serde_json::to_vec(&json!({
+                    "package": package,
+                    "version": version,
+                    "modules": [],
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            let error = call_tool(
+                "lsharp_package_api",
+                &json!({
+                    "project_dir": root.display().to_string(),
+                    "name": "demo",
+                }),
+            )
+            .expect_err("package identity が異なる api.json は拒否するべき");
+            assert!(
+                error.contains("api.json identity mismatch"),
+                "unexpected error: {error}"
+            );
+            assert!(error.contains("expected package 'demo' version '1.0.0'"));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn test_package_api_tool_generates_api_from_source_when_missing() {
         let root = std::env::temp_dir().join(format!(
             "lsharp_mcp_package_api_generated_{}",

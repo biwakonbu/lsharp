@@ -236,6 +236,45 @@ def assert_package_api_generates_from_native_doc(test):
         )
 
 
+def assert_package_api_rejects_identity_mismatch(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        api_path = package / "docs" / "api.json"
+        api_path.parent.mkdir(parents=True)
+        cases = (("other", "1.0.0"), ("demo", "2.0.0"))
+
+        responses = []
+        for index, (package_name, version) in enumerate(cases, 1):
+            api_path.write_text(
+                json.dumps({"package": package_name, "version": version, "modules": []}),
+                encoding="utf-8",
+            )
+            result = test.run_shim(
+                program,
+                request(
+                    index,
+                    "tools/call",
+                    {
+                        "name": "lsharp_package_api",
+                        "arguments": {"project_dir": str(root), "name": "demo"},
+                    },
+                ),
+                root,
+            )
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            responses.append(response)
+
+        for response in responses:
+            test.assertTrue(response["result"]["isError"])
+            message = response["result"]["content"][0]["text"]
+            test.assertIn("api.json identity mismatch", message)
+            test.assertIn("expected package 'demo' version '1.0.0'", message)
+        test.assertFalse((root / "native.log").exists())
+
+
 def assert_package_api_rejects_malformed_native_doc(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

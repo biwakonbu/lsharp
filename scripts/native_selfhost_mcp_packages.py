@@ -466,7 +466,7 @@ def _generated_module(document, source):
     }
 
 
-def _generate_package_api(program, package_dir, package, version, api_path):
+def _generate_package_api(program, package_dir, package, version, api_path, expected_identity=None):
     source_files = _package_source_files(package_dir)
     if not source_files:
         raise PackageLookupError(
@@ -478,7 +478,7 @@ def _generate_package_api(program, package_dir, package, version, api_path):
     ]
     modules.sort(key=lambda module: module["name"])
     value = {"package": package, "version": version, "modules": modules}
-    _validate_package_api(value, api_path)
+    _validate_package_api(value, api_path, expected_identity)
     return value
 
 
@@ -506,20 +506,30 @@ def call_package_api(program, arguments):
     except (OSError, StopIteration):
         raise PackageLookupError(f"インストール済みパッケージ '{name}' が見つかりません") from None
     api_path = package_dir / "docs" / "api.json"
+    config = _project_config(package_dir)
+    expected_identity = (
+        (config["name"], config["version"]) if config["name"].strip() else None
+    )
     if api_path.exists():
         try:
             value = strict_json_loads(api_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError) as error:
             raise PackageLookupError(f"{api_path}: api.json を読み込めません: {error}") from error
-        _validate_package_api(value, api_path)
+        _validate_package_api(value, api_path, expected_identity)
         return value
 
-    config = _project_config(package_dir)
     package = config["name"] or package_dir.name
-    return _generate_package_api(program, package_dir, package, config["version"], api_path)
+    return _generate_package_api(
+        program,
+        package_dir,
+        package,
+        config["version"],
+        api_path,
+        expected_identity,
+    )
 
 
-def _validate_package_api(value, api_path):
+def _validate_package_api(value, api_path, expected_identity=None):
     """Validate the closed-world shape returned by ``lsharp_package_api``."""
 
     def fail(path, message):
@@ -591,6 +601,14 @@ def _validate_package_api(value, api_path):
             type_info = object_at(raw_type, type_path, {"name", "kind"})
             non_empty_string(type_info["name"], f"{type_path}.name")
             non_empty_string(type_info["kind"], f"{type_path}.kind")
+
+    if expected_identity is not None:
+        expected_package, expected_version = expected_identity
+        if value["package"] != expected_package or value["version"] != expected_version:
+            raise PackageLookupError(
+                f"{api_path}: api.json identity mismatch: expected package "
+                f"'{expected_package}' version '{expected_version}'"
+            )
 
 
 def _stdlib_api_path():
