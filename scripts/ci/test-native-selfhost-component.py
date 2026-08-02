@@ -144,6 +144,8 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             if os.environ.get("FAKE_WASMTIME_MODE") == "fail":
                 sys.stderr.write("fake component runtime failure\\n")
                 raise SystemExit(31)
+            if os.environ.get("FAKE_WASMTIME_MODE") == "mutate":
+                component.write_bytes(b"\\x00asmmutated-after-runtime")
             """,
         )
 
@@ -359,6 +361,32 @@ class NativeSelfhostComponentTest(unittest.TestCase):
             runtime_records = self.read_records(root, "wasmtime.jsonl")
             self.assertEqual(len(runtime_records), 1)
             self.assertFalse(pathlib.Path(runtime_records[0]["arguments"][1]).exists())
+            self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
+
+    def test_component_runtime_mutation_is_not_promoted(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            source = root / "input.ls"
+            source.write_text("(defn main [] 0)\\n", encoding="utf-8")
+            output = root / "program.component.wasm"
+            output.write_bytes(b"existing-component")
+            program = self.write_fake_native_program(root)
+            environment, tools_directory = self.make_environment(root)
+            self.write_fake_wasm_tools(tools_directory / "wasm-tools")
+            wasmtime = self.write_fake_wasmtime(root / "wasmtime")
+            environment["FAKE_WASMTIME_MODE"] = "mutate"
+
+            result = self.run_helper(
+                program,
+                source,
+                output,
+                environment,
+                wasmtime=wasmtime,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b"runtime changed", result.stderr.lower())
+            self.assertEqual(output.read_bytes(), b"existing-component")
             self.assertEqual(list(output.parent.glob(f".{output.name}.*.tmp")), [])
             self.assert_no_forbidden_command(root)
 

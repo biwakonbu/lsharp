@@ -2,6 +2,7 @@
 """native selfhost のPreview1出力をWASI componentとして包装する。"""
 
 import argparse
+import hashlib
 import os
 import pathlib
 import shutil
@@ -87,6 +88,19 @@ def validate_wasm_artifact(label, path):
         ) from error
     if magic != b"\x00asm":
         raise ComponentPackagingError(f"{label} produced invalid Wasm artifact: {path}")
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as artifact:
+            for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise ComponentPackagingError(
+            f"failed to read component runtime artifact {path}: {error}"
+        ) from error
+    return digest.hexdigest()
 
 
 def find_wasm_tools(value):
@@ -204,11 +218,16 @@ def package_component(program, wasm_tools, wasmtime, command, source, output):
                 [str(wasm_tools), "validate", str(temporary_component)],
                 "wasm-tools semantic validation",
             )
+            runtime_artifact_sha256 = sha256(temporary_component)
             if wasmtime is not None:
                 run_command(
                     [str(wasmtime), "run", str(temporary_component)],
                     "wasmtime component runtime",
                 )
+                if sha256(temporary_component) != runtime_artifact_sha256:
+                    raise ComponentPackagingError(
+                        "wasmtime runtime changed component bytes; refusing promotion"
+                    )
 
             try:
                 os.replace(temporary_component, output)

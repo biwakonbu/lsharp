@@ -2533,6 +2533,15 @@ current-source Mac/Linux runtime、packaged App.Cli/rollback bytes parity、live
 M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-official-cross-target-source-smoke-projection.md`](docs/adr/decisions-v0.3-native-official-cross-target-source-smoke-projection.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 の verified partial: native component の explicit `wasmtime run` と packaged promotionの artifact identityを接続した。
+`wasm-tools validate` 後の temporary component digestを runtime前に固定し、runtimeが成功しても bytesを変更していた場合は `os.replace` 前に
+fail-closed にする。同一 fake native→component new→validate→wasmtime fixtureで、成功経路、runtime mutation拒否、既存 output保持、temporary
+cleanupを確認した。これは直前の static source/ftable/import projectionとは異なる component lifecycle boundaryであり、report schemaは追加していない。
+fake runtime evidenceの verified partialに留まり、real component instantiation、Rust/native producer parity、current-source Mac/Linux runtime、packaged/rollback parity、provider/authは未検証のため、
+EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-component-runtime-artifact-identity.md`](docs/adr/decisions-v0.3-native-component-runtime-artifact-identity.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 に package installer の stale transaction ownership boundaryを Rust/nativeで揃えた。管理対象 packages directoryに
 `.install-txn-*` が残っている場合、unknown ownerの stagingを暗黙に再利用せず、
 `install transaction staging already exists; refusing to reuse unknown owner` で promotion前に fail-closed にする。同一 fixtureで
