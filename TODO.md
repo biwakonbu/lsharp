@@ -2578,6 +2578,10 @@ runtime-evidence receipt、source/ftable/import、batch cleanupの再実装で�
 実 target Mac/Linux runtime、current-source Rust/native producer parity、packaged/rollback parity、provider/authは未検証のため、EC-M3-04 / EC-M3-05 と
 M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-semantic-invalid-compile-exit-admission.md`](docs/adr/decisions-v0.3-semantic-invalid-compile-exit-admission.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+RED/GREEN再現 command: `python3 scripts/ci/test-semantic-fixture-rust-report.py SemanticFixtureRustReportTest.test_rejects_invalid_fixture_with_unexpected_compile_exit_before_report` と
+`python3 scripts/ci/test-semantic-fixture-native-report.py SemanticFixtureNativeReportTest.test_rejects_invalid_fixture_with_unexpected_compile_exit_before_report`。
+重い gate再開前の blocker再現は `ps -axo pid=,command= | rg 'lsharp-linux-x86|replayd'` と
+`find . -path './target' -prune -o -type f \( -name manifest.json -o -name '*replay*lock*' -o -name 'expected-lock*' \) -print` で行う。
 
 2026-08-02 の verified partial: official two-target release orchestratorの target runtime/evidence admissionを追加した。
 App.Cli/stage0 archiveとchecksumを既存の最終 `DIST_DIR` へ直接書かず、task-owned `SMOKE_ROOT/release-dist`へ stagingし、Mac/Linuxの

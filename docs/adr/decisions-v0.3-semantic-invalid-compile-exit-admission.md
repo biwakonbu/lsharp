@@ -39,3 +39,9 @@ parity. Those EC-M3-04/05 and M3-04-N1/M3-05-N9 boundaries remain `[~]` in
 the active planning and TODO records. A current-source manifest and expected
 replay lock were not available, and another session owns the Lima/QEMU/replayd
 processes, so Linux replay, stage regeneration, and full build were not run.
+RED/GREEN reproduction commands are
+`python3 scripts/ci/test-semantic-fixture-rust-report.py SemanticFixtureRustReportTest.test_rejects_invalid_fixture_with_unexpected_compile_exit_before_report`
+and the corresponding native test. Recheck the replay blocker before any
+future heavy gate with
+`ps -axo pid=,command= | rg 'lsharp-linux-x86|replayd'` and
+`find . -path './target' -prune -o -type f \( -name manifest.json -o -name '*replay*lock*' -o -name 'expected-lock*' \) -print`.
