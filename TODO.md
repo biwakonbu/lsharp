@@ -2486,6 +2486,17 @@ Rust installer 22 tests、native installer 18 tests、Rust format、Python synta
 EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence: [`decisions-v0.3-native-package-install-path-input-fail-closed.md`](docs/adr/decisions-v0.3-native-package-install-path-input-fail-closed.md)。
 current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 に package installer の stale transaction ownership boundaryを Rust/nativeで揃えた。管理対象 packages directoryに
+`.install-txn-*` が残っている場合、unknown ownerの stagingを暗黙に再利用せず、
+`install transaction staging already exists; refusing to reuse unknown owner` で promotion前に fail-closed にする。同一 fixtureで
+stale owner sentinel、既存 package destination、lock.toml、module-indexを無変更保持し、host fallbackを呼ばない RED→GREENを確認した。
+Rust installer 24 tests、native installer 20 testsがGREENである。これは直前の registry external-boundary、promotion/metadata/durability rollbackとは別の
+stale transaction ownership/provider state preservationであり、stagingの自動復旧・削除や crash/power-loss semantics は追加していない。
+live registry/provider retrieval/auth、完全 transactionality、native MCP package-install semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは
+未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-stale-transaction-boundary.md`](docs/adr/decisions-v0.3-native-package-install-stale-transaction-boundary.md)。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 に version dependency の Rust/native registry external boundaryを追加した。version spec は明示された offline
 `.lsharp/packages` cacheからのみ解決し、cache missを live registry取得へ暗黙に委譲せず、
 `registry provider acquisition is an external boundary` として managed `.lsharp`、lock.toml、module-index、transaction stagingの作成前に

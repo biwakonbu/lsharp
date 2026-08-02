@@ -2496,6 +2496,34 @@ fn rollback_install_state(
     rollback_promoted_packages(promoted);
 }
 
+fn reject_stale_install_transactions(packages_dir: &Path) -> miette::Result<()> {
+    let entries = match std::fs::read_dir(packages_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(driver_io_error(format!(
+                "install transaction staging の確認に失敗: {error}"
+            )));
+        }
+    };
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            driver_io_error(format!("install transaction staging の確認に失敗: {error}"))
+        })?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".install-txn-")
+        {
+            return Err(miette::miette!(
+                "install transaction staging already exists; refusing to reuse unknown owner: {}",
+                entry.path().display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
 fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     let config =
@@ -2520,6 +2548,7 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
 
     let lsharp_dir = project_dir.join(".lsharp");
     let packages_dir = lsharp_dir.join("packages");
+    reject_stale_install_transactions(&packages_dir)?;
     std::fs::create_dir_all(&packages_dir)
         .map_err(|e| driver_io_error(format!(".lsharp/packages/ の作成に失敗: {e}")))?;
 

@@ -2554,6 +2554,63 @@ fn test_cmd_install_version_dependency_requires_offline_cache_before_install_sta
 }
 
 #[test]
+fn test_cmd_install_rejects_stale_transaction_without_mutating_managed_state() {
+    let base_dir = std::env::temp_dir().join("lsharp_test_install_stale_transaction");
+    let _ = std::fs::remove_dir_all(&base_dir);
+    let dependency_dir = base_dir.join("local-lib");
+    std::fs::create_dir_all(dependency_dir.join("src")).unwrap();
+    std::fs::write(
+        dependency_dir.join("lsharp.toml"),
+        "[project]\nname = \"local-lib\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(dependency_dir.join("src/Lib.ls"), "(module Lib)\n").unwrap();
+    std::fs::write(
+        base_dir.join("lsharp.toml"),
+        "[dependencies.local-lib]\npath = \"local-lib\"\n",
+    )
+    .unwrap();
+
+    let lsharp_dir = base_dir.join(".lsharp");
+    let packages_dir = lsharp_dir.join("packages");
+    let index_dir = lsharp_dir.join("module-index");
+    std::fs::create_dir_all(&index_dir).unwrap();
+    let stale_transaction = packages_dir.join(".install-txn-stale");
+    std::fs::create_dir_all(&stale_transaction).unwrap();
+    std::fs::write(stale_transaction.join("owner-sentinel"), "preserve\n").unwrap();
+    std::fs::write(lsharp_dir.join("lock.toml"), "lock sentinel\n").unwrap();
+    std::fs::write(index_dir.join("sentinel.path"), "index sentinel\n").unwrap();
+
+    let error = cmd_install_in(&base_dir)
+        .expect_err("stale install transaction must fail closed before a new install");
+    assert!(
+        error
+            .to_string()
+            .contains("install transaction staging already exists"),
+        "unexpected stale transaction error: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(stale_transaction.join("owner-sentinel")).unwrap(),
+        "preserve\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(lsharp_dir.join("lock.toml")).unwrap(),
+        "lock sentinel\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(index_dir.join("sentinel.path")).unwrap(),
+        "index sentinel\n"
+    );
+    assert!(
+        std::fs::read_dir(&packages_dir)
+            .unwrap()
+            .all(|entry| entry.unwrap().file_name() == ".install-txn-stale")
+    );
+
+    std::fs::remove_dir_all(&base_dir).unwrap();
+}
+
+#[test]
 fn test_cmd_install_version_dependency_rejects_signed_semver_requirement() {
     let base_dir = std::env::temp_dir().join("lsharp_test_install_version_signed");
     let _ = std::fs::remove_dir_all(&base_dir);

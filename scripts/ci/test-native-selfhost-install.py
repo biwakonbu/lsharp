@@ -459,6 +459,43 @@ class NativeSelfhostInstallTest(unittest.TestCase):
             )
             self.assertFalse((project / ".lsharp").exists())
 
+    def test_rejects_stale_transaction_without_mutating_managed_state(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            project = root / "project"
+            dependency = root / "local-lib"
+            self.write_package(dependency, "local-lib", "1.0.0", {"Lib.ls": "(module Lib)\n"})
+            packages = project / ".lsharp" / "packages"
+            index = project / ".lsharp" / "module-index"
+            stale = packages / ".install-txn-stale"
+            stale.mkdir(parents=True)
+            (stale / "owner-sentinel").write_text("preserve\n", encoding="utf-8")
+            index.mkdir(parents=True)
+            (project / "lsharp.toml").write_text(
+                "[dependencies.local-lib]\npath = \"../local-lib\"\n", encoding="utf-8"
+            )
+            (project / ".lsharp" / "lock.toml").write_text(
+                "lock sentinel\n", encoding="utf-8"
+            )
+            (index / "sentinel.path").write_text("index sentinel\n", encoding="utf-8")
+            environment, marker = self.poison_host_commands(root)
+
+            result = self.run_installer(project, environment)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(marker.exists(), "host fallback must not run")
+            self.assertIn("install transaction staging already exists", result.stderr)
+            self.assertEqual((stale / "owner-sentinel").read_text(encoding="utf-8"), "preserve\n")
+            self.assertEqual(
+                (project / ".lsharp" / "lock.toml").read_text(encoding="utf-8"),
+                "lock sentinel\n",
+            )
+            self.assertEqual(
+                (index / "sentinel.path").read_text(encoding="utf-8"),
+                "index sentinel\n",
+            )
+            self.assertEqual(list(packages.iterdir()), [stale])
+
     def test_mixed_path_and_cached_failure_keeps_state_unpromoted(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)

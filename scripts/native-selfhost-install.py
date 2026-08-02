@@ -380,6 +380,21 @@ def temporary_path(parent, stem):
     return managed_child(parent, f".{stem}.tmp-{uuid.uuid4().hex}")
 
 
+def reject_stale_install_transactions(packages_dir):
+    try:
+        entries = sorted(packages_dir.iterdir(), key=lambda path: path.name)
+    except OSError as error:
+        raise InstallError(
+            f"cannot inspect install transaction staging {packages_dir}: {error}"
+        ) from error
+    for entry in entries:
+        if entry.name.startswith(".install-txn-"):
+            raise InstallError(
+                "install transaction staging already exists; "
+                f"refusing to reuse unknown owner: {entry}"
+            )
+
+
 def rollback_promotions(promoted, packages_dir):
     for destination, backup in reversed(promoted):
         if os.path.lexists(destination):
@@ -814,6 +829,7 @@ def install(project_dir):
             )
     lsharp_dir = ensure_managed_directory(project_dir, ".lsharp")
     packages_dir = ensure_managed_directory(lsharp_dir, "packages")
+    reject_stale_install_transactions(packages_dir)
     staging_dir = temporary_path(packages_dir, "install-txn")
     try:
         staging_dir.mkdir()
