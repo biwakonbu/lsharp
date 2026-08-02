@@ -2495,17 +2495,6 @@ Mac/Linux packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3
 [`decisions-v0.3-native-component-semantic-validation.md`](docs/adr/decisions-v0.3-native-component-semantic-validation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
-2026-08-02 の verified partial: semantic fixture two-target aggregateへ target-independent observation parityを接続した。両 target indexの
-fixture scopeと各 target内の Rust/native parityを再監査した後、producerごとに `source_sha256`、diagnostics、compiler `exit_code`を Mac/Linux間で
-exact compareし、両 targetの runtimeが observed の場合だけ runtime exit/stdout/stderrも比較する。不一致は `cross-target semantic parity mismatch` で
-aggregate pass前に fail-closed にする。target-specific artifact bytes/digestと pending runtimeは比較対象から除外し、report/aggregate schemaは変更していない。
-同じ fake fixtureで target内は一貫したまま Linux側だけの source digest mismatchを注入する RED→GREENを
-`python3 scripts/ci/test-semantic-fixture-evidence-aggregate.py -v` で確認した。これは直前の producer environment isolation、source-commit admission、
-official source-smoke projectionとは別の semantic evidence cross-target relationであり、current-source Mac/Linux runtime、full native producer parity、
-packaged/rollback parity、provider/authは未検証のため EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
-[`decisions-v0.3-semantic-two-target-observation-parity.md`](docs/adr/decisions-v0.3-semantic-two-target-observation-parity.md)。current-source
-manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行である。
-
 2026-08-02 の verified partial: native semantic report producerの stage0 manifest→compiler runner identity bindingを追加した。
 従来は manifestの kind/target/source_commit と compiler/transport/materializerの relative path shapeだけを検証し、別の `--runner`を実行できた。
 manifestの `compiler` を regular executableとして検査し、resolved pathを明示 `--runner` と exact compareすることで、unbound/missing/symlink/non-executable
@@ -2711,3 +2700,14 @@ evidence/aggregate/docs/whitespaceの focused batchがGREENである。current-s
 provider/authは未検証のため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
 [`decisions-v0.3-semantic-producer-environment-isolation.md`](docs/adr/decisions-v0.3-semantic-producer-environment-isolation.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
+2026-08-02 の verified partial: semantic fixture two-target aggregateへ target-independent observation parityを接続した。両 target indexの
+fixture scopeと各 target内の Rust/native parityを再監査した後、producerごとに `source_sha256`、diagnostics、compiler `exit_code`を Mac/Linux間で
+exact compareし、両 targetの runtimeが observed の場合だけ runtime exit/stdout/stderrも比較する。不一致は `cross-target semantic parity mismatch` で
+aggregate pass前に fail-closed にする。target-specific artifact bytes/digestと pending runtimeは比較対象から除外し、report/aggregate schemaは変更していない。
+同じ fake fixtureで target内は一貫したまま Linux側だけの source digest mismatchを注入する RED→GREENを
+`python3 scripts/ci/test-semantic-fixture-evidence-aggregate.py -v` で確認した。これは直前の producer environment isolation、source-commit admission、
+official source-smoke projectionとは別の semantic evidence cross-target relationであり、current-source Mac/Linux runtime、full native producer parity、
+packaged/rollback parity、provider/authは未検証のため EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま維持する。Evidence:
+[`decisions-v0.3-semantic-two-target-observation-parity.md`](docs/adr/decisions-v0.3-semantic-two-target-observation-parity.md)。current-source
+manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため Linux replay・stage regeneration・full buildは未実行である。
