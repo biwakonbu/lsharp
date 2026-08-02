@@ -274,8 +274,45 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("source", result.stderr.lower())
                 self.assertFalse(output.exists())
+
         finally:
             source_path.write_bytes(original_source)
+
+    def test_rejects_unexpected_runtime_failure_before_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            runner = root / "fake-native-runner.py"
+            wasmtime = root / "failing-wasmtime.py"
+            stage0_manifest = write_stage0_manifest(root)
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                runner,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'native-wasm')\n",
+            )
+            make_executable(
+                wasmtime,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stderr.write('runtime failed\\n')\n"
+                "raise SystemExit(23)\n",
+            )
+            result = self.run_producer(
+                root,
+                runner,
+                wasmtime,
+                stage0_manifest,
+                output,
+                work_dir,
+                fixture_id="valid/syntax-basic",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("runtime", result.stderr.lower())
+            self.assertIn("expected", result.stderr.lower())
+            self.assertFalse(output.exists())
 
     def test_materializes_declared_runtime_input_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -272,8 +272,43 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("source", result.stderr.lower())
                 self.assertFalse(output.exists())
+
         finally:
             source_path.write_bytes(original_source)
+
+    def test_rejects_unexpected_runtime_failure_before_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            compiler = root / "fake-compiler.py"
+            wasmtime = root / "failing-wasmtime.py"
+            work_dir = root / "work"
+            work_dir.mkdir()
+            output = root / "report.json"
+            make_executable(
+                compiler,
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake-wasm')\n",
+            )
+            make_executable(
+                wasmtime,
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stderr.write('runtime failed\\n')\n"
+                "raise SystemExit(23)\n",
+            )
+            result = self.run_producer(
+                root,
+                compiler,
+                wasmtime,
+                output,
+                work_dir,
+                fixture_id="valid/syntax-basic",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("runtime", result.stderr.lower())
+            self.assertIn("expected", result.stderr.lower())
+            self.assertFalse(output.exists())
 
     def test_materializes_declared_runtime_input_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:

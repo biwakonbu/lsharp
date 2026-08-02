@@ -345,6 +345,15 @@ def observe_fixture(
         capture_output=True,
         check=False,
     )
+    expected_runtime = fixture.get("expected", {}).get("runtime", {})
+    expected_exit_code = expected_runtime.get("exit_code")
+    if expected_exit_code is not None and runtime_result.returncode != expected_exit_code:
+        detail = decode_output(runtime_result.stderr).strip() or decode_output(runtime_result.stdout).strip()
+        raise ReportError(
+            "Rust oracle runtime exit "
+            f"{runtime_result.returncode} does not match expected exit {expected_exit_code}"
+            + (f": {detail}" if detail else "")
+        )
     if sha256(source) != source_sha256:
         raise ReportError("source fixture changed during Rust oracle observation")
     return {
