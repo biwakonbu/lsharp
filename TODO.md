@@ -2438,3 +2438,12 @@ module-index I/O failure時の完全 rollback、registry/provider/auth取得、n
 Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-package-install-mixed-transaction.md`](docs/adr/decisions-v0.3-native-package-install-mixed-transaction.md)。
 次の RED は final promotionまたは lock/index I/O failure時にも先行 promotionを残さない rollback/atomic commit boundaryである。
+
+2026-08-02 に final promotion loopの Rust/native rollback boundaryを追加した。同じ local fixtureで既存 path package symlinkと fresh Git packageを
+名前順に stagingし、promotion index `1` の test-only failpointを注入した。Rustは `cfg(test)` の atomic failpoint、nativeは明示的な
+`LSHARP_TEST_INSTALL_FAILPOINT=promotion:1` を使い、先行 promotionを逆順に除去して旧 destinationを復元する。sentinel lock.tomlと
+module-index、fresh Git destination、`.install-txn-*` residueが保持/不在になる RED→GREENを確認した。これは final rename loopの
+promotion rollback verified partial sliceであり、lockfile/module-index I/O failure時の完全 rollback、registry/provider/auth取得、native MCP package-install
+semantics、current-source Linux runtime、Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
+次の RED は lock.toml または module-index の I/O failureでも package destinationと旧 metadataを復元する commit boundaryである。

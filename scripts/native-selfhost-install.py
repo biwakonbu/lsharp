@@ -379,6 +379,14 @@ def temporary_path(parent, stem):
     return managed_child(parent, f".{stem}.tmp-{uuid.uuid4().hex}")
 
 
+def rollback_promotions(promoted, packages_dir):
+    for destination, backup in reversed(promoted):
+        if os.path.lexists(destination):
+            remove_managed_path(destination, packages_dir)
+        if backup is not None and os.path.lexists(backup):
+            os.replace(backup, destination)
+
+
 def fnv1a64(value):
     hashed = 0xCBF29CE484222325
     for byte in value.encode("utf-8"):
@@ -703,8 +711,32 @@ def install(project_dir):
             else:
                 entries.append(resolve_cached_version_dependency(packages_dir, name, value))
 
-        for staged, destination, description in pending_promotions:
-            os.replace(staged, destination)
+        promoted = []
+        for index, (staged, destination, description) in enumerate(pending_promotions):
+            backup = temporary_path(staging_dir, f"backup-{index}")
+            backup_path = None
+            if os.path.lexists(destination):
+                try:
+                    os.replace(destination, backup)
+                except OSError as error:
+                    rollback_promotions(promoted, packages_dir)
+                    raise InstallError(
+                        f"cannot back up package destination {destination}: {error}"
+                    ) from error
+                backup_path = backup
+            if os.environ.get("LSHARP_TEST_INSTALL_FAILPOINT") == f"promotion:{index}":
+                if backup_path is not None and os.path.lexists(backup_path):
+                    os.replace(backup_path, destination)
+                rollback_promotions(promoted, packages_dir)
+                raise InstallError(f"test-only package promotion failpoint at index {index}")
+            try:
+                os.replace(staged, destination)
+            except OSError as error:
+                if backup_path is not None and os.path.lexists(backup_path):
+                    os.replace(backup_path, destination)
+                rollback_promotions(promoted, packages_dir)
+                raise InstallError(f"cannot promote package {destination}: {error}") from error
+            promoted.append((destination, backup_path))
             print(f"installed {description}")
         write_lockfile(lsharp_dir, entries)
         rebuild_module_index(project_dir, lsharp_dir, packages_dir)

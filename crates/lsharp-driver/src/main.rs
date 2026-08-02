@@ -2383,6 +2383,25 @@ impl Drop for InstallTransactionGuard {
     }
 }
 
+#[cfg(test)]
+static INSTALL_TEST_PROMOTION_FAILPOINT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(usize::MAX);
+
+fn remove_install_path(path: &Path) {
+    if path.symlink_metadata().is_ok() {
+        let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
+    }
+}
+
+fn rollback_promoted_packages(promoted: &mut Vec<(PathBuf, Option<PathBuf>)>) {
+    for (final_path, backup_path) in promoted.drain(..).rev() {
+        remove_install_path(&final_path);
+        if let Some(backup_path) = backup_path {
+            let _ = std::fs::rename(backup_path, final_path);
+        }
+    }
+}
+
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
 fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     let config =
@@ -2567,9 +2586,42 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
         }
     }
 
-    for (staged_path, final_path, description) in pending_promotions {
-        std::fs::rename(&staged_path, &final_path)
-            .map_err(|error| driver_io_error(format!("package install の確定に失敗: {error}")))?;
+    let mut promoted = Vec::new();
+    for (index, (staged_path, final_path, description)) in
+        pending_promotions.into_iter().enumerate()
+    {
+        let backup_path = transaction_dir.join(format!(".backup-{index}"));
+        let backup = if final_path.symlink_metadata().is_ok() {
+            std::fs::rename(&final_path, &backup_path).map_err(|error| {
+                rollback_promoted_packages(&mut promoted);
+                driver_io_error(format!("既存 package destination の退避に失敗: {error}"))
+            })?;
+            Some(backup_path.clone())
+        } else {
+            None
+        };
+
+        #[cfg(test)]
+        if INSTALL_TEST_PROMOTION_FAILPOINT.load(std::sync::atomic::Ordering::SeqCst) == index {
+            if let Some(backup_path) = backup.as_ref() {
+                let _ = std::fs::rename(backup_path, &final_path);
+            }
+            rollback_promoted_packages(&mut promoted);
+            return Err(miette::miette!(
+                "test-only package promotion failpoint at index {index}"
+            ));
+        }
+
+        if let Err(error) = std::fs::rename(&staged_path, &final_path) {
+            if let Some(backup_path) = backup.as_ref() {
+                let _ = std::fs::rename(backup_path, &final_path);
+            }
+            rollback_promoted_packages(&mut promoted);
+            return Err(driver_io_error(format!(
+                "package install の確定に失敗: {error}"
+            )));
+        }
+        promoted.push((final_path.clone(), backup));
         let _ = generate_api_json_for_package(&final_path);
         println!("  インストール: {description}");
     }
