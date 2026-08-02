@@ -7,7 +7,8 @@ invokes cargo, host lsharp, an embedded selfhost component, or a provider
 implicitly; the caller owns those boundaries and supplies the paths. Repeat
 ``--fixture-id`` to produce a deterministic batch. Invalid fixtures are
 accepted only when their compiler diagnostic exposes an LS#### code and a
-source byte span.
+source byte span. Observed runtime entries include the digest of the exact
+artifact passed to Wasmtime.
 """
 
 from __future__ import annotations
@@ -299,6 +300,7 @@ def observe_fixture(
                 "exit_code": None,
                 "stdout": None,
                 "stderr": None,
+                "artifact_sha256": None,
             },
         }
     if compile_result.returncode != 0:
@@ -336,6 +338,7 @@ def observe_fixture(
             "exit_code": runtime_result.returncode,
             "stdout": decode_output(runtime_result.stdout),
             "stderr": decode_output(runtime_result.stderr),
+            "artifact_sha256": sha256(artifact),
         },
     }
 

@@ -141,7 +141,16 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
                 fixture["artifact"]["sha256"],
                 "sha256:" + hashlib.sha256(b"fake-wasm").hexdigest(),
             )
-            self.assertEqual(fixture["runtime"], {"status": "observed", "exit_code": 0, "stdout": "42\n", "stderr": ""})
+            self.assertEqual(
+                fixture["runtime"],
+                {
+                    "status": "observed",
+                    "exit_code": 0,
+                    "stdout": "42\n",
+                    "stderr": "",
+                    "artifact_sha256": "sha256:" + hashlib.sha256(b"fake-wasm").hexdigest(),
+                },
+            )
             self.assertEqual((root / "compiler.log").read_text(encoding="utf-8"), "1")
 
     def test_rejects_invalid_wasm_before_runtime(self):
@@ -293,7 +302,13 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(
                 report["fixtures"][0]["runtime"],
-                {"status": "observed", "exit_code": 0, "stdout": "", "stderr": ""},
+                {
+                    "status": "observed",
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "artifact_sha256": "sha256:" + hashlib.sha256(b"fake-wasm").hexdigest(),
+                },
             )
             self.assertFalse((work_dir / "input.txt").exists())
 
@@ -403,7 +418,13 @@ class SemanticFixtureRustReportTest(unittest.TestCase):
             self.assertEqual(fixture["artifact"], {"status": "not-applicable"})
             self.assertEqual(
                 fixture["runtime"],
-                {"status": "not-run", "exit_code": None, "stdout": None, "stderr": None},
+                {
+                    "status": "not-run",
+                    "exit_code": None,
+                    "stdout": None,
+                    "stderr": None,
+                    "artifact_sha256": None,
+                },
             )
 
     def test_writes_invalid_report_from_multiline_span_struct(self):

@@ -24,6 +24,7 @@ AGGREGATE = SCRIPTS_DIR / "semantic_fixture_evidence_aggregate.py"
 RESULT_SCHEMA = ROOT / "docs/schemas/v4-m1-06-evidence-aggregate-result.schema.json"
 TARGETS = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 SELECTED_IDS = ["invalid/type-undefined-value", "valid/syntax-basic"]
+ARTIFACT_DIGEST = "sha256:" + "b" * 64
 GATES = {
     "fallback-forbidden": "pass",
     "network-forbidden": "pass",
@@ -43,18 +44,31 @@ def report_for(producer: str, target: str, observed: bool) -> dict:
         expected = fixtures[identifier]["expected"]
         if fixtures[identifier]["kind"] == "invalid":
             artifact = {"status": "not-applicable"}
-            runtime = {"status": "not-run", "exit_code": None, "stdout": None, "stderr": None}
+            runtime = {
+                "status": "not-run",
+                "exit_code": None,
+                "stdout": None,
+                "stderr": None,
+                "artifact_sha256": None,
+            }
         elif observed:
-            artifact = {"status": "observed", "sha256": "sha256:" + "b" * 64, "size": 4}
+            artifact = {"status": "observed", "sha256": ARTIFACT_DIGEST, "size": 4}
             runtime = {
                 "status": "observed",
                 "exit_code": expected["runtime"]["exit_code"],
                 "stdout": expected["runtime"]["stdout"],
                 "stderr": expected["runtime"]["stderr"],
+                "artifact_sha256": ARTIFACT_DIGEST,
             }
         else:
             artifact = {"status": "pending"}
-            runtime = {"status": "pending", "exit_code": None, "stdout": None, "stderr": None}
+            runtime = {
+                "status": "pending",
+                "exit_code": None,
+                "stdout": None,
+                "stderr": None,
+                "artifact_sha256": None,
+            }
         result.append(
             {
                 "id": identifier,

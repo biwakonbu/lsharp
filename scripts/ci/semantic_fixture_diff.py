@@ -3,7 +3,8 @@
 """Compare one Rust-oracle report with one native-stage0 report.
 
 This helper compares only observable contract fields.  Pending artifact or
-runtime observations produce exit code 2, never a false success.
+runtime observations produce exit code 2, never a false success. Observed
+runtime entries must identify the exact observed artifact digest they executed.
 """
 
 from __future__ import annotations
@@ -108,20 +109,28 @@ def validate_runtime(value: Any, kind: str, label: str) -> Dict[str, Any]:
     runtime = require_object(value, label)
     status = require_string(runtime.get("status"), f"{label}.status")
     if status in {"pending", "not-run"}:
-        expect_keys(runtime, ("status", "exit_code", "stdout", "stderr"), label)
-        if runtime["exit_code"] is not None or runtime["stdout"] is not None or runtime["stderr"] is not None:
+        expect_keys(runtime, ("status", "exit_code", "stdout", "stderr", "artifact_sha256"), label)
+        if (
+            runtime["exit_code"] is not None
+            or runtime["stdout"] is not None
+            or runtime["stderr"] is not None
+            or runtime["artifact_sha256"] is not None
+        ):
             raise ObservationError(f"{label} pending/not-run output must be null")
         if kind == "invalid" and status != "not-run":
             raise ObservationError(f"{label} invalid fixture runtime must be not-run")
         return dict(runtime)
     if status != "observed":
         raise ObservationError(f"{label}.status must be observed, pending, or not-run")
-    expect_keys(runtime, ("status", "exit_code", "stdout", "stderr"), label)
+    expect_keys(runtime, ("status", "exit_code", "stdout", "stderr", "artifact_sha256"), label)
     exit_code = runtime["exit_code"]
     if isinstance(exit_code, bool) or not isinstance(exit_code, int):
         raise ObservationError(f"{label}.exit_code must be an integer")
     if not isinstance(runtime["stdout"], str) or not isinstance(runtime["stderr"], str):
         raise ObservationError(f"{label} observed output must be strings")
+    artifact_sha256 = require_string(runtime["artifact_sha256"], f"{label}.artifact_sha256")
+    if not SHA256.fullmatch(artifact_sha256):
+        raise ObservationError(f"{label}.artifact_sha256 must use sha256:<64 lowercase hex>")
     if kind != "valid":
         raise ObservationError(f"{label} invalid fixture cannot run")
     return dict(runtime)
@@ -166,13 +175,25 @@ def validate_report(
         if isinstance(exit_code, bool) or not isinstance(exit_code, int):
             raise ObservationError(f"{fixture_label}.exit_code must be an integer")
         kind = manifest_fixtures[identifier]["kind"]
+        artifact = validate_artifact(fixture["artifact"], kind, f"{fixture_label}.artifact")
+        runtime = validate_runtime(fixture["runtime"], kind, f"{fixture_label}.runtime")
+        if runtime["status"] == "observed":
+            if artifact["status"] != "observed":
+                raise ObservationError(
+                    f"{fixture_label}.runtime cannot be observed without an observed artifact"
+                )
+            if runtime["artifact_sha256"] != artifact["sha256"]:
+                raise ObservationError(
+                    f"{fixture_label}.runtime.artifact_sha256 must match "
+                    f"{fixture_label}.artifact.sha256"
+                )
         result.append(
             {
                 "id": identifier,
                 "diagnostics": validate_diagnostics(fixture["diagnostics"], f"{fixture_label}.diagnostics"),
                 "exit_code": exit_code,
-                "artifact": validate_artifact(fixture["artifact"], kind, f"{fixture_label}.artifact"),
-                "runtime": validate_runtime(fixture["runtime"], kind, f"{fixture_label}.runtime"),
+                "artifact": artifact,
+                "runtime": runtime,
             }
         )
     if len(set(ids)) != len(ids) or ids != sorted(ids):
@@ -231,7 +252,7 @@ def compare_reports(manifest: Mapping[str, Any], oracle: Dict[str, Any], native:
             oracle_runtime = oracle_fixture["runtime"]
             native_runtime = native_fixture["runtime"]
             if oracle_runtime["status"] == "observed" and native_runtime["status"] == "observed":
-                for field in ("exit_code", "stdout", "stderr"):
+                for field in ("exit_code", "stdout", "stderr", "artifact_sha256"):
                     if oracle_runtime[field] != native_runtime[field]:
                         mismatch(
                             mismatches,

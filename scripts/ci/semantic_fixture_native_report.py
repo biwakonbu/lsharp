@@ -7,7 +7,8 @@ and work directories are required inputs.  This command never discovers a
 Rust host, fallback compiler, embedded component, provider, or network
 boundary implicitly. Repeat ``--fixture-id`` to produce a deterministic batch.
 Invalid fixtures are accepted only when the native diagnostic exposes an LS####
-code and a source byte span.
+code and a source byte span. Observed runtime entries include the digest of the
+exact artifact passed to Wasmtime.
 """
 
 from __future__ import annotations
@@ -333,6 +334,7 @@ def observe_fixture(
                 "exit_code": None,
                 "stdout": None,
                 "stderr": None,
+                "artifact_sha256": None,
             },
         }
     if compile_result.returncode != 0:
@@ -370,6 +372,7 @@ def observe_fixture(
             "exit_code": runtime_result.returncode,
             "stdout": decode_output(runtime_result.stdout),
             "stderr": decode_output(runtime_result.stderr),
+            "artifact_sha256": sha256(artifact),
         },
     }
 

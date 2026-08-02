@@ -21,6 +21,7 @@ TARGET = "aarch64-apple-darwin"
 SOURCE_COMMIT = subprocess.check_output(
     ["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"], text=True
 ).strip()
+ARTIFACT_DIGEST = "sha256:" + "b" * 64
 
 
 def report_for(producer):
@@ -30,10 +31,22 @@ def report_for(producer):
         expected = fixture["expected"]
         if fixture["kind"] == "invalid":
             artifact = {"status": "not-applicable"}
-            runtime = {"status": "not-run", "exit_code": None, "stdout": None, "stderr": None}
+            runtime = {
+                "status": "not-run",
+                "exit_code": None,
+                "stdout": None,
+                "stderr": None,
+                "artifact_sha256": None,
+            }
         else:
             artifact = {"status": "pending"}
-            runtime = {"status": "pending", "exit_code": None, "stdout": None, "stderr": None}
+            runtime = {
+                "status": "pending",
+                "exit_code": None,
+                "stdout": None,
+                "stderr": None,
+                "artifact_sha256": None,
+            }
         fixtures.append(
             {
                 "id": fixture["id"],
@@ -106,6 +119,7 @@ class SemanticFixtureDiffTest(unittest.TestCase):
                         "exit_code": expected["exit_code"],
                         "stdout": expected["stdout"],
                         "stderr": expected["stderr"],
+                        "artifact_sha256": ARTIFACT_DIGEST,
                     }
         result = self.run_diff(oracle, native)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -132,15 +146,46 @@ class SemanticFixtureDiffTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("positive", result.stderr.lower())
 
+    def test_rejects_runtime_bound_to_different_artifact(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        for report in (oracle, native):
+            fixture = next(
+                item for item in report["fixtures"] if item["id"] == "valid/syntax-basic"
+            )
+            fixture["artifact"] = {
+                "status": "observed",
+                "sha256": ARTIFACT_DIGEST,
+                "size": 1,
+            }
+            fixture["runtime"] = {
+                "status": "observed",
+                "exit_code": 0,
+                "stdout": "42\n",
+                "stderr": "",
+                "artifact_sha256": "sha256:" + "c" * 64,
+            }
+
+        result = self.run_diff(oracle, native, ["valid/syntax-basic"])
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("artifact_sha256", result.stderr)
+
     def test_reports_expose_observable_mismatch(self):
         oracle = report_for("rust-oracle")
         native = report_for("native-stage0")
         native["fixtures"][-1]["exit_code"] = 7
+        native["fixtures"][-1]["artifact"] = {
+            "status": "observed",
+            "sha256": ARTIFACT_DIGEST,
+            "size": 1,
+        }
         native["fixtures"][-1]["runtime"] = {
             "status": "observed",
             "exit_code": 7,
             "stdout": "wrong\n",
             "stderr": "",
+            "artifact_sha256": ARTIFACT_DIGEST,
         }
         result = self.run_diff(oracle, native)
         self.assertEqual(result.returncode, 1)
@@ -149,17 +194,24 @@ class SemanticFixtureDiffTest(unittest.TestCase):
         self.assertIn("valid/syntax-basic", {item["fixture"] for item in projected["mismatches"]})
 
         native["fixtures"][-1]["exit_code"] = 0
+        oracle["fixtures"][-1]["artifact"] = {
+            "status": "observed",
+            "sha256": ARTIFACT_DIGEST,
+            "size": 1,
+        }
         oracle["fixtures"][-1]["runtime"] = {
             "status": "observed",
             "exit_code": 0,
             "stdout": "42\n",
             "stderr": "",
+            "artifact_sha256": ARTIFACT_DIGEST,
         }
         native["fixtures"][-1]["runtime"] = {
             "status": "observed",
             "exit_code": 0,
             "stdout": "wrong\n",
             "stderr": "",
+            "artifact_sha256": ARTIFACT_DIGEST,
         }
         result = self.run_diff(oracle, native)
         self.assertEqual(result.returncode, 1)
@@ -216,6 +268,7 @@ class SemanticFixtureDiffTest(unittest.TestCase):
                 "exit_code": 0,
                 "stdout": "42\n",
                 "stderr": "",
+                "artifact_sha256": ARTIFACT_DIGEST,
             }
         result = self.run_diff(oracle, native, ["valid/syntax-basic"])
         self.assertEqual(result.returncode, 0, result.stderr)

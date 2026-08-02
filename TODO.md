@@ -2503,6 +2503,15 @@ packaged/rollback parityの証拠ではないため、EC-M3-04 / EC-M3-05 と M3
 [`decisions-v0.3-native-component-runtime-postflight.md`](docs/adr/decisions-v0.3-native-component-runtime-postflight.md)。
 current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
 
+2026-08-02 に semantic fixture の Rust-oracle/native-stage0 reportへ `runtime.artifact_sha256` を追加し、Wasmtimeで実行した artifact digestと
+reportの `artifact.sha256` が一致する source→artifact→runtime bindingを固定した。observed runtimeが observed artifactを欠く場合、または digestが
+不一致の場合は diff/evidence auditが fail-closed になり、pending/not-run は digest nullのまま残る。同一 fake fixtureで Rust/native report、diffの
+negative mismatch、target evidence audit、two-target aggregateを RED→GREENにした。これは packaged runtime evidenceの identity boundaryの
+verified partialであり、source/ftable/import producer parity、実 target runtime、current-source stage0、provider/auth、Mac/Linux packaged/rollback
+bytes parityの証拠ではないため、EC-M3-04 / EC-M3-05 と M3-04-N1 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-semantic-runtime-artifact-binding.md`](docs/adr/decisions-v0.3-semantic-runtime-artifact-binding.md)。
+current-source manifest/expected replay lockが現HEADに一致せず、別セッション所有のLima/QEMU/replaydが稼働中のため、Linux replay・stage regeneration・full buildは未実行である。
+
 2026-08-02 に native component compile/build の artifact postflightを追加した。native programの core outputと
 wasm-tools component new の packaged outputを、atomic promotion前に non-symlink regular file・non-empty Wasm magic
 ('\0asm')として検査する。同じ fake component fixtureで、invalid coreは wasm-tools 実行前に拒否し、invalid packaged

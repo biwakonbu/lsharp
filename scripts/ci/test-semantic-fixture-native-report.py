@@ -141,7 +141,13 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             )
             self.assertEqual(
                 fixture["runtime"],
-                {"status": "observed", "exit_code": 0, "stdout": "42\n", "stderr": ""},
+                {
+                    "status": "observed",
+                    "exit_code": 0,
+                    "stdout": "42\n",
+                    "stderr": "",
+                    "artifact_sha256": "sha256:" + hashlib.sha256(b"native-wasm").hexdigest(),
+                },
             )
 
     def test_rejects_invalid_wasm_before_runtime(self):
@@ -300,7 +306,13 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(
                 report["fixtures"][0]["runtime"],
-                {"status": "observed", "exit_code": 0, "stdout": "", "stderr": ""},
+                {
+                    "status": "observed",
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "artifact_sha256": "sha256:" + hashlib.sha256(b"native-wasm").hexdigest(),
+                },
             )
             self.assertFalse((work_dir / "input.txt").exists())
 
@@ -415,7 +427,13 @@ class SemanticFixtureNativeReportTest(unittest.TestCase):
             self.assertEqual(fixture["artifact"], {"status": "not-applicable"})
             self.assertEqual(
                 fixture["runtime"],
-                {"status": "not-run", "exit_code": None, "stdout": None, "stderr": None},
+                {
+                    "status": "not-run",
+                    "exit_code": None,
+                    "stdout": None,
+                    "stderr": None,
+                    "artifact_sha256": None,
+                },
             )
 
     def test_rejects_invalid_reports_without_explicit_code_or_span(self):
