@@ -3336,3 +3336,38 @@ passした。selfhost source bytesは変更していないため、native stage0
 pattern全体のsemantic parity、import/parametric/deep cases、runtime/ftable/linear-memory ABI、
 Mac Apple SiliconとLinux x86_64の変更後artifact matrix、`LEGACY-LANG-01` aggregateの完了を意味しない。
 Rust oracle / bootstrap / host integration境界と TODOの `[~]` は維持する。
+
+### V2-16e / LEGACY-BOOT-01 Linux current-source stage2/stage3 fixed point (2026-08-02)
+
+source commit `a41cf0655a12d88ac3ed2185492183049234cc7d` で生成した Linux x86_64 stage1 code/data/seed
+payloadを再利用し、Lima `lsharp-linux-x86` の同一VM-side lock下で stage2/stage3 native self-regenerationを
+重複起動なしに実行した。`ci-artifacts/native-linux-x86-hostgen-vm/a41cf065-stage23-reuse/actual-selfregen-summary.json`
+は target `x86_64-unknown-linux-gnu`、host `Linux x86_64`、`status=pass`、stage2/stage3 code length各
+`11,374,654`、stdout length各 `12,207,069`、stdout SHA-256一致
+`7a837812e20e71378632bbe0a101d18c141e3304fb63562890e8ee4425a00930`、stderr空を記録した。stage1 manifestは
+code `4,393,234` bytes、data `2,757` bytes、entrypoint `4,390,778`、function-start `3,409`、main
+function `3,418` である。
+
+後続の `665623857282359b32dce2bda0cc37d3e9d7424e` は stage1 replay debug payloadの seed source mappingを
+補強した script/test-only changeであり、同一コンパイラ出力について重い stage2/stage3 replayを再実行しなかった。
+この結果は current-source Linux stage2/stage3 fixed-pointの verified sliceであるが、current HEADの native
+stage0 package/source-file smoke、release acquisition/rollback、Mac/Linux artifact parity、`LEGACY-BOOT-01`
+aggregateの完了を意味しない。ADR: `docs/adr/decisions-v0.3-native-linux-read-file-bounded-heap.md`。
+
+### V2-13a-5 / V2-16b Linux x86 read-file bounded heap (2026-08-02)
+
+Linux x86 selfhost `emit-x86-selfhost-read-file-helper` の per-file `mmap` allocationを、materializer-owned
+`r14` native heapのcursor/limitへ置き換えた。cursor fallbackは `8192`、予約上限は `0x200010`、read上限は
+`0x200000`。read成功後だけcursorを更新し、open/read/close、String header、high-bit tag、callee-saved ABIを
+維持する。helperは207→208 bytesとなり、後続helper offsetとrel32 call-siteを `+1` へ同期した。
+
+REDは `test_native_codegen_x86_read_file_uses_bounded_heap_cursor` による旧 mmap syscall byte sequenceの検出。
+GREENは bounded cursor、Linux syscall/close ABI、helper byte vector、call-site/trailer offset、2 MiB capの focused
+test群と、host-side object smoke `read-file-object-summary.json` の target `x86_64-unknown-linux-gnu`、
+expected/actual exit `7`、`status=pass`。artifactは
+`ci-artifacts/native-linux-x86-hostgen-vm/0fb8a19b-read-file-bounded/` に保持した。
+
+これは read-file bounded allocationと narrow ELF object runtimeの verified sliceに限定される。全 fd/error
+semantics、current HEADの Linux native stage0 source-file smoke、Mac Apple Silicon parity、package acquisition/
+release/rollback、Rust-free全体の完了証拠には拡張しない。ADR:
+`docs/adr/decisions-v0.3-native-linux-read-file-bounded-heap.md`。

@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の `origin/main` は `3f6c49976f75a5099d524f08ea85cc1698935cbb`。
+- 確認時点の `origin/main` は `665623857282359b32dce2bda0cc37d3e9d7424e`。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1484,6 +1484,30 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   object runtime、full stage2/stage3 fixed-point、Linux native stage0 source-file smoke、package acquisition/release/rollback、
   `read-file` runtime evidence、Mac/Linux release parityの証拠では数えない。ADR:
   `docs/adr/decisions-v0.3-native-linux-substring-bounded-heap.md`。
+  さらに source commit `a41cf0655a12d88ac3ed2185492183049234cc7d` の Linux x86_64 stage1 payloadを、
+  既存の stage1 code/data/seed debug payloadとして再利用し、Lima `lsharp-linux-x86` で stage2/stage3
+  native self-regenerationを一度だけ実行した。`actual-selfregen-summary.json` は `status=pass`、
+  stage2/stage3 code length各 `11,374,654`、stdout各 `12,207,069` bytes、SHA-256各
+  `7a837812e20e71378632bbe0a101d18c141e3304fb63562890e8ee4425a00930`、stderr空を記録した。
+  stage1 manifestは target `x86_64-unknown-linux-gnu`、code `4,393,234` bytes、data `2,757` bytes、
+  entrypoint `4,390,778`、function-start `3,409`、main function `3,418` である。artifactは
+  `ci-artifacts/native-linux-x86-hostgen-vm/a41cf065-stage23-reuse/` に保持した。後続の `66562385` は
+  stage1 replay用の seed source mappingだけを補強したため、この重い固定点replayは重複実行していない。
+  この証跡は full stage2/stage3 fixed-pointの verified sliceであり、current HEADでの Linux native stage0
+  package/source-file smoke、release acquisition/rollback、Mac/Linux artifact parity、`LEGACY-BOOT-01`
+  aggregateの完了証拠ではない。
+  さらに Linux x86 selfhost `emit-x86-selfhost-read-file-helper` の per-file `mmap` allocationを、
+  materializer-owned `r14` native heapのcursor/limitへ置き換えた。cursorのfallbackは `8192`、予約上限は
+  `0x200010`、read上限は `0x200000` とし、read成功後だけcursorを更新して既存の open/read/close、
+  String header、high-bit tag、callee-saved ABIを維持する。REDでは
+  `test_native_codegen_x86_read_file_uses_bounded_heap_cursor` が旧 mmap syscall byte sequenceを検出し、
+  GREENでは helper emitter、call-site、trailer offset、2 MiB cap、read-file object smokeを確認した。
+  helperは207→208 bytesとなり、後続helper offsetを `+1` に同期した。host-side artifact
+  `ci-artifacts/native-linux-x86-hostgen-vm/0fb8a19b-read-file-bounded/` の summaryは target
+  `x86_64-unknown-linux-gnu`、expected/actual exit `7` で `status=pass` である。これは read-file bounded
+  allocationと narrow object runtimeの verified sliceであり、全 fd/error semantics、current HEADの
+  source-file smoke、Mac parity、package/release/rollbackの完了証拠ではない。ADR:
+  `docs/adr/decisions-v0.3-native-linux-read-file-bounded-heap.md`。
 
 ## ISSUES-derived quality and runtime work
 
