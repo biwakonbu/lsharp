@@ -1597,10 +1597,16 @@ def reject_provider_semantic_states(report, provider_digests, receipt):
         if verification["state"] != "unverified"
         and not (receipt is not None and verification.get("receipt") == receipt)
     ]
+    semantic_states.extend(
+        attestation["state"]
+        for attestation in report.get("review_attestations", [])
+        if attestation["state"] != "unverified"
+        and not (receipt is not None and attestation.get("review_id") == receipt["review_id"])
+    )
     if semantic_states:
         raise ToolError(
             "provider semantic verification is unavailable; "
-            "review_verifications must remain unverified"
+            "review_verifications and review_attestations must remain unverified"
         )
 
 

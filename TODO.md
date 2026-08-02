@@ -2292,3 +2292,14 @@ current-source manifest/expected replay lockは現HEADに一致せず、別セ�
 live provider/auth取得・署名意味検証、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
 EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-review-attestation-receipt-binding.md`](docs/adr/decisions-v0.3-native-mcp-review-attestation-receipt-binding.md)。
+
+2026-08-02 に provider snapshot semantic fail-closed boundaryを native MCP source-attestation projectionまで拡張した。
+trust-store/review-lifecycle snapshotを指定した場合、native verifierが意味検証していないため、`review_attestations[]` の
+`verified` / `stale` / `revoked` stateも receiptで明示的に束ねられた対象以外は
+`provider semantic verification is unavailable` で拒否する RED→GREENを固定した。既存の snapshot regular-file/nonempty/digest、
+receipt projection、Rust semantic verifierを再実装せず、native側の暗黙 trustを防ぐ postflight boundaryだけを閉じた。
+native MCP 96 tests、native receipt 3 tests、Rust receipt 4 tests、Rust source-attestation focused test、source-file evidence、official two-target fake gateを確認した。
+current-source manifest/expected replay lockは現HEADに一致せず、別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+native cryptographic/live provider/auth semantic verification、current-source Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、
+EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-provider-attestation-semantic-boundary.md`](docs/adr/decisions-v0.3-native-mcp-provider-attestation-semantic-boundary.md)。

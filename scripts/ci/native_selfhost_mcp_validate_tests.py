@@ -133,6 +133,38 @@ def assert_validate_rejects_invalid_review_attestation_report(test):
             test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
 
 
+def assert_provider_snapshot_rejects_semantic_attestation(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        trust_store = root / "trust.json"
+        lifecycle = root / "lifecycle.json"
+        trust_store.write_bytes(b"trust snapshot\n")
+        lifecycle.write_bytes(b"lifecycle snapshot\n")
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_validate",
+                    "arguments": {
+                        "source": "(defn main [] true)",
+                        "trust_store": str(trust_store),
+                        "review_lifecycle": str(lifecycle),
+                    },
+                },
+            ),
+            root,
+            report_mode="attestation-semantic-verified",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        test.assertIn("semantic verification is unavailable", response["result"]["content"][0]["text"])
+        test.assertNotIn("Traceback", response["result"]["content"][0]["text"])
+
+
 def review_verification_receipt_for_attestation():
     return {
         "review_id": "review:checkout/reviewer-001",
