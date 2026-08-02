@@ -16,6 +16,9 @@ from contextlib import contextmanager
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 ROOT = SCRIPTS_DIR.parent.parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+from semantic_fixture_diff import canonical_observation_sha256
+
 ARTIFACT_ROOT = ROOT / "ci-artifacts"
 SOURCE_COMMIT = subprocess.check_output(
     ["git", "-C", str(ROOT), "rev-parse", "--verify", "HEAD"], text=True
@@ -94,12 +97,17 @@ def report_for(producer: str, target: str, observed: bool) -> dict:
 
 def comparison_for(target: str, status: str) -> dict:
     pending = [] if status == "pass" else ["valid/syntax-basic.artifact", "valid/syntax-basic.runtime"]
+    observed = status == "pass"
     return {
         "schema_version": 1,
         "suite": "v4-m1-01",
         "target": target,
         "source_commit": SOURCE_COMMIT,
         "fixture_count": len(SELECTED_IDS),
+        "canonical_observation_sha256": {
+            "oracle": canonical_observation_sha256(report_for("rust-oracle", target, observed)),
+            "native": canonical_observation_sha256(report_for("native-stage0", target, observed)),
+        },
         "status": status,
         "pending_boundaries": pending,
         "mismatches": [],
@@ -156,6 +164,12 @@ def rewrite_target_shared_observation(
 
     comparison_path = ROOT / index["comparison"]
     comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    oracle = json.loads((ROOT / index["oracle_report"]).read_text(encoding="utf-8"))
+    native = json.loads((ROOT / index["native_report"]).read_text(encoding="utf-8"))
+    comparison["canonical_observation_sha256"] = {
+        "oracle": canonical_observation_sha256(oracle),
+        "native": canonical_observation_sha256(native),
+    }
     comparison_path.write_text(json.dumps(comparison), encoding="utf-8")
 
 

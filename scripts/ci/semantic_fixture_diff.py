@@ -34,6 +34,14 @@ from semantic_fixture_matrix import (
 SOURCE_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 REPORT_PRODUCERS = {"rust-oracle", "native-stage0"}
+CANONICAL_OBSERVATION_FIELDS = (
+    "id",
+    "source_sha256",
+    "diagnostics",
+    "exit_code",
+    "artifact",
+    "runtime",
+)
 
 
 class ObservationError(ValueError):
@@ -226,11 +234,47 @@ def validate_report(
     if ids != expected_ids:
         raise ObservationError(f"{label}.fixtures must contain exactly the selected fixture matrix ids")
     return {
+        "schema_version": 1,
+        "suite": "v4-m1-01",
         "producer": producer,
         "target": target,
         "source_commit": source_commit,
         "fixtures": result,
     }
+
+
+def canonical_observation_bytes(report: Mapping[str, Any]) -> bytes:
+    """Serialize producer-independent validated observations deterministically.
+
+    Producer, target, and source commit are provenance metadata checked by the
+    surrounding comparison contract.  The bytes here cover only the ordered
+    observation payload, so Rust and native producers cannot diverge through
+    JSON formatting, object-key order, or fixture emission order.
+    """
+
+    fixtures = report["fixtures"]
+    projection = {
+        "schema_version": report["schema_version"],
+        "suite": report["suite"],
+        "fixtures": [
+            {
+                field: fixture[field]
+                for field in CANONICAL_OBSERVATION_FIELDS
+            }
+            for fixture in sorted(fixtures, key=lambda item: item["id"])
+        ],
+    }
+    return json.dumps(
+        projection,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def canonical_observation_sha256(report: Mapping[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(canonical_observation_bytes(report)).hexdigest()
 
 
 def mismatch(items: List[Dict[str, Any]], fixture: str, field: str, oracle: Any, native: Any) -> None:
@@ -251,6 +295,16 @@ def compare_reports(manifest: Mapping[str, Any], oracle: Dict[str, Any], native:
     native_by_id = {fixture["id"]: fixture for fixture in native["fixtures"]}
     mismatches: List[Dict[str, Any]] = []
     pending: List[str] = []
+    oracle_observation_sha256 = canonical_observation_sha256(oracle)
+    native_observation_sha256 = canonical_observation_sha256(native)
+    if oracle_observation_sha256 != native_observation_sha256:
+        mismatch(
+            mismatches,
+            "<report>",
+            "canonical_observation_bytes",
+            oracle_observation_sha256,
+            native_observation_sha256,
+        )
     for expected in manifest["fixtures"]:
         identifier = expected["id"]
         oracle_fixture = oracle_by_id[identifier]
@@ -329,6 +383,10 @@ def compare_reports(manifest: Mapping[str, Any], oracle: Dict[str, Any], native:
         "target": oracle["target"],
         "source_commit": oracle["source_commit"],
         "fixture_count": len(manifest["fixtures"]),
+        "canonical_observation_sha256": {
+            "oracle": oracle_observation_sha256,
+            "native": native_observation_sha256,
+        },
         "status": status,
         "pending_boundaries": sorted(set(pending)),
         "mismatches": mismatches,

@@ -17,6 +17,9 @@ import unittest
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
 ROOT = SCRIPTS_DIR.parent.parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+from semantic_fixture_diff import canonical_observation_sha256
+
 ARTIFACT_ROOT = ROOT / "ci-artifacts"
 MANIFEST = SCRIPTS_DIR / "semantic-fixture-matrix.json"
 AUDIT = SCRIPTS_DIR / "semantic_fixture_evidence_audit.py"
@@ -110,12 +113,17 @@ def report_for(producer: str, observed: bool = True) -> dict:
 
 def comparison_for(status: str = "pass") -> dict:
     pending = [] if status == "pass" else ["valid/syntax-basic.artifact", "valid/syntax-basic.runtime"]
+    observed = status == "pass"
     return {
         "schema_version": 1,
         "suite": "v4-m1-01",
         "target": TARGET,
         "source_commit": SOURCE_COMMIT,
         "fixture_count": len(SELECTED_IDS),
+        "canonical_observation_sha256": {
+            "oracle": canonical_observation_sha256(report_for("rust-oracle", observed)),
+            "native": canonical_observation_sha256(report_for("native-stage0", observed)),
+        },
         "status": status,
         "pending_boundaries": pending,
         "mismatches": [],
@@ -214,6 +222,19 @@ class SemanticFixtureEvidenceAuditTest(unittest.TestCase):
             result = self.run_audit(root, index_for(root, status="pass"))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("status", result.stderr.lower())
+
+    def test_rejects_stale_canonical_observation_digest(self):
+        with temporary_bundle() as root:
+            self.write_bundle(root)
+            comparison_path = root / "comparison.json"
+            comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+            comparison["canonical_observation_sha256"]["oracle"] = "sha256:" + "c" * 64
+            comparison_path.write_text(json.dumps(comparison), encoding="utf-8")
+
+            result = self.run_audit(root, index_for(root))
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("comparison", result.stderr.lower())
 
     def test_rejects_shared_stale_source_commit(self):
         with temporary_bundle() as root:

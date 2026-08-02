@@ -25,6 +25,10 @@ SOURCE_COMMIT = subprocess.check_output(
 ARTIFACT_DIGEST = "sha256:" + "b" * 64
 
 
+sys.path.insert(0, str(SCRIPTS_DIR))
+from semantic_fixture_diff import canonical_observation_bytes, canonical_observation_sha256
+
+
 def report_for(producer):
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     fixtures = []
@@ -109,6 +113,15 @@ class SemanticFixtureDiffTest(unittest.TestCase):
         self.assertTrue(projected["pending_boundaries"])
         self.assertFalse(projected["mismatches"])
 
+        self.assertEqual(
+            projected["canonical_observation_sha256"]["oracle"],
+            canonical_observation_sha256(oracle),
+        )
+        self.assertEqual(
+            projected["canonical_observation_sha256"]["native"],
+            canonical_observation_sha256(native),
+        )
+
         for report in (oracle, native):
             for fixture in report["fixtures"]:
                 if fixture["artifact"]["status"] == "pending":
@@ -131,6 +144,41 @@ class SemanticFixtureDiffTest(unittest.TestCase):
         self.assertEqual(projected["status"], "pass")
         self.assertFalse(projected["pending_boundaries"])
         self.assertFalse(projected["mismatches"])
+
+    def test_canonical_observation_bytes_ignore_producer_metadata_and_json_order(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        reordered = copy.deepcopy(native)
+        reordered["fixtures"] = [
+            dict(reversed(list(fixture.items())))
+            for fixture in reversed(reordered["fixtures"])
+        ]
+
+        self.assertEqual(
+            canonical_observation_bytes(oracle),
+            canonical_observation_bytes(reordered),
+        )
+        self.assertEqual(
+            canonical_observation_sha256(oracle),
+            canonical_observation_sha256(reordered),
+        )
+
+    def test_canonical_observation_bytes_change_when_observation_changes(self):
+        oracle = report_for("rust-oracle")
+        native = report_for("native-stage0")
+        native["fixtures"][-1]["exit_code"] = 7
+
+        self.assertNotEqual(
+            canonical_observation_bytes(oracle),
+            canonical_observation_bytes(native),
+        )
+        result = self.run_diff(oracle, native)
+        self.assertEqual(result.returncode, 1)
+        projected = json.loads(result.stdout)
+        self.assertIn(
+            "canonical_observation_bytes",
+            {item["field"] for item in projected["mismatches"]},
+        )
 
     def test_rejects_observed_empty_artifact(self):
         oracle = report_for("rust-oracle")
@@ -250,7 +298,7 @@ class SemanticFixtureDiffTest(unittest.TestCase):
         self.assertEqual(projected["status"], "mismatch")
         self.assertEqual(
             {item["field"] for item in projected["mismatches"]},
-            {"artifact.status", "runtime.status"},
+            {"artifact.status", "runtime.status", "canonical_observation_bytes"},
         )
 
     def test_rejects_stale_source_or_target_before_comparison(self):
