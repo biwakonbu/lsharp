@@ -2938,6 +2938,22 @@ fn test_native_linux_x86_hostgen_vm_script_copies_reusable_stage1_payload_files(
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_copies_stage1_seed_source_for_reuse() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let body = shell_function_body(&script, "copy_actual_stage_debug_artifact");
+
+    assert!(
+        body.contains(r#"if [[ "${stage_dir}" = "actual-stage1" ]]"#)
+            && body.contains(r#"${VM_WORK_DIR}/${stage_dir}/src/App/Seed.ls"#)
+            && body.contains(r#"${ARTIFACT_DIR}/${debug_dir}/seed.ls"#),
+        "stage1 debug artifact は VM source tree の Seed.ls を reuse input の root seed.ls として回収するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

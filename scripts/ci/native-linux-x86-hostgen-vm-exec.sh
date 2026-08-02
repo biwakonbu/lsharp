@@ -2456,6 +2456,11 @@ copy_actual_stage_debug_artifact() {
       limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/${file}" "${ARTIFACT_DIR}/${debug_dir}/${file}"
     fi
   done
+  if [[ "${stage_dir}" = "actual-stage1" ]] \
+    && limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${stage_dir}/src/App/Seed.ls"; then
+    limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/src/App/Seed.ls" \
+      "${ARTIFACT_DIR}/${debug_dir}/seed.ls"
+  fi
   if limactl shell "${VM_NAME}" -- test -d "${VM_WORK_DIR}/${stage_dir}/src"; then
     limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/src" "${ARTIFACT_DIR}/${debug_dir}"
   fi
