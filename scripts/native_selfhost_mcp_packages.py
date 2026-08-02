@@ -235,7 +235,7 @@ def _installed_packages(project_dir):
         return []
     packages = []
     for path in entries:
-        if not path.is_dir():
+        if path.is_symlink() or not path.is_dir():
             continue
         config = _project_config(path)
         name = config["name"] or path.name or "package"
@@ -503,7 +503,7 @@ def call_package_api(program, arguments):
         package_dir = next(
             path
             for path in sorted(packages_dir.iterdir(), key=lambda path: path.name)
-            if path.name.startswith(f"{name}-") and path.is_dir()
+            if path.name.startswith(f"{name}-") and path.is_dir() and not path.is_symlink()
         )
     except (OSError, StopIteration):
         raise PackageLookupError(f"インストール済みパッケージ '{name}' が見つかりません") from None

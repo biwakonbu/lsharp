@@ -50,7 +50,7 @@ def assert_search_projects_local_packages(test):
         test.assertFalse((root / "native.log").exists())
 
 
-def assert_search_ignores_non_directory_symlinks(test):
+def assert_package_discovery_ignores_symlink_directories(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)
         program = test.write_fake_program(root)
@@ -60,8 +60,13 @@ def assert_search_ignores_non_directory_symlinks(test):
         packages = root / ".lsharp" / "packages"
         (packages / "file-link-1.0.0").symlink_to(external_file)
         (packages / "dangling-1.0.0").symlink_to(root / "missing-package")
-        directory_link = packages / "linked-1.0.0"
-        directory_link.symlink_to(valid, target_is_directory=True)
+        external_package = root / "external-package"
+        external_package.mkdir()
+        (external_package / "lsharp.toml").write_text(
+            '[project]\nname = "linked"\nversion = "9.0.0"\n', encoding="utf-8"
+        )
+        directory_link = packages / "linked-9.0.0"
+        directory_link.symlink_to(external_package, target_is_directory=True)
 
         payload = b"".join(
             [
@@ -86,25 +91,44 @@ def assert_search_ignores_non_directory_symlinks(test):
                         "arguments": {"project_dir": str(root), "name": "dangling"},
                     },
                 ),
+                request(
+                    4,
+                    "tools/call",
+                    {
+                        "name": "lsharp_package_api",
+                        "arguments": {"project_dir": str(root), "name": "linked"},
+                    },
+                ),
+                request(
+                    5,
+                    "tools/call",
+                    {
+                        "name": "lsharp_project_context",
+                        "arguments": {"project_dir": str(root)},
+                    },
+                ),
             ]
         )
         result = test.run_shim(program, payload, root)
         test.assertEqual(result.returncode, 0, result.stderr.decode())
         responses = test.responses(result.stdout)
-        test.assertEqual(len(responses), 3)
+        test.assertEqual(len(responses), 5)
         response = responses[0]
         test.assertFalse(response["result"]["isError"])
         packages_result = response["result"]["structuredContent"]["packages"]
         test.assertEqual(
             packages_result,
             [
-                {"name": "valid", "version": "1.0.0", "path": str(directory_link)},
                 {"name": "valid", "version": "1.0.0", "path": str(valid)},
             ],
         )
-        for response in responses[1:]:
+        for response in responses[1:4]:
             test.assertTrue(response["result"]["isError"])
             test.assertIn("見つかりません", response["result"]["content"][0]["text"])
+        test.assertEqual(
+            responses[4]["result"]["structuredContent"]["installedPackages"],
+            [{"name": "valid", "version": "1.0.0", "path": str(valid)}],
+        )
         test.assertFalse((root / "native.log").exists())
 
 

@@ -784,7 +784,7 @@ description = "context fixture"
 
     #[cfg(unix)]
     #[test]
-    fn test_search_tool_ignores_non_directory_symlinks() {
+    fn test_package_discovery_ignores_symlink_directories() {
         use std::os::unix::fs::symlink;
 
         let root =
@@ -806,8 +806,15 @@ description = "context fixture"
             packages.join("dangling-1.0.0"),
         )
         .unwrap();
-        let directory_link = packages.join("linked-1.0.0");
-        symlink(&valid, &directory_link).unwrap();
+        let external_package = root.join("external-package");
+        std::fs::create_dir_all(&external_package).unwrap();
+        std::fs::write(
+            external_package.join("lsharp.toml"),
+            "[project]\nname = \"linked\"\nversion = \"9.0.0\"\n",
+        )
+        .unwrap();
+        let directory_link = packages.join("linked-9.0.0");
+        symlink(&external_package, &directory_link).unwrap();
 
         let project_dir = root.display().to_string();
         let result = call_tool(
@@ -817,21 +824,14 @@ description = "context fixture"
         .expect("lsharp_search は directory package だけを返すべき");
         assert_eq!(
             result["packages"],
-            json!([
-                {
-                    "name": "valid",
-                    "version": "1.0.0",
-                    "path": directory_link.display().to_string()
-                },
-                {
-                    "name": "valid",
-                    "version": "1.0.0",
-                    "path": valid.display().to_string()
-                }
-            ])
+            json!([{
+                "name": "valid",
+                "version": "1.0.0",
+                "path": valid.display().to_string()
+            }])
         );
 
-        for name in ["file-link", "dangling"] {
+        for name in ["file-link", "dangling", "linked"] {
             let error = call_tool(
                 "lsharp_package_api",
                 &json!({
@@ -845,6 +845,20 @@ description = "context fixture"
                 "unexpected error: {error}"
             );
         }
+
+        let context = call_tool(
+            "lsharp_project_context",
+            &json!({"project_dir": root.display().to_string()}),
+        )
+        .expect("project_context は regular package directory のみ返すべき");
+        assert_eq!(
+            context["installedPackages"],
+            json!([{
+                "name": "valid",
+                "version": "1.0.0",
+                "path": valid.display().to_string()
+            }])
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

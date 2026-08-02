@@ -238,16 +238,8 @@ fn dependency_summary(name: &str, spec: &config::DependencySpec, project_dir: &P
 }
 
 fn installed_packages(project_dir: &Path) -> Vec<Value> {
-    let packages_dir = project_dir.join(".lsharp").join("packages");
-    let Ok(entries) = std::fs::read_dir(packages_dir) else {
-        return Vec::new();
-    };
     let mut packages = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
+    for path in installed_package_dirs(project_dir) {
         let cfg = config::load_config(&path);
         let name = if cfg.project.name.is_empty() {
             path.file_name()
@@ -299,8 +291,13 @@ fn installed_package_dirs(project_dir: &Path) -> Vec<PathBuf> {
     };
     let mut paths: Vec<PathBuf> = entries
         .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(|file_type| file_type.is_dir() && !file_type.is_symlink())
+                .map(|_| entry.path())
+        })
         .collect();
     paths.sort();
     paths
