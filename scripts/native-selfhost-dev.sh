@@ -338,6 +338,16 @@ done
 [[ -f "$SOURCE_ROOT/$RELATIVE_ENTRY" ]] || die "entry file not found: $SOURCE_ROOT/$RELATIVE_ENTRY"
 [[ -f "$DECODER" ]] || die "native selfhost transport decoder not found: $DECODER"
 
+# Rust-only target/option は stage0 manifest の読込や bootstrap より先に拒否する。
+# unsupported input で stage directory、helper、output を変更しない fail-closed 境界を保つ。
+if UNSUPPORTED_TARGET="$(unsupported_compile_target "$@")"; then
+  die "native selfhost runner does not support --target $UNSUPPORTED_TARGET; use wasi-preview1 or wasi-component"
+fi
+
+if UNSUPPORTED_OPTION="$(unsupported_compile_option "$@")"; then
+  die "native selfhost runner does not support $UNSUPPORTED_OPTION; use the Rust host integration"
+fi
+
 unset LSHARP_PATH
 unset LSHARP_DISABLE_EMBEDDED_COMPONENT
 
@@ -418,14 +428,6 @@ if [[ "${1:-}" == "lsp" ]]; then
   fi
   [[ -f "$LSP_STDIO_SHIM" ]] || die "native LSP stdio shim not found: $LSP_STDIO_SHIM"
   exec python3 "$LSP_STDIO_SHIM" --program "$STAGE_DIR/program.native" -- "${@:3}"
-fi
-
-if UNSUPPORTED_TARGET="$(unsupported_compile_target "$@")"; then
-  die "native selfhost runner does not support --target $UNSUPPORTED_TARGET; use wasi-preview1 or wasi-component"
-fi
-
-if UNSUPPORTED_OPTION="$(unsupported_compile_option "$@")"; then
-  die "native selfhost runner does not support $UNSUPPORTED_OPTION; use the Rust host integration"
 fi
 
 if COMPONENT_OUTPUT="$(component_output_path "$@")"; then

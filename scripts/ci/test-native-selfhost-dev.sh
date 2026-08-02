@@ -281,6 +281,25 @@ run_runner() {
   )
 }
 
+run_runner_at_stage() {
+  local stage_dir="$1"
+  shift
+  (
+    cd "$TEST_ROOT"
+    NATIVE_TEST_LOG="$LOG_FILE" \
+      NATIVE_TEST_PROJECT_DIR="$PROJECT_DIR" \
+      NATIVE_TEST_DOC_SOURCE="$DOC_INPUT" \
+      LSHARP_PATH="$HOST_BIN/lsharp" \
+      LSHARP_DISABLE_EMBEDDED_COMPONENT=1 \
+      PATH="$HOST_BIN:$PATH" \
+      "$TEST_ROOT/scripts/native-selfhost-dev.sh" \
+        --stage0-dir "$STAGE0_DIR" \
+        --source-root "$SOURCE_ROOT" \
+        --stage-dir "$stage_dir" \
+        "$@"
+  )
+}
+
 run_runner_with_default_stage0() {
   (
     cd "$TEST_ROOT"
@@ -519,6 +538,40 @@ manifest = json.loads(path.read_text())
 manifest["source_commit"] = sys.argv[2]
 path.write_text(json.dumps(manifest) + "\n")
 PY
+
+# unsupported compile/build は stage0 bootstrap や output mutation より前に拒否する。
+assert_unsupported_without_bootstrap() {
+  local label="$1"
+  local expected_error="$2"
+  shift 2
+  local reject_stage="$TMP_ROOT/$label-stage"
+  local reject_output="$TMP_ROOT/$label-output.wasm"
+  local before_invocations
+
+  printf 'existing-output\n' >"$reject_output"
+  before_invocations="$(wc -l <"$LOG_FILE")"
+  if run_runner_at_stage "$reject_stage" "$@" -o "$reject_output" \
+    >"$TMP_ROOT/$label.stdout" 2>"$TMP_ROOT/$label.stderr"; then
+    fail "native runner accepted unsupported $label"
+  fi
+  assert_file_contains "$TMP_ROOT/$label.stderr" "$expected_error"
+  [[ ! -e "$reject_stage" ]] || fail "unsupported $label bootstrapped stage0 state"
+  assert_eq "existing-output" "$(<"$reject_output")"
+  assert_eq "$before_invocations" "$(wc -l <"$LOG_FILE")"
+}
+
+assert_unsupported_without_bootstrap \
+  unsupported-web-wasm \
+  "error: native selfhost runner does not support --target web-wasm" \
+  compile "$DOC_INPUT" --target web-wasm
+assert_unsupported_without_bootstrap \
+  unsupported-native-build \
+  "error: native selfhost runner does not support --target native" \
+  build "$DOC_INPUT" --target native
+assert_unsupported_without_bootstrap \
+  unsupported-emit-ir \
+  "error: native selfhost runner does not support --emit-ir" \
+  compile "$DOC_INPUT" --emit-ir
 
 if run_runner compile "$DOC_INPUT" --target web-wasm >"$TMP_ROOT/web-wasm.stdout" 2>"$TMP_ROOT/web-wasm.stderr"; then
   fail "native runner accepted unsupported web-wasm target"
