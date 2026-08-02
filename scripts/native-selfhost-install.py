@@ -406,6 +406,24 @@ def backup_metadata(path, backup):
     return backup
 
 
+def sync_install_path(path, failpoint):
+    if os.environ.get("LSHARP_TEST_INSTALL_FAILPOINT") == failpoint:
+        raise InstallError(f"test-only {failpoint} sync failpoint")
+    sync_path = pathlib.Path(path)
+    if sync_path.is_symlink():
+        sync_path = sync_path.parent
+    try:
+        descriptor = os.open(sync_path, os.O_RDONLY)
+    except OSError as error:
+        raise InstallError(f"cannot open {sync_path} for {failpoint} sync: {error}") from error
+    try:
+        os.fsync(descriptor)
+    except OSError as error:
+        raise InstallError(f"cannot sync {sync_path} for {failpoint}: {error}") from error
+    finally:
+        os.close(descriptor)
+
+
 def fnv1a64(value):
     hashed = 0xCBF29CE484222325
     for byte in value.encode("utf-8"):
@@ -645,6 +663,7 @@ def write_module_index(project_dir, packages_dir, index_root):
                 try:
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_text(target, encoding="utf-8")
+                    sync_install_path(destination, "index-sync")
                 except OSError as error:
                     raise InstallError(f"cannot write module index {destination}: {error}") from error
 
@@ -660,9 +679,11 @@ def rebuild_module_index(project_dir, lsharp_dir, packages_dir):
     try:
         temporary.mkdir()
         write_module_index(project_dir, packages_dir, temporary)
+        sync_install_path(temporary, "index-sync")
         if os.path.lexists(index_root):
             remove_managed_path(index_root, lsharp_dir)
         os.replace(temporary, index_root)
+        sync_install_path(lsharp_dir, "index-sync")
     finally:
         if os.path.lexists(temporary):
             remove_managed_path(temporary, lsharp_dir)
@@ -692,7 +713,9 @@ def write_lockfile(lsharp_dir, entries):
     temporary = temporary_path(lsharp_dir, "lock.toml")
     try:
         temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        sync_install_path(temporary, "lock-sync")
         os.replace(temporary, lock_path)
+        sync_install_path(lsharp_dir, "lock-sync")
     except OSError as error:
         raise InstallError(f"cannot write lockfile {lock_path}: {error}") from error
     finally:
@@ -732,6 +755,7 @@ def install(project_dir):
 
         promoted = []
         for index, (staged, destination, description) in enumerate(pending_promotions):
+            sync_install_path(staged, "promotion-before-sync")
             backup = temporary_path(staging_dir, f"backup-{index}")
             backup_path = None
             if os.path.lexists(destination):
@@ -755,6 +779,15 @@ def install(project_dir):
                     os.replace(backup_path, destination)
                 rollback_promotions(promoted, packages_dir)
                 raise InstallError(f"cannot promote package {destination}: {error}") from error
+            try:
+                sync_install_path(destination, "promotion-after-sync")
+                sync_install_path(destination.parent, "promotion-after-sync")
+            except InstallError:
+                remove_managed_path(destination, packages_dir)
+                if backup_path is not None and os.path.lexists(backup_path):
+                    os.replace(backup_path, destination)
+                rollback_promotions(promoted, packages_dir)
+                raise
             promoted.append((destination, backup_path))
             print(f"installed {description}")
         lock_path = managed_child(lsharp_dir, "lock.toml")

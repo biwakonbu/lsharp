@@ -2456,3 +2456,13 @@ fresh Git destination、partial metadata、`.install-txn-*` residueを残さな�
 Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
 次の RED は metadata rollback後の filesystem durability/fsync境界、または外部 registry/provider取得を含む完全 transactionalityである。
+
+2026-08-02 に package installer の filesystem durability orderingを Rust/nativeで揃えた。既存の Rust durable-file helperを lock.tomlへ接続し、
+module-indexは temporary directory内の file sync→directory sync→rename→`.lsharp` parent sync、package promotionは staged path sync→rename→
+final path/parent syncの順序を固定した。`promotion-before-sync`、`promotion-after-sync`、`lock-sync`、`index-sync` の test-only failpointを
+同じ local path + fresh Git fixtureへ注入し、既存 package symlink、sentinel lock/indexの復元、fresh Git destinationと `.install-txn-*` residueの
+不在を Rust/native RED→GREENで確認した。これは offline ordering/fail-closed verified partial sliceであり、crash consistency、filesystem journaling、
+power-loss durability、cross-device rename、完全な installer transactionality、registry/provider/auth取得、current-source Linux runtime、
+Mac/Linux packaged/rollback parityは未検証のため、EC-M3-05 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-package-install-promotion-rollback.md`](docs/adr/decisions-v0.3-native-package-install-promotion-rollback.md)。
+次の RED は実 filesystem crash/power-loss durability または外部 registry/provider取得を含む完全 transactionalityである。

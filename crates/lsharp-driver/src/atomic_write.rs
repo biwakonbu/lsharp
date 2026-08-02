@@ -55,13 +55,21 @@ pub(crate) fn write_durable_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> 
 }
 
 #[cfg(unix)]
-fn sync_parent_directory(parent: &Path) -> io::Result<()> {
+pub(crate) fn sync_parent_directory(parent: &Path) -> io::Result<()> {
     fs::File::open(parent)?.sync_all()
 }
 
 #[cfg(not(unix))]
-fn sync_parent_directory(_parent: &Path) -> io::Result<()> {
+pub(crate) fn sync_parent_directory(_parent: &Path) -> io::Result<()> {
     Ok(())
+}
+
+pub(crate) fn sync_path(path: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() {
+        return sync_parent_directory(path.parent().unwrap_or_else(|| Path::new(".")));
+    }
+    fs::File::open(path)?.sync_all()
 }
 
 #[cfg(test)]

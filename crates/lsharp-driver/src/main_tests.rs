@@ -2734,3 +2734,89 @@ fn test_cmd_install_metadata_failure_restores_previous_state() {
         std::fs::remove_dir_all(&base_dir).unwrap();
     }
 }
+
+#[test]
+fn test_cmd_install_sync_failure_restores_previous_state() {
+    for (failpoint, label) in [
+        (INSTALL_SYNC_PROMOTION_BEFORE, "promotion-before-sync"),
+        (INSTALL_SYNC_PROMOTION_AFTER, "promotion-after-sync"),
+        (INSTALL_SYNC_LOCK, "lock-sync"),
+        (INSTALL_SYNC_INDEX, "index-sync"),
+    ] {
+        let base_dir = std::env::temp_dir().join(format!("lsharp_test_install_sync_{label}"));
+        let _ = std::fs::remove_dir_all(&base_dir);
+        let project_dir = base_dir.join("project");
+        let dependency_dir = base_dir.join("local-lib");
+        let git_repo = base_dir.join("git-lib");
+        std::fs::create_dir_all(dependency_dir.join("src")).unwrap();
+        std::fs::create_dir_all(git_repo.join("src")).unwrap();
+        init_test_git_repo(&git_repo);
+        std::fs::write(
+            dependency_dir.join("lsharp.toml"),
+            "[project]\nname = \"local-lib\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            git_repo.join("lsharp.toml"),
+            "[project]\nname = \"git-lib\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        git_commit_all(&git_repo, "initial package");
+        std::fs::create_dir_all(project_dir.join(".lsharp/packages")).unwrap();
+        std::fs::create_dir_all(project_dir.join(".lsharp/module-index")).unwrap();
+        std::fs::write(
+            project_dir.join("lsharp.toml"),
+            format!(
+                "[dependencies]\n\"a-local-lib\" = {{ path = \"../local-lib\" }}\n\"z-git\" = {{ git = \"{}\" }}\n",
+                git_repo.display()
+            ),
+        )
+        .unwrap();
+        std::fs::write(project_dir.join(".lsharp/lock.toml"), "lock sentinel\n").unwrap();
+        std::fs::write(
+            project_dir.join(".lsharp/module-index/sentinel.path"),
+            "index sentinel\n",
+        )
+        .unwrap();
+
+        let packages_dir = project_dir.join(".lsharp/packages");
+        let source_id = format!("path:{}", dependency_dir.canonicalize().unwrap().display());
+        let destination = installed_package_dir(&packages_dir, "a-local-lib", &source_id);
+        let old_target = base_dir.join("old-local-lib");
+        std::fs::create_dir_all(&old_target).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&old_target, &destination).unwrap();
+
+        INSTALL_TEST_SYNC_FAILPOINT.store(failpoint, std::sync::atomic::Ordering::SeqCst);
+        let result = cmd_install_in(&project_dir);
+        INSTALL_TEST_SYNC_FAILPOINT.store(0, std::sync::atomic::Ordering::SeqCst);
+
+        assert!(
+            result.is_err(),
+            "test-only {label} failpoint は install を失敗させるべき"
+        );
+        assert!(destination.is_symlink());
+        assert_eq!(std::fs::read_link(&destination).unwrap(), old_target);
+        let git_source = format!("git:{}", git_repo.display());
+        let git_destination = installed_package_dir(&packages_dir, "z-git", &git_source);
+        assert!(git_destination.symlink_metadata().is_err());
+        assert_eq!(
+            std::fs::read_to_string(project_dir.join(".lsharp/lock.toml")).unwrap(),
+            "lock sentinel\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(project_dir.join(".lsharp/module-index/sentinel.path"))
+                .unwrap(),
+            "index sentinel\n"
+        );
+        assert!(std::fs::read_dir(&packages_dir).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".install-txn-")
+        }));
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+}

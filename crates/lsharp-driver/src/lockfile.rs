@@ -84,7 +84,8 @@ pub fn write_lockfile(lockfile: &Lockfile, path: &Path) -> Result<(), String> {
         out.push('\n');
     }
 
-    std::fs::write(path, &out).map_err(|e| format!("ロックファイルの書き込みに失敗: {e}"))
+    crate::atomic_write::write_durable_atomic(path, out.as_bytes())
+        .map_err(|e| format!("ロックファイルの書き込みに失敗: {e}"))
 }
 
 /// ロックファイルを読み込む

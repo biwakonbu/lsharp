@@ -2391,6 +2391,26 @@ static INSTALL_TEST_PROMOTION_FAILPOINT: std::sync::atomic::AtomicUsize =
 static INSTALL_TEST_METADATA_FAILPOINT: std::sync::atomic::AtomicU8 =
     std::sync::atomic::AtomicU8::new(0);
 
+#[cfg(test)]
+static INSTALL_TEST_SYNC_FAILPOINT: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+
+const INSTALL_SYNC_PROMOTION_BEFORE: u8 = 1;
+const INSTALL_SYNC_PROMOTION_AFTER: u8 = 2;
+const INSTALL_SYNC_LOCK: u8 = 3;
+const INSTALL_SYNC_INDEX: u8 = 4;
+
+fn sync_install_path(path: &Path, failpoint: u8, label: &str) -> miette::Result<()> {
+    #[cfg(test)]
+    if INSTALL_TEST_SYNC_FAILPOINT.load(std::sync::atomic::Ordering::SeqCst) == failpoint {
+        return Err(miette::miette!("test-only {label} sync failpoint"));
+    }
+    #[cfg(not(test))]
+    let _ = failpoint;
+    atomic_write::sync_path(path)
+        .map_err(|error| driver_io_error(format!("{label} sync に失敗: {error}")))
+}
+
 fn remove_install_path(path: &Path) {
     if path.symlink_metadata().is_ok() {
         let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
@@ -2621,6 +2641,14 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     for (index, (staged_path, final_path, description)) in
         pending_promotions.into_iter().enumerate()
     {
+        if let Err(error) = sync_install_path(
+            &staged_path,
+            INSTALL_SYNC_PROMOTION_BEFORE,
+            "package promotion before",
+        ) {
+            rollback_promoted_packages(&mut promoted);
+            return Err(error);
+        }
         let backup_path = transaction_dir.join(format!(".backup-{index}"));
         let backup = if final_path.symlink_metadata().is_ok() {
             std::fs::rename(&final_path, &backup_path).map_err(|error| {
@@ -2651,6 +2679,31 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
             return Err(driver_io_error(format!(
                 "package install の確定に失敗: {error}"
             )));
+        }
+        let sync_result = sync_install_path(
+            &final_path,
+            INSTALL_SYNC_PROMOTION_AFTER,
+            "package promotion after",
+        )
+        .and_then(|_| {
+            final_path
+                .parent()
+                .map(|parent| {
+                    sync_install_path(
+                        parent,
+                        INSTALL_SYNC_PROMOTION_AFTER,
+                        "package promotion parent after",
+                    )
+                })
+                .unwrap_or(Ok(()))
+        });
+        if let Err(error) = sync_result {
+            remove_install_path(&final_path);
+            if let Some(backup_path) = backup.as_ref() {
+                let _ = std::fs::rename(backup_path, &final_path);
+            }
+            rollback_promoted_packages(&mut promoted);
+            return Err(error);
         }
         promoted.push((final_path.clone(), backup));
         let _ = generate_api_json_for_package(&final_path);
@@ -2694,6 +2747,10 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     if let Err(error) = lockfile::write_lockfile(&lock, &lock_path) {
         rollback_install_state(&mut promoted, &mut metadata_backups);
         return Err(driver_io_error(format!("{}: {error}", lock_path.display())));
+    }
+    if let Err(error) = sync_install_path(&lock_path, INSTALL_SYNC_LOCK, "lockfile") {
+        rollback_install_state(&mut promoted, &mut metadata_backups);
+        return Err(error);
     }
     println!("ロックファイルを生成しました: {}", lock_path.display());
     #[cfg(test)]
@@ -2780,17 +2837,61 @@ fn generate_api_json_for_package(package_root: &Path) -> miette::Result<Option<P
 }
 
 fn rebuild_installed_module_index(project_dir: &Path) -> miette::Result<()> {
-    let index_root = project_dir.join(".lsharp").join("module-index");
-    if index_root.exists() {
-        std::fs::remove_dir_all(&index_root)
+    let lsharp_dir = project_dir.join(".lsharp");
+    let index_root = lsharp_dir.join("module-index");
+    if index_root.symlink_metadata().is_ok() {
+        if index_root.is_symlink() {
+            return Err(miette::miette!(
+                "refusing symlinked module index: {}",
+                index_root.display()
+            ));
+        }
+        if !index_root.is_dir() {
+            return Err(driver_io_error(format!(
+                "module index is not a directory: {}",
+                index_root.display()
+            )));
+        }
+    }
+    let temporary = lsharp_dir.join(format!(".module-index.tmp-{}", std::process::id()));
+    let backup = lsharp_dir.join(format!(".module-index.backup-{}", std::process::id()));
+    if temporary.symlink_metadata().is_ok() || backup.symlink_metadata().is_ok() {
+        return Err(miette::miette!(
+            "module index transaction path already exists: {}",
+            temporary.display()
+        ));
+    }
+    std::fs::create_dir(&temporary)
+        .map_err(|e| driver_io_error(format!("{}: {}", temporary.display(), e)))?;
+    let mut previous_index = false;
+    let result = (|| {
+        let package_dirs = list_installed_package_dirs(project_dir);
+        for package_dir in package_dirs {
+            write_package_module_index(project_dir, &temporary, &package_dir)?;
+        }
+        sync_install_path(&temporary, INSTALL_SYNC_INDEX, "module-index")?;
+        if index_root.symlink_metadata().is_ok() {
+            std::fs::rename(&index_root, &backup)
+                .map_err(|e| driver_io_error(format!("{}: {}", index_root.display(), e)))?;
+            previous_index = true;
+        }
+        std::fs::rename(&temporary, &index_root)
             .map_err(|e| driver_io_error(format!("{}: {}", index_root.display(), e)))?;
+        sync_install_path(&lsharp_dir, INSTALL_SYNC_INDEX, "module-index parent")?;
+        if previous_index {
+            std::fs::remove_dir_all(&backup)
+                .map_err(|e| driver_io_error(format!("{}: {}", backup.display(), e)))?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        remove_install_path(&temporary);
+        remove_install_path(&index_root);
+        if previous_index {
+            let _ = std::fs::rename(&backup, &index_root);
+        }
     }
-
-    let package_dirs = list_installed_package_dirs(project_dir);
-    for package_dir in package_dirs {
-        write_package_module_index(project_dir, &index_root, &package_dir)?;
-    }
-    Ok(())
+    result
 }
 
 fn write_package_module_index(
@@ -2847,7 +2948,7 @@ fn write_package_module_index(
             .unwrap_or(file.as_path())
             .to_string_lossy()
             .replace('\\', "/");
-        std::fs::write(&index_path, target)
+        atomic_write::write_durable_atomic(&index_path, target.as_bytes())
             .map_err(|e| driver_io_error(format!("{}: {}", index_path.display(), e)))?;
     }
 

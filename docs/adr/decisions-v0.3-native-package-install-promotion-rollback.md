@@ -49,3 +49,24 @@ This is final promotion plus metadata rollback evidence, not full installer
 transactionality or filesystem durability evidence. Registry/provider/auth
 acquisition, current-source Linux runtime, and Mac/Linux packaged/rollback
 parity remain unverified and stay `[~]` in `TODO.md`.
+
+## Durability boundary
+
+The next bounded slice connects the existing Rust durable-file helper to
+`lock.toml` and module-index writes. Each temporary file is `sync_all`ed before
+rename and its parent directory is synced after rename; the module-index
+temporary directory is synced before promotion and `.lsharp` is synced after.
+Package promotion syncs the staged file/directory before rename and the final
+path plus package parent after rename. Native selfhost uses `os.fsync` at the
+same observable points.
+
+Rust test-only failpoints (`promotion-before`, `promotion-after`, `lock`, and
+`index`) and native `LSHARP_TEST_INSTALL_FAILPOINT` equivalents inject sync
+failure without changing the normal CLI/API. The same path + fresh Git fixture
+shows that every injected failure restores the prior package symlink, lock, and
+module-index and removes the fresh package and transaction staging.
+
+This verifies ordering and fail-closed recovery in an offline fixture. It does
+not prove crash consistency, filesystem journaling, power-loss durability,
+cross-device rename behavior, registry/provider acquisition, current-source
+runtime, or Mac/Linux packaged parity; those remain `[~]`.
