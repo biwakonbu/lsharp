@@ -798,6 +798,24 @@ def reject_unknown_arguments(arguments, allowed, command_name):
         raise ToolError(f"{command_name} の未知の引数: {', '.join(unknown)}")
 
 
+def reject_live_provider_auth_arguments(arguments, allowed, command_name):
+    unknown = sorted(set(arguments).difference(allowed))
+    live_provider_auth_names = {
+        "provider_url",
+        "provider_api_url",
+        "provider_auth_token",
+        "provider_token",
+        "auth_token",
+        "auth_context",
+    }
+    if live_provider_auth_names.intersection(unknown):
+        raise ToolError(
+            "live provider/auth acquisition is an external boundary; use explicit offline snapshots"
+        )
+    if unknown:
+        raise ToolError(f"{command_name} の未知の引数: {', '.join(unknown)}")
+
+
 def provider_snapshot_arguments(arguments):
     path_names = ("trust_store", "review_lifecycle")
     present = [name for name in path_names if name in arguments]
@@ -1739,7 +1757,7 @@ def call_check(program, arguments, temporary_directory):
 
 
 def call_validate(program, arguments, temporary_directory):
-    reject_unknown_arguments(arguments, VALIDATE_ARGUMENT_NAMES, "lsharp_validate")
+    reject_live_provider_auth_arguments(arguments, VALIDATE_ARGUMENT_NAMES, "lsharp_validate")
     path = validate_input_file(arguments, temporary_directory)
     include_manifest = arguments.get("include_manifest", False)
     if not isinstance(include_manifest, bool):

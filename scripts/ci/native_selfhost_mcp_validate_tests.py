@@ -329,6 +329,36 @@ def assert_receipt_verification_clock_context_binding(test):
                 test.assertFalse((root / "native.log").exists())
 
 
+def assert_live_provider_auth_inputs_are_external(test):
+    for argument_name in ("provider_url", "provider_auth_token", "auth_token"):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = pathlib.Path(temporary_directory)
+            program = test.write_fake_program(root)
+            result = test.run_shim(
+                program,
+                request(
+                    1,
+                    "tools/call",
+                    {
+                        "name": "lsharp_validate",
+                        "arguments": {
+                            "source": "(defn main [] true)",
+                            argument_name: "https://provider.example.invalid/reviews",
+                        },
+                    },
+                ),
+                root,
+            )
+            test.assertEqual(result.returncode, 0, result.stderr.decode())
+            response = test.responses(result.stdout)[0]
+            test.assertTrue(response["result"]["isError"])
+            test.assertIn(
+                "live provider/auth acquisition is an external boundary",
+                response["result"]["content"][0]["text"],
+            )
+            test.assertFalse((root / "native.log").exists())
+
+
 def review_verification_receipt_for_attestation():
     return {
         "review_id": "review:checkout/reviewer-001",

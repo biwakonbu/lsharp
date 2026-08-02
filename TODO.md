@@ -2337,3 +2337,14 @@ current-source manifest/expected replay lockは現HEADに一致せず、別セ�
 native cryptographic verification、live provider/auth acquisition、current-source Linux runtime、Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、
 EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
 [`decisions-v0.3-native-mcp-review-receipt-verification-clock.md`](docs/adr/decisions-v0.3-native-mcp-review-receipt-verification-clock.md)。
+
+2026-08-02 に native MCP `lsharp_validate` の live provider/auth acquisition external boundaryを明示した。`provider_url`、
+`provider_api_url`、provider/auth token、`auth_context` のような network/auth入力は native実行前に
+`live provider/auth acquisition is an external boundary; use explicit offline snapshots` で拒否し、provider snapshotの regular-file/nonempty/digest
+入力だけを受理する。これは receipt verification clock、trust-store coherency、provider semantic verificationとは別の acquisition boundaryであり、
+network helperや暗号検証をnativeへ追加しない。native MCP 100 tests、native receipt 3 tests、Rust receipt 4 tests、Rust source-attestation focused test、
+release identity 33 tests、source-file evidence、official two-target fake gateを確認した。current-source manifest/expected replay lockは現HEADに一致せず、
+別セッション所有のLima/QEMU/replaydも稼働中のため Linux replay・stage regeneration・full buildは未実行である。
+native cryptographic verification、live provider/auth実取得、current-source Linux runtime、Mac/Linux両 target packaged provenance/rollback bytes parityは未検証のため、
+EC-M3-01〜05 と M3-04-N1 / M3-05-N2 / M3-05-N7 / M3-05-N9 は `[~]` のまま残す。Evidence:
+[`decisions-v0.3-native-mcp-live-provider-auth-boundary.md`](docs/adr/decisions-v0.3-native-mcp-live-provider-auth-boundary.md)。
