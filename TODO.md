@@ -73,6 +73,15 @@
   `print-string`、`write-file`、`write-file-bytes`、`proc-exit`（exit `7`）の4 cases全 passとなった。成功経路では Rust
   fallbackを使用していない。Linux x86_64の同 current-source stage2/stage3 replayと直接 I/O runtime matrixは未検証として残し、
   standalone read-stdin、全 fd error semantics、全公開command、component/packaged release parityも未完了である。
+  その後、clean `HEAD=5163a1d67ad2883ceaea08ea4310e99c201acfe3` の Linux x86_64 current-source gateを一度だけ実行した。
+  `actual-selfregen-summary.json` は target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各
+  `11,420,772`、stdout SHA-256各 `86dfc089c2d56311a6e778b393fe4848f784e6c559196ce5a8d2ca659c9fd7b5`、runtime smoke exit `42`、
+  stderr空を記録し、stage1/stage2/stage3 manifestの target/source commitも一致した。さらに同じ actual stage1から作成した
+  Linux stage0 packageを `native-selfhost-dev.sh` の入口へ渡し、VM内の Linux x86_64 native `Cli`で I/O runtime matrixを実行して
+  `print-string`、`write-file`、`write-file-bytes`、`proc-exit`（exit `7`）の4 cases全 passを確認した。raw stage1 payloadを
+  public `Cli`として直接起動すると no-opになるため、stage0 package化と `native-selfhost-dev.sh`を必須の再現経路として記録する。
+  Linux direct standalone I/Oのこの4ケースは verified partialになったが、read-stdinのstandalone Wasm runtime、全 fd error semantics、
+  argv/full command-line、4096 bytes超の動的 layout、全公開command、component/packaged release parityは未完了である。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を

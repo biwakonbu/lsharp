@@ -3863,6 +3863,21 @@ Rust parityでは `test_e2e_selfhost_standalone_user_call_after_preview1_import`
 
 成功経路の native programは Rust fallback、`cargo`、`rustc`、host `lsharp`を呼び出していない。この結果は standalone I/Oの
 Mac runtime verified sliceであり、Linux x86_64 (`x86_64-unknown-linux-gnu`) current-source stage2/stage3 fixed pointと直接の
-I/O runtime matrix、read-stdin、argv/full command-line、fd error semantics、4096 bytes超の動的 layout、component sidecar、
-公開 release asset acquisition/rollback、Mac/Linux packaged artifact provenance parityの完了証拠ではない。`TODO.md` の
-`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+I/O runtime matrixはこの時点では未検証だった。
+
+続いて clean `HEAD=5163a1d67ad2883ceaea08ea4310e99c201acfe3` の Linux x86_64 current-source gateを一度だけ実行した。
+`ci-artifacts/native-linux-x86-hostgen-vm/a5317c95-standalone-io/actual-selfregen-summary.json` は target
+`x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,420,772`、stdout SHA-256各
+`86dfc089c2d56311a6e778b393fe4848f784e6c559196ce5a8d2ca659c9fd7b5`、runtime smoke exit `42`、stderr空を記録した。stage1、
+stage2、stage3 manifestの target/source commitも一致し、VMの free-space gateは `7,678,283,776` bytes available /
+`4,294,967,296` bytes requiredで passした。
+
+raw stage1 payloadを public `Cli`として直接実行すると compileが no-opになったため、同じ actual stage1 artifactから
+`package-native-linux-x86-actual-stage1-vm.sh` で Linux stage0 packageを作成し、VM内の `native-selfhost-dev.sh` に
+`selfhost/src` とともに渡す正規経路へ切り替えた。この Linux x86_64 native `Cli`に対して
+`scripts/ci/test-native-selfhost-io-runtime.py` を実行し、`print-string` stdout `hello`、`write-file` の `payload`、
+`write-file-bytes` の bytes `00 61 73 6d`、`proc-exit(7)` exit `7` の4 cases全 passを確認した。成功経路では Rust fallback、
+`cargo`、`rustc`、host `lsharp`を呼び出していない。Linux direct standalone I/Oの4ケースは Mac evidenceと合わせた verified partial
+になったが、read-stdinのstandalone Wasm runtime、全 fd error semantics、argv/full command-line、4096 bytes超の動的 layout、
+component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を
+意味しない。`TODO.md` の `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
