@@ -3945,3 +3945,31 @@ source commit `e553df73...`、`selfhost_fixed_point=true`、code `13,366,372` by
 verified partialである。zero-byte I/Oやerrno/EOFの全組合せ、入力が大きく増えた場合の動的 root/data/heap layout、argv/full command-line、
 全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を
 意味しない。`TODO.md` の `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+### V2-16b / LEGACY-IO-01 standalone command-line runtime (2026-08-04)
+
+`d2dcea7e135ba839c41cb2f29e416b91b2993d72` で standalone command-line runtimeのREDを
+`test_e2e_selfhost_standalone_command_line_runtime` に追加した。`alpha` / `beta` では `alphabeta2\n` を得たが、strictなargc=0では
+旧Wasm emitterが整数ゼロを符号分岐内だけで処理し、改行だけを出力した。Rustのcanonical `print_i64` と差分を確認し、ゼロを
+符号分岐の後で1桁出力する narrow fixを `selfhost/src/Backend/Wasm/WasmEmit.ls` に追加した。Rust focused E2Eは current-source
+cache生成後 `1 passed` / `1.27s`（初回生成 `317.69s`）で、保存Wasmは `wasm-tools validate` と disassemblyを通過した。
+広い append helper、spill floor、offset-depth ctx/state refactorは導入していない。
+
+Mac Apple Silicon actual `App.Cli` release gateは source commit `d2dcea7e...`、target `aarch64-apple-darwin`、
+`selfhost_fixed_point=true`、program SHA-256 `f6e63869a8ea69d3ff6177639454f229dec63a18ae51ef82b1f8c8fe1e80a9ec`、
+`1 passed` / `825.50s` となった。同artifactの `scripts/ci/test-native-selfhost-io-runtime.py` matrixは `11 cases` 全 passである。
+
+Linux x86_64では current `HEAD=eb8086a8d5bf3bb5893102a4d692ff8aa1a058ef` から actual stage1 -> stage2 -> stage3 fixed pointを
+一度だけ実行し、target `x86_64-unknown-linux-gnu`、status `pass`、stage2/stage3 code length各 `11,442,429`、stdout SHA-256各
+`2526caaefa9e86b934d5d08eb800847ac96e6b3989f3c3c37c7d2c933516086e` を確認した。VM free-space gateは
+`7,678,435,328` / `4,294,967,296` bytesでpassし、成功後にVM workdir/lockを回収してVMを停止した。
+stage2を再利用した Linux `App.Cli` target-only manifestは target `x86_64-unknown-linux-gnu`、source commit `eb8086a8...`、
+source tree SHA-256 `b79ae7dca8f81b661355f5f4cae7f872dae4150012b1111a7a849dfd4fb514d1`、`selfhost_fixed_point=true`、
+code `13,367,992` bytes、program SHA-256 `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537`、stderr `0`を記録した。
+同VMの native I/O matrixも `11 cases` 全 passで、成功経路に `cargo`、`rustc`、host `lsharp`、Rust fallbackは入っていない。
+
+非空argvは Wasmtime CLIに `--argv0` を明示して Rust runnerの `alpha` / `beta` と一致させた。外部CLIはargc=0を表現できないため、
+empty-argv0 caseは `argc=1` の境界（出力 `1\n`）として扱い、strict argc=0の証拠はRust standalone E2Eに残した。`print-zero` caseは
+ゼロ整数出力を両native targetで確認する。これは standalone command-line/zero-printの両target runtime verified partialであり、fd error/EOFの全semantics、
+より大きい入力でのdynamic root/data/heap layout、完全なargv/command-line semantics、全公開command、component sidecar、release asset
+acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を意味しない。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。

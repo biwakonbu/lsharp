@@ -1590,6 +1590,31 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   type/lint diagnosticsの標準 fields、複数診断の全文、full span/code/message parity、Linux direct LSP semantic projection、
   cross-document URI provenance、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged provenance parity、
   LSP aggregateは残る。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま維持する。
+
+  さらに 2026-08-04 の `d2dcea7e135ba839c41cb2f29e416b91b2993d72` batchで、standalone command-line runtimeのREDを
+  `test_e2e_selfhost_standalone_command_line_runtime` に追加した。`alpha` / `beta` を渡した場合は `alphabeta2\n` となったが、
+  strictなargc=0では、Wasm emitterの整数ゼロ処理が符号分岐内に閉じていたため改行だけになった。Rustのcanonical
+  `print_i64` と比較して、ゼロを符号分岐の後で1桁出力する narrow fixを selfhost `WasmEmit.ls` に追加した。
+  Rust focused E2Eは current-source cache生成後 `1 passed` / `1.27s`（初回生成 `317.69s`）で、保存Wasmの
+  `wasm-tools validate` と disassemblyでもゼロ桁の命令列を確認した。広い append helper、spill floor、offset-depth
+  ctx/state refactorは導入していない。
+
+  同じ source treeの Mac Apple Silicon actual `App.Cli` release gateは target `aarch64-apple-darwin`、source commit
+  `d2dcea7e...`、`selfhost_fixed_point=true`、program SHA-256
+  `f6e63869a8ea69d3ff6177639454f229dec63a18ae51ef82b1f8c8fe1e80a9ec`、`1 passed` / `825.50s` となった。
+  同artifactの native I/O matrixは `11 cases` 全 passで、`print-zero` を含めた。Linux x86_64では current `HEAD=eb8086a8d5bf3bb5893102a4d692ff8aa1a058ef`
+  の actual stage1 -> stage2 -> stage3 fixed pointが status `pass`、target `x86_64-unknown-linux-gnu`、stage2/stage3 code length各
+  `11,442,429`、stdout SHA-256各 `2526caaefa9e86b934d5d08eb800847ac96e6b3989f3c3c37c7d2c933516086e` で一致した。
+  VM free-space gateは `7,678,435,328` / `4,294,967,296` bytesで passし、成功後に workdir/lockを回収してVMを停止した。
+  stage2を再利用した Linux `App.Cli` target-only manifestは source commit `eb8086a8...`、source tree SHA-256
+  `b79ae7dca8f81b661355f5f4cae7f872dae4150012b1111a7a849dfd4fb514d1`、`selfhost_fixed_point=true`、code `13,367,992` bytes、
+  program SHA-256 `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537`、stderr `0`で passした。
+  Linux native I/O matrixも `11 cases` 全 passで、native成功経路に `cargo`、`rustc`、host `lsharp`、Rust fallbackは入っていない。
+  matrixの非空argvは Wasmtime CLIへ `--argv0` を明示して Rust runnerの `alpha` / `beta` と一致させた。一方、外部CLIはargc=0を表現できないため、
+  empty-argv0 caseは `argc=1` の境界（出力 `1\n`）として分離し、strict argc=0の証拠はRust standalone E2Eに残した。
+  これは standalone command-line/zero-printの両target runtime verified partialであり、fd error/EOFの全semantics、より大きい入力での
+  dynamic root/data/heap layout、完全なargv/command-line semantics、全公開command、component sidecar、release asset acquisition/rollback、
+  Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
