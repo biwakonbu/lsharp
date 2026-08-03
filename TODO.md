@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `ce8a4cb7`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source symlink rejectionの contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
+- 確認時点の code checkpoint は `f76dafb9`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownershipの contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -119,15 +119,17 @@
   name/content/metadata 非投影、native program no-execution、Rust/native parityまで検証済みの verified partial とする。
   さらに `ce8a4cb7` で `src/` 配下の child symlinkを、Rust API-doc collector、Rust MCP package API、Rust module-index collector、
   native MCP shimの同一 external `Geometry.ls` fixtureで拒否する RED→GREENを追加した。Rust側は `symlink_metadata` で各 entryを検査し、
-  外部 sourceを API/module-indexへ投影せず、native側は既存の no-execution/fail-closedを108 testsで再確認した。これは child directory
-  symlinkの traversal boundaryを閉じる verified partialであり、regular child source file、`docs/` directory、その他 nested treeの
-  ownership全体は未完了である。
-  個別 source file、`docs/` directory、その他 nested tree、installer、provider/auth、current-source runtime、
+  外部 sourceを API/module-indexへ投影せず、native側は既存の no-execution/fail-closedを再確認した。
+  続く `f76dafb9` では `src/Geometry/Vec2.ls` の通常ファイル、`docs/guides/README.txt` の documentation entryを同じ package API
+  fixtureへ追加し、Rust tooling 4 tests、Rust MCP 11 tests、native MCP 109 testsを通過した。nested module `Geometry.Vec2` の
+  name/function projection、docs directoryの source tree外扱い、native `doc` invocationの nested source pathを確認済みである。
+  これは regular directory/file、`.ls` filtering、symlink拒否、docs exclusionの source ownership verified partialである。
+  個別 source file symlink / 特殊 filesystem entry、installer、provider/auth、current-source runtime、
   Mac/Linux packaged/rollback parity はこの一件に含めない。
 
 ### まだ完了扱いにできない理由
 
-- `src/`、個別 source、`docs/` を含む nested tree 全体の ownership は未閉鎖。
+- 個別 source file symlink / 特殊 filesystem entryの explicit fixture、installer / registry / provider/auth は未閉鎖。
 - installer / registry / provider/auth / 実 Ed25519 / current-source Mac/Linux runtime / packaged parity は未検証。
 - current-source V2-16b の Mac/Linux native gateは検証済みだが、installer / registry / provider/auth / packaged parity、
   全公開 surface、他の未対応言語機能は引き続き別タスクとして未完了である。

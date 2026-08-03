@@ -4035,3 +4035,22 @@ Linux VMは起動していない。
 これは local/fake harness の契約 evidenceであり、実 provider release assetの取得、current-source Mac/Linux package生成、
 rollback archiveの実行、両 targetの packaged provenance parity、Rust oracle/host integrationの分離を実行時に証明しない。
 したがって `V2-16e` / `LEGACY-BOOT-01` と `V2-16c` / `LEGACY-TOOL-01` は `[~]` のまま維持する。
+
+### I-09 / M3-05-N9 package src nested regular ownership (2026-08-04)
+
+`f76dafb9` で package API ownershipの通常 nested source fixtureを追加した。`src/Geometry/Vec2.ls` を API-doc / Rust MCP / native MCPの
+同一 package fixtureから収集し、nested module `Geometry.Vec2` の name/function projectionを確認した。`docs/guides/README.txt` は
+package documentationとして配置しても source collectorの対象にならず、native MCPの `doc` invocationには渡らない。
+
+この batchの focused evidenceは次のとおりである。
+
+- `cargo test -p lsharp-tooling api_doc::tests::test_build_api_doc_for_package` — 4 tests passed。
+- `cargo test -p lsharp-driver --bin lsharp mcp_server::tests::test_package_api_tool` — 11 tests passed。
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-mcp.py` — 109 tests passed。
+- `git diff --check`、Python `py_compile` — passed。
+
+前段の child symlink拒否と合わせ、package `src/` の regular directory/file再帰、`.ls` filtering、symlink fail-closed、`docs/` exclusionの
+verified partial boundaryを構成する。native成功経路に Rust fallback、`cargo`、`rustc`、host `lsharp`は入っていない。この contractは
+source ownershipに限定されるため、個別 source file symlink / 特殊 filesystem entryの explicit fixture、installer / registry / provider/auth、
+current-source Mac Apple Silicon / Linux x86_64 runtime、packaged/release/rollback parityは残る。`I-09` / `M3-05-N9` / `EC-M3-05` と
+Rust-free全体は `[~]` のまま維持する。ADR: [`decisions-v0.3-native-mcp-package-src-child-symlink-boundary.md`](../../adr/decisions-v0.3-native-mcp-package-src-child-symlink-boundary.md)。
