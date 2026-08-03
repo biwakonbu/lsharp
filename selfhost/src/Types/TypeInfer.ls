@@ -1341,6 +1341,36 @@
 (defn infer-program-analysis-first-error-end [analysis] (vector-get analysis 9))
 (defn infer-program-analysis-failure-kinds [analysis] (vector-get analysis 10))
 
+;; state accessor の live binding が後続の let slot と衝突しないよう、
+;; defn の推論入力を短い束として組み立てる。
+(defn typeinfer-infer-defn-predeclared-from-state [program idx len placeholders counter alias-env decl state]
+  (do
+    (root_push state)
+    (root_push decl)
+    (let [current-env (infer-program-analysis-env state)
+      current-subst (infer-program-analysis-subst state)]
+      (do
+        (root_push current-env)
+        (root_push current-subst)
+        (let [placeholder (map-get-safe placeholders (vector-get decl 1))
+          pending-env-vars (typeinfer-pending-env-vars program (+ idx 1) len placeholders current-subst)
+          result
+            (infer-defn-predeclared
+              decl
+              current-env
+              current-env
+              counter
+              current-subst
+              placeholder
+              pending-env-vars
+              alias-env)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
 (defn infer-program-analysis-type [analysis]
   (do
     (root_push analysis)
@@ -1423,9 +1453,7 @@
                                 (root_pop)
                                 result))))))
                     (if (= tag 20)
-                      (let [env (infer-program-analysis-env state)
-                      subst (infer-program-analysis-subst state)
-                      first-ty (infer-program-analysis-raw-type state)
+                      (let [first-ty (infer-program-analysis-raw-type state)
                       first-seen (infer-program-analysis-first-seen state)
                       diagnostic-count (infer-program-analysis-diagnostic-count state)
                       first-error-code (infer-program-analysis-first-error-code state)
@@ -1435,9 +1463,16 @@
                       first-error-end (infer-program-analysis-first-error-end state)
                       failure-kinds (infer-program-analysis-failure-kinds state)
                       name-hash (vector-get decl 1)
-                      placeholder (map-get-safe placeholders name-hash)
-                      pending-env-vars (typeinfer-pending-env-vars program (+ idx 1) len placeholders subst)
-                      out (infer-defn-predeclared decl env env counter subst placeholder pending-env-vars alias-env)]
+                      out
+                        (typeinfer-infer-defn-predeclared-from-state
+                          program
+                          idx
+                          len
+                          placeholders
+                          counter
+                          alias-env
+                          decl
+                          state)]
                       (do
                         (root_push out)
                         (let [next-first-ty (if (= first-seen 0) (result-type out) first-ty)]
@@ -1447,9 +1482,12 @@
                             (let [next-first-seen (if (= first-seen 0) 1 first-seen)
                               next-first-error-code (if (= first-error-code 0) (result-error-code out) first-error-code)
                               next-env (if (= (result-failed out) 1)
-                                (type-env-remove env name-hash)
+                                (type-env-remove (infer-program-analysis-env state) name-hash)
                                 (vector-get out 3))
-                              next-subst (if (= (result-failed out) 1) subst (result-subst out))
+                              next-subst
+                                (if (= (result-failed out) 1)
+                                  (infer-program-analysis-subst state)
+                                  (result-subst out))
                               next-first-error-index
                                 (if (= (result-failed out) 1)
                                   (if (< first-error-index 0) idx first-error-index)
