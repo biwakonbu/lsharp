@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `86534799`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrixの extended test contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
+- 確認時点の code checkpoint は `2c9bd916`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrixの extended test contractと evidence反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1824,6 +1824,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   smokeを再実行してGREENを確認した。これは Mac current-source stage0 package/source-file smokeの verified
   sliceであり、公開 release asset acquisition、rollback実行、全公開 command、component sidecar、Linux/Mac
   packaged artifact parity、`LEGACY-BOOT-01` aggregateの完了証拠ではない。
+
+  さらに `2c9bd916` の local verification batch で、現行 checkout の package/release boundary 契約を一括再検証した。
+  `test-native-stage0-package.sh`、`test-native-stage0-release-package.sh`、`test-fetch-stage0-archive-provenance.sh`、
+  `test-fetch-stage0-atomic-install.sh`、`test-fetch-stage0-provider-url.sh`、`test-release-smoke-provider-snapshots.sh`、
+  `test-native-official-release-replay-lock.sh`、`test-native-official-release-snapshots.sh` は全て passした。確認できたのは
+  checksum/provenance検証、未登録payloadの拒否、install move failure時の既存stage0復元、unsafe provider URLと live replay lockの
+  fail-closed、review/provider snapshotの全量・digest・rollback payload検証である。これは local/fake harness の契約証拠であり、
+  実 provider release assetの取得、current-source Mac/Linux packaged archive、rollback archiveの実行、両targetの packaged
+  provenance parity、`LEGACY-BOOT-01` aggregateの完了証拠には数えない。VMは起動せず、共有artifactや一時領域も残していない。
 
   実 provider assetの確認では、GitHub release `v0.1.0-native-rc1`（`2026-05-11T13:23:20Z` 公開）は
   `aarch64-apple-darwin` の experimental archiveのみを持ち、Linux x86_64 assetが存在しなかった。archive SHA-256は

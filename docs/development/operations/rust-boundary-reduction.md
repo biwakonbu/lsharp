@@ -4003,3 +4003,19 @@ runner-only test contractのため stage1/stage2/stage3 replayは重複実行し
 これは public command routingと代表的な doc/REPL/LSP wireを両対応targetで確認した verified partialである。実 install/package registry、
 対話 REPL、LSP の全 semantic projection、component helper、全公開 command、stage0 package acquisition/release/rollback、Mac/Linux
 packaged provenance parity、`LEGACY-TOOL-01` aggregateの完了を意味しない。`V2-16c` / `LEGACY-TOOL-01` は `[~]` のまま維持する。
+
+### V2-16e / LEGACY-BOOT-01 package and release preflight contracts (2026-08-04)
+
+現行 checkout の stage0 package/release boundaryを、重い native regenerationを起動せずに一括再検証した。
+`test-native-stage0-package.sh`、`test-native-stage0-release-package.sh`、`test-fetch-stage0-archive-provenance.sh`、
+`test-fetch-stage0-atomic-install.sh`、`test-fetch-stage0-provider-url.sh`、`test-release-smoke-provider-snapshots.sh`、
+`test-native-official-release-replay-lock.sh`、`test-native-official-release-snapshots.sh` は全て passした。
+
+この batch で確認した境界は、stage0 packageの file-setと host tool exclusion、archive round-trip の checksum/provenance、
+未登録payloadの拒否、install move failure時の既存 package復元、unsafe provider URLと live Linux replay lockの fail-closed、
+review/provider snapshotの all-or-none・digest・rollback payload検証である。全テストは task-owned temporary rootを使用し、
+Linux VMは起動していない。
+
+これは local/fake harness の契約 evidenceであり、実 provider release assetの取得、current-source Mac/Linux package生成、
+rollback archiveの実行、両 targetの packaged provenance parity、Rust oracle/host integrationの分離を実行時に証明しない。
+したがって `V2-16e` / `LEGACY-BOOT-01` と `V2-16c` / `LEGACY-TOOL-01` は `[~]` のまま維持する。
