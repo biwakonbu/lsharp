@@ -3799,3 +3799,28 @@ REDは `test_package_api_rejects_symlinked_src_directory` と Rustの同名 MCP 
 `docs/` directory、installer/provider/auth、current-source Mac Apple Silicon / Linux x86_64 runtime、packaged/release/
 rollback parityは未検証のため、TODOの `I-09` / `M3-05-N9` / `EC-M3-05` と Rust-free全体の完了を意味しない。ADR:
 `docs/adr/decisions-v0.3-native-mcp-package-src-directory-ownership.md`。
+
+### V2-16b current-source comparison and logic builtin type contract (2026-08-03)
+
+native built-in type environmentの次の狭い semantic familyとして、比較 `>`, `<`, `<=`, `>=`, `==`, `!=` と論理 `not`,
+`and`, `or` の valid/invalid fixtureを `scripts/ci/test-native-selfhost-type-builtins.py` に追加した。REDは built-in
+argument mismatchを `diagnostics:1` / `function argument type mismatch` として固定し、valid fixtureは `diagnostics:0`
+と stderr空を要求する。Rust oracleの `test_e2e_selfhost_typeinfer_builtin` focused groupは `6 tests` passし、比較と論理の
+opcode/type registration contractを確認した。
+
+`0459ad983ac973ac4df6eca91cd8bd0e833ba202` の current sourceで Mac Apple Silicon actual `App.Cli` release gateを一度だけ
+実行し、underlying ignored E2Eは `1 passed`（`1514.94s`）となった。同じ stage0から生成した native programの expanded
+builtin matrixは `5 tests` 全 passで、成功経路に Rust fallbackは入っていない。
+
+同じ source commitの Linux x86_64 current-source gateは
+`NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=0459ad98-comparison-logic bash scripts/ci/native-linux-x86-selfregen.sh` を
+一度だけ実行した。`ci-artifacts/native-linux-x86-hostgen-vm/0459ad98-comparison-logic/actual-selfregen-summary.json` は
+target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,412,074`、
+stdout SHA-256各 `d5c7adef8f4b164ef216205e5025fb571e63015aabdeff471377c20924f61e89` を記録する。runtime smokeは exit `42`、
+stderrは空で、transport/materialize/compareも同じ jobで通過した。VMの free space gateは `7,678,877,696` bytes available /
+`4,294,967,296` bytes requiredを満たし、成功後にworkdir・lock・一時cargo targetを回収してLimaを停止した。
+
+これは比較/論理 built-inの type contractと current-source Mac/Linux self-regeneration fixed pointに限定した verified partial
+である。比較/論理の全 lowering/runtime意味論、全 built-in/type diagnostic parity、他の言語機能、全公開command、component
+sidecar、stage0 acquisition/release/rollback、Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの
+`V2-16b` は `[~]` とRust oracle / bootstrap / host integration境界を維持する。

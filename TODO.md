@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `60a02b4cba79560888942cc2401166d7207d6aa1`（native built-in unary apply retention と signed 64-bit immediate encoding の narrow fix反映後）。
+- 確認時点の code checkpoint は `0459ad983ac973ac4df6eca91cd8bd0e833ba202`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic type contractの narrow fix反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,7 +41,7 @@
 
 ### 再開時の次の一件
 
-- [~] `V2-16b` native built-in type environment retention — `60a02b4c` の current-source Mac Apple Silicon
+- [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
   `map-contains?` を含む valid builtin call matrixと、builtin argument mismatch matrix、`+` の valid/invalid、
   標準 LSP Diagnostic wire objectを確認した。parserが生成する負の builtin name hashが native signed 64-bit
@@ -50,7 +50,15 @@
   `5 tests`、Linux x86_64 stage1/stage2/stage3 fixed point、runtime smoke、stderr空、stage2/stage3 code length・
   stdout hash一致を確認済みである。`infer-apply-legacy-raw` の1引数分岐で未使用の外側束縛が native local slotを衝突させていた
   既存原因も `50a2ad3c` で修正済みである。built-in全体、全型診断、全公開command、component/packaged release parityは
-  未完了のため、この項目は `[~]` のまま残す。
+  未完了のため、この項目は `[~]` のまま残す。さらに `0459ad98` で比較（`>`, `<`, `<=`, `>=`, `==`, `!=`）と
+  論理（`not`, `and`, `or`）の valid/invalid native type contractを追加し、Mac current-source native matrixを
+  `5 tests` 全 passで確認した。同じ source commitの Linux x86_64 current-source gateは
+  `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=0459ad98-comparison-logic bash scripts/ci/native-linux-x86-selfregen.sh`
+  を一度だけ実行し、`ci-artifacts/native-linux-x86-hostgen-vm/0459ad98-comparison-logic/actual-selfregen-summary.json` で
+  target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,412,074`、
+  stdout SHA-256各 `d5c7adef8f4b164ef216205e5025fb571e63015aabdeff471377c20924f61e89`、stderr空、runtime smoke exit `42`を
+  確認した。これは比較/論理の type contract と current-source Mac/Linux fixed pointに限定した verified partialであり、
+  built-in全体、全型診断、全公開command、component/packaged release parityは未完了である。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
