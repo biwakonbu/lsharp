@@ -3679,3 +3679,35 @@ VM gateも同じ sourceで `status=pass`、stage2/stage3 code length各 `11,408,
 `LS1004`との差分はprojection rendererではなく、native `App.Cli`の`TypeInferBuiltins`が構築する built-in type
 environmentのretentionまたはlookup境界を示す。したがって次の REDは同じ fixtureで、nativeの正常な`+`解決と不正引数の
 `LS1004`、標準 wire objectを固定する。原因確定前に広いroot、spill、offset、map helperの変更を再試行しない。
+
+### V2-16b current-source native built-in retention fix (2026-08-03)
+
+LLDBで `typeinfer-init-builtin-env` の戻り値を追跡したところ、built-in mapは live count `53` の populated mapとして
+返っていた。一方、生成された `typeinfer-program-analysis-loop` の長い state accessor束では、env accessorの結果を
+後続のsubst accessorが同じ一時slotへ上書きし、`infer-defn-predeclared`へ空のenvが渡っていた。map/root helperや
+offset/state layoutを広く変更せず、`TypeInfer.ls` に env/substを短い束として保持する helperを追加し、defn branchの
+入力だけをそこへ集約した。REDは `scripts/ci/test-native-selfhost-type-builtins.py` の3ケースで固定した。
+
+current source commit `75038aa445e7c6c42443dd3b7ddfb83fd53c0d60` で Mac Apple Silicon actual release gateを実行し、
+underlying ignored E2Eは `1 passed`（`836.95s`）。生成した stage0 manifestは target `aarch64-apple-darwin`、同じ
+`source_commit`、manifest SHA-256 `2f59eb86f66fae2f4318238c068d867ca9c6ec7d2f4cdd0fd7316a2c4da27965` を記録した。
+その stage0を `scripts/native-selfhost-dev.sh` に渡して native `App.Cli`を再生成し、回帰scriptは `3 tests`、
+valid `+`、argument mismatch、標準 LSP wire objectの全てで passした。成功経路は current-source native stage0であり、
+この回帰実行にRust fallbackは入っていない。
+
+Linux x86_64の current-source gateは `bash scripts/ci/native-linux-x86-selfregen.sh` を
+`NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=75038aa4-current` で一度だけ実行した。
+`ci-artifacts/native-linux-x86-hostgen-vm/75038aa4-current/actual-selfregen-summary.json` は target
+`x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,408,204`、
+stdout length各 `12,249,104`、stdout SHA-256各
+`b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr空を記録する。stage1 manifestは
+同じ source commit、code `4,408,352`、data `2,757`、entrypoint `4,405,792`、function-start `3,418`、main
+function `3,427`を持ち、stage2-debug / stage3-debugも同じ source commit、code `11,408,204`、entrypoint
+`11,403,596`、function-start `3,418`、main function `3,427`で一致した。summaryは expected/actual exit code `42`
+の一致も記録する。VMは `4 CPU / 16GiB memory / 12GiB disk`、開始時のfree spaceは `7,679,692,800` bytes、
+必要量は `4,294,967,296` bytesで、成功後にworkdir・lockを回収し停止した。
+
+これは built-in `+` retention、型不一致診断の標準 projection、Mac/Linux current-source native fixed pointに限定した
+verified sliceである。全 built-in/type diagnostic parity、他の言語機能、全公開command、component sidecar、stage0
+acquisition/release/rollback、Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの `V2-16b` は `[~]` と
+Rust oracle / bootstrap / host integration境界を維持する。

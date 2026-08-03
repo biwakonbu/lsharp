@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の `origin/main` は `7744350c4e36eb279861ba19007f732b72ff3e71`（type Diagnostic の標準 projection反映後）。
+- 確認時点の `origin/main` は `75038aa445e7c6c42443dd3b7ddfb83fd53c0d60`（native built-in type environment retention の narrow fix反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -39,13 +39,14 @@
 
 ### 再開時の次の一件
 
-- [~] `V2-16b` native built-in type environment retention — current Mac Apple Silicon `App.Cli` native
-  artifactは標準 LSP Diagnostic objectを返すが、`(defn bad [] (+ 1 true))` を `LS1004` へ投影せず
-  `LS1001` / `undefined symbol` として返す。`(defn main [] (+ 1 2))` も native `check` で同じ undefined
-  symbolになるため、`TypeInferBuiltins` が構築する built-in type environmentの保持・lookup境界を次の RED とする。
-  同じ fixtureで Rust-hosted selfhost の `LS1004`、native stage0の成功診断と不正引数診断、標準 LSP wire object、
-  Mac Apple Silicon artifact、Linux x86_64 stage2/stage3 fixed pointを順に確認する。原因確定前に広い root
-  refactorや map helperの一般化は行わない。
+- [~] `V2-16b` native built-in type environment retention — `75038aa4` の current-source Mac Apple Silicon
+  stage0から生成した native `App.Cli`で、`(defn main [] (+ 1 2))` が `diagnostics:0`、
+  `(defn bad [] (+ 1 true))` が `LS1004` / `function argument type mismatch` となり、標準 LSP Diagnostic wire object
+  も一致した。Linux x86_64 でも同じ source commitの stage1/stage2/stage3 fixed point、runtime smoke、stderr空、
+  stage2/stage3 code length・stdout hash一致を確認した。LLDBで built-in map自体は53 entriesを保持しており、
+  `typeinfer-program-analysis-loop` の長い state accessor束で env slotがsubstに上書きされるのが原因だったため、
+  `TypeInfer.ls` の defn推論入力を短い helperへ分離した。
+  built-in全体、全型診断、全公開command、component/packaged release parityは未完了のため、この項目は `[~]` のまま残す。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
@@ -58,7 +59,8 @@
 
 - `src/`、個別 source、`docs/` を含む nested tree 全体の ownership は未閉鎖。
 - installer / registry / provider/auth / 実 Ed25519 / current-source Mac/Linux runtime / packaged parity は未検証。
-- Linux replay・stage regeneration・full build は current-source manifest、expected replay lock、VM ownership が揃うまで保留。
+- current-source V2-16b の Mac/Linux native gateは検証済みだが、installer / registry / provider/auth / packaged parity、
+  全公開 surface、他の未対応言語機能は引き続き別タスクとして未完了である。
 
 ## Next milestone — v0.3 review provenance / lifecycle
 
