@@ -438,17 +438,38 @@ fn test_e2e_selfhost_standalone_read_stdin_runtime() {
             std::fs::write(save_path, &standalone_wasm)
                 .expect("read-stdin standalone artifact の保存に失敗");
         }
-        let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
-            &standalone_wasm,
-            Some(&dir),
-            &[],
-            "payload",
-        )
-        .expect("read-stdin standalone 実行に失敗");
+        let boundary_4096 = format!("{}b", "a".repeat(4095));
+        let boundary_over_4096 = format!("{}b", "a".repeat(4096));
+        let cases = vec![
+            ("payload", "payload".to_string()),
+            ("empty", String::new()),
+            ("4096", boundary_4096),
+            ("over-4096", boundary_over_4096),
+        ];
+        for (label, stdin) in cases {
+            let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+                &standalone_wasm,
+                Some(&dir),
+                &[],
+                &stdin,
+            )
+            .unwrap_or_else(|err| panic!("read-stdin standalone {label} 実行に失敗: {err}"));
+            assert_eq!(output.exit_code, 0, "read-stdin {label} exit code");
+            assert_eq!(
+                output.stdout.as_bytes(),
+                stdin.as_bytes(),
+                "read-stdin {label} stdout"
+            );
+        }
+
+        let errno_capture = run_with_partial_fd_read_with_fd_read_errno(&standalone_wasm, &dir, 1)
+            .expect("read-stdin fd_read errno 下の standalone 実行に失敗");
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert_eq!(output.exit_code, 0);
-        assert_eq!(output.stdout.as_bytes(), b"payload");
+        assert_eq!(errno_capture.stdout, b"payload");
+        assert_eq!(errno_capture.read_payload, b"payload");
+        assert_eq!(errno_capture.fd_read_calls, 3);
+        assert_eq!(errno_capture.fd_close_calls, 0);
     });
 }
 

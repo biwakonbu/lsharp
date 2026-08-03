@@ -956,9 +956,9 @@
     b9 (emit-standalone-byte-seq-8 b8 17 65 128 32 54 2 4 65)
     b10 (emit-standalone-byte-seq-8 b9 136 17 65 0 54 2 0 32)
     b11 (emit-standalone-byte-seq-8 b10 3 65 128 17 65 1 65 136)
-    b12 (emit-standalone-byte-seq-8 b11 17 16 15 33 7 32 7 69)
-    b13 (emit-standalone-byte-seq-8 b12 4 64 65 136 17 40 2 0)
-    b14 (emit-standalone-byte-seq-8 b13 33 6 5 65 0 33 6 11)
+    b12 (emit-standalone-byte-seq-8 b11 17 16 15 26 65 136 17 40)
+    b13 (emit-standalone-byte-seq-4 b12 2 0 33 6)
+    b14 b13
     b15 (emit-standalone-byte-seq-8 b14 32 6 69 13 1 32 5 167)
     b16 (emit-standalone-byte-seq-8 b15 32 6 54 2 4 32 4 32)
     b17 (emit-standalone-byte-seq-8 b16 5 16 5 33 4 12 0 11)

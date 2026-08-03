@@ -7,6 +7,11 @@ import subprocess
 import tempfile
 
 
+READ_STDIN_SOURCE = "(defn main [] (print-string (read-stdin)))\n"
+READ_STDIN_4096 = b"a" * 4095 + b"b"
+READ_STDIN_OVER_4096 = b"a" * 4096 + b"b"
+
+
 CASES = (
     {
         "name": "print-string",
@@ -16,9 +21,30 @@ CASES = (
     },
     {
         "name": "read-stdin",
-        "source": "(defn main [] (print-string (read-stdin)))\n",
+        "source": READ_STDIN_SOURCE,
         "stdin": b"payload",
         "stdout": b"payload",
+        "exit_code": 0,
+    },
+    {
+        "name": "read-stdin-empty",
+        "source": READ_STDIN_SOURCE,
+        "stdin": b"",
+        "stdout": b"",
+        "exit_code": 0,
+    },
+    {
+        "name": "read-stdin-4096",
+        "source": READ_STDIN_SOURCE,
+        "stdin": READ_STDIN_4096,
+        "stdout": READ_STDIN_4096,
+        "exit_code": 0,
+    },
+    {
+        "name": "read-stdin-over-4096",
+        "source": READ_STDIN_SOURCE,
+        "stdin": READ_STDIN_OVER_4096,
+        "stdout": READ_STDIN_OVER_4096,
         "exit_code": 0,
     },
     {
