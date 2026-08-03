@@ -13,6 +13,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 LSP_SHIM = ROOT / "scripts/native-selfhost-lsp-stdio.py"
 VALID_SOURCE = "(defn main [] (+ 1 2))\n"
 INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
+VALID_BUILTIN_SOURCES = {
+    "subtraction": "(defn main [] (- 3 1))\n",
+    "multiplication": "(defn main [] (* 3 2))\n",
+    "division": "(defn main [] (/ 6 2))\n",
+    "remainder": "(defn main [] (% 7 2))\n",
+    "comparison": "(defn main [] (= 3 3))\n",
+    "string-length": "(defn main [] (string-length \"abc\"))\n",
+    "string-concat": "(defn main [] (string-concat \"a\" \"b\"))\n",
+    "vector": "(defn main [] (vector-length (vector-new 2)))\n",
+    "map": "(defn main [] (map-size (map-new)))\n",
+    "reference": "(defn main [] (ref-get (ref-new 3)))\n",
+}
+INVALID_BUILTIN_SOURCES = {
+    "subtraction": "(defn bad [] (- 3 true))\n",
+    "string-length": "(defn bad [] (string-length 3))\n",
+    "vector-length": "(defn bad [] (vector-length 3))\n",
+}
 URI = "file:///tmp/lsharp-native-type-builtins.ls"
 
 
@@ -92,6 +109,20 @@ class NativeSelfhostTypeBuiltinsTest(unittest.TestCase):
         result = run_check(self.program, VALID_SOURCE)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertIn(b"diagnostics:0", result.stdout)
+
+    def test_builtin_type_environment_resolves_numeric_string_and_container_families(self):
+        for name, source in VALID_BUILTIN_SOURCES.items():
+            with self.subTest(name=name):
+                result = run_check(self.program, source)
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                self.assertIn(b"diagnostics:0", result.stdout)
+
+    def test_builtin_type_environment_reports_argument_mismatch_across_families(self):
+        for name, source in INVALID_BUILTIN_SOURCES.items():
+            with self.subTest(name=name):
+                result = run_check(self.program, source)
+                self.assertEqual(result.returncode, 1, result.stderr.decode())
+                self.assertIn(b"function argument type mismatch", result.stdout)
 
     def test_invalid_plus_reports_argument_mismatch(self):
         result = run_check(self.program, INVALID_SOURCE)
