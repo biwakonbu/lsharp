@@ -3712,6 +3712,39 @@ verified sliceである。全 built-in/type diagnostic parity、他の言語機�
 acquisition/release/rollback、Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの `V2-16b` は `[~]` と
 Rust oracle / bootstrap / host integration境界を維持する。
 
+### V2-16b current-source native unary builtin apply retention (2026-08-03)
+
+前項の built-in environment retention fixを current-source stage0で再利用して native CLI matrixを広げたところ、
+numeric operators、string、vector、map、referenceの valid callのうち、`string-length`、`vector-length`、`map-size`、
+`ref-get` が `function argument type mismatch` になった。built-in map lookup、`infer-apply-one-final` の direct
+unify、Rust oracleは成功していたため、failure boundaryは builtin登録や root/offset/state layoutではなく、実際の
+`infer-apply-legacy-raw` 1引数分岐に絞った。これは RED として
+`scripts/ci/test-native-selfhost-type-builtins.py` の valid 10種・invalid 3種、CLI `+`、標準 LSP wire objectで固定した。
+
+`50a2ad3c282806175d76054f2e118e76f7a7f924` では、1引数適用の引数後半と関数後半を既存の rooted helper patternへ分離し、
+外側に残っていた未使用の `s1` / `func-ty` 束縛を除去した。広い append helper、spill floor、offset-depth ctx/state refactorは
+再試行していない。修正後、同じ native matrixは `5 tests` で全て passし、Rust oracleの builtin environment parityも passした。
+
+Mac Apple Siliconの current-source actual App.Cli release gateは underlying ignored E2E `1 passed`、生成 stage0 manifestは
+`target=aarch64-apple-darwin` と source commit `50a2ad3c282806175d76054f2e118e76f7a7f924` を記録した。その stage0から
+`scripts/native-selfhost-dev.sh` で生成した native programに対する valid/invalid builtin matrixは `5 tests` 全 passで、
+成功経路に Rust fallbackは入っていない。
+
+同じ source commitの Linux x86_64 current-source gateは
+`NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=50a2ad3c-builtin-unary bash scripts/ci/native-linux-x86-selfregen.sh` を一度だけ実行した。
+`ci-artifacts/native-linux-x86-hostgen-vm/50a2ad3c-builtin-unary/actual-selfregen-summary.json` は
+target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,408,204`、
+stdout SHA-256各 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a` を記録する。stage1 manifestは同じ
+source commit、code `4,408,352`、data `2,757`、entrypoint `4,405,792`、function-start `3,418`、main function `3,427`で、
+stage2/stage3 stderrは空、stdout lengthは各 `12,249,104`だった。VMのfree space gateは `7,678,709,760` bytes available /
+`4,294,967,296` bytes requiredを満たし、成功後にworkdirを回収してLimaを停止した。
+
+零引数 builtin applyのRust oracle (`test_e2e_selfhost_typeinfer_zero_argument_builtin_call_applies_unit`)も passし、current
+native App.Cliの `(defn main [] (command-line-args))` checkは `diagnostics:0` だった。ただしこれは零引数 family全体の
+runtime/artifact parityを閉じた証拠ではない。全 built-in/type diagnostic parity、他の言語機能、全公開command、component
+sidecar、stage0 acquisition/release/rollback、Mac/Linux packaged parity、Rust-free全体の完了は未検証であり、TODOの
+`V2-16b` は `[~]` を維持する。
+
 ### I-09 / M3-05-N9 / EC-M3-05 package root `src/` symlink ownership (2026-08-03)
 
 regular installed package `demo-1.0.0` の `src/` を package root外の directoryへ向け、外部 `Geometry.ls`だけを置き、
