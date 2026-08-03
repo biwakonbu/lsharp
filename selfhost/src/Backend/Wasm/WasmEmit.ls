@@ -924,7 +924,11 @@
     b12 (emit-standalone-byte-seq-8 b11 32 3 65 1 107 33 3 32)
     b13 (emit-standalone-byte-seq-8 b12 3 65 45 58 0 0 32 2)
     b14 (emit-standalone-byte-seq-8 b13 65 1 106 33 2 11 32 3)
-    b15 (emit-standalone-byte-seq-8 b14 32 2 106 65 10 58 0 0)
+    ;; 数字ループが一度も回らないゼロは、符号判定を閉じた後に 0 を 1 桁書く。
+    b14a (emit-standalone-byte-seq-8 b14 32 2 69 4 64 32 3 65)
+    b14b (emit-standalone-byte-seq-8 b14a 48 58 0 0 65 1 33 2)
+    b14c (emit-standalone-byte-seq-1 b14b 11)
+    b15 (emit-standalone-byte-seq-8 b14c 32 2 106 65 10 58 0 0)
     b16 (emit-standalone-byte-seq-8 b15 65 16 32 3 54 2 0 65)
     b17 (emit-standalone-byte-seq-8 b16 20 32 2 65 1 106 54 2)
     b18 (emit-standalone-byte-seq-8 b17 0 65 1 65 16 65 1 65)

@@ -474,6 +474,45 @@ fn test_e2e_selfhost_standalone_read_stdin_runtime() {
 }
 
 #[test]
+fn test_e2e_selfhost_standalone_command_line_runtime() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("command_line");
+        let _ = std::fs::remove_dir_all(&dir);
+        let standalone_wasm = compile_standalone_source(
+            r#"(defn main []
+  (do
+    (print-string (command-line-arg 0))
+    (print-string (command-line-arg 1))
+    (print-string (command-line-arg 2))
+    (print (command-line-args))))"#,
+            &dir,
+            "LSHARP_STANDALONE_COMMAND_LINE_CLI_ARTIFACT",
+        );
+        let with_args = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &standalone_wasm,
+            Some(&dir),
+            &["alpha", "beta"],
+            "",
+        )
+        .expect("standalone command-line runtime with args の実行に失敗");
+        let without_args =
+            lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+                &standalone_wasm,
+                Some(&dir),
+                &[],
+                "",
+            )
+            .expect("standalone command-line runtime without args の実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(with_args.exit_code, 0);
+        assert_eq!(with_args.stdout.as_bytes(), b"alphabeta2\n");
+        assert_eq!(without_args.exit_code, 0);
+        assert_eq!(without_args.stdout.as_bytes(), b"0\n");
+    });
+}
+
+#[test]
 fn test_wasi_fd_write_shim_is_used_for_standalone_import() {
     let dir = fixture_dir("shim");
     let _ = std::fs::remove_dir_all(&dir);
