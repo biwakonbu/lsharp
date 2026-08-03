@@ -10,6 +10,7 @@ import tempfile
 READ_STDIN_SOURCE = "(defn main [] (print-string (read-stdin)))\n"
 READ_STDIN_4096 = b"a" * 4095 + b"b"
 READ_STDIN_OVER_4096 = b"a" * 4096 + b"b"
+PRINT_ZERO_SOURCE = "(defn main [] (print 0))\n"
 COMMAND_LINE_SOURCE = """(defn main []
   (do
     (print-string (command-line-arg 0))
@@ -62,8 +63,15 @@ CASES = (
         "exit_code": 0,
     },
     {
-        "name": "command-line-empty",
+        "name": "command-line-empty-argv0",
         "source": COMMAND_LINE_SOURCE,
+        "args": [],
+        "stdout": b"1\n",
+        "exit_code": 0,
+    },
+    {
+        "name": "print-zero",
+        "source": PRINT_ZERO_SOURCE,
         "args": [],
         "stdout": b"0\n",
         "exit_code": 0,
@@ -128,8 +136,10 @@ def run_case(program, wasmtime, case):
         if not wasm_path.is_file() or not wasm_path.stat().st_size:
             raise AssertionError(f"{case['name']} compile produced no Wasm artifact")
 
+        case_args = list(case.get("args", []))
+        argv0 = case_args.pop(0) if case_args else ""
         runtime_result = subprocess.run(
-            [str(wasmtime), "--dir=.", str(wasm_path), *case.get("args", [])],
+            [str(wasmtime), "--dir=.", "--argv0", argv0, str(wasm_path), *case_args],
             cwd=root,
             capture_output=True,
             input=case.get("stdin"),
