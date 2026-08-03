@@ -1467,6 +1467,25 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `test_e2e_selfhost_lsp_state_preserves_wire_uri` は `1 passed` / `9.13s`、native LSP shimは `5 passed` となった。これは diagnostics
   refreshのURI保持に限定した verified partialで、標準Diagnostic fields、cross-document provenance、current-source Mac/Linux native
   artifact gate、component/release parityは残る。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま維持する。
+
+  さらに 2026-08-03 の clean `HEAD=d6517499b6b00287e901b278b1f549d56cc4fc2c` で、Mac Apple Siliconの
+  `native-macos-aarch64-selfhost-release.sh` を一度だけ実行し、current `App.Cli` native releaseを再生成した。
+  gateは `1 passed` / `941.46s`、manifestは target `aarch64-apple-darwin`、同じ source commit、
+  `selfhost_fixed_point=true`、program SHA-256 `ee884e4828e6263830e3b3d7908ad85444b012130e67f0d068b2bd360f5c072d`、
+  Mach-O arm64、program `4,343,680` bytesを記録した。同artifactの標準 string URI fixtureによる direct
+  `lsp --stdio` は exit `0` / stderr `0` bytes / 5 framesで、didOpen後の diagnostics refresh、definition / referencesの
+  `Location`、renameの URI-keyed `WorkspaceEdit` がすべて `file:///tmp/lsharp-uri-contract.ls` を保持した。
+  artifactは `ci-artifacts/native-release/aarch64-apple-darwin/current-d6517499-lsp-diagnostics/` に保持した。
+
+  同じ clean HEADから、Linux x86_64 hostgen→Lima VM gateも一度だけ実行した。actual stage1 manifestと stage2/stage3
+  debug manifestは target `x86_64-unknown-linux-gnu`、source commit `d6517499...` が一致し、stage1 code/dataは
+  `4,408,352` / `2,757` bytes、entrypoint `4,405,792`、function-start `3,418`、main function `3,427` だった。
+  actual self-regeneration summaryは `status=pass`、stage2/stage3 code lengthは各 `11,408,204` bytes、transport stdoutは
+  各 `12,249,104` bytes / SHA-256 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderrは各 `0` bytesで一致した。
+  これは Linux stage2→stage3 transport/materialize/fixed-pointの current-source evidenceであり、Linux target-only
+  App.Cli release binaryやLinux direct LSP semantic projectionの evidenceではない。後者、標準 Diagnostic fields、
+  cross-document URI provenance、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged
+  provenance parityは残る。Lima `lsharp-linux-x86` は検証後に停止し、task-owned VM workdirと replay lockは回収した。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host

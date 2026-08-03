@@ -1767,6 +1767,33 @@ field/schema parity、cross-document URI provenance、current `HEAD` のMac Appl
 standalone Preview1 runtime、component sidecar、release acquisition/rollback、Mac/Linux packaged provenance parity、LSP aggregateは
 未完了であり、TODOの `[~]` と Rust oracle/bootstrap/host integration境界を維持する。
 
+### V2-16b / V2-16c / V2-16e current-source native LSP URI gate (2026-08-03)
+
+clean `HEAD=d6517499b6b00287e901b278b1f549d56cc4fc2c` で、Mac Apple Siliconの
+`scripts/ci/native-macos-aarch64-selfhost-release.sh` を一度だけ実行した。gateは `1 passed` / `941.46s`、manifestは
+target `aarch64-apple-darwin`、同じ source commit、`selfhost_fixed_point=true`、program SHA-256
+`ee884e4828e6263830e3b3d7908ad85444b012130e67f0d068b2bd360f5c072d`、Mach-O arm64、program `4,343,680` bytesだった。
+artifactは `ci-artifacts/native-release/aarch64-apple-darwin/current-d6517499-lsp-diagnostics/` に保持した。
+
+同artifactに標準 string URIの didOpen → definition / references / rename fixtureを直接渡した `lsp --stdio` は exit `0`、
+stderr `0` bytes、5 framesで終了した。didOpen後の `publishDiagnostics`、definition / referencesの `Location`、renameの
+URI-keyed `WorkspaceEdit` はすべて `file:///tmp/lsharp-uri-contract.ls` を保持した。これは current-source Mac native
+artifactでの URI ownership / standard navigation projection の verified partialである。
+
+同じ clean HEADから Linux x86_64 hostgen→Lima VM gateも一度だけ実行した。actual stage1 manifestと stage2/stage3 debug
+manifestは target `x86_64-unknown-linux-gnu`、source commit `d6517499...` が一致し、stage1 code/dataは
+`4,408,352` / `2,757` bytes、entrypoint `4,405,792`、function-start `3,418`、main function `3,427`だった。
+`actual-selfregen-summary.json` は `status=pass`、stage2/stage3 code lengthは各 `11,408,204` bytes、transport stdoutは
+各 `12,249,104` bytes / SHA-256 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderrは各 `0` bytesで一致した。
+artifactは `ci-artifacts/native-linux-x86-hostgen-vm/current-d6517499-lsp-diagnostics/` に保持した。
+
+今回の Linux gateは host-generated stage1 payloadの stage2→stage3 transport/materialize/fixed-pointを対象とし、Linux
+target-only App.Cli release binaryやLinux direct LSP semantic projectionまでは生成・実行していない。したがって標準
+Diagnostic field/schema、full symbol range、cross-document URI provenance、Linux direct LSP、standalone Preview1 runtime、
+component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged provenance parity、LSP aggregateは未完了である。
+Lima `lsharp-linux-x86` は検証後に停止し、task-owned VM workdirと replay lockは回収した。TODOの `[~]` と Rust
+oracle/bootstrap/host integration境界は維持する。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。
