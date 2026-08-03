@@ -49,6 +49,7 @@ VALID_BUILTIN_SOURCES = {
     "read-stdin": "(defn main [] (read-stdin))\n",
     "file-exists?": "(defn main [] (file-exists? \"input.ls\"))\n",
     "read-file": "(defn main [] (read-file \"input.ls\"))\n",
+    "write-file-bytes": "(defn main [] (write-file-bytes \"raw.wasm\" (vector-new 2)))\n",
 }
 INVALID_BUILTIN_SOURCES = {
     "subtraction": "(defn bad [] (- 3 true))\n",
@@ -63,6 +64,7 @@ INVALID_BUILTIN_SOURCES = {
     "logic-not": "(defn bad [] (not 1))\n",
     "logic-and": "(defn bad [] (and true 1))\n",
     "logic-or": "(defn bad [] (or 1 false))\n",
+    "write-file-bytes": "(defn bad [] (write-file-bytes 3 (vector-new 2)))\n",
 }
 URI = "file:///tmp/lsharp-native-type-builtins.ls"
 

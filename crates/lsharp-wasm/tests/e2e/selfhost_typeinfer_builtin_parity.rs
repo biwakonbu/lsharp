@@ -286,6 +286,74 @@ fn test_e2e_selfhost_typeinfer_ref_builtins_preserve_inner_type() {
     );
 }
 
+/// write-file-bytes は String と Vector を受け取り、Int の結果型を返す。
+#[test]
+fn test_e2e_selfhost_typeinfer_write_file_bytes_contract() {
+    let harness = format!(
+        r#"
+(defn make-node [tag]
+  (vector-push (vector-new 1) tag))
+
+(defn make-var-node [name-hash]
+  (vector-push (vector-push (vector-new 2) 4) name-hash))
+
+(defn make-apply1 [func arg]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 5)
+        func)
+      1)
+    arg))
+
+(defn make-apply2 [func left right]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) 5)
+          func)
+        2)
+      left)
+    right))
+
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        subst (subst-new)
+        string-node (make-node 3)
+        int-node (make-node 1)
+        vector-new-node (make-var-node {vector_new})
+        vector-node (make-apply1 vector-new-node int-node)
+        write-file-bytes-node (make-var-node {write_file_bytes})
+        valid-result
+          (infer-expr
+            (make-apply2 write-file-bytes-node string-node vector-node)
+            env subst counter)
+        mismatch-result
+          (infer-expr
+            (make-apply2 write-file-bytes-node int-node vector-node)
+            env subst counter)]
+    (do
+      (print (result-failed valid-result))
+      (print (ty-name (result-type valid-result)))
+      (print (result-failed mismatch-result))
+      0)))
+"#,
+        vector_new = lsharp_name_hash("vector-new"),
+        write_file_bytes = lsharp_name_hash("write-file-bytes"),
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "100", "1"],
+        "write-file-bytes は String -> Vector -> Int の型契約を維持するべき"
+    );
+}
+
 /// 引数なし apply は Unit を渡した builtin 呼び出しとして結果型を返す。
 #[test]
 fn test_e2e_selfhost_typeinfer_zero_argument_builtin_call_applies_unit() {
