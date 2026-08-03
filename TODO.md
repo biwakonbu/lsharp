@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の `origin/main` は `75038aa445e7c6c42443dd3b7ddfb83fd53c0d60`（native built-in type environment retention の narrow fix反映後）。
+- 確認時点の code checkpoint は `f90a5f8963bf0df6cc4479963cbb29470798a40e`（native package root `src/` symlink ownership の narrow fix反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -32,10 +32,12 @@
 - installed package の既存 `docs/api.json` は regular non-symlink file のみを package-owned metadata として読む。
 - `.lsharp/packages/<entry>` 自体は regular non-symlink directory のみを discovery 対象にする。
 - regular package directory 内の `lsharp.toml` symlink は discovery から除外し、explicit package API は既存 not-found で fail-closed にする。
+- regular package directory 内の root `src/` directory symlink は source-owned tree として扱わず、外部 `.ls` の API projection と native `doc` 実行を止める。
 
 代表 ADR: [`decisions-v0.3-native-mcp-package-api-regular-file-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-api-regular-file-boundary.md)、
 [`decisions-v0.3-native-mcp-installed-package-directory-ownership.md`](docs/adr/decisions-v0.3-native-mcp-installed-package-directory-ownership.md)、
-[`decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md)。
+[`decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md)、
+[`decisions-v0.3-native-mcp-package-src-directory-ownership.md`](docs/adr/decisions-v0.3-native-mcp-package-src-directory-ownership.md)。
 
 ### 再開時の次の一件
 
@@ -50,8 +52,9 @@
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
-  Rust/native の同一 fixture で閉じる。実装前に RED を追加し、外部 source の name/content/metadata を応答へ投影しないこと、
-  native program no-execution、Rust/native parity を確認する。
+  Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の
+  name/content/metadata 非投影、native program no-execution、Rust/native parityまで検証済みの verified partial とする。
+  regular `src/` 配下の child symlinkを含む nested ownership全体は未完了である。
   個別 source file、`docs/` directory、その他 nested tree、installer、provider/auth、current-source runtime、
   Mac/Linux packaged/rollback parity はこの一件に含めない。
 

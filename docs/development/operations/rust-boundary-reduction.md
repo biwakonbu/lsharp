@@ -3711,3 +3711,24 @@ function `3,427`を持ち、stage2-debug / stage3-debugも同じ source commit�
 verified sliceである。全 built-in/type diagnostic parity、他の言語機能、全公開command、component sidecar、stage0
 acquisition/release/rollback、Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの `V2-16b` は `[~]` と
 Rust oracle / bootstrap / host integration境界を維持する。
+
+### I-09 / M3-05-N9 / EC-M3-05 package root `src/` symlink ownership (2026-08-03)
+
+regular installed package `demo-1.0.0` の `src/` を package root外の directoryへ向け、外部 `Geometry.ls`だけを置き、
+`docs/api.json`を欠く同一 fixtureを Rust MCP と native MCP に追加した。旧実装は `src` symlinkを辿って外部 moduleを
+package APIへ投影し、native routeでは外部 sourceに対して `doc --json`を実行した。
+
+native `_package_source_files` は root `src` symlinkを空の source setとして扱い、既存の missing `api.json` / source
+diagnosticへ戻すようにした。Rust `mcp_context` は同じ missing-source boundaryを返し、`lsharp-tooling` の
+`build_api_doc_for_package`も root `src` symlinkを `symlink_metadata`で拒否する。これにより外部 sourceの module/function/
+metadataは responseへ投影されず、native fake programの logも作成されない。
+
+REDは `test_package_api_rejects_symlinked_src_directory` と Rustの同名 MCP test、および API-doc builderの direct testで
+外部 `Geometry`投影を確認した。GREENは native MCP 107 tests、Rust package API 9 tests、API-doc package 2 tests、
+`rustfmt`、Python `py_compile`、`git diff --check`で確認した。code checkpointは
+`f90a5f8963bf0df6cc4479963cbb29470798a40e`、commitは `origin/main`へ push済みである。
+
+これは root `src/` directory symlinkの verified partialだけである。regular `src/`配下の child symlink、個別 source file、
+`docs/` directory、installer/provider/auth、current-source Mac Apple Silicon / Linux x86_64 runtime、packaged/release/
+rollback parityは未検証のため、TODOの `I-09` / `M3-05-N9` / `EC-M3-05` と Rust-free全体の完了を意味しない。ADR:
+`docs/adr/decisions-v0.3-native-mcp-package-src-directory-ownership.md`。
