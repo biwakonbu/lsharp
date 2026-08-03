@@ -1497,6 +1497,23 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   current HEADのMac/Linux native artifact direct gate、cross-document URI provenance、component sidecar、公開 release asset
   acquisition/rollback、Mac/Linux packaged provenance parity、LSP aggregateは残る。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは
   `[~]` のまま維持する。
+
+  その後 current `HEAD=ab5122c18786f82d6277f36bbddaf6b31ff98f16` で Mac Apple Siliconの
+  `native-macos-aarch64-selfhost-release.sh` を一度だけ実行し、`1 passed` / `922.36s`、target
+  `aarch64-apple-darwin`、`selfhost_fixed_point=true`、Mach-O arm64、program `4,360,192` bytes、program SHA-256
+  `d66c271e96545b0a2310424ee8a4f12c01bc56d1ad7180db154f53a9dc10d0e6` を確認した。artifactは
+  `ci-artifacts/native-release/aarch64-apple-darwin/current-ab5122c1-lsp-parse/` に保持した。同artifactへ invalid parseの
+  `lsp --stdio` wireを直接渡し、publishDiagnosticsの標準 `range` / severity / `LS0101` / source / messageと URIを
+  一致確認した。Linux x86_64の current-source hostgen→Lima VM gateも同じ source commitで exit `0` となり、stage1 manifestは
+  target `x86_64-unknown-linux-gnu`、code/data `4,408,352` / `2,757` bytes、entrypoint `4,405,792`、function-start
+  `3,418`、main function `3,427`。stage2/stage3 manifestの target/source commitが一致し、code length各 `11,408,204`、
+  stdout各 `12,249,104` bytes / SHA-256 `b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、
+  stderr各 `0` bytes、summary `status=pass` で一致した。artifactは
+  `ci-artifacts/native-linux-x86-hostgen-vm/current-ab5122c1-lsp-parse/` に保持し、VM workdir/lockを削除、Limaは停止した。
+  これは parse-only標準 DiagnosticのMac native direct evidenceとLinux stage2/stage3 fixed-pointを追加する verified partialであり、
+  type/lint diagnosticsの標準 fields、複数診断の全文、full span/code/message parity、Linux direct LSP semantic projection、
+  cross-document URI provenance、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged provenance parity、
+  LSP aggregateは残る。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま維持する。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host
