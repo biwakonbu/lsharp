@@ -3841,3 +3841,28 @@ current-source stage2/stage3 fixed-pointは同じ selfhost sourceを検証済み
 未検証として残す。これは write-file-bytes の型 contractだけを閉じる verified partialであり、opcode 90の実 native runtime/artifact
 bytes、全 I/O semantics、全 built-in/type diagnostic parity、全公開command、component sidecar、stage0 acquisition/release/rollback、
 Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの `V2-16b` は `[~]` を維持する。
+
+### V2-16b / LEGACY-IO-01 standalone I/O runtime matrix (2026-08-03)
+
+`proc-exit` を含む standalone Preview1 の native runtime contractを、同じ current-source native programで確認するため、
+`scripts/ci/test-native-selfhost-io-runtime.py` に4ケースの matrixを追加した。REDでは `proc-exit` compileが
+`unsupported standalone Preview1 runtime capability` で明示拒否された。実装は `wasi_snapshot_preview1.proc_exit` の importを
+既存の6 importへ追加し、import index `6`、`(i32) -> ()` type、defined function/user call/wrapper exportの index shiftを整合させた。
+IR opcode `88` は `i32.wrap_i64`、proc-exit call、`i64.const 0`を出力し、selfhost user functionの `() -> i64` result contractを
+壊さない。広い append helper、spill floor、offset-depth ctx/state refactorは再導入していない。
+
+Rust parityでは `test_e2e_selfhost_standalone_user_call_after_preview1_import` が `1 passed` / `316.38s`、既存の
+`test_e2e_selfhost_standalone_write_file_bytes_retries_partial_fd_write` が `1 passed` / `315.96s` となった。`a5317c95`
+の Mac Apple Silicon (`aarch64-apple-darwin`) current-source actual stage0 gateは `1 passed` / `830.50s`、同stage0から
+生成した native programで次の4 observablesが全て passした。
+
+- `print-string`: stdout `hello`、exit `0`
+- `write-file`: task-owned directoryの `text.txt` が `payload`、stdout空、exit `0`
+- `write-file-bytes`: `raw.bin` が bytes `00 61 73 6d`、stdout空、exit `0`
+- `proc-exit`: Preview1 `proc_exit(7)` の exit `7`
+
+成功経路の native programは Rust fallback、`cargo`、`rustc`、host `lsharp`を呼び出していない。この結果は standalone I/Oの
+Mac runtime verified sliceであり、Linux x86_64 (`x86_64-unknown-linux-gnu`) current-source stage2/stage3 fixed pointと直接の
+I/O runtime matrix、read-stdin、argv/full command-line、fd error semantics、4096 bytes超の動的 layout、component sidecar、
+公開 release asset acquisition/rollback、Mac/Linux packaged artifact provenance parityの完了証拠ではない。`TODO.md` の
+`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。

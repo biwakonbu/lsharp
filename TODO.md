@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `496a8ff3a67da3d511d01d840a3d9e07fcf0acb4`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic、write-file-bytes type contractの narrow fix反映後）。
+- 確認時点の code checkpoint は `a5317c959867f59efa673d9c1251ce40792808a7`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic、write-file-bytes type contract、standalone proc-exit runtimeの narrow fix反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -64,6 +64,15 @@
   `1 passed` / `821.97s`、native matrixは `5 tests` 全 passとなった。`0459ad98` から `selfhost/src` に差分がないことを確認したため、
   Linux x86_64の重い stage2/stage3 replayは重複実行していない。manifestの source commitが一致しない旧Linux artifactを current evidenceへ
   拡大解釈せず、この fixtureの Linux current-source direct gateは未検証として残す。
+
+  さらに `1996fe6e` / `caba3ad6` / `a5317c95` で standalone Preview1 の `proc_exit` を native Wasm emitterへ接続した。
+  `wasi_snapshot_preview1.proc_exit` の import/type追加に伴う defined-function index、user-call、wrapper exportの shiftを揃え、
+  `i32.wrap_i64` と trailing `i64.const 0`で selfhost user functionの `() -> i64` result contractを維持した。Rust focused user-call
+  regressionは `1 passed` / `316.38s`、既存の raw-byte partial-write regressionは `1 passed` / `315.96s`、`a5317c95` の
+  Mac Apple Silicon current-source actual release gateは `1 passed` / `830.50s` で、native I/O runtime matrixは
+  `print-string`、`write-file`、`write-file-bytes`、`proc-exit`（exit `7`）の4 cases全 passとなった。成功経路では Rust
+  fallbackを使用していない。Linux x86_64の同 current-source stage2/stage3 replayと直接 I/O runtime matrixは未検証として残し、
+  standalone read-stdin、全 fd error semantics、全公開command、component/packaged release parityも未完了である。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
