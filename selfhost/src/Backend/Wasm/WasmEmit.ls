@@ -2121,7 +2121,7 @@
 (defn emit-write-file-bytes-standalone-instr [bytes]
   (emit-leb128 (emit-byte bytes 16) 21))
 (defn emit-proc-exit-standalone-instr [bytes]
-  (emit-leb128 (emit-byte bytes 16) 100))
+  (emit-leb128 (emit-byte (emit-byte bytes 167) 16) 100))
 
 (defn reject-native-only-wasm-opcode [bytes opcode]
   (if (= opcode 86)
