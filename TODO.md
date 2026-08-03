@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の `origin/main` は `9a0038ea`（native LSP URI gate evidence反映後）。
+- 確認時点の `origin/main` は `95656144`（parse-only 標準 Diagnostic projection反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1486,6 +1486,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   App.Cli release binaryやLinux direct LSP semantic projectionの evidenceではない。後者、標準 Diagnostic fields、
   cross-document URI provenance、component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged
   provenance parityは残る。Lima `lsharp-linux-x86` は検証後に停止し、task-owned VM workdirと replay lockは回収した。
+
+  さらに current `HEAD=95656144` で parse-only diagnostics の標準 LSP Diagnostic projectionを RED→GREENで固定した。
+  `test_e2e_selfhost_lsp_render_standard_parse_diagnostic_json` は enriched recordから zero-based range、severity、`LS0101`、
+  `source="lsharp"`、messageを標準 objectへ投影し、legacy renderer/snapshotを含む render groupは `5 passed` / `17.05s`。
+  実際の `App.Cli` bundleで `lsp-source-parse-diagnostics ")"` を通す
+  `test_e2e_selfhost_lsp_parse_diagnostics_use_standard_projection` は `1 passed` / `321.40s` となり、
+  `scripts/ci/test-native-selfhost-lsp-stdio.py` は `5 passed` だった。parse-only の producer/renderer境界は
+  host-Wasmで verified partialになったが、type/lint diagnosticsの標準 fields、複数診断の全文、full span/code/message parity、
+  current HEADのMac/Linux native artifact direct gate、cross-document URI provenance、component sidecar、公開 release asset
+  acquisition/rollback、Mac/Linux packaged provenance parity、LSP aggregateは残る。`V2-16b` / `V2-16c` / `V2-16e` と aggregateは
+  `[~]` のまま維持する。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host

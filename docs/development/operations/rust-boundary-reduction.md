@@ -1794,6 +1794,21 @@ component sidecar、公開 release asset acquisition/rollback、Mac/Linux packag
 Lima `lsharp-linux-x86` は検証後に停止し、task-owned VM workdirと replay lockは回収した。TODOの `[~]` と Rust
 oracle/bootstrap/host integration境界は維持する。
 
+### V2-16b / V2-16c / V2-16e current-source parse diagnostics standard projection (2026-08-02)
+
+current `HEAD=95656144` で parse-only diagnosticsの標準 LSP Diagnostic projectionを RED→GREENで固定した。
+`test_e2e_selfhost_lsp_render_standard_parse_diagnostic_json` は enriched recordから zero-based `range`、LSP `severity`、
+`LS0101`、`source="lsharp"`、messageを標準 objectへ投影し、legacy renderer/snapshotを含む render groupは `5 passed` / `17.05s`。
+実際の `App.Cli` bundleで `lsp-source-parse-diagnostics ")"` を呼ぶ
+`test_e2e_selfhost_lsp_parse_diagnostics_use_standard_projection` は `1 passed` / `321.40s`、
+`scripts/ci/test-native-selfhost-lsp-stdio.py` は `5 passed` となった。
+
+これは parse producerから JSON rendererまでの host-Wasm verified partialであり、type/lint diagnosticsの標準 fields、
+複数診断の全文、full span/code/message parity、current HEADのMac Apple Silicon / Linux x86_64 native artifact direct gate、
+cross-document URI provenance、standalone Preview1 runtime、component sidecar、公開 release asset acquisition/rollback、
+Mac/Linux packaged provenance parity、LSP aggregateの完了を意味しない。TODOの `[~]` と Rust oracle/bootstrap/
+host integration境界を維持する。
+
 ### V2-16e / V2-13a-5 Linux x86 substring bounded heap allocation (2026-08-02)
 
 Linux x86 selfhostの `emit-x86-selfhost-substring-helper` は、substring結果を per-allocation mmapで確保していた。
