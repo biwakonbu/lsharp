@@ -72,6 +72,31 @@ fn test_build_api_doc_for_package_collects_modules_from_src_in_sorted_order() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+#[test]
+fn test_build_api_doc_for_package_collects_nested_regular_source_files_only() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_api_doc_package_nested_regular_source_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src/Geometry")).unwrap();
+    std::fs::create_dir_all(dir.join("docs/guides")).unwrap();
+    std::fs::write(
+        dir.join("src/Geometry/Vec2.ls"),
+        "(module Geometry.Vec2)\n(defn zero [] 0)",
+    )
+    .unwrap();
+    std::fs::write(dir.join("docs/guides/README.txt"), "documentation").unwrap();
+
+    let api = build_api_doc_for_package(&dir, "demo", "0.1.0").unwrap();
+
+    assert_eq!(api.modules.len(), 1);
+    assert_eq!(api.modules[0].name, "Geometry.Vec2");
+    assert_eq!(api.modules[0].functions[0].name, "zero");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 #[cfg(unix)]
 #[test]
 fn test_build_api_doc_for_package_rejects_symlinked_src_directory() {

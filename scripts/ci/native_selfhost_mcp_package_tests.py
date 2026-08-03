@@ -318,6 +318,61 @@ def assert_package_api_generates_from_native_doc(test):
         )
 
 
+def assert_package_api_generates_from_native_doc_for_nested_source(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        source = package / "src" / "Geometry" / "Vec2.ls"
+        source.parent.mkdir(parents=True)
+        source.write_text(
+            "(module Geometry.Vec2)\n(defn zero [] 0)\n",
+            encoding="utf-8",
+        )
+        (package / "docs" / "guides").mkdir(parents=True)
+        (package / "docs" / "guides" / "README.txt").write_text(
+            "documentation\n", encoding="utf-8"
+        )
+        native_document = {
+            "module": "module-Geometry.Vec2",
+            "functions": [{
+                "name": "zero",
+                "arity": 0,
+                "params": [],
+                "returns": {"type": "Int", "doc": ""},
+                "doc": "",
+                "example": "",
+            }],
+            "types": [],
+            "html": {
+                "title": "module-Geometry.Vec2",
+                "sections": [{"id": "functions", "count": 1}, {"id": "types", "count": 0}],
+            },
+        }
+
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {"name": "lsharp_package_api", "arguments": {"project_dir": str(root), "name": "demo"}},
+            ),
+            root,
+            doc_output=native_document,
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        structured = response["result"]["structuredContent"]
+        test.assertEqual(structured["modules"][0]["name"], "Geometry.Vec2")
+        test.assertEqual(structured["modules"][0]["functions"][0]["name"], "zero")
+        test.assertFalse((package / "docs" / "api.json").exists())
+        test.assertEqual(
+            json.loads((root / "native.log").read_text(encoding="utf-8")),
+            ["doc", str(source), "--json"],
+        )
+
+
 def assert_package_api_rejects_identity_mismatch(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

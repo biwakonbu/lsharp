@@ -1466,6 +1466,49 @@ entry = "src/main.ls"
     }
 
     #[test]
+    fn test_package_api_tool_collects_nested_regular_source_files() {
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_api_nested_regular_source_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let package_dir = root.join(".lsharp/packages/demo-1.0.0");
+        std::fs::create_dir_all(package_dir.join("src/Geometry")).unwrap();
+        std::fs::create_dir_all(package_dir.join("docs/guides")).unwrap();
+        std::fs::write(
+            package_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            package_dir.join("src/Geometry/Vec2.ls"),
+            "(module Geometry.Vec2)\n(defn zero [] 0)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            package_dir.join("docs/guides/README.txt"),
+            "documentation\n",
+        )
+        .unwrap();
+
+        let result = call_tool(
+            "lsharp_package_api",
+            &json!({
+                "project_dir": root.display().to_string(),
+                "name": "demo"
+            }),
+        )
+        .expect("nested regular source file は API 生成対象になるべき");
+
+        assert_eq!(result["modules"].as_array().unwrap().len(), 1);
+        assert_eq!(result["modules"][0]["name"], "Geometry.Vec2");
+        assert_eq!(result["modules"][0]["functions"][0]["name"], "zero");
+        assert!(!package_dir.join("docs/api.json").exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn test_stdlib_api_tool_returns_stdlib_modules_with_metadata() {
         let result = call_tool("lsharp_stdlib_api", &json!({})).expect("stdlib_api が成功するべき");
         let artifact_path =
