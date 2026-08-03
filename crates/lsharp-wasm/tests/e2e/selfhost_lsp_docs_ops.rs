@@ -1067,6 +1067,58 @@ fn test_e2e_selfhost_lsp_parse_diagnostics_use_standard_projection() {
     );
 }
 
+/// TEST-LSP-15b-standard-type: enriched type diagnostic を標準 LSP Diagnostic JSON へ投影すること
+#[test]
+fn test_e2e_selfhost_lsp_render_standard_type_diagnostic_json() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn main []
+  (let [d0 (vector-new 10)
+        d1 (vector-push d0 1)
+        d2 (vector-push d1 4)
+        d3 (vector-push d2 1)
+        d4 (vector-push d3 1)
+        d5 (vector-push d4 4)
+        d6 (vector-push d5 2)
+        d7 (vector-push d6 1)
+        d8 (vector-push d7 1)
+        d9 (vector-push d8 "LS1004")
+        diag (vector-push d9 "function argument type mismatch")]
+    (do
+      (print-string (render-diagnostic-json diag))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(
+        output.trim(),
+        r#"{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}"#,
+        "enriched type diagnostic は標準 LSP Diagnostic object へ投影されるべき"
+    );
+}
+
+/// TEST-LSP-15b-standard-type-map: type diagnostics が code/message を標準 projection へ渡すこと
+#[test]
+fn test_e2e_selfhost_lsp_type_diagnostics_use_standard_projection() {
+    let source = selfhost_cli_runtime_bundle();
+    let harness = r#"
+(defn main []
+  (let [diagnostics (lsp-source-type-diagnostics "(defn bad [] (+ 1 true))")]
+    (do
+      (print-string (render-diagnostics-json diagnostics))
+      0)))
+"#;
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(
+        output.trim(),
+        r#"[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}]"#,
+        "type diagnostics は標準 LSP Diagnostic 配列へ投影されるべき"
+    );
+}
+
 /// TEST-LSP-15c: sort/dedup 後 diagnostics 群を deterministic JSON array に render できること
 #[test]
 fn test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json() {

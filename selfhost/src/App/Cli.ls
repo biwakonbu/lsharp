@@ -1415,9 +1415,16 @@
       (dedup-diagnostics (sort-diagnostics diagnostics)))
     (vector-new 0)))
 (defn lsp-type-severity-to-lsp [] 1)
+(defn lsp-type-diagnostic-code-text [code]
+  (if (= code (error-code-undefined)) "LS1001"
+    (if (= code (error-code-if-cond)) "LS1002"
+      (if (= code (error-code-if-branch)) "LS1002"
+        (if (= code (error-code-arg-mismatch)) "LS1004"
+          (if (= code (error-code-infinite)) "LS1003" "LS1002"))))))
+(defn lsp-type-diagnostic-message-text [code] (check-diagnostic-body-from-code code))
 (defn lsp-type-diagnostic-to-lsp [code]
-  (let [result (vector-new 6)]
-    (push-int-vector-local
+  (let [result (vector-new 10)
+    base (push-int-vector-local
       (push-int-vector-local
         (push-int-vector-local
           (push-int-vector-local
@@ -1427,7 +1434,14 @@
             1)
           1)
         code)
-      (lsp-diagnostic-source-type))))
+      (lsp-diagnostic-source-type))]
+    (push-object-vector-local
+      (push-object-vector-local
+        (push-int-vector-local
+          (push-int-vector-local base 1)
+          1)
+        (lsp-type-diagnostic-code-text code))
+      (lsp-type-diagnostic-message-text code))))
 (defn lsp-source-type-diagnostics [src]
   (if (> (string-length src) 0)
     (let [program (parse-program src)
