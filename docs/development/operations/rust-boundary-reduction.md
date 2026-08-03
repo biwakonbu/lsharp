@@ -3728,9 +3728,8 @@ Rust focused backend contract、Rust builtin environment parity、surface regist
 
 current source commit `60a02b4cba79560888942cc2401166d7207d6aa1` で Mac Apple Silicon actual `App.Cli` release gateを実行し、
 underlying ignored E2Eは `1 passed`（`923.69s`）。stage0 manifestは
-`/tmp/lsharp-native-stage0-60a02b4c-signed-immediates/manifest.json` に
-`target=aarch64-apple-darwin` と同じ `source_commit` を記録した。その stage0から生成した
-`/tmp/lsharp-native-stage-60a02b4c-signed-immediates/program.native` の native builtin matrixは `5 tests` で全て passし、
+task-owned temporary packageの manifestに `target=aarch64-apple-darwin` と同じ `source_commit` を記録した。その stage0から生成した
+native `program` の native builtin matrixは `5 tests` で全て passし、
 成功経路にRust fallbackは入っていない。
 
 同じ source commitの Linux x86_64 current-source gateは
