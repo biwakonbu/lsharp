@@ -99,6 +99,20 @@
   layout、argv/full command-line、全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged parityは
   引き続き未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
 
+  次の `e553df73e66971f763740587283f72414fdd1b2e` batchでは、`fd_read` が bytesとnon-zero errnoを同時に返したとき旧 standalone
+  emitterが stdoutを空にする REDを `test_e2e_selfhost_standalone_read_stdin_runtime` に固定した。Wasm emitterはerrno resultをdropし、
+  `nread` scratchを直接 String concatへ渡す最小修正に留めた。Rust focused E2Eは `1 passed` / `316.15s` で、empty stdin、4096 bytes、
+  4097 bytes、partial bytes + errnoを含む全ケースを通過した。Mac Apple Silicon current-source App.Cli manifestは target
+  `aarch64-apple-darwin`、`selfhost_fixed_point=true`、program SHA-256 `48720214af0e7c2f8ca3ab76cc46067f6f2d369a29de280b35b63f9043daf69a`、
+  native I/O matrixは8 cases全 passとなった。Linux x86_64 current-source stage1 -> stage2 -> stage3 fixed pointは status `pass`、
+  stage2/stage3 code length各 `11,440,809`、stdout SHA-256各 `c263840ae70301622e3e8d41ca911e3fa536a7ecd5ac87adb809196426169f38`、
+  stderr各 `0`、free-space gate `7,679,078,400` / `4,294,967,296` bytesで passした。stage2再利用の Linux App.Cli materializeは
+  target `x86_64-unknown-linux-gnu`、code `13,366,372` bytes、program SHA-256
+  `e0db7dcddd9f82d32daffc20ad8dea049aa834bd0b14df3158606b610bf5f894`、`selfhost_fixed_point=true`、stderr `0`を記録し、同VMの
+  native I/O matrixも8 cases全 passだった。これは nread-bearing fd_read errnoとempty/4096/4097 stdinの両対応target verified partialであり、
+  fd error/EOFの全 semantics、argv/full command-line、全公開command、component sidecar、release asset acquisition/rollback、
+  Mac/Linux packaged parityは未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の

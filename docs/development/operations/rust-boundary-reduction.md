@@ -3912,3 +3912,36 @@ source commit `2d96d09e...`、`selfhost_fixed_point=true`、code `13,367,530` by
 空入力とzero-byte I/Oの詳細 parity、4096 bytes超の動的 root/data/heap layout、argv/full command-line、全公開command、component sidecar、
 release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を意味しない。`TODO.md` の
 `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+### V2-16b / LEGACY-IO-01 read-stdin boundary expansion (2026-08-04)
+
+`e553df73e66971f763740587283f72414fdd1b2e` では `fd_read` が bytesとnon-zero errnoを同時に返す場合を REDへ追加した。旧 standalone
+emitterはerrno分岐で stdoutを空にしたが、Rust `emit_read_stdin_func` は fd_read resultをdropして `nread` と EOFだけを処理するため、
+Rust/native parityが崩れていた。Wasm emitterはこの分岐を削除し、fd_readの戻り値をdropして nread scratchを直接 String concatへ渡す
+narrow fixにした。既存の 4096-byte chunk loop、allocator、tagged String、import/index、root/data/heap layoutは変更していない。
+
+Rust focused E2E `test_e2e_selfhost_standalone_read_stdin_runtime` は `1 passed` / `316.15s` で、同じ standalone Wasmを再利用して
+`payload`、empty stdin、4096 bytes (`a`*4095 + `b`)、4097 bytes (`a`*4096 + `b`)、partial bytes + errnoを確認した。errno caseは
+`nread` bytesを保持し、3回の fd_read、stdinへの fd_closeなし、stdout `payload`を要求する。これは Rust-host oracle/runtime evidenceであり、
+native evidenceとは別に扱う。
+
+Mac Apple Silicon actual `App.Cli` gateは source commit `e553df73...`、target `aarch64-apple-darwin`、`selfhost_fixed_point=true`、
+program SHA-256 `48720214af0e7c2f8ca3ab76cc46067f6f2d369a29de280b35b63f9043daf69a`で `1 passed` / `835.93s`となった。artifactは
+`ci-artifacts/native-release/aarch64-apple-darwin/e553df73-standalone-io-errno/manifest.json` に保存し、
+`scripts/ci/test-native-selfhost-io-runtime.py` の native I/O matrixは8 cases全 passだった。
+
+Linux x86_64では同じ source commitから actual stage1 -> stage2 -> stage3 fixed pointを一度だけ実行した。
+`ci-artifacts/native-linux-x86-hostgen-vm/e553df73-standalone-io-errno/actual-selfregen-summary.json` は target
+`x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,440,809`、stdout SHA-256各
+`c263840ae70301622e3e8d41ca911e3fa536a7ecd5ac87adb809196426169f38`、stderr各 `0`を記録した。VM free-space gateは
+`7,679,078,400` bytes available / `4,294,967,296` bytes requiredで passし、成功後にVM workdirを回収した。
+この green stage2 artifactを再利用した target-only `App.Cli` materializeも status `pass`で、
+`ci-artifacts/native-linux-x86-hostgen-vm/e553df73-standalone-io-errno-target/manifest.json` は target `x86_64-unknown-linux-gnu`、
+source commit `e553df73...`、`selfhost_fixed_point=true`、code `13,366,372` bytes、program SHA-256
+`e0db7dcddd9f82d32daffc20ad8dea049aa834bd0b14df3158606b610bf5f894`、stderr `0`を記録した。同VMへ Wasmtime 43.0.0をtask-owned
+一時配置して、同じ8-case matrixを実行し全て passした。native成功経路では Rust fallback、`cargo`、`rustc`、host `lsharp`を呼び出していない。
+
+これは nread-bearing fd_read errno、empty stdin、4096/4097 bytesの bounded readを standalone Wasm runtimeで両対応targetから確認した
+verified partialである。zero-byte I/Oやerrno/EOFの全組合せ、入力が大きく増えた場合の動的 root/data/heap layout、argv/full command-line、
+全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を
+意味しない。`TODO.md` の `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
