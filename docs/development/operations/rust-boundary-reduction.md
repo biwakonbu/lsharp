@@ -3881,3 +3881,34 @@ raw stage1 payloadを public `Cli`として直接実行すると compileが no-o
 になったが、read-stdinのstandalone Wasm runtime、全 fd error semantics、argv/full command-line、4096 bytes超の動的 layout、
 component sidecar、公開 release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を
 意味しない。`TODO.md` の `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+### V2-16b / LEGACY-IO-01 standalone read-stdin runtime (2026-08-04)
+
+`2d96d09e5160dce7a0707e4b690d68260fc28571` で standalone Preview1 `read-stdin` の狭い runtime familyを閉じた。REDは
+`test_e2e_selfhost_standalone_read_stdin_runtime` で、旧 emitterが生成した空 stdoutを `payload` と比較して失敗した。実装は
+IR opcode `91` を native Wasm opcodeへ追加し、WASI importを含む定義関数の index shiftを反映したうえで、`fd=0` の
+`fd_read` を 4096-byte chunk loopで読み、tagged Stringへ累積する bounded bodyを追加した。`_start` exportは wrapperの新しい
+function indexへ修正した。広い append helper、spill floor、offset-depth ctx/state refactorは導入していない。
+
+Rust parityの focused E2Eは `1 passed` / `321.86s` で、生成artifact `/tmp/lsharp-read-stdin-v4.wasm` は `wasm-tools validate` を通過し、
+Wasmtime 43.0.0で stdin `payload` を stdout `payload` として exit `0`で返した。これは Rust-host oracle/runtimeの証拠であり、native evidenceとは
+別に記録する。native側では Mac Apple Silicon actual `App.Cli` gateが `1 passed` / `816.52s`、manifest targetが
+`aarch64-apple-darwin`、program SHA-256が `2abf3480c7f237a5271cf14bef63a212c790ead7c0ebcb852b9854ad253eecff` となった。同じ
+current-source native programで `scripts/ci/test-native-selfhost-io-runtime.py` を実行し、`print-string`、`read-stdin`、`write-file`、
+`write-file-bytes`、`proc-exit(7)` の5 casesを全て passした。
+
+Linux x86_64では同じ source commitから actual stage1 -> stage2 -> stage3を一度だけ実行した。
+`ci-artifacts/native-linux-x86-hostgen-vm/2d96d09e-standalone-io/actual-selfregen-summary.json` は target
+`x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,441,967`、stdout SHA-256各
+`848677d2fcce2bbd47fe405ada0ba766fcfffced6899e6308bdc6938856e526f`、stderr各 `0`を記録した。VM free-space gateは
+`7,676,780,544` bytes available / `4,294,967,296` bytes requiredで passし、workdirとlockは終了時に回収した。
+この green stage2 artifactを再利用した target-only `App.Cli` materializeも status `pass`で、
+`ci-artifacts/native-linux-x86-hostgen-vm/2d96d09e-standalone-io-target/manifest.json` は target `x86_64-unknown-linux-gnu`、
+source commit `2d96d09e...`、`selfhost_fixed_point=true`、code `13,367,530` bytes、program SHA-256
+`c4755b25f58d12cfc863ede0da18db79e24051bca13aed3bef74996766b9cb3e`を記録した。同VMへ Linux Wasmtime 43.0.0をtask-owned
+一時配置して、同じ5-case matrixを実行し全て passした。native成功経路では Rust fallback、`cargo`、`rustc`、host `lsharp`を呼び出していない。
+
+これは bounded UTF-8 stdinを standalone Wasm runtimeで両対応targetから読める verified partialである。`fd_read` errno/EOFの全 error semantics、
+空入力とzero-byte I/Oの詳細 parity、4096 bytes超の動的 root/data/heap layout、argv/full command-line、全公開command、component sidecar、
+release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を意味しない。`TODO.md` の
+`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。

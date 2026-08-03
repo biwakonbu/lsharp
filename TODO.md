@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `a5317c959867f59efa673d9c1251ce40792808a7`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic、write-file-bytes type contract、standalone proc-exit runtimeの narrow fix反映後）。
+- 確認時点の code checkpoint は `2d96d09e5160dce7a0707e4b690d68260fc28571`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic、write-file-bytes type contract、standalone proc-exit と read-stdin runtimeの narrow fix反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -82,6 +82,22 @@
   public `Cli`として直接起動すると no-opになるため、stage0 package化と `native-selfhost-dev.sh`を必須の再現経路として記録する。
   Linux direct standalone I/Oのこの4ケースは verified partialになったが、read-stdinのstandalone Wasm runtime、全 fd error semantics、
   argv/full command-line、4096 bytes超の動的 layout、全公開command、component/packaged release parityは未完了である。
+
+  さらに `2d96d09e5160dce7a0707e4b690d68260fc28571` の current-source verified partialとして、standalone Preview1 `read-stdin` を
+  IR opcode `91`、WASI `fd_read` の 4096-byte bounded chunk loop、tagged String result、defined-function/wrapper export index shiftまで
+  native Wasm emitterへ接続した。Rust E2E `test_e2e_selfhost_standalone_read_stdin_runtime` は `1 passed` / `321.86s`、保存した
+  Wasmは `wasm-tools validate` と Wasmtime 43.0.0 の stdin `payload` -> stdout `payload` / exit `0`を通過した。
+  Mac Apple Silicon current-source actual `App.Cli` gateは `1 passed` / `816.52s`、native I/O matrixは read-stdinを含む5 cases全 passで、
+  manifestの targetは `aarch64-apple-darwin`、program SHA-256は `2abf3480c7f237a5271cf14bef63a212c790ead7c0ebcb852b9854ad253eecff` だった。
+  Linux x86_64 current-source stage1 -> stage2 -> stage3 fixed pointも同じ source commitで status `pass`、stage2/stage3 code length各
+  `11,441,967`、stdout SHA-256各 `848677d2fcce2bbd47fe405ada0ba766fcfffced6899e6308bdc6938856e526f`、stderr各 `0`、VM free-space gate
+  `7,676,780,544` / `4,294,967,296` bytesで passした。stage2 artifactを再利用した Linux App.Cli target-only materializeは
+  target `x86_64-unknown-linux-gnu`、code `13,367,530` bytes、program SHA-256
+  `c4755b25f58d12cfc863ede0da18db79e24051bca13aed3bef74996766b9cb3e`、selfhost_fixed_point `true`を記録し、同VMの native I/O
+  matrixも read-stdinを含む5 cases全 passだった。native成功経路では Rust fallback、`cargo`、`rustc`、host `lsharp`を呼び出していない。
+  これは standalone read-stdinの両対応target runtime/artifact verified partialであり、fd error/EOFの全 semantics、4096 bytes超の動的
+  layout、argv/full command-line、全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged parityは
+  引き続き未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
