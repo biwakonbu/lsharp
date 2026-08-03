@@ -19,6 +19,15 @@ VALID_BUILTIN_SOURCES = {
     "division": "(defn main [] (/ 6 2))\n",
     "remainder": "(defn main [] (% 7 2))\n",
     "comparison": "(defn main [] (= 3 3))\n",
+    "comparison-gt": "(defn main [] (> 3 2))\n",
+    "comparison-lt": "(defn main [] (< 1 2))\n",
+    "comparison-le": "(defn main [] (<= 1 2))\n",
+    "comparison-ge": "(defn main [] (>= 2 1))\n",
+    "comparison-eqeq": "(defn main [] (== 3 3))\n",
+    "comparison-neq": "(defn main [] (!= 3 4))\n",
+    "logic-not": "(defn main [] (not false))\n",
+    "logic-and": "(defn main [] (and true false))\n",
+    "logic-or": "(defn main [] (or false true))\n",
     "string-length": "(defn main [] (string-length \"abc\"))\n",
     "string-concat": "(defn main [] (string-concat \"a\" \"b\"))\n",
     "string-eq": "(defn main [] (string-eq \"a\" \"a\"))\n",
@@ -50,6 +59,10 @@ INVALID_BUILTIN_SOURCES = {
     "map-insert": "(defn bad [] (map-insert 3 1 2))\n",
     "command-line-arg": "(defn bad [] (command-line-arg true))\n",
     "file-exists?": "(defn bad [] (file-exists? 3))\n",
+    "comparison-gt": "(defn bad [] (> 3 true))\n",
+    "logic-not": "(defn bad [] (not 1))\n",
+    "logic-and": "(defn bad [] (and true 1))\n",
+    "logic-or": "(defn bad [] (or 1 false))\n",
 }
 URI = "file:///tmp/lsharp-native-type-builtins.ls"
 
