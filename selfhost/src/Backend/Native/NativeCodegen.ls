@@ -154,17 +154,30 @@
       (byte-vector-3 rex opcode modrm)
       disp)))
 
+(defn normalize-u32-immediate [value]
+  (let [remainder (% value 4294967296)]
+    (if (< remainder 0) (+ 4294967296 remainder) remainder)))
+
+(defn normalize-u16-immediate [value]
+  (let [remainder (% value 65536)]
+    (if (< remainder 0) (+ 65536 remainder) remainder)))
+
+(defn signed-floor-div-positive [value divisor]
+  (let [quotient (/ value divisor)
+        remainder (% value divisor)]
+    (if (< remainder 0) (- quotient 1) quotient)))
+
 ;; x86_64 の MOV imm64 命令を生成
 ;; REX.W + MOV r64, imm64 (0x48 0xB8+rd imm64)
 ;; 戻り値: バイト列 Vector
 (defn emit-mov-imm64 [reg value]
   (do
     (let [head (byte-vector-2 72 (+ 184 reg))
-      low-value (if (< value 0) (+ 4294967296 value) value)
+      low-value (normalize-u32-immediate value)
       low (encode-u32-le low-value)
-      high (if (< value 0)
-             (byte-vector-4 255 255 255 255)
-             (encode-u32-le (/ value 4294967296)))]
+      high (encode-u32-le
+        (normalize-u32-immediate
+          (signed-floor-div-positive value 4294967296)))]
       (do
         (root_push head)
         (root_push low)
@@ -11772,8 +11785,10 @@
     (append-x86-byte result 200)))
 
 (defn append-mov-rax-imm64-x86 [result value]
-  (let [low-value (if (< value 0) (+ 4294967296 value) value)
-    high-value (if (< value 0) 4294967295 (/ value 4294967296))]
+  (let [low-value (normalize-u32-immediate value)
+    high-value
+      (normalize-u32-immediate
+        (signed-floor-div-positive value 4294967296))]
     (do
       (append-x86-byte result 72)
       (append-x86-byte result 184)
@@ -14301,36 +14316,20 @@
 (defn emit-aarch64-movz-w0 [imm]
   (emit-aarch64-movz-w0-shift imm 0))
 
-(defn normalize-u32-immediate [value]
-  (if (< value 0)
-    (+ 4294967296 value)
-    value))
-
 (defn aarch64-immediate-chunk-0 [value]
-  (if (< value 4294967296)
-    (let [bytes (encode-u32-le (normalize-u32-immediate value))]
-      (+ (vector-get bytes 0) (* (vector-get bytes 1) 256)))
-    (% value 65536)))
+  (normalize-u16-immediate value))
 
 (defn aarch64-immediate-chunk-1 [value]
-  (if (< value 4294967296)
-    (let [bytes (encode-u32-le (normalize-u32-immediate value))]
-      (+ (vector-get bytes 2) (* (vector-get bytes 3) 256)))
-    (% (/ value 65536) 65536)))
+  (normalize-u16-immediate
+    (signed-floor-div-positive value 65536)))
 
 (defn aarch64-immediate-chunk-2 [value]
-  (if (< value 0)
-    65535
-    (if (< value 4294967296)
-      0
-      (% (/ value 4294967296) 65536))))
+  (normalize-u16-immediate
+    (signed-floor-div-positive value 4294967296)))
 
 (defn aarch64-immediate-chunk-3 [value]
-  (if (< value 0)
-    65535
-    (if (< value 4294967296)
-      0
-      (% (/ value 281474976710656) 65536))))
+  (normalize-u16-immediate
+    (signed-floor-div-positive value 281474976710656)))
 
 (defn aarch64-load-u32-w0-size [value]
   (let [uvalue (normalize-u32-immediate value)]

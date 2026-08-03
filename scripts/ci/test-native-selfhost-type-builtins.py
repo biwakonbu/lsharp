@@ -38,7 +38,7 @@ VALID_BUILTIN_SOURCES = {
     "command-line-args": "(defn main [] (command-line-args))\n",
     "command-line-arg": "(defn main [] (command-line-arg 0))\n",
     "read-stdin": "(defn main [] (read-stdin))\n",
-    "file-exists": "(defn main [] (file-exists \"input.ls\"))\n",
+    "file-exists?": "(defn main [] (file-exists? \"input.ls\"))\n",
     "read-file": "(defn main [] (read-file \"input.ls\"))\n",
 }
 INVALID_BUILTIN_SOURCES = {
@@ -49,7 +49,7 @@ INVALID_BUILTIN_SOURCES = {
     "vector-get": "(defn bad [] (vector-get 3 0))\n",
     "map-insert": "(defn bad [] (map-insert 3 1 2))\n",
     "command-line-arg": "(defn bad [] (command-line-arg true))\n",
-    "file-exists": "(defn bad [] (file-exists 3))\n",
+    "file-exists?": "(defn bad [] (file-exists? 3))\n",
 }
 URI = "file:///tmp/lsharp-native-type-builtins.ls"
 

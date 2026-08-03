@@ -14317,6 +14317,18 @@ fn test_native_codegen_x86_i64_const_direct_append_avoids_zero_byte_vector() {
             && !append_i64_body.contains("(emit-mov-imm64"),
         "append-i64-const-bundle-x86 は emit-mov-imm64 の byte vector を作らず result に直接書くべき"
     );
+    assert!(
+        source.contains("(defn signed-floor-div-positive [value divisor]")
+            && source.contains("(normalize-u32-immediate value)")
+            && source.contains("(signed-floor-div-positive value 4294967296)"),
+        "x86 i64 即値は 32-bit 境界をまたぐ負値でも signed floor division で上下 half を復元するべき"
+    );
+    assert!(
+        source.contains("(defn normalize-u16-immediate [value]")
+            && source.contains("(defn aarch64-immediate-chunk-3 [value]")
+            && source.contains("(signed-floor-div-positive value 281474976710656)"),
+        "AArch64 i64 即値は負値の上位 16-bit を 0xffff 固定せず、実際の sign-extended chunk へ分割するべき"
+    );
 }
 
 #[test]
