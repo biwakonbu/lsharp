@@ -1368,6 +1368,49 @@ entry = "src/main.ls"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_package_api_tool_rejects_nested_src_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!(
+            "lsharp_mcp_package_api_nested_src_symlink_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let package_dir = root.join(".lsharp/packages/demo-1.0.0");
+        std::fs::create_dir_all(package_dir.join("src")).unwrap();
+        std::fs::write(
+            package_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let external_source_root = root.join("external-src");
+        std::fs::create_dir_all(&external_source_root).unwrap();
+        std::fs::write(
+            external_source_root.join("Geometry.ls"),
+            "(module Geometry)\n(defn distance [left] left)\n",
+        )
+        .unwrap();
+        symlink(&external_source_root, package_dir.join("src/linked")).unwrap();
+
+        let error = call_tool(
+            "lsharp_package_api",
+            &json!({
+                "project_dir": root.display().to_string(),
+                "name": "demo"
+            }),
+        )
+        .expect_err("nested package src symlink は外部 source を API に投影せず拒否するべき");
+        assert!(
+            error.contains("package src tree must not contain symlinks"),
+            "{error}"
+        );
+        assert!(!error.contains("Geometry"), "{error}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn test_package_api_tool_generates_api_from_source_when_missing() {
         let root = std::env::temp_dir().join(format!(

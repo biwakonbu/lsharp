@@ -1732,6 +1732,40 @@ fn test_cmd_install_path_dependency_writes_module_index_for_exported_modules() {
     std::fs::remove_dir_all(&base_dir).unwrap();
 }
 
+#[cfg(unix)]
+#[test]
+fn test_collect_package_source_files_rejects_nested_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let root = std::env::temp_dir().join(format!(
+        "lsharp_collect_package_source_nested_symlink_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let external_source_root = root.join("external-src");
+    std::fs::create_dir_all(&external_source_root).unwrap();
+    std::fs::write(
+        external_source_root.join("Geometry.ls"),
+        "(module Geometry)\n(defn distance [left] left)\n",
+    )
+    .unwrap();
+    symlink(&external_source_root, root.join("src/linked")).unwrap();
+
+    let mut files = Vec::new();
+    let error = collect_package_source_files(&root.join("src"), &mut files)
+        .expect_err("module-index collector は nested source symlink を拒否するべき");
+    assert!(
+        error
+            .to_string()
+            .contains("package src tree must not contain symlinks"),
+        "{error}"
+    );
+    assert!(files.is_empty(), "拒否前に外部 source を収集しないべき");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn test_cmd_init_creates_standard_package_layout() {
     let base_dir = std::env::temp_dir().join("lsharp_test_init_layout");

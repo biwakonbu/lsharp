@@ -100,6 +100,34 @@ fn test_build_api_doc_for_package_rejects_symlinked_src_directory() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
+#[test]
+fn test_build_api_doc_for_package_rejects_nested_src_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let root = std::env::temp_dir().join(format!(
+        "lsharp_api_doc_package_nested_src_symlink_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let external_source_root = root.join("external-src");
+    std::fs::create_dir_all(&external_source_root).unwrap();
+    std::fs::write(
+        external_source_root.join("Geometry.ls"),
+        "(module Geometry)\n(defn distance [left] left)\n",
+    )
+    .unwrap();
+    symlink(&external_source_root, root.join("src/linked")).unwrap();
+
+    let error = build_api_doc_for_package(&root, "demo", "1.0.0")
+        .expect_err("nested package src symlink は外部 source を辿らないべき");
+    assert!(error.to_string().contains("package src tree must not contain symlinks"));
+    assert!(!error.to_string().contains("Geometry"));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn test_build_api_doc_for_file_uses_file_stem_and_header_comment_for_module_metadata() {
     let dir = std::env::temp_dir().join("lsharp_api_doc_module_fallback");

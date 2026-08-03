@@ -253,9 +253,19 @@ fn collect_lsharp_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::Result<()
     for entry in entries {
         let entry = entry.map_err(|e| driver_io_error(format!("{}: {}", dir.display(), e)))?;
         let path = entry.path();
-        if path.is_dir() {
+        let metadata = std::fs::symlink_metadata(&path)
+            .map_err(|e| driver_io_error(format!("{}: {}", path.display(), e)))?;
+        if metadata.file_type().is_symlink() {
+            return Err(driver_io_error(format!(
+                "package src tree must not contain symlinks: {}",
+                path.display()
+            )));
+        }
+        if metadata.is_dir() {
             collect_lsharp_files(&path, out)?;
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("ls") {
+        } else if metadata.is_file()
+            && path.extension().and_then(|ext| ext.to_str()) == Some("ls")
+        {
             out.push(path);
         }
     }

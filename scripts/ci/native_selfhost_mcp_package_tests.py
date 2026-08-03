@@ -440,6 +440,43 @@ def assert_package_api_rejects_symlinked_src_directory(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_package_api_rejects_nested_src_symlink(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        external_source_root = root / "external-src"
+        external_source_root.mkdir()
+        (external_source_root / "Geometry.ls").write_text(
+            "(module Geometry)\n(defn distance [left] left)\n",
+            encoding="utf-8",
+        )
+        (package / "src").mkdir()
+        (package / "src" / "linked").symlink_to(
+            external_source_root, target_is_directory=True
+        )
+
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_package_api",
+                    "arguments": {"project_dir": str(root), "name": "demo"},
+                },
+            ),
+            root,
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        message = response["result"]["content"][0]["text"]
+        test.assertIn("src/**/*.ls", message)
+        test.assertNotIn("Geometry", json.dumps(response, ensure_ascii=False))
+        test.assertFalse((root / "native.log").exists())
+
+
 def assert_package_api_rejects_malformed_native_doc(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)
