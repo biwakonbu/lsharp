@@ -385,7 +385,7 @@
 (defn emit-memory-section [] (let [bytes (vector-new 8)] (let [b1 (emit-byte bytes 5) b2 (emit-byte b1 4) b3 (emit-byte b2 1) b4 (emit-byte b3 0) b5 (emit-byte b4 128) b6 (emit-byte b5 2)] b6)))
 (defn emit-import-section [] (let [bytes (vector-new 64)] (let [b1 (emit-byte bytes 2) b2 (emit-byte b1 36) b3 (emit-byte b2 1) b4 (emit-byte b3 21) b5 (emit-byte b4 119) b6 (emit-byte b5 97) b7 (emit-byte b6 115) b8 (emit-byte b7 105) b9 (emit-byte b8 95) b10 (emit-byte b9 115) b11 (emit-byte b10 110) b12 (emit-byte b11 97) b13 (emit-byte b12 112) b14 (emit-byte b13 115) b15 (emit-byte b14 104) b16 (emit-byte b15 111) b17 (emit-byte b16 116) b18 (emit-byte b17 95) b19 (emit-byte b18 112) b20 (emit-byte b19 114) b21 (emit-byte b20 101) b22 (emit-byte b21 118) b23 (emit-byte b22 105) b24 (emit-byte b23 101) b25 (emit-byte b24 119) b26 (emit-byte b25 49) b27 (emit-byte b26 8) b28 (emit-byte b27 102) b29 (emit-byte b28 100) b30 (emit-byte b29 95) b31 (emit-byte b30 119) b32 (emit-byte b31 114) b33 (emit-byte b32 105) b34 (emit-byte b33 116) b35 (emit-byte b34 101) b36 (emit-byte b35 0) b37 (emit-byte b36 0)] b37)))
 (defn emit-import-section-wasi-standalone [func-count]
-  (let [body0 (emit-byte (vector-new 192) 6)
+  (let [body0 (emit-byte (vector-new 224) 7)
     body1 (emit-standalone-byte-seq-8 body0 22 119 97 115 105 95 115 110)
     body2 (emit-standalone-byte-seq-8 body1 97 112 115 104 111 116 95 112)
     body3 (emit-standalone-byte-seq-8 body2 114 101 118 105 101 119 49 8)
@@ -420,10 +420,16 @@
     body29 (emit-standalone-byte-seq-1 body29a 100)
     body30a (emit-standalone-byte-seq-1 body29 0)
     body30 (emit-leb128 body30a (+ func-count 10))
-    body-size (vector-length body30)
+    body31 (emit-standalone-byte-seq-8 body30 22 119 97 115 105 95 115 110)
+    body32 (emit-standalone-byte-seq-8 body31 97 112 115 104 111 116 95 112)
+    body33 (emit-standalone-byte-seq-8 body32 114 101 118 105 101 119 49 9)
+    body34 (emit-standalone-byte-seq-8 body33 112 114 111 99 95 101 120 105)
+    body35a (emit-standalone-byte-seq-2 body34 116 0)
+    body35 (emit-leb128 body35a (+ func-count 11))
+    body-size (vector-length body35)
     result0 (emit-byte (vector-new 64) 2)
     result1 (emit-leb128 result0 body-size)]
-    (append-byte-vector-chunked result1 body30 0 body-size)))
+    (append-byte-vector-chunked result1 body35 0 body-size)))
 (defn append-component-module-name [body] (let [b1 (emit-leb128 body (wasi-module-name-length-for-target (wasi-target-component))) b2 (emit-byte b1 119) b3 (emit-byte b2 97) b4 (emit-byte b3 115) b5 (emit-byte b4 105)] b5))
 (defn emit-import-section-component [] (let [body0 (emit-leb128 (vector-new 32) 1) body1 (append-component-module-name body0) body2 (emit-leb128 body1 8) body3 (emit-byte body2 102) body4 (emit-byte body3 100) body5 (emit-byte body4 95) body6 (emit-byte body5 119) body7 (emit-byte body6 114) body8 (emit-byte body7 105) body9 (emit-byte body8 116) body10 (emit-byte body9 101) body11 (emit-byte body10 0) body12 (emit-leb128 body11 0) body-size (vector-length body12) result0 (emit-byte (vector-new 32) 2) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body12 0 body-size)))
 (defn emit-import-section-for-target [target] (if (= target (wasi-target-component)) (emit-import-section-component) (emit-import-section)))
@@ -693,6 +699,7 @@
 (defn standalone-read-file-opcode [] 94)
 (defn standalone-write-file-opcode [] 95)
 (defn standalone-write-file-bytes-opcode [] 96)
+(defn standalone-proc-exit-opcode [] 97)
 (defn standalone-write-file-bytes-iovec-address [] 2176)
 (defn standalone-write-file-bytes-nwritten-address [] 2184)
 (defn standalone-ir-instr [instr]
@@ -710,9 +717,11 @@
               (make-instr (standalone-write-file-opcode) 0)
               (if (= opcode 90)
                 (make-instr (standalone-write-file-bytes-opcode) 0)
-                (if (and (= opcode 40) (>= operand 12))
-                  (make-instr 40 (+ operand 10))
-                  instr)))))))))
+                (if (= opcode 88)
+                  (make-instr (standalone-proc-exit-opcode) 0)
+                  (if (and (= opcode 40) (>= operand 12))
+                    (make-instr 40 (+ operand 11))
+                    instr))))))))))
 (defn standalone-ir-instrs-step [ir idx count result]
   (if (>= idx count)
     (make-loop-step-state 1 idx result)
@@ -775,15 +784,25 @@
     state (standalone-ir-instrs-step-64 ir 0 count (vector-new 8))]
     (standalone-ir-instrs-loop ir count state)))
 (defn shift-runtime-call-index-value [idx]
-  (if (= idx 11)
-    1
-    (if (= idx 12)
-      2
-      (if (= idx 13)
-        17
-        (if (< idx 11)
-          (+ idx 6)
-          idx)))))
+  (if (= idx 100)
+    6
+    (if (= idx 11)
+      1
+      (if (= idx 12)
+        2
+        (if (= idx 13)
+          18
+          (if (= idx 18)
+            19
+            (if (= idx 19)
+              20
+              (if (= idx 20)
+                21
+                (if (= idx 21)
+                  22
+                  (if (< idx 11)
+                    (+ idx 7)
+                    idx))))))))))
 (defn shift-runtime-call-indices-step [bytes result idx count]
   (if (>= idx count)
     (make-loop-step-state 1 idx result)
@@ -823,7 +842,7 @@
         (if (= idx 15)
           5
           (if (and (> idx 0) (< idx 11))
-            (+ idx 5)
+            (+ idx 6)
             idx)))))))
 (defn shift-standalone-runtime-call-indices-step [bytes result idx count]
   (if (>= idx count)
@@ -1791,7 +1810,7 @@
 ;; 同じ関数番号を保った内部 Wasm 関数として配置する standalone ABI。
 (defn emit-type-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    total-count (+ func-count 11)
+    total-count (+ func-count 12)
     body0 (emit-leb128 (vector-new 96) total-count)
     body1 (emit-standalone-byte-seq-8 body0 96 4 127 127 127 127 1 127)
     body2 (emit-byte (emit-standalone-byte-seq-4 body1 96 1 126 1) 126)
@@ -1809,10 +1828,11 @@
     body14 (emit-byte body13 127)
     body15 (emit-standalone-byte-seq-4 body14 96 4 127 127)
     body16 (emit-standalone-byte-seq-4 body15 127 127 1 127)
-    body-size (vector-length body16)
+    body17 (emit-standalone-byte-seq-4 body16 96 1 127 0)
+    body-size (vector-length body17)
     result0 (emit-byte (vector-new 96) 1)
     result1 (emit-leb128 result0 body-size)]
-    (append-byte-vector-chunked result1 body16 0 body-size)))
+    (append-byte-vector-chunked result1 body17 0 body-size)))
 (defn emit-function-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
     body0 (emit-leb128 (vector-new 64) (+ func-count 17))
@@ -1840,7 +1860,7 @@
     (append-byte-vector-chunked result1 body18 0 body-size)))
 (defn emit-code-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    main-func-idx (+ 21 func-count)
+    main-func-idx (+ 22 func-count)
     body0 (emit-leb128 (vector-new 64) (+ func-count 17))
     body1 (append-standalone-runtime-bodies body0 0)
     body2 (append-code-bodies-functions-standalone body1 functions 0 func-count)
@@ -2100,13 +2120,13 @@
   (emit-leb128 (emit-byte bytes 16) 20))
 (defn emit-write-file-bytes-standalone-instr [bytes]
   (emit-leb128 (emit-byte bytes 16) 21))
+(defn emit-proc-exit-standalone-instr [bytes]
+  (emit-leb128 (emit-byte bytes 16) 100))
 
 (defn reject-native-only-wasm-opcode [bytes opcode]
   (if (= opcode 86)
     (do (/ opcode 0) bytes)
-    (if (= opcode 88)
-      (do (/ opcode 0) bytes)
-      bytes)))
+    bytes))
 
 (defn emit-runtime-ir-instr-tail-high-final [bytes opcode operand]
   (if (= opcode 87)
@@ -2123,7 +2143,9 @@
               (emit-write-file-standalone-instr bytes)
               (if (= opcode (standalone-write-file-bytes-opcode))
                 (emit-write-file-bytes-standalone-instr bytes)
-                (reject-native-only-wasm-opcode bytes opcode)))))))))
+                (if (= opcode (standalone-proc-exit-opcode))
+                  (emit-proc-exit-standalone-instr bytes)
+                  (reject-native-only-wasm-opcode bytes opcode))))))))))
 
 (defn emit-runtime-ir-instr-tail-high [bytes opcode operand]
   (if (= opcode 72)

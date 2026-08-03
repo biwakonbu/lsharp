@@ -407,6 +407,24 @@ fn test_e2e_selfhost_standalone_not_preserves_bool_semantics() {
 }
 
 #[test]
+fn test_e2e_selfhost_standalone_user_call_after_preview1_import() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("user_call_after_preview1_import");
+        let _ = std::fs::remove_dir_all(&dir);
+        let standalone_wasm = compile_standalone_source(
+            "(defn helper [] (print-string \"helper\"))\n(defn main [] (helper))",
+            &dir,
+            "LSHARP_STANDALONE_USER_CALL_AFTER_PREVIEW1_IMPORT_CLI_ARTIFACT",
+        );
+        let capture = run_with_partial_fd_write(&standalone_wasm, &dir)
+            .expect("selfhost standalone user call の実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(capture.stdout, b"helper");
+    });
+}
+
+#[test]
 fn test_wasi_fd_write_shim_is_used_for_standalone_import() {
     let dir = fixture_dir("shim");
     let _ = std::fs::remove_dir_all(&dir);
