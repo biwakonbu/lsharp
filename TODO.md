@@ -1615,6 +1615,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これは standalone command-line/zero-printの両target runtime verified partialであり、fd error/EOFの全semantics、より大きい入力での
   dynamic root/data/heap layout、完全なargv/command-line semantics、全公開command、component sidecar、release asset acquisition/rollback、
   Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+  続く `9b7ac735b...` では、既存の native I/O matrixを `11` から `15 cases` へまとめて拡張し、`read-file` の通常入力、zero-byte file、
+  4097-byte file、missing-pathを追加した。Mac Apple Siliconの既存 `d2dcea7e...` App.Cli artifactと、Linux x86_64の既存
+  `eb8086a8...` target-only artifactを再利用し、Mac/Linuxとも `15 cases` 全 passした。Linux側は Wasmtime `43.0.0` をVM内へ一時配置し、
+  `program.native` は ELF `x86-64`、target `x86_64-unknown-linux-gnu`、program SHA-256 `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537`
+  のままである。runner-onlyのテスト拡張であり、重い stage1再生成は再実行していない。native成功経路に `cargo`、`rustc`、host `lsharp`、
+  Rust fallbackは入っていない。これは normal/empty/large/missing read-fileの両target runtime verified partialを追加するが、fd_read/fd_close/path_open
+  errno注入のnative matrix、EOF/errorの全組合せ、dynamic root/data/heap layout、完全なargv/command-line semantics、全公開command、component sidecar、
+  release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
 - [~] `V2-16c` / `LEGACY-TOOL-01` public command closure — `install` / `repl` / `lsp --stdio` /
   `doc` / component helper の routing contract は verified。`install` は実 installer helper を
   fake stage0 から public runner 経由で呼び、path dependency、lockfile、module-index、cargo/host

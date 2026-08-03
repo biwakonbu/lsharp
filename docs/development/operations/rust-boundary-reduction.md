@@ -3973,3 +3973,17 @@ empty-argv0 caseは `argc=1` の境界（出力 `1\n`）として扱い、strict
 ゼロ整数出力を両native targetで確認する。これは standalone command-line/zero-printの両target runtime verified partialであり、fd error/EOFの全semantics、
 より大きい入力でのdynamic root/data/heap layout、完全なargv/command-line semantics、全公開command、component sidecar、release asset
 acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を意味しない。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+### V2-16b / LEGACY-IO-01 native read-file runtime matrix expansion (2026-08-04)
+
+`9b7ac735b...` で `scripts/ci/test-native-selfhost-io-runtime.py` の同一 matrixへ `read-file` の通常入力、zero-byte file、4097-byte file、
+missing-pathを追加し、11 casesから15 casesへ拡張した。Mac Apple Siliconの既存 `d2dcea7e...` App.Cli artifactと、Linux x86_64の既存
+`eb8086a8...` target-only artifactを再利用して、両targetとも `15 cases` 全 passした。Linux側では Wasmtime `43.0.0` をVM内のtask-owned
+一時領域へ配置し、`program.native` は target `x86_64-unknown-linux-gnu` の ELF、program SHA-256
+`af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537` のままと確認した。runner-onlyのテスト拡張なので、stage1再生成や
+stage2/stage3 replayは重複実行していない。成功経路に `cargo`、`rustc`、host `lsharp`、Rust fallbackは入っていない。
+
+これは normal/empty/large/missing の read-file runtimeを両対応targetで確認する verified partialである。fd_read/fd_close/path_open errnoを
+注入するnative matrix、EOF/errorの全組合せ、入力がさらに大きい場合のdynamic root/data/heap layout、完全なargv/command-line semantics、全公開command、
+component sidecar、release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を意味しない。
+`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
