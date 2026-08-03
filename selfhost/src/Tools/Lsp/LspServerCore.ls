@@ -577,8 +577,8 @@
 ;; === 診断 JSON text renderer ===
 
 ;; 現在の diagnostics shape は [severity, rule-id, line, col, msg-hash, source]
-;; なので int-only の deterministic JSON text に落とし込む。
-(defn render-diagnostic-json [diag]
+;; なので legacy 経路は int-only の deterministic JSON text に落とし込む。
+(defn render-legacy-diagnostic-json [diag]
   (let [severity (vector-get diag 0)
     rule-id (vector-get diag 1)
     line (vector-get diag 2)
@@ -604,6 +604,38 @@
     out10 (string-concat out9 ",\"messageHash\":")
     out11 (string-concat out10 message-text)]
     (string-concat out11 "}")))
+
+;; enriched parse diagnostic は
+;; [severity, rule-id, line, col, msg-hash, source, end-line, end-col, code-text, message-text]
+;; を持ち、先頭6要素を legacy sort/dedup と共有する。
+(defn render-standard-diagnostic-json [diag]
+  (let [severity (vector-get diag 0)
+    start-line (- (vector-get diag 2) 1)
+    start-col (- (vector-get diag 3) 1)
+    end-line (- (vector-get diag 6) 1)
+    end-col (- (vector-get diag 7) 1)
+    code-text (json-escape-string (vector-get diag 8))
+    message-text (json-escape-string (vector-get diag 9))
+    out0 "{\"range\":{\"start\":{\"line\":"
+    out1 (string-concat out0 (int-to-string start-line))
+    out2 (string-concat out1 ",\"character\":")
+    out3 (string-concat out2 (int-to-string start-col))
+    out4 (string-concat out3 "},\"end\":{\"line\":")
+    out5 (string-concat out4 (int-to-string end-line))
+    out6 (string-concat out5 ",\"character\":")
+    out7 (string-concat out6 (int-to-string end-col))
+    out8 (string-concat out7 "}},\"severity\":")
+    out9 (string-concat out8 (int-to-string severity))
+    out10 (string-concat out9 ",\"code\":\"")
+    out11 (string-concat out10 code-text)
+    out12 (string-concat out11 "\",\"source\":\"lsharp\",\"message\":\"")
+    out13 (string-concat out12 message-text)]
+    (string-concat out13 "\"}")))
+
+(defn render-diagnostic-json [diag]
+  (if (>= (vector-length diag) 10)
+    (render-standard-diagnostic-json diag)
+    (render-legacy-diagnostic-json diag)))
 
 (defn render-diagnostics-json-loop [diags idx len out]
   (if (>= idx len)

@@ -1015,6 +1015,58 @@ fn test_e2e_selfhost_lsp_render_diagnostic_json() {
     );
 }
 
+/// TEST-LSP-15b-standard: enriched parse diagnostic を標準 LSP Diagnostic JSON へ投影すること
+#[test]
+fn test_e2e_selfhost_lsp_render_standard_parse_diagnostic_json() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn main []
+  (let [d0 (vector-new 10)
+        d1 (vector-push d0 1)
+        d2 (vector-push d1 1001)
+        d3 (vector-push d2 1)
+        d4 (vector-push d3 1)
+        d5 (vector-push d4 0)
+        d6 (vector-push d5 1)
+        d7 (vector-push d6 1)
+        d8 (vector-push d7 2)
+        d9 (vector-push d8 "LS0101")
+        diag (vector-push d9 "unexpected token )")]
+    (do
+      (print-string (render-diagnostic-json diag))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(
+        output.trim(),
+        r#"{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}"#,
+        "enriched parse diagnostic は標準 LSP Diagnostic object へ投影されるべき"
+    );
+}
+
+/// TEST-LSP-15b-standard-map: parse diagnostics が enriched record を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_parse_diagnostics_use_standard_projection() {
+    let source = selfhost_cli_runtime_bundle();
+    let harness = r#"
+(defn main []
+  (let [diagnostics (lsp-source-parse-diagnostics ")")]
+    (do
+      (print-string (render-diagnostics-json diagnostics))
+      0)))
+"#;
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(
+        output.trim(),
+        r#"[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}]"#,
+        "parse diagnostics は標準 LSP Diagnostic 配列へ投影されるべき"
+    );
+}
+
 /// TEST-LSP-15c: sort/dedup 後 diagnostics 群を deterministic JSON array に render できること
 #[test]
 fn test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json() {

@@ -1355,20 +1355,50 @@
 (defn lsp-diagnostic-source-type [] 2)
 (defn lsp-diagnostic-source-lint [] 3)
 (defn lsp-parser-severity-to-lsp [severity] (+ severity 1))
+
+(defn lsp-parse-diagnostic-start-offset [diag src]
+  (let [raw-start (vector-get diag 2)
+    source-len (string-length src)]
+    (if (and (>= raw-start source-len) (> source-len 0))
+      (let [last-offset (- source-len 1)
+        last-char (string-char-at src last-offset)]
+        (if (or (= last-char 41) (= last-char 93)) last-offset raw-start))
+      raw-start)))
+(defn lsp-parse-diagnostic-end-offset [start src]
+  (if (< start (string-length src)) (+ start 1) start))
+(defn lsp-parse-diagnostic-code-text [start src]
+  (if (< start (string-length src)) "LS0101" "LS0102"))
+(defn lsp-parse-diagnostic-message-text [start src]
+  (if (< start (string-length src))
+    (let [char (string-char-at src start)]
+      (if (= char 41) "unexpected token )" (if (= char 93) "unexpected token ]" "unexpected token")))
+    "unexpected input end"))
 (defn lsp-parse-diagnostic-to-lsp [diag src]
-  (let [position (lsp-position-from-offset src (vector-get diag 2))
-    result (vector-new 6)]
-    (push-int-vector-local
+  (let [start-offset (lsp-parse-diagnostic-start-offset diag src)
+    end-offset (lsp-parse-diagnostic-end-offset start-offset src)
+    start-position (lsp-position-from-offset src start-offset)
+    end-position (lsp-position-from-offset src end-offset)
+    code-text (lsp-parse-diagnostic-code-text start-offset src)
+    message-text (lsp-parse-diagnostic-message-text start-offset src)
+    result (vector-new 10)
+    base (push-int-vector-local
       (push-int-vector-local
         (push-int-vector-local
           (push-int-vector-local
             (push-int-vector-local
               (push-int-vector-local result (lsp-parser-severity-to-lsp (vector-get diag 0)))
               (vector-get diag 1))
-            (position-line position))
-          (position-col position))
+            (position-line start-position))
+          (position-col start-position))
         (vector-get diag 3))
-      (lsp-diagnostic-source-parse))))
+      (lsp-diagnostic-source-parse))]
+    (push-object-vector-local
+      (push-object-vector-local
+        (push-int-vector-local
+          (push-int-vector-local base (position-line end-position))
+          (position-col end-position))
+        code-text)
+      message-text)))
 (defn lsp-source-parse-diagnostics-loop [raw src idx count diagnostics]
   (if (>= idx count)
     diagnostics
