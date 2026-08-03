@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `1739602e`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrixの test contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
+- 確認時点の code checkpoint は `86534799`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrixの extended test contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1667,15 +1667,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   sliceを広げるが、全公開 command、definition/references/rename/diagnosticsのsemantic parity、component sidecar、
   release acquisition/rollback、両 targetの packaged provenance、`LEGACY-TOOL-01` aggregateは残る。
 
-  さらに `1739602e` で、既存の current-source native App.Cli artifactを直接起動する core CLI runtime matrixを追加した。
-  `--help`、`--version`（`lsharp 0.1.0`、改行なし）、`parse`、`check`、`fmt`、text/metadata `test`、`compile`、`build` の
-  `9 cases`を同じ scriptで固定し、Mac Apple Siliconの `d2dcea7e...` artifactとLinux x86_64の `eb8086a8...` target-only
-  artifactで各 `9 cases` 全 passした。Linux programは target `x86_64-unknown-linux-gnu`、program SHA-256
-  `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537` の ELFであり、成功経路に `cargo`、`rustc`、host `lsharp`、
-  Rust fallbackは入っていない。runner-onlyの contract testなので、stage1/stage2/stage3 replayは重複実行していない。
-  これは public core command routingの両target verified partialを追加するが、`install`、`repl`、`lsp --stdio` の全 semantic projection、
-  `doc`/component helper、全公開 command、stage0 package acquisition/release/rollback、Mac/Linux packaged provenance parity、
-  `LEGACY-TOOL-01` aggregateは未完了である。
+  さらに `86534799` で、既存の current-source native App.Cli artifactを直接起動する core CLI runtime matrixを `22 cases` へ拡張した。
+  `--help`、`--version`（`lsharp 0.1.0`、改行なし）、`parse`、`check`、`fmt`、text/metadata `test`、`compile`、`build` に加えて、
+  `review`/`review --json`、`doc`/`doc --json`/`doc --format json`、`doc-ack`/`--trailer`、`doc-check`/`--strict`、`install`、`repl`、
+  bare `lsp` summary、実際の `lsp --stdio` initialize→didOpen→hover wire、`doc --format yaml` の明示拒否を同じ scriptで固定した。
+  Mac Apple Siliconの `d2dcea7e...` artifactとLinux x86_64の `eb8086a8...` target-only artifactで各 `22 cases` 全 passした。Linux
+  programは target `x86_64-unknown-linux-gnu`、program SHA-256 `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537`
+  の ELFであり、成功経路に `cargo`、`rustc`、host `lsharp`、Rust fallbackは入っていない。runner-onlyの contract testなので、
+  stage1/stage2/stage3 replayは重複実行していない。これは public command routingと代表的な doc/REPL/LSP wireの両target verified partialを
+  追加するが、実 install/package registry、対話 REPL、LSP の全 semantic projection、component helper、全公開 command、stage0 package
+  acquisition/release/rollback、Mac/Linux packaged provenance parity、`LEGACY-TOOL-01` aggregateは未完了である。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、

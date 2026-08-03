@@ -3990,14 +3990,16 @@ component sidecar、release asset acquisition/rollback、Mac/Linux packaged arti
 
 ### V2-16c / LEGACY-TOOL-01 native core CLI runtime matrix (2026-08-04)
 
-`1739602e` で、current-source native `App.Cli` artifactを直接起動する
-`scripts/ci/test-native-selfhost-cli-core-runtime.py` を追加した。`--help`、`--version`（`lsharp 0.1.0`、改行なし）、`parse`、`check`、
-`fmt`、text/metadata `test`、`compile`、`build` の `9 cases` を同じ contractで実行し、Mac Apple Siliconの既存 `d2dcea7e...`
-artifactとLinux x86_64の既存 `eb8086a8...` target-only artifactで各 `9 cases` 全 passした。Linux programは target
-`x86_64-unknown-linux-gnu`、program SHA-256 `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537` の
-ELFであり、runner-only test contractのため stage1/stage2/stage3 replayは重複実行していない。成功経路に `cargo`、`rustc`、host `lsharp`、
-Rust fallbackは入っていない。
+`86534799` で、current-source native `App.Cli` artifactを直接起動する
+`scripts/ci/test-native-selfhost-cli-core-runtime.py` を `22 cases` へ拡張した。`--help`、`--version`（`lsharp 0.1.0`、改行なし）、
+`parse`、`check`、`fmt`、text/metadata `test`、`compile`、`build` に加えて、`review`/`review --json`、
+`doc`/`doc --json`/`doc --format json`、`doc-ack`/`--trailer`、`doc-check`/`--strict`、`install`、`repl`、bare `lsp` summary、
+実際の `lsp --stdio` initialize→didOpen→hover wire、`doc --format yaml` の明示拒否を同じ contractで実行した。Mac Apple Siliconの
+既存 `d2dcea7e...` artifactとLinux x86_64の既存 `eb8086a8...` target-only artifactで各 `22 cases` 全 passした。Linux programは target
+`x86_64-unknown-linux-gnu`、program SHA-256 `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537` の ELFであり、
+runner-only test contractのため stage1/stage2/stage3 replayは重複実行していない。成功経路に `cargo`、`rustc`、host `lsharp`、Rust fallbackは
+入っていない。
 
-これは public core command routingを両対応targetで確認した verified partialである。`install`、`repl`、`lsp --stdio` の全 semantic projection、
-`doc`/component helper、全公開 command、stage0 package acquisition/release/rollback、Mac/Linux packaged provenance parity、
-`LEGACY-TOOL-01` aggregateの完了を意味しない。`V2-16c` / `LEGACY-TOOL-01` は `[~]` のまま維持する。
+これは public command routingと代表的な doc/REPL/LSP wireを両対応targetで確認した verified partialである。実 install/package registry、
+対話 REPL、LSP の全 semantic projection、component helper、全公開 command、stage0 package acquisition/release/rollback、Mac/Linux
+packaged provenance parity、`LEGACY-TOOL-01` aggregateの完了を意味しない。`V2-16c` / `LEGACY-TOOL-01` は `[~]` のまま維持する。
