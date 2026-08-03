@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `50a2ad3c282806175d76054f2e118e76f7a7f924`（native built-in unary apply retention の narrow fix反映後）。
+- 確認時点の code checkpoint は `60a02b4cba79560888942cc2401166d7207d6aa1`（native built-in unary apply retention と signed 64-bit immediate encoding の narrow fix反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,14 +41,16 @@
 
 ### 再開時の次の一件
 
-- [~] `V2-16b` native built-in type environment retention — `50a2ad3c` の current-source Mac Apple Silicon
-  stage0から生成した native `App.Cli`で、numeric/string/container/reference の valid builtin call 10種、
-  built-in argument mismatch 3種、`+` の valid/invalid、標準 LSP Diagnostic wire objectを確認した。Linux x86_64
-  でも同じ source commitの stage1/stage2/stage3 fixed point、runtime smoke、stderr空、stage2/stage3 code length・
-  stdout hash一致を確認した。`infer-apply-legacy-raw` の1引数分岐で未使用の外側束縛が native local slotを衝突させ、
-  string/container/reference の実 builtin callだけが `function argument type mismatch` になっていたため、
-  1引数後半を専用 helperへ分離し、未使用束縛を除去した。built-in全体、全型診断、全公開command、
-  component/packaged release parityは未完了のため、この項目は `[~]` のまま残す。
+- [~] `V2-16b` native built-in type environment retention — `60a02b4c` の current-source Mac Apple Silicon
+  stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
+  `map-contains?` を含む valid builtin call matrixと、builtin argument mismatch matrix、`+` の valid/invalid、
+  標準 LSP Diagnostic wire objectを確認した。parserが生成する負の builtin name hashが native signed 64-bit
+  即値の誤った下位/上位32-bit分解で別値になる failure boundaryを特定し、x86 legacy/append と AArch64 chunkの
+  signed floor division・unsigned normalizationを追加した。Mac current-source actual release gate、native matrix
+  `5 tests`、Linux x86_64 stage1/stage2/stage3 fixed point、runtime smoke、stderr空、stage2/stage3 code length・
+  stdout hash一致を確認済みである。`infer-apply-legacy-raw` の1引数分岐で未使用の外側束縛が native local slotを衝突させていた
+  既存原因も `50a2ad3c` で修正済みである。built-in全体、全型診断、全公開command、component/packaged release parityは
+  未完了のため、この項目は `[~]` のまま残す。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を

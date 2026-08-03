@@ -3712,6 +3712,41 @@ verified sliceである。全 built-in/type diagnostic parity、他の言語機�
 acquisition/release/rollback、Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの `V2-16b` は `[~]` と
 Rust oracle / bootstrap / host integration境界を維持する。
 
+### V2-16b current-source native signed 64-bit immediate encoding (2026-08-03)
+
+既存の unary builtin apply retention fix後に native builtin matrixを拡張したところ、`int-to-string`、`map-contains?`、
+`file-exists?` のように parserの `name-hash` が負の signed 64-bit値になる builtinだけが native `undefined symbol` となった。
+parserのhash計算、negative map keyの insert/lookup、Rust oracleは一致していたため、failure boundaryを native codegenの
+64-bit即値生成へ限定した。直接生成された負の literalは parser hashと一致しなかったが、`(- 0 hash)` の計算結果は一致し、x86の
+legacy/append emitterが下位32-bitの正規化を一度しか行わず、上位32-bitで truncating division を使っていたことを確認した。
+
+REDは `scripts/ci/test-native-selfhost-type-builtins.py` の expanded valid/invalid matrixと、
+`e2e::selfhost_native_stage_chain::test_native_codegen_x86_i64_const_direct_append_avoids_zero_byte_vector` の backend contractで固定した。
+`60a02b4cba79560888942cc2401166d7207d6aa1` では `NativeCodegen.ls` に signed floor division と u32/u16 normalizationを追加し、
+x86のlegacy/append emitterとAArch64の4 chunk全てへ適用した。fixture側の `file-exists` は実際の公開名 `file-exists?` に修正した。
+Rust focused backend contract、Rust builtin environment parity、surface registrationの各testはpassした。
+
+current source commit `60a02b4cba79560888942cc2401166d7207d6aa1` で Mac Apple Silicon actual `App.Cli` release gateを実行し、
+underlying ignored E2Eは `1 passed`（`923.69s`）。stage0 manifestは
+`/tmp/lsharp-native-stage0-60a02b4c-signed-immediates/manifest.json` に
+`target=aarch64-apple-darwin` と同じ `source_commit` を記録した。その stage0から生成した
+`/tmp/lsharp-native-stage-60a02b4c-signed-immediates/program.native` の native builtin matrixは `5 tests` で全て passし、
+成功経路にRust fallbackは入っていない。
+
+同じ source commitの Linux x86_64 current-source gateは
+`NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=60a02b4c-signed-immediates bash scripts/ci/native-linux-x86-selfregen.sh` を一度だけ実行した。
+`ci-artifacts/native-linux-x86-hostgen-vm/60a02b4c-signed-immediates/actual-selfregen-summary.json` は
+target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,412,074`、
+stdout SHA-256各 `d5c7adef8f4b164ef216205e5025fb571e63015aabdeff471377c20924f61e89`、stderr空を記録する。
+stage1 manifest、stage2/stage3 debug artifact、VM内のruntime smokeとtransport/materialize/compareを同じ jobで確認した。
+VMは `4 CPU / 16GiB memory / 12GiB disk`、free space gateは `7,679,373,312` bytes available /
+`4,294,967,296` bytes requiredを満たし、成功後にVM workdirを削除してLimaを停止した。
+
+これは負の builtin hashを含む native immediate encodingと、builtin retention matrixの Mac/Linux current-source fixed pointに限定した
+verified sliceである。全 builtin/type diagnostic parity、他の言語機能、全公開command、component sidecar、stage0 acquisition/
+release/rollback、Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの `V2-16b` は `[~]` とRust oracle /
+bootstrap / host integration境界を維持する。
+
 ### V2-16b current-source native unary builtin apply retention (2026-08-03)
 
 前項の built-in environment retention fixを current-source stage0で再利用して native CLI matrixを広げたところ、
