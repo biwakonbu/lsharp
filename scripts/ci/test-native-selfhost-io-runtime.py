@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Check native selfhost I/O builtins through an external WASI runtime."""
+
+import argparse
+import pathlib
+import subprocess
+import tempfile
+
+
+CASES = (
+    {
+        "name": "print-string",
+        "source": '(defn main [] (print-string "hello"))\n',
+        "stdout": b"hello",
+        "exit_code": 0,
+    },
+    {
+        "name": "write-file",
+        "source": '(defn main [] (write-file "text.txt" "payload"))\n',
+        "stdout": b"",
+        "exit_code": 0,
+        "file": ("text.txt", b"payload"),
+    },
+    {
+        "name": "write-file-bytes",
+        "source": """(defn main []
+  (let [bytes (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 4) 0)
+                    97)
+                  115)
+                109)]
+    (write-file-bytes \"raw.bin\" bytes)))
+""",
+        "stdout": b"",
+        "exit_code": 0,
+        "file": ("raw.bin", b"\x00asm"),
+    },
+    {
+        "name": "proc-exit",
+        "source": "(defn main [] (proc-exit 7))\n",
+        "stdout": b"",
+        "exit_code": 7,
+    },
+)
+
+
+def executable(path, label):
+    resolved = path.expanduser().resolve()
+    if not resolved.is_file() or not resolved.stat().st_mode & 0o111:
+        raise SystemExit(f"{label} is not executable: {resolved}")
+    return resolved
+
+
+def run_case(program, wasmtime, case):
+    with tempfile.TemporaryDirectory(prefix=f"lsharp-native-io-{case['name']}-") as directory:
+        root = pathlib.Path(directory)
+        source_path = root / "input.ls"
+        wasm_path = root / "program.wasm"
+        source_path.write_text(case["source"], encoding="utf-8")
+
+        compile_result = subprocess.run(
+            [str(program), "compile", str(source_path), "-o", str(wasm_path)],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if compile_result.returncode != 0:
+            raise AssertionError(
+                f"{case['name']} compile failed: "
+                f"stdout={compile_result.stdout!r} stderr={compile_result.stderr!r}"
+            )
+        if not wasm_path.is_file() or not wasm_path.stat().st_size:
+            raise AssertionError(f"{case['name']} compile produced no Wasm artifact")
+
+        runtime_result = subprocess.run(
+            [str(wasmtime), "--dir=.", str(wasm_path)],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if runtime_result.returncode != case["exit_code"]:
+            raise AssertionError(
+                f"{case['name']} exit mismatch: "
+                f"actual={runtime_result.returncode} expected={case['exit_code']} "
+                f"stdout={runtime_result.stdout!r} stderr={runtime_result.stderr!r}"
+            )
+        if runtime_result.stdout != case["stdout"]:
+            raise AssertionError(
+                f"{case['name']} stdout mismatch: "
+                f"actual={runtime_result.stdout!r} expected={case['stdout']!r}"
+            )
+        if "file" in case:
+            file_name, expected_bytes = case["file"]
+            actual_bytes = (root / file_name).read_bytes()
+            if actual_bytes != expected_bytes:
+                raise AssertionError(
+                    f"{case['name']} file mismatch: "
+                    f"actual={actual_bytes!r} expected={expected_bytes!r}"
+                )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--program", required=True, type=pathlib.Path)
+    parser.add_argument("--wasmtime", required=True, type=pathlib.Path)
+    args = parser.parse_args()
+    program = executable(args.program, "native program")
+    wasmtime = executable(args.wasmtime, "wasmtime")
+    for case in CASES:
+        run_case(program, wasmtime, case)
+    print(f"native I/O runtime matrix passed: {len(CASES)} cases")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
