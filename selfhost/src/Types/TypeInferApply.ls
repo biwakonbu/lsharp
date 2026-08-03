@@ -300,6 +300,72 @@
             (root_pop)
             result))))))
 
+(defn infer-apply-one-after-arg [func-ty counter arg1-result]
+  (do
+    (root_push func-ty)
+    (root_push counter)
+    (root_push arg1-result)
+    (let [result
+            (if (= (result-failed arg1-result) 1)
+              (propagate-error-result-with-span-and-name arg1-result)
+              (let [s2 (result-subst arg1-result)
+                arg1-ty (result-type arg1-result)]
+                (do
+                  (root_push s2)
+                  (root_push arg1-ty)
+                  (let [next-result
+                          (infer-apply-one-final
+                            func-ty
+                            s2
+                            arg1-ty
+                            counter)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      next-result)))))]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn infer-apply-one-after-function [node env subst counter func-result]
+  (do
+    (root_push node)
+    (root_push env)
+    (root_push subst)
+    (root_push counter)
+    (root_push func-result)
+    (let [result
+            (if (= (result-failed func-result) 1)
+              (propagate-error-result-with-span-and-name func-result)
+              (let [s1 (result-subst func-result)
+                func-ty (result-type func-result)]
+                (do
+                  (root_push s1)
+                  (root_push func-ty)
+                  (let [arg1-result
+                          (infer-expr (vector-get node 3) env s1 counter)]
+                    (do
+                      (root_push arg1-result)
+                      (let [next-result
+                              (infer-apply-one-after-arg
+                                func-ty
+                                counter
+                                arg1-result)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          next-result)))))))]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
+
 ;; 関数適用の型推論
 ;; [5, func-node, arg-count, arg1, arg2, ...]
 ;; compile-safe な covered slice として 0-64 引数を扱う
@@ -625,40 +691,10 @@
       (let [func-result (infer-expr func-node env subst counter)]
         (if (= (result-failed func-result) 1)
           (propagate-error-result-with-span-and-name func-result)
-          (let [s1 (result-subst func-result)
-            func-ty (result-type func-result)]
-            (if (= argc 1)
-              ;; 1 引数の適用
-              (do
-                (root_push s1)
-                (root_push func-ty)
-                (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
-                  (do
-                    (root_push arg1-result)
-                    (let [result
-                            (if (= (result-failed arg1-result) 1)
-                              (propagate-error-result-with-span-and-name arg1-result)
-                              (let [s2 (result-subst arg1-result)
-                                arg1-ty (result-type arg1-result)]
-                                (do
-                                  (root_push s2)
-                                  (root_push arg1-ty)
-                                  (let [next-result
-                                          (infer-apply-one-final
-                                            func-ty
-                                            s2
-                                            arg1-ty
-                                            counter)]
-                                    (do
-                                      (root_pop)
-                                      (root_pop)
-                                      next-result)))))]
-                      (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        result)))))
-              (make-error-result))))))))
+          (if (= argc 1)
+            ;; 1 引数の適用は引数推論を専用 helper へ分ける。
+            (infer-apply-one-after-function node env subst counter func-result)
+            (make-error-result)))))))
 
 ;; 関数適用の型推論は複数の一時型・置換を確保するため、native GC の
 ;; collection 中も入力 AST と共有環境を保持する。
