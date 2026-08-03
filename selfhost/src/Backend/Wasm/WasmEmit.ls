@@ -700,6 +700,7 @@
 (defn standalone-write-file-opcode [] 95)
 (defn standalone-write-file-bytes-opcode [] 96)
 (defn standalone-proc-exit-opcode [] 97)
+(defn standalone-read-stdin-opcode [] 98)
 (defn standalone-write-file-bytes-iovec-address [] 2176)
 (defn standalone-write-file-bytes-nwritten-address [] 2184)
 (defn standalone-ir-instr [instr]
@@ -707,8 +708,10 @@
     operand (vector-get instr 1)]
     (if (= opcode 86)
       (make-instr (standalone-command-line-args-opcode) 0)
-      (if (= opcode 67)
-        (make-instr (standalone-command-line-arg-opcode) 0)
+      (if (= opcode 91)
+        (make-instr (standalone-read-stdin-opcode) 0)
+        (if (= opcode 67)
+          (make-instr (standalone-command-line-arg-opcode) 0)
         (if (= opcode 73)
           (make-instr (standalone-file-exists-opcode) 0)
           (if (= opcode 64)
@@ -721,7 +724,7 @@
                   (make-instr (standalone-proc-exit-opcode) 0)
                   (if (and (= opcode 40) (>= operand 12))
                     (make-instr 40 (+ operand 11))
-                    instr))))))))))
+                    instr)))))))))))
 (defn standalone-ir-instrs-step [ir idx count result]
   (if (>= idx count)
     (make-loop-step-state 1 idx result)
@@ -800,9 +803,11 @@
                 21
                 (if (= idx 21)
                   22
-                  (if (< idx 11)
-                    (+ idx 7)
-                    idx))))))))))
+                  (if (= idx 22)
+                    23
+                    (if (< idx 11)
+                      (+ idx 7)
+                      idx)))))))))))
 (defn shift-runtime-call-indices-step [bytes result idx count]
   (if (>= idx count)
     (make-loop-step-state 1 idx result)
@@ -934,6 +939,33 @@
   (emit-byte (emit-standalone-byte-seq-4 (vector-new 8) 0 32 0 26) 11))
 (defn emit-standalone-second-i64-body []
   (emit-standalone-byte-seq-4 (vector-new 8) 0 32 1 11))
+(defn emit-standalone-read-stdin-body []
+  ;; stdin を fd=0 から 4096-byte chunk で読み、tagged String へ累積する bounded slice。
+  ;; fd_read errno/EOF は空 chunk として扱い、fd_close は stdin に対して呼ばない。
+  (let [
+    b0 (emit-standalone-byte-seq-8 (vector-new 2048) 3 3 127 2 126 3 127 66)
+    b1 (emit-standalone-byte-seq-8 b0 8 16 1 33 4 32 4 167)
+    b2 (emit-standalone-byte-seq-8 b1 65 1 54 2 0 32 4 167)
+    b3 (emit-standalone-byte-seq-8 b2 65 0 54 2 4 65 0 33)
+    b3a (emit-standalone-byte-seq-2 b3 3 66)
+    b4 (emit-standalone-byte-seq-8 b3a 136 32 16 1 33 5 32 5)
+    b5 (emit-standalone-byte-seq-8 b4 167 65 1 54 2 0 32 5)
+    b6 (emit-standalone-byte-seq-8 b5 167 65 0 54 2 4 2 64)
+    b7 (emit-standalone-byte-seq-8 b6 3 64 65 128 17 32 5 167)
+    b8 (emit-standalone-byte-seq-8 b7 65 8 106 54 2 0 65 128)
+    b9 (emit-standalone-byte-seq-8 b8 17 65 128 32 54 2 4 65)
+    b10 (emit-standalone-byte-seq-8 b9 136 17 65 0 54 2 0 32)
+    b11 (emit-standalone-byte-seq-8 b10 3 65 128 17 65 1 65 136)
+    b12 (emit-standalone-byte-seq-8 b11 17 16 15 33 7 32 7 69)
+    b13 (emit-standalone-byte-seq-8 b12 4 64 65 136 17 40 2 0)
+    b14 (emit-standalone-byte-seq-8 b13 33 6 5 65 0 33 6 11)
+    b15 (emit-standalone-byte-seq-8 b14 32 6 69 13 1 32 5 167)
+    b16 (emit-standalone-byte-seq-8 b15 32 6 54 2 4 32 4 32)
+    b17 (emit-standalone-byte-seq-8 b16 5 16 5 33 4 12 0 11)
+    b18 (emit-byte b17 11)
+    b19 (emit-standalone-byte-seq-2 b18 32 4)
+    b20 (emit-standalone-byte-seq-1 b19 11)]
+    b20))
 (defn emit-standalone-file-exists-body []
   (let [b0 (emit-standalone-byte-seq-4 (vector-new 96) 1 3 127 32)
     b1 (emit-standalone-byte-seq-8 b0 0 167 65 8 106 33 1 32)
@@ -1369,9 +1401,11 @@
               (emit-standalone-write-file-body)
               (if (= idx 15)
                 (emit-standalone-write-file-bytes-body)
-                (emit-standalone-drop-i64-body))))))))))))))))))
+                (if (= idx 16)
+                  (emit-standalone-read-stdin-body)
+                  (emit-standalone-drop-i64-body)))))))))))))))))))
 (defn append-standalone-runtime-bodies-step [body idx]
-  (if (>= idx 16)
+  (if (>= idx 17)
     (make-loop-step-state 1 idx body)
     (let [func-body (shift-standalone-runtime-call-indices (standalone-runtime-body idx))]
       (do
@@ -1835,7 +1869,7 @@
     (append-byte-vector-chunked result1 body17 0 body-size)))
 (defn emit-function-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    body0 (emit-leb128 (vector-new 64) (+ func-count 17))
+    body0 (emit-leb128 (vector-new 64) (+ func-count 18))
     body1 (emit-leb128 body0 1)
     body2 (emit-leb128 body1 2)
     body3 (emit-leb128 body2 1)
@@ -1852,16 +1886,17 @@
     body14 (emit-leb128 body13 1)
     body15 (emit-leb128 body14 3)
     body16 (emit-leb128 body15 3)
-    body17 (append-type-index-sequence body16 7 (+ 7 func-count))
-    body18 (emit-leb128 body17 (+ 7 func-count))
-    body-size (vector-length body18)
+    body17 (emit-leb128 body16 1)
+    body18 (append-type-index-sequence body17 7 (+ 7 func-count))
+    body19 (emit-leb128 body18 (+ 7 func-count))
+    body-size (vector-length body19)
     result0 (emit-byte (vector-new 64) 3)
     result1 (emit-leb128 result0 body-size)]
-    (append-byte-vector-chunked result1 body18 0 body-size)))
+    (append-byte-vector-chunked result1 body19 0 body-size)))
 (defn emit-code-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    main-func-idx (+ 22 func-count)
-    body0 (emit-leb128 (vector-new 64) (+ func-count 17))
+    main-func-idx (+ 23 func-count)
+    body0 (emit-leb128 (vector-new 64) (+ func-count 18))
     body1 (append-standalone-runtime-bodies body0 0)
     body2 (append-code-bodies-functions-standalone body1 functions 0 func-count)
     body3 (append-standalone-code-body body2 (emit-standalone-wrapper-body main-func-idx))
@@ -2116,6 +2151,9 @@
   (emit-leb128 (emit-byte bytes 16) 18))
 (defn emit-read-file-standalone-instr [bytes]
   (emit-leb128 (emit-byte bytes 16) 19))
+(defn emit-read-stdin-standalone-instr [bytes]
+  (let [with-arg (emit-leb128-s (emit-byte bytes 66) 0)]
+    (emit-leb128 (emit-byte with-arg 16) 22)))
 (defn emit-write-file-standalone-instr [bytes]
   (emit-leb128 (emit-byte bytes 16) 20))
 (defn emit-write-file-bytes-standalone-instr [bytes]
@@ -2134,19 +2172,21 @@
     (emit-print-string-instr bytes)
     (if (= opcode (standalone-command-line-args-opcode))
       (emit-command-line-args-standalone-instr bytes)
-      (if (= opcode (standalone-command-line-arg-opcode))
-        (emit-command-line-arg-standalone-instr bytes)
-        (if (= opcode (standalone-file-exists-opcode))
-          (emit-file-exists-standalone-instr bytes)
-          (if (= opcode (standalone-read-file-opcode))
-            (emit-read-file-standalone-instr bytes)
-            (if (= opcode (standalone-write-file-opcode))
-              (emit-write-file-standalone-instr bytes)
-              (if (= opcode (standalone-write-file-bytes-opcode))
-                (emit-write-file-bytes-standalone-instr bytes)
-                (if (= opcode (standalone-proc-exit-opcode))
-                  (emit-proc-exit-standalone-instr bytes)
-                  (reject-native-only-wasm-opcode bytes opcode))))))))))
+      (if (= opcode (standalone-read-stdin-opcode))
+        (emit-read-stdin-standalone-instr bytes)
+        (if (= opcode (standalone-command-line-arg-opcode))
+          (emit-command-line-arg-standalone-instr bytes)
+          (if (= opcode (standalone-file-exists-opcode))
+            (emit-file-exists-standalone-instr bytes)
+            (if (= opcode (standalone-read-file-opcode))
+              (emit-read-file-standalone-instr bytes)
+              (if (= opcode (standalone-write-file-opcode))
+                (emit-write-file-standalone-instr bytes)
+                (if (= opcode (standalone-write-file-bytes-opcode))
+                  (emit-write-file-bytes-standalone-instr bytes)
+                  (if (= opcode (standalone-proc-exit-opcode))
+                    (emit-proc-exit-standalone-instr bytes)
+                    (reject-native-only-wasm-opcode bytes opcode)))))))))))
 
 (defn emit-runtime-ir-instr-tail-high [bytes opcode operand]
   (if (= opcode 72)

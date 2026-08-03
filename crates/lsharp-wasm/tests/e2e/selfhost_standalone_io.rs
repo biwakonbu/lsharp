@@ -425,6 +425,34 @@ fn test_e2e_selfhost_standalone_user_call_after_preview1_import() {
 }
 
 #[test]
+fn test_e2e_selfhost_standalone_read_stdin_runtime() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("read_stdin");
+        let _ = std::fs::remove_dir_all(&dir);
+        let standalone_wasm = compile_standalone_source(
+            r#"(defn main [] (print-string (read-stdin)))"#,
+            &dir,
+            "LSHARP_STANDALONE_IO_READ_STDIN_CLI_ARTIFACT",
+        );
+        if let Some(save_path) = std::env::var_os("LSHARP_STANDALONE_IO_READ_STDIN_SAVE_ARTIFACT") {
+            std::fs::write(save_path, &standalone_wasm)
+                .expect("read-stdin standalone artifact の保存に失敗");
+        }
+        let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &standalone_wasm,
+            Some(&dir),
+            &[],
+            "payload",
+        )
+        .expect("read-stdin standalone 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout.as_bytes(), b"payload");
+    });
+}
+
+#[test]
 fn test_wasi_fd_write_shim_is_used_for_standalone_import() {
     let dir = fixture_dir("shim");
     let _ = std::fs::remove_dir_all(&dir);

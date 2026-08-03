@@ -15,6 +15,13 @@ CASES = (
         "exit_code": 0,
     },
     {
+        "name": "read-stdin",
+        "source": "(defn main [] (print-string (read-stdin)))\n",
+        "stdin": b"payload",
+        "stdout": b"payload",
+        "exit_code": 0,
+    },
+    {
         "name": "write-file",
         "source": '(defn main [] (write-file "text.txt" "payload"))\n',
         "stdout": b"",
@@ -78,6 +85,7 @@ def run_case(program, wasmtime, case):
             [str(wasmtime), "--dir=.", str(wasm_path)],
             cwd=root,
             capture_output=True,
+            input=case.get("stdin"),
             check=False,
         )
         if runtime_result.returncode != case["exit_code"]:
