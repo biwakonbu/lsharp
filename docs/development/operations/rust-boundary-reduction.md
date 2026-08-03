@@ -4004,6 +4004,22 @@ runner-only test contractのため stage1/stage2/stage3 replayは重複実行し
 対話 REPL、LSP の全 semantic projection、component helper、全公開 command、stage0 package acquisition/release/rollback、Mac/Linux
 packaged provenance parity、`LEGACY-TOOL-01` aggregateの完了を意味しない。`V2-16c` / `LEGACY-TOOL-01` は `[~]` のまま維持する。
 
+### I-09 / M3-05-N9 package src child symlink ownership (2026-08-04)
+
+`ce8a4cb7` で package root `src/` の下にある child directory symlinkが外部 sourceをAPI-docやmodule-indexへ投影しない境界を閉じた。
+REDでは Rust API-doc collectorの `Path::is_dir()` が `src/linked -> <external>/` を追跡し、外部 `Geometry.ls` をAPIへ出力した。
+GREENではAPI-doc collectorとmodule-index collectorの双方が各 entryを`symlink_metadata`で検査し、
+`package src tree must not contain symlinks`で外部sourceを読む前に拒否する。Rust MCP package APIも同じエラーを返す。
+
+native MCP shimは同じfixtureで既存の除外動作を確認し、external `Geometry`をresponseへ投影せず、fake native programを起動しない。
+検証は `cargo test -p lsharp-tooling api_doc::tests::test_build_api_doc_for_package_`（3 tests）、
+`cargo test -p lsharp-driver --bin lsharp mcp_server::tests::test_package_api_tool`（10 tests）、
+`cargo test -p lsharp-driver --bin lsharp tests::test_cmd_install`（24 tests）、
+`PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-mcp.py`（108 tests）で行った。
+この verified partialはAPI-doc/module-indexのchild directory symlink boundaryに限定され、regular child source fileの直接fixture、
+`docs/` directory、installer/provider、current-source両target runtime、packaged/release/rollback parityは未完了である。
+ADR: [`decisions-v0.3-native-mcp-package-src-child-symlink-boundary.md`](../../adr/decisions-v0.3-native-mcp-package-src-child-symlink-boundary.md)。
+
 ### V2-16e / LEGACY-BOOT-01 package and release preflight contracts (2026-08-04)
 
 現行 checkout の stage0 package/release boundaryを、重い native regenerationを起動せずに一括再検証した。

@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `2c9bd916`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrixの extended test contractと evidence反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
+- 確認時点の code checkpoint は `ce8a4cb7`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source symlink rejectionの contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -117,7 +117,11 @@
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の
   name/content/metadata 非投影、native program no-execution、Rust/native parityまで検証済みの verified partial とする。
-  regular `src/` 配下の child symlinkを含む nested ownership全体は未完了である。
+  さらに `ce8a4cb7` で `src/` 配下の child symlinkを、Rust API-doc collector、Rust MCP package API、Rust module-index collector、
+  native MCP shimの同一 external `Geometry.ls` fixtureで拒否する RED→GREENを追加した。Rust側は `symlink_metadata` で各 entryを検査し、
+  外部 sourceを API/module-indexへ投影せず、native側は既存の no-execution/fail-closedを108 testsで再確認した。これは child directory
+  symlinkの traversal boundaryを閉じる verified partialであり、regular child source file、`docs/` directory、その他 nested treeの
+  ownership全体は未完了である。
   個別 source file、`docs/` directory、その他 nested tree、installer、provider/auth、current-source runtime、
   Mac/Linux packaged/rollback parity はこの一件に含めない。
 
