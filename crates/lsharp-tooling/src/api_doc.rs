@@ -215,6 +215,15 @@ pub fn build_api_doc_for_package(
     version: &str,
 ) -> miette::Result<ApiDoc> {
     let source_root = package_root.join("src");
+    if std::fs::symlink_metadata(&source_root)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(driver_io_error(format!(
+            "{}: package src must be a regular non-symlink directory",
+            source_root.display()
+        )));
+    }
     let mut files = Vec::new();
     collect_lsharp_files(&source_root, &mut files)?;
     files.sort();

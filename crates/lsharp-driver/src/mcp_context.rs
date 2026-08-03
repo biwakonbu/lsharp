@@ -368,6 +368,16 @@ fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
         return Ok(value);
     }
 
+    let source_root = package_dir.join("src");
+    if std::fs::symlink_metadata(&source_root)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(format!(
+            "{}: api.json が無く、生成対象の src/**/*.ls が見つかりません",
+            api_path.display()
+        ));
+    }
     let api = api_doc::build_api_doc_for_package(package_dir, &package, &version)
         .map_err(|e| e.to_string())?;
     let value = serde_json::to_value(api).map_err(|e| e.to_string())?;

@@ -386,7 +386,7 @@ def _run_native_doc(program, source):
 
 def _package_source_files(package_dir):
     source_root = package_dir / "src"
-    if not source_root.is_dir():
+    if source_root.is_symlink() or not source_root.is_dir():
         return []
     return sorted(
         path
