@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `0459ad983ac973ac4df6eca91cd8bd0e833ba202`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic type contractの narrow fix反映後）。
+- 確認時点の code checkpoint は `496a8ff3a67da3d511d01d840a3d9e07fcf0acb4`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic、write-file-bytes type contractの narrow fix反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -59,6 +59,11 @@
   stdout SHA-256各 `d5c7adef8f4b164ef216205e5025fb571e63015aabdeff471377c20924f61e89`、stderr空、runtime smoke exit `42`を
   確認した。これは比較/論理の type contract と current-source Mac/Linux fixed pointに限定した verified partialであり、
   built-in全体、全型診断、全公開command、component/packaged release parityは未完了である。
+  さらに `496a8ff3` で `write-file-bytes` の `String -> Vector -> Int` valid callと first-argument mismatchを Rust oracleと
+  native CLI fixtureへ追加した。Rust focused oracleは `1 passed`、同 commitの Mac current-source actual App.Cli release gateは
+  `1 passed` / `821.97s`、native matrixは `5 tests` 全 passとなった。`0459ad98` から `selfhost/src` に差分がないことを確認したため、
+  Linux x86_64の重い stage2/stage3 replayは重複実行していない。manifestの source commitが一致しない旧Linux artifactを current evidenceへ
+  拡大解釈せず、この fixtureの Linux current-source direct gateは未検証として残す。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を

@@ -3824,3 +3824,20 @@ stderrは空で、transport/materialize/compareも同じ jobで通過した。VM
 である。比較/論理の全 lowering/runtime意味論、全 built-in/type diagnostic parity、他の言語機能、全公開command、component
 sidecar、stage0 acquisition/release/rollback、Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの
 `V2-16b` は `[~]` とRust oracle / bootstrap / host integration境界を維持する。
+
+### V2-16b current-source write-file-bytes type contract (2026-08-03)
+
+`write-file-bytes` の `String -> Vector -> Int` contractについて、valid callと first-argument mismatchを Rust oracleの
+`test_e2e_selfhost_typeinfer_write_file_bytes_contract` と `scripts/ci/test-native-selfhost-type-builtins.py` の native fixtureへ追加した。
+valid結果は `diagnostics:0`、invalid結果は exit `1` と `function argument type mismatch` を要求し、Rust focused oracleは `1 passed` である。
+
+`496a8ff3a67da3d511d01d840a3d9e07fcf0acb4` の current sourceで Mac Apple Silicon actual `App.Cli` release gateを一度だけ実行し、
+underlying ignored E2Eは `1 passed`（`821.97s`）となった。同じ stage0から生成した native programの expanded builtin matrixは
+`5 tests` 全 passで、成功経路に Rust fallbackは入っていない。
+
+この batchでは `0459ad983ac973ac4df6eca91cd8bd0e833ba202` 以降の `selfhost/src` 差分がないことを確認した。前項の Linux x86_64
+current-source stage2/stage3 fixed-pointは同じ selfhost sourceを検証済みだが、manifestの source commitが一致しない旧 artifactを
+再利用せず、今回の fixtureについて重い Linux replayは再実行していない。したがって Linux x86_64 current-source direct checkは
+未検証として残す。これは write-file-bytes の型 contractだけを閉じる verified partialであり、opcode 90の実 native runtime/artifact
+bytes、全 I/O semantics、全 built-in/type diagnostic parity、全公開command、component sidecar、stage0 acquisition/release/rollback、
+Mac/Linux packaged parity、Rust-free全体の完了を意味しない。TODOの `V2-16b` は `[~]` を維持する。
