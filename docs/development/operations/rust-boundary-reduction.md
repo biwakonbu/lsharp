@@ -3987,3 +3987,17 @@ stage2/stage3 replayは重複実行していない。成功経路に `cargo`、`
 注入するnative matrix、EOF/errorの全組合せ、入力がさらに大きい場合のdynamic root/data/heap layout、完全なargv/command-line semantics、全公開command、
 component sidecar、release asset acquisition/rollback、Mac/Linux packaged artifact provenance parity、Rust-free全体の完了を意味しない。
 `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+### V2-16c / LEGACY-TOOL-01 native core CLI runtime matrix (2026-08-04)
+
+`1739602e` で、current-source native `App.Cli` artifactを直接起動する
+`scripts/ci/test-native-selfhost-cli-core-runtime.py` を追加した。`--help`、`--version`（`lsharp 0.1.0`、改行なし）、`parse`、`check`、
+`fmt`、text/metadata `test`、`compile`、`build` の `9 cases` を同じ contractで実行し、Mac Apple Siliconの既存 `d2dcea7e...`
+artifactとLinux x86_64の既存 `eb8086a8...` target-only artifactで各 `9 cases` 全 passした。Linux programは target
+`x86_64-unknown-linux-gnu`、program SHA-256 `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537` の
+ELFであり、runner-only test contractのため stage1/stage2/stage3 replayは重複実行していない。成功経路に `cargo`、`rustc`、host `lsharp`、
+Rust fallbackは入っていない。
+
+これは public core command routingを両対応targetで確認した verified partialである。`install`、`repl`、`lsp --stdio` の全 semantic projection、
+`doc`/component helper、全公開 command、stage0 package acquisition/release/rollback、Mac/Linux packaged provenance parity、
+`LEGACY-TOOL-01` aggregateの完了を意味しない。`V2-16c` / `LEGACY-TOOL-01` は `[~]` のまま維持する。

@@ -12,14 +12,14 @@
 `[x]` は使わない。日付別の進捗ログ、個別 test 名、artifact hash、完了済み phase はここへ蓄積せず、
 設計、ADR、test、artifact、運用記録を参照する。
 
-## Checkpoint — 2026-08-03
+## Checkpoint — 2026-08-04
 
 ここは一度区切って再開するための current truth である。完了済みの細かな test 名や hash を backlog の完了項目へ
 昇格させず、判断と代表 evidence は ADR へ置く。
 
 ### 現在地
 
-- 確認時点の code checkpoint は `2d96d09e5160dce7a0707e4b690d68260fc28571`（native built-in unary apply retention、signed 64-bit immediate encoding、comparison/logic、write-file-bytes type contract、standalone proc-exit と read-stdin runtimeの narrow fix反映後）。
+- 確認時点の code checkpoint は `1739602e`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrixの test contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -1666,6 +1666,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   exit `0`、stderr空、object-shaped responseを返した。これは public command closure の LSP routing/projection verified
   sliceを広げるが、全公開 command、definition/references/rename/diagnosticsのsemantic parity、component sidecar、
   release acquisition/rollback、両 targetの packaged provenance、`LEGACY-TOOL-01` aggregateは残る。
+
+  さらに `1739602e` で、既存の current-source native App.Cli artifactを直接起動する core CLI runtime matrixを追加した。
+  `--help`、`--version`（`lsharp 0.1.0`、改行なし）、`parse`、`check`、`fmt`、text/metadata `test`、`compile`、`build` の
+  `9 cases`を同じ scriptで固定し、Mac Apple Siliconの `d2dcea7e...` artifactとLinux x86_64の `eb8086a8...` target-only
+  artifactで各 `9 cases` 全 passした。Linux programは target `x86_64-unknown-linux-gnu`、program SHA-256
+  `af9c7944db08acf1ccd966c2ac40fe1162cc0f56e0bfed1599dc3d0a6597d537` の ELFであり、成功経路に `cargo`、`rustc`、host `lsharp`、
+  Rust fallbackは入っていない。runner-onlyの contract testなので、stage1/stage2/stage3 replayは重複実行していない。
+  これは public core command routingの両target verified partialを追加するが、`install`、`repl`、`lsp --stdio` の全 semantic projection、
+  `doc`/component helper、全公開 command、stage0 package acquisition/release/rollback、Mac/Linux packaged provenance parity、
+  `LEGACY-TOOL-01` aggregateは未完了である。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
