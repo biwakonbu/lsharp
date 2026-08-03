@@ -12,14 +12,14 @@
 `[x]` は使わない。日付別の進捗ログ、個別 test 名、artifact hash、完了済み phase はここへ蓄積せず、
 設計、ADR、test、artifact、運用記録を参照する。
 
-## Checkpoint — 2026-08-02
+## Checkpoint — 2026-08-03
 
 ここは一度区切って再開するための current truth である。完了済みの細かな test 名や hash を backlog の完了項目へ
 昇格させず、判断と代表 evidence は ADR へ置く。
 
 ### 現在地
 
-- 確認時点の `origin/main` は `95656144`（parse-only 標準 Diagnostic projection反映後）。
+- 確認時点の `origin/main` は `7744350c4e36eb279861ba19007f732b72ff3e71`（type Diagnostic の標準 projection反映後）。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -38,6 +38,14 @@
 [`decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md`](docs/adr/decisions-v0.3-native-mcp-package-manifest-symlink-boundary.md)。
 
 ### 再開時の次の一件
+
+- [~] `V2-16b` native built-in type environment retention — current Mac Apple Silicon `App.Cli` native
+  artifactは標準 LSP Diagnostic objectを返すが、`(defn bad [] (+ 1 true))` を `LS1004` へ投影せず
+  `LS1001` / `undefined symbol` として返す。`(defn main [] (+ 1 2))` も native `check` で同じ undefined
+  symbolになるため、`TypeInferBuiltins` が構築する built-in type environmentの保持・lookup境界を次の RED とする。
+  同じ fixtureで Rust-hosted selfhost の `LS1004`、native stage0の成功診断と不正引数診断、標準 LSP wire object、
+  Mac Apple Silicon artifact、Linux x86_64 stage2/stage3 fixed pointを順に確認する。原因確定前に広い root
+  refactorや map helperの一般化は行わない。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を

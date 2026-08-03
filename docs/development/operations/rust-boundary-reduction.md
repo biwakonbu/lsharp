@@ -3653,3 +3653,29 @@ projectionは未完である。また `valid/io-read-stdin` の生成 Preview1 W
 `unsupported standalone Preview1 runtime capability` 境界で拒否され、Wasm runtime証拠にはしていない。
 Linux x86_64 current HEADの同opcode stage0/package/runtime、component sidecar、release asset acquisition/
 rollback、Mac/Linux packaged parityは未検証のため、`V2-16b` / `V2-16c` / `V2-16e` と aggregateは `[~]` のまま残す。
+
+### V2-16b/c current type Diagnostic projection and native built-in boundary (2026-08-03)
+
+`lsp-type-diagnostic-to-lsp` は既存の legacy 6 fieldsを保持した10要素 projectionへ拡張し、end position、canonical
+code、messageを追加した。generic rendererはこの projectionを標準 LSP Diagnostic objectの `range`、`severity`、
+`code`、`source`、`message`へ変換する。selfhost sourceには undefined、condition/branch、infinite、argument mismatch
+を `LS1001`〜`LS1004`へ対応させる狭い code mapを追加した。
+
+Rust-hosted selfhost bundleの `(defn bad [] (+ 1 true))` は、標準 objectの `LS1004` / `function argument type mismatch`
+を返す focused mapper testで確認した。renderer groupは6 tests、native LSP stdio contractは5 testsがpassし、commit
+`7744350c4e36eb279861ba19007f732b72ff3e71`を`origin/main`へpushした。これは標準 wire shapeとRust-hosted selfhost
+projectionの verified partialであり、type diagnostics全体の完了ではない。
+
+同じ current source commitで Mac Apple Silicon actual `App.Cli` release gateを実行し、artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-7744350c-lsp-type/` の manifestは
+`target=aarch64-apple-darwin`、`selfhost_fixed_point=true`、program SHA-256
+`beea2a615b2a27156fb90a681a97aaa2d40af33bc7256330dd2d4efc68e9bb7f`を記録した。Linux x86_64 hostgen→Lima
+VM gateも同じ sourceで `status=pass`、stage2/stage3 code length各 `11,408,204`、stdout SHA-256各
+`b9569a6202412633e2ff258a6988bdd5d9556e1b354ab8fe203b67b5f511b26a`、stderr空で一致した。artifactは
+`ci-artifacts/native-linux-x86-hostgen-vm/current-7744350c-lsp-type/`に保存し、VM workdirとlockを回収、Limaは停止した。
+
+一方、current Mac native programへ直接 `lsp --stdio` と `check` を渡すと、標準 Diagnostic objectの形は得られるものの、
+`(defn bad [] (+ 1 true))` と `(defn main [] (+ 1 2))` はともに `LS1001` / `undefined symbol`になった。Rust-hosted bundleの
+`LS1004`との差分はprojection rendererではなく、native `App.Cli`の`TypeInferBuiltins`が構築する built-in type
+environmentのretentionまたはlookup境界を示す。したがって次の REDは同じ fixtureで、nativeの正常な`+`解決と不正引数の
+`LS1004`、標準 wire objectを固定する。原因確定前に広いroot、spill、offset、map helperの変更を再試行しない。
