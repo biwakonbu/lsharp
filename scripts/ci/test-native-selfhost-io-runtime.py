@@ -10,6 +10,7 @@ import tempfile
 READ_STDIN_SOURCE = "(defn main [] (print-string (read-stdin)))\n"
 READ_STDIN_4096 = b"a" * 4095 + b"b"
 READ_STDIN_OVER_4096 = b"a" * 4096 + b"b"
+READ_FILE_OVER_4096 = b"a" * 4096 + b"b"
 PRINT_ZERO_SOURCE = "(defn main [] (print 0))\n"
 COMMAND_LINE_SOURCE = """(defn main []
   (do
@@ -53,6 +54,33 @@ CASES = (
         "source": READ_STDIN_SOURCE,
         "stdin": READ_STDIN_OVER_4096,
         "stdout": READ_STDIN_OVER_4096,
+        "exit_code": 0,
+    },
+    {
+        "name": "read-file",
+        "source": '(defn main [] (print-string (read-file "input.txt")))\n',
+        "files": (("input.txt", b"payload"),),
+        "stdout": b"payload",
+        "exit_code": 0,
+    },
+    {
+        "name": "read-file-empty",
+        "source": '(defn main [] (print-string (read-file "input.txt")))\n',
+        "files": (("input.txt", b""),),
+        "stdout": b"",
+        "exit_code": 0,
+    },
+    {
+        "name": "read-file-over-4096",
+        "source": '(defn main [] (print-string (read-file "input.txt")))\n',
+        "files": (("input.txt", READ_FILE_OVER_4096),),
+        "stdout": READ_FILE_OVER_4096,
+        "exit_code": 0,
+    },
+    {
+        "name": "read-file-missing",
+        "source": '(defn main [] (print-string (read-file "missing.txt")))\n',
+        "stdout": b"",
         "exit_code": 0,
     },
     {
@@ -121,6 +149,10 @@ def run_case(program, wasmtime, case):
         source_path = root / "input.ls"
         wasm_path = root / "program.wasm"
         source_path.write_text(case["source"], encoding="utf-8")
+        for file_name, contents in case.get("files", ()):
+            file_path = root / file_name
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_bytes(contents)
 
         compile_result = subprocess.run(
             [str(program), "compile", str(source_path), "-o", str(wasm_path)],
