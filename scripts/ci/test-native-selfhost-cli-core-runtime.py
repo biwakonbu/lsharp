@@ -18,6 +18,8 @@ DOC_JSON_SOURCE = "(defn main [] 42)\n"
 LSP_SOURCE = "(defn add [x y] (+ x y))\n(defn main [] (add 1 2))\n"
 LSP_DIDCHANGE_VALID_SOURCE = "(defn main [] 42)\n"
 LSP_DIDCHANGE_INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
+LSP_LINT_URI = "file:///tmp/lsharp-lsp-lint.ls"
+LSP_LINT_SOURCE = "(defn main [] (let [unused 42] 0))\n"
 VALIDATION_SOURCE = """(defn cancel []
   :intent "intent:checkout/safe-cancel" "Users can cancel an order"
   :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
@@ -210,6 +212,50 @@ def run_lsp_didchange_diagnostics(program, root, *, clear=False):
             f"lsp didChange diagnostics emitted stderr: {result.stderr!r}"
         )
     return parse_lsp_frames(result.stdout), uri
+
+
+def run_lsp_lint_diagnostics(program, root):
+    messages = [
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"capabilities": {}, "rootUri": None},
+            }
+        ),
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": LSP_LINT_URI,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": LSP_LINT_SOURCE,
+                    }
+                },
+            }
+        ),
+    ]
+    result = subprocess.run(
+        [str(program), "lsp", "--stdio"],
+        cwd=root,
+        input=b"".join(messages),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"lsp lint diagnostics failed: exit={result.returncode} "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    if result.stderr:
+        raise AssertionError(
+            f"lsp lint diagnostics emitted stderr: {result.stderr!r}"
+        )
+    return parse_lsp_frames(result.stdout)
 
 
 def main():
@@ -439,6 +485,45 @@ def main():
                 f"lsp stale diagnostics clear mismatch: {clear_frames[5]!r}"
             )
 
+        lint_frames = run_lsp_lint_diagnostics(program, root)
+        if len(lint_frames) != 3:
+            raise AssertionError(
+                f"lsp lint diagnostics frame count mismatch: {lint_frames!r}"
+            )
+        if lint_frames[1] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "sourceBytes": len(LSP_LINT_SOURCE.encode("utf-8")),
+                "uri": LSP_LINT_URI,
+            },
+        }:
+            raise AssertionError(
+                f"lsp lint didOpen projection mismatch: {lint_frames[1]!r}"
+            )
+        if lint_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_LINT_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 2,
+                        "code": "L0001",
+                        "source": "lsharp",
+                        "message": "let binding unused is not used",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp lint diagnostics projection mismatch: {lint_frames[2]!r}"
+            )
+
         invalid_doc = subprocess.run(
             [str(program), "doc", "input.ls", "--format", "yaml"],
             cwd=root,
@@ -456,7 +541,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 25 cases")
+    print("native CLI core runtime matrix passed: 26 cases")
 
 
 if __name__ == "__main__":
