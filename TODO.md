@@ -136,6 +136,16 @@ selfhost sourceは変更していないためstage regenerationは実行せず�
 他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component/packaged release parity、Rust-free aggregateは未完了である。
 V2-16b / V2-16c / V2-16eは[~]のまま維持する。Evidence commit: `e28835bd`。
 
+続く test-only `c1982e1d` では、`(defn main [`、`(`、`(defn main [] (do` の3つの文脈で unexpected EOF（LS0102）の point spanを追加固定した。
+Rust actual bundleの同一focused testは `1 passed / 329.90s`、保存済み Mac Apple Silicon App.Cli artifactとLinux x86_64 App.Cli ELFの
+native core runtime matrixは各 `38 cases` 全 passだった。point rangeは順に `0:12`、`0:1`、`0:17`、severity 1、source `lsharp`、message
+`unexpected input end` を確認した。selfhost sourceは変更していないためstage regenerationは実行せず、Linux replay後はVM workdirを回収して
+`lsharp-linux-x86` を停止した。証跡artifactの使用量はMac側52MiB、Linux target-only ELF側13MiBだった。
+
+この batchも LS0102 の複数構文文脈に対する標準 projectionの verified partialに限定される。LS0103 unknown-form、LS0104 multiple-parse-errors、
+複数診断の順序/dedup、他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component/packaged release parity、Rust-free aggregateは
+未完了であり、V2-16b / V2-16c / V2-16eは[~]のまま維持する。Evidence commit: `c1982e1d`。
+
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
   `map-contains?` を含む valid builtin call matrixと、builtin argument mismatch matrix、`+` の valid/invalid、

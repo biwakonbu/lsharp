@@ -4531,6 +4531,17 @@ regenerationは実行せず、Linuxは既存ELFのreplay-onlyとした。replay�
 他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance
 parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `e28835bd`。
 
+test-only `c1982e1d` では、`(defn main [`、`(`、`(defn main [] (do` の3つの文脈で unexpected EOF（LS0102）の point spanを追加固定した。
+Rust actual bundleの同一focused testは `1 passed / 329.90s`。保存済み Mac Apple Silicon App.Cli artifactとLinux x86_64 App.Cli ELFへ
+`scripts/ci/test-native-selfhost-cli-core-runtime.py` を適用した native core runtime matrixは各 `38 cases` 全 passとなった。point rangeは順に
+`0:12`、`0:1`、`0:17`、severity 1、source `lsharp`、message `unexpected input end` をRust/native双方で固定している。selfhost sourceは変更していないため
+stage1 -> stage3 regenerationは実行せず、Linuxは既存ELFのreplay-onlyとした。replay後はVM workdirを回収し、`lsharp-linux-x86` を停止した。
+証跡artifactの使用量はMac側52MiB、Linux target-only ELF側13MiBだった。
+
+これは LS0102 の複数構文文脈に対する標準 projectionの verified partialに限定され、LS0103 unknown-form、LS0104 multiple-parse-errors、複数診断の順序/dedup、
+他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance
+parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `c1982e1d`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
