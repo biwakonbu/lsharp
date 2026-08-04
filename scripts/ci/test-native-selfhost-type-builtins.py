@@ -16,6 +16,7 @@ INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 VALID_BUILTIN_SOURCES = {
     "float-add": "(defn main [] (+. 1.0 2.0))\n",
     "print-polymorphic": '(defn main [] (do (print 1) (print "x") 0))\n',
+    "polymorphic-collection-reuse": '(defn main [] (let [ints (vector-push (vector-new 1) 7) strings (vector-push (vector-new 1) "x") int-map (map-insert (map-new) 1 "one") string-map (map-insert (map-new) "two" 2)] (do (vector-get ints 0) (vector-get strings 0) (map-get int-map 1) (map-get string-map "two") 0)))\n',
     "subtraction": "(defn main [] (- 3 1))\n",
     "multiplication": "(defn main [] (* 3 2))\n",
     "division": "(defn main [] (/ 6 2))\n",

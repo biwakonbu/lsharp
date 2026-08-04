@@ -484,3 +484,23 @@ fn test_e2e_selfhost_typeinfer_float_builtin_source_contract() {
 fn test_e2e_selfhost_typeinfer_builtin_print_is_polymorphic_across_repeated_uses() {
     typecheck_only("(defn main [] (do (print 1) (print \"x\") 0))");
 }
+
+/// collection builtin は container の要素型ごとに独立して instantiate できる。
+#[test]
+fn test_e2e_selfhost_typeinfer_collection_builtins_are_polymorphic_across_repeated_uses() {
+    typecheck_only(
+        r#"
+(defn main []
+  (let [ints (vector-push (vector-new 1) 7)
+        strings (vector-push (vector-new 1) "x")
+        int-map (map-insert (map-new) 1 "one")
+        string-map (map-insert (map-new) "two" 2)]
+    (do
+      (vector-get ints 0)
+      (vector-get strings 0)
+      (map-get int-map 1)
+      (map-get string-map "two")
+      0)))
+"#,
+    );
+}
