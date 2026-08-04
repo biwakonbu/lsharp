@@ -214,6 +214,13 @@
   component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、
   `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。ADR: [`decisions-v0.3-native-standalone-read-file-4m-chunk.md`](docs/adr/decisions-v0.3-native-standalone-read-file-4m-chunk.md)。
 
+  さらに `e962b6ef` / `13185038` で、builtin type environmentの source-level fixtureを拡張した。Rust oracleは Floatの
+  valid/mismatch と、同じ定義内で `print` を `Int` と `String` に独立 instantiateする契約を通過し、Linux x86_64は
+  `ad65eaff` の既存 App.Cli artifactへ更新後の matrixを replayして `5 tests` 全 passとなった。production selfhost sourceは
+  `ad65eaff` から変わっていないため重い Mac/Linux current-source stage replayは重複実行していない。この Linux結果は test-only fixtureの
+  replay evidenceであり、新しい source provenance gateとは数えない。builtin全体、全型診断、全公開command、component/packaged
+  release parity、Rust-free aggregateは未完了であり、`V2-16b` は `[~]` のまま維持する。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の

@@ -4210,3 +4210,23 @@ Evidence:
 fd_read/fd_close/path_openの全 error/EOF組合せ、同時実行時のdynamic root/data/heap layout、GC/容量失敗診断、全公開command、component
 sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、TODOの
 `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。ADR: `docs/adr/decisions-v0.3-native-standalone-read-file-4m-chunk.md`。
+
+### V2-16b native builtin source-level polymorphic reuse (2026-08-04)
+
+`e962b6ef` で、native builtin matrixに Float `+.` の source-level valid/mismatch fixtureを追加した。続く `13185038` では、
+同じ定義内で `(print 1)` と `(print "x")` を連続して使う polymorphic builtin contractを、Rust oracleとnative fixtureへ追加した。
+どちらも既存の selfhost implementationを変更せず、builtin scheme lookup後に型ごとの fresh instantiationを要求する narrow contractである。
+
+Evidence:
+
+- Rust focused oracleは Float contractと repeated `print` contractをそれぞれ `1 passed` で通過した。
+- Linux x86_64では `ad65eaff` の既存 App.Cli native programへ更新後の
+  `scripts/ci/test-native-selfhost-type-builtins.py` を replayし、valid/invalid matrix、LSPを含む `5 tests` 全 passとなった。
+- replay対象の program は production selfhost source commit `ad65eaff` から生成された保存artifactであり、test-only commitの source
+  provenanceとは一致しない。従ってこの結果は fixture replay evidenceに限定し、current-source Mac/Linux stage gateへ拡大解釈しない。
+  test-only変更のため同じ production sourceの重い stage regenerationは重複実行していない。
+- Python `py_compile` と `git diff --check` は passし、Linux replay後にVM workdirを削除して `lsharp-linux-x86` を停止した。
+
+これは builtin polymorphic reuseの source-level verified partialである。全 builtin family、全型診断 code/span、runtime/codegen parity、
+全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは
+未完了であり、TODOの `V2-16b` は `[~]` のまま維持する。
