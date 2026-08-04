@@ -4412,6 +4412,29 @@ Evidence:
 definition/references/renameの全 semantic projection、cross-document URI provenance、component sidecar、release asset acquisition/rollback、
 Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
 
+### V2-16b / V2-16c native standard lint Diagnostic projection (2026-08-05)
+
+1409e18b / d3e852a6 で、review の unused-let lint diagnostic を legacy の source/rule/line/col/messageHash 配列から
+標準 LSP Diagnostic objectへ投影した。REDでは current selfhost bundleが legacy payloadを返すことをRust actual E2Eで確認し、
+GREENでは point range、severity 2、code L0001、source lsharp、message let binding unused is not used を固定した。
+
+Rust focused E2E は RED 357.54s の後、GREEN 1 passed / 341.85s。Mac Apple Silicon current-source release gateは
+artifact 4,748 KiB、manifest source_commitは current HEAD、selfhost_fixed_point=true、stderr 0、
+native core runtime matrix 26 cases全 passだった。
+
+Linux x86_64の actual self-regeneration summaryは target x86_64-unknown-linux-gnu、host Linux/x86_64、status pass、
+stage2/stage3 code length各 11,448,943、stdout SHA-256各
+a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e、stderr空の一致を記録した。
+保存済みstage2をVM-side lock付きで再利用した target-only App.Cli artifactは source commit
+d3e852a6572cbdf4ea705eee851d67230b20772e、code 13,375,178、program SHA-256
+b155abe13cb16c71f6c34e02152b33b4f819c9a8cceb769386740317f3a6f988、--version smoke stderr 0だった。
+同じLinux ELFを停止前のLima VM内で native core 26 cases、type builtins 5 tests、MCP 6 requests全 passした。
+
+これは単一unused-let diagnosticの標準projectionに限定したverified partialであり、複数lint診断の順序/dedup、
+正確なspan end、全rule code/message parity、全diagnostics/type/lint parity、definition/references/renameの全semantic projection、
+component/packaged release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
+検証後はVM workdir、replay lockを削除し、lsharp-linux-x86を停止した。Evidence commits: 1409e18b, d3e852a6。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
