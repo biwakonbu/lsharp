@@ -548,3 +548,29 @@ fn test_e2e_selfhost_typeinfer_map_remove_rejects_receiver_type_mismatch() {
 "#,
     );
 }
+
+/// 文字列・collection・reference builtin は各引数位置の型不一致を拒否する。
+#[test]
+fn test_e2e_selfhost_typeinfer_remaining_builtin_argument_mismatches() {
+    for (name, source) in [
+        ("string-concat-arg", r#"(defn main [] (string-concat "a" true))"#),
+        ("string-eq-left", r#"(defn main [] (string-eq 1 "a"))"#),
+        (
+            "string-char-at-index",
+            r#"(defn main [] (string-char-at "abc" true))"#,
+        ),
+        ("substring-end", r#"(defn main [] (substring "abc" 0 true))"#),
+        ("vector-new-size", r#"(defn main [] (vector-new true))"#),
+        ("vector-set-receiver", r#"(defn main [] (vector-set true 0 1))"#),
+        ("vector-push-receiver", r#"(defn main [] (vector-push true 1))"#),
+        ("map-get-receiver", r#"(defn main [] (map-get true 1))"#),
+        (
+            "map-contains-receiver",
+            r#"(defn main [] (map-contains? true 1))"#,
+        ),
+        ("reference-get-receiver", r#"(defn main [] (ref-get true))"#),
+    ] {
+        let result = std::panic::catch_unwind(|| should_fail_typecheck(source));
+        assert!(result.is_ok(), "Rust oracle accepted builtin mismatch: {name}");
+    }
+}
