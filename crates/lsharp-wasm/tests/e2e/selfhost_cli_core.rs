@@ -17898,16 +17898,22 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     let if_open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{if_uri}","languageId":"lsharp","version":1,"text":"(defn main [] (if 1 true false))\n"}}}}}}"##
     );
+    let argument_uri = "file:///tmp/lsharp-lsp-type-argument.ls";
+    let argument_open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{argument_uri}","languageId":"lsharp","version":1,"text":"(defn bad [] (+ 1 true))\n"}}}}}}"##
+    );
     let initialize_body =
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
     let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         initialize_body.len(),
         initialize_body,
         undefined_open_body.len(),
         undefined_open_body,
         if_open_body.len(),
-        if_open_body
+        if_open_body,
+        argument_open_body.len(),
+        argument_open_body
     );
 
     let output = compile_and_run_with_args_and_stdin(
@@ -17921,6 +17927,9 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     let if_expected = format!(
         r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{if_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}}]}}"##
     );
+    let argument_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{argument_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
+    );
     assert!(
         output.contains(&undefined_expected),
         "didOpen の undefined symbol diagnostics が標準 type fields を保持するべき: {output}"
@@ -17928,6 +17937,10 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     assert!(
         output.contains(&if_expected),
         "didOpen の non-Bool if diagnostics が標準 type fields を保持するべき: {output}"
+    );
+    assert!(
+        output.contains(&argument_expected),
+        "didOpen の function argument diagnostics が標準 type fields を保持するべき: {output}"
     );
 }
 

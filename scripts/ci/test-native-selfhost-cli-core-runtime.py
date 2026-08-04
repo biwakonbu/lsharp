@@ -28,6 +28,8 @@ LSP_TYPE_UNDEFINED_URI = "file:///tmp/lsharp-lsp-type-undefined.ls"
 LSP_TYPE_UNDEFINED_SOURCE = "(defn main [] missing)\n"
 LSP_TYPE_IF_URI = "file:///tmp/lsharp-lsp-type-if.ls"
 LSP_TYPE_IF_SOURCE = "(defn main [] (if 1 true false))\n"
+LSP_TYPE_ARGUMENT_URI = "file:///tmp/lsharp-lsp-type-argument.ls"
+LSP_TYPE_ARGUMENT_SOURCE = "(defn bad [] (+ 1 true))\n"
 LSP_PARSE_URI = "file:///tmp/lsharp-lsp-parse-standard.ls"
 LSP_PARSE_SOURCE = ")"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
@@ -707,6 +709,36 @@ def main():
         }:
             raise AssertionError(
                 f"lsp if type diagnostics projection mismatch: {if_type_frames[2]!r}"
+            )
+
+        argument_type_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_TYPE_ARGUMENT_URI,
+            LSP_TYPE_ARGUMENT_SOURCE,
+            "argument-type",
+        )
+        if argument_type_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_TYPE_ARGUMENT_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 1,
+                        "code": "LS1004",
+                        "source": "lsharp",
+                        "message": "function argument type mismatch",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp argument type diagnostics projection mismatch: {argument_type_frames[2]!r}"
             )
 
         parse_frames = run_lsp_source_diagnostics(
