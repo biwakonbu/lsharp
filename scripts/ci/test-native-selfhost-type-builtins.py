@@ -64,6 +64,7 @@ INVALID_BUILTIN_SOURCES = {
     "logic-not": "(defn bad [] (not 1))\n",
     "logic-and": "(defn bad [] (and true 1))\n",
     "logic-or": "(defn bad [] (or 1 false))\n",
+    "substring": "(defn bad [] (substring \"abc\" true 1))\n",
     "write-file-bytes": "(defn bad [] (write-file-bytes 3 (vector-new 2)))\n",
 }
 URI = "file:///tmp/lsharp-native-type-builtins.ls"

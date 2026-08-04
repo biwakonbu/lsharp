@@ -354,6 +354,65 @@ fn test_e2e_selfhost_typeinfer_write_file_bytes_contract() {
     );
 }
 
+/// substring の3引数 apply は、途中引数の型不一致を失敗値へ反映する。
+#[test]
+fn test_e2e_selfhost_typeinfer_three_argument_substring_builtin_reports_result_and_mismatch() {
+    let harness = format!(
+        r#"
+(defn make-node [tag]
+  (vector-push (vector-new 1) tag))
+
+(defn make-var-node [name-hash]
+  (vector-push (vector-push (vector-new 2) 4) name-hash))
+
+(defn make-apply3 [func first second third]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push (vector-new 6) 5)
+            func)
+          3)
+        first)
+      second)
+    third))
+
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        subst (subst-new)
+        string-node (make-node 3)
+        int-node (make-node 1)
+        bool-node (make-node 2)
+        substring-node (make-var-node {substring})
+        valid-result
+          (infer-expr
+            (make-apply3 substring-node string-node int-node int-node)
+            env subst counter)
+        mismatch-result
+          (infer-expr
+            (make-apply3 substring-node string-node bool-node int-node)
+            env subst counter)]
+    (do
+      (print (result-failed valid-result))
+      (print (ty-name (result-type valid-result)))
+      (print (result-failed mismatch-result))
+      0)))
+"#,
+        substring = lsharp_name_hash("substring"),
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "300", "1"],
+        "substring の3引数 apply は String -> Int -> Int -> String を維持し、途中引数の不一致を拒否するべき"
+    );
+}
+
 /// 引数なし apply は Unit を渡した builtin 呼び出しとして結果型を返す。
 #[test]
 fn test_e2e_selfhost_typeinfer_zero_argument_builtin_call_applies_unit() {
