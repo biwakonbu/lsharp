@@ -4488,6 +4488,20 @@ definition・references・renameを一つのLSP processで実行した。Mac App
 range、cross-document URI provenance、全 diagnostics/type/lint parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged
 provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commits: `8850c7d4`, `5922ad15`。
 
+### V2-16b / V2-16c native standard LS1004 Diagnostic projection (2026-08-05)
+
+test-only `5dc93e27` で、標準 type Diagnostic の LS1004 (`function argument type mismatch`) を didOpen wire contractへ追加した。
+`(defn bad [] (+ 1 true))` をRust actual bundleとnative App.Cliへ同じURI付き fixtureとして渡し、zero-based range、severity 1、code LS1004、
+source `lsharp`、message `function argument type mismatch` を固定した。selfhost sourceは変更していないため、stage1 -> stage3 regenerationは
+重複実行していない。
+
+Rust actual bundleの `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は 1 passed / 333.40s。
+Mac Apple Silicon と Linux x86_64 の current-source App.Cli artifactへ native runnerを適用し、native core runtime matrixは各 32 cases全 passだった。
+
+これはLS1004ひとつの標準 Diagnostic projectionに限定した verified partialであり、複数診断の順序/dedup、他のparse/type/lint ruleの正確な span end、
+全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。
+V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `5dc93e27`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、

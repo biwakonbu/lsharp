@@ -105,6 +105,15 @@ definition・references・renameを一つのLSP processで実行した。Mac App
 symbol range、cross-document URI provenance、全 diagnostics/type/lint parity、component/packaged release parity、Rust-free aggregateは
 未完了のため V2-16b / V2-16c / V2-16e は [~] のまま維持する。Evidence commits: 8850c7d4, 5922ad15.
 
+さらに test-only `5dc93e27` では、標準 type Diagnostic の LS1004 (`function argument type mismatch`) を didOpen wire contractへ追加した。
+Rust actual bundleの `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は 1 passed / 333.40s、Mac Apple Silicon と
+Linux x86_64 の current-source App.Cli artifactへ同じ native runnerを適用した native core runtime matrixは各 32 cases全 passだった。
+`selfhost/src` は変更していないため stage regenerationは重複実行していない。
+
+これは LS1004 ひとつの標準 Diagnostic projectionに限定した verified partialであり、複数診断の順序/dedup、他の parse/type/lint ruleの正確な
+span end、全 rule code/message parity、component/packaged release parity、Rust-free aggregateは未完了のため V2-16b / V2-16c / V2-16e は
+[~] のまま維持する。Evidence commit: 5dc93e27.
+
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
   `map-contains?` を含む valid builtin call matrixと、builtin argument mismatch matrix、`+` の valid/invalid、
