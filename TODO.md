@@ -1829,6 +1829,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   確認した。実Linux programへ `initialize`、`tools/list`、check/format/install/validateの6-request MCP runtime contractを渡し、
   `native MCP runtime contract passed: 6 requests` を確認した。`tools/list` の validate advertisementも含む。artifactは
   `ci-artifacts/native-linux-x86-hostgen-vm/cbbafe94-mcp-current-source-skip/` と `...-cli/` に保存し、VM workdirは削除、VMは停止した。
+  同じ `App.Cli` programへ `scripts/ci/test-native-selfhost-cli-core-runtime.py` を渡した public core command matrixも
+  `native CLI core runtime matrix passed: 23 cases` となった。help/version、parse/check/fmt、text/metadata test、Preview1
+  compile/build、review/doc/doc-ack/doc-check、install/repl、bare LSP、`lsp --stdio` hover、validate unknown report、unsupported
+  doc formatを含み、成功経路の stderrは空だった。
   これは current-source Linux native selfhostとMCP runtimeの verified partialを追加するが、現HEADとの差分はtest-onlyであり、
   release acquisition/rollback、Mac/Linux packaged provenance parity、全公開 command、native MCPの診断/migration structured parity、
   実 install/provider、`LEGACY-TOOL-01` aggregateは未完了のまま維持する。Evidence commit: `0e0a6a6c`。

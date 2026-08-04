@@ -4292,6 +4292,10 @@ current source provenanceとstage fixed pointであり、個別 builtin probeを
 確認した。この実Linux programを `scripts/ci/test-native-selfhost-mcp-runtime.py` へ渡し、JSON-RPC 6 requests、`tools/list` の
 `lsharp_validate` advertisement、check/format/install/validateのstructured/external boundaryを確認して
 `native MCP runtime contract passed: 6 requests`となった。runtime作業領域とVMは終了後に回収・停止した。
+同じ `App.Cli` programへ `scripts/ci/test-native-selfhost-cli-core-runtime.py` を渡した public core command matrixも
+`native CLI core runtime matrix passed: 23 cases` となった。help/version、parse/check/fmt、text/metadata test、Preview1
+compile/build、review/doc/doc-ack/doc-check、install/repl、bare LSP、`lsp --stdio` hover、validate unknown report、unsupported
+doc formatを含み、成功経路の stderrは空だった。
 
 これは current-source Linux native selfhostとMCP runtimeのverified partialであり、保存場所は
 `ci-artifacts/native-linux-x86-hostgen-vm/cbbafe94-mcp-current-source-skip/` と `...-cli/` である。生成時点の source commitは
