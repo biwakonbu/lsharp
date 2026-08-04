@@ -4437,10 +4437,17 @@ Linux x86_64 の保存済み current-source App.Cli artifactに同じ native run
 runtime matrix は各 27 cases 全 pass となった。Linux は x86_64 VM 内で実行し、VM内の一時 program/script は検証後に回収した。
 production selfhost source は d3e852a6 から変更せず、後続 c50b7b3c は docs-only のため、既存の d3e artifact を replay-only で再利用した。
 
+続く `43ef943e` の test-only batch では、ハイフン付き束縛名 `(let [unused-a 42] 0)` の L0001 message 復元も同じ wire contractへ
+追加した。Rust actual bundle の `test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_hyphenated_lint_name` は 1 passed / 378.17s で、
+既存の hash 逆変換に基づく `let binding unusebka is not used` を固定した。保存済みの同じ Mac Apple Silicon artifact と
+Linux x86_64 App.Cli ELFへ runnerを再適用し、unused-let、hyphenated unused-let、empty-doを含む native core runtime matrixは
+各 28 cases 全 passとなった。LinuxはLima VM内で実行し、一時 program/scriptを回収してVMを停止した。`selfhost/src` は変更していないため、
+stage1→stage3 regenerationは重複実行せず、既存fixed-point artifactをreplay-onlyで再利用した。
+
 これは unused-let と empty-do の標準projectionに限定したverified partialであり、複数lint診断の順序/dedup、
 正確なspan end、全rule code/message parity、全diagnostics/type/lint parity、definition/references/renameの全semantic projection、
 component/packaged release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
-検証後はVM workdir、replay lockを削除し、lsharp-linux-x86を停止した。Evidence commits: 1409e18b, d3e852a6, 6e09ff86。
+検証後はVM workdir、replay lockを削除し、lsharp-linux-x86を停止した。Evidence commits: 1409e18b, d3e852a6, 6e09ff86, 1b6784db, 43ef943e。
 
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
