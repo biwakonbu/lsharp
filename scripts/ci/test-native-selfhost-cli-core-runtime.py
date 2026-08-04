@@ -16,6 +16,12 @@ METADATA_SOURCE = """(defn abs [x]
 """
 DOC_JSON_SOURCE = "(defn main [] 42)\n"
 LSP_SOURCE = "(defn add [x y] (+ x y))\n(defn main [] (add 1 2))\n"
+VALIDATION_SOURCE = """(defn cancel []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/cancel-rejects-shipped"
+  true)
+"""
 STRICT_DOC_SOURCE = (
     "(defn main [] 42)\n"
     "; Doc-Review-Status: Passed\n"
@@ -148,6 +154,7 @@ def main():
         (root / "input.ls").write_text(INPUT_SOURCE, encoding="utf-8")
         (root / "metadata.ls").write_text(METADATA_SOURCE, encoding="utf-8")
         (root / "doc-json.ls").write_text(DOC_JSON_SOURCE, encoding="utf-8")
+        (root / "validation.ls").write_text(VALIDATION_SOURCE, encoding="utf-8")
         (root / "strict.ls").write_text(STRICT_DOC_SOURCE, encoding="utf-8")
 
         require_contains("help", run(program, root, ["--help"]), b"Usage: lsharp")
@@ -223,6 +230,35 @@ def main():
             run(program, root, ["doc-check", "strict.ls", "--strict"]),
             b"status:ok\nmodule-global\nfunctions:1,types:0,first-fn:main\n; Doc-Review-Status: Passed\n; Doc-Reviewed-By: anonymous\n",
         )
+        validation = subprocess.run(
+            [
+                str(program),
+                "validate",
+                "--source",
+                "validation.ls",
+                "--format",
+                "text",
+            ],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if validation.returncode != 2 or validation.stderr:
+            raise AssertionError(
+                "validate source boundary mismatch: "
+                f"exit={validation.returncode} stderr={validation.stderr!r}"
+            )
+        require_exact(
+            "validate source text",
+            validation.stdout,
+            b"status: unknown\n"
+            b"trace-gap.claim-without-test: claim:checkout/cancel-rejects-shipped\n"
+            b"open-questions: 0\n"
+            b"independent-reviews: 0\n"
+            b"contradicting-observations: 0\n"
+            b"stale-reviews: 0\n"
+            b"stale-evidence: 0\n",
+        )
         require_exact(
             "install",
             run(program, root, ["install", "core"]),
@@ -271,7 +307,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 22 cases")
+    print("native CLI core runtime matrix passed: 23 cases")
 
 
 if __name__ == "__main__":
