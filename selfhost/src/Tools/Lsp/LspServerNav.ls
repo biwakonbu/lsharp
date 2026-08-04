@@ -380,10 +380,10 @@
           name-end (lsp-scan-symbol-end src name-start len)]
           (if (> name-end name-start)
             (let [name (substring src name-start name-end)
-              last-match (if (<= name-start limit)
-                (if (string-eq name target) name-start last-match)
+              next-match (if (and (<= name-start limit) (string-eq name target))
+                name-start
                 last-match)]
-              (lsp-find-defn-offset-before-loop src target name-end limit len last-match))
+              (lsp-find-defn-offset-before-loop src target name-end limit len next-match))
             (lsp-find-defn-offset-before-loop src target (+ idx 1) limit len last-match)))
         (lsp-find-defn-offset-before-loop src target (+ idx 1) limit len last-match)))))
 

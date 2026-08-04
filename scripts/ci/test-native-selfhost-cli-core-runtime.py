@@ -16,6 +16,8 @@ METADATA_SOURCE = """(defn abs [x]
 """
 DOC_JSON_SOURCE = "(defn main [] 42)\n"
 LSP_SOURCE = "(defn add [x y] (+ x y))\n(defn main [] (add 1 2))\n"
+LSP_NAV_URI = "file:///tmp/lsharp-uri-contract.ls"
+LSP_NAV_SOURCE = "(defn helper [x] x)\n(defn main [] (helper 1))"
 LSP_DIDCHANGE_VALID_SOURCE = "(defn main [] 42)\n"
 LSP_DIDCHANGE_INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 LSP_LINT_URI = "file:///tmp/lsharp-lsp-lint.ls"
@@ -265,6 +267,59 @@ def run_lsp_source_diagnostics(program, root, uri, source, label):
         raise AssertionError(
             f"lsp {label} diagnostics emitted stderr: {result.stderr!r}"
         )
+    return parse_lsp_frames(result.stdout)
+
+
+def run_lsp_definition(program, root):
+    messages = [
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"capabilities": {}, "rootUri": None},
+            }
+        ),
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": LSP_NAV_URI,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": LSP_NAV_SOURCE,
+                    }
+                },
+            }
+        ),
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 93,
+                "method": "textDocument/definition",
+                "params": {
+                    "textDocument": {"uri": LSP_NAV_URI},
+                    "position": {"line": 1, "character": 15},
+                },
+            }
+        ),
+    ]
+    result = subprocess.run(
+        [str(program), "lsp", "--stdio"],
+        cwd=root,
+        input=b"".join(messages),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"lsp definition failed: exit={result.returncode} "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    if result.stderr:
+        raise AssertionError(f"lsp definition emitted stderr: {result.stderr!r}")
     return parse_lsp_frames(result.stdout)
 
 
@@ -656,6 +711,22 @@ def main():
                 f"lsp parse diagnostics projection mismatch: {parse_frames[2]!r}"
             )
 
+        definition_frames = run_lsp_definition(program, root)
+        if definition_frames[2] != {
+            "jsonrpc": "2.0",
+            "id": 93,
+            "result": {
+                "uri": LSP_NAV_URI,
+                "range": {
+                    "start": {"line": 0, "character": 6},
+                    "end": {"line": 0, "character": 6},
+                },
+            },
+        }:
+            raise AssertionError(
+                f"lsp definition projection mismatch: {definition_frames[2]!r}"
+            )
+
         empty_do_frames = run_lsp_source_diagnostics(
             program, root, LSP_EMPTY_DO_URI, LSP_EMPTY_DO_SOURCE, "empty-do"
         )
@@ -714,7 +785,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 31 cases")
+    print("native CLI core runtime matrix passed: 32 cases")
 
 
 if __name__ == "__main__":
