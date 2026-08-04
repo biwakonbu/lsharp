@@ -17986,8 +17986,12 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     let do_eof_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{do_eof_uri}","languageId":"lsharp","version":1,"text":"(defn main [] (do"}}}}}}"##
     );
+    let unknown_uri = "file:///tmp/lsharp-lsp-parse-unknown.ls";
+    let unknown_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{unknown_uri}","languageId":"lsharp","version":1,"text":"(unknown-form)"}}}}}}"##
+    );
     let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         initialize_body.len(),
         initialize_body,
         open_body.len(),
@@ -18001,7 +18005,9 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
         list_eof_body.len(),
         list_eof_body,
         do_eof_body.len(),
-        do_eof_body
+        do_eof_body,
+        unknown_body.len(),
+        unknown_body
     );
 
     let output = compile_and_run_with_args_and_stdin(
@@ -18050,6 +18056,13 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     assert!(
         output.contains(&do_eof_expected),
         "didOpen の do unexpected EOF parse diagnostics が標準 fields を保持するべき: {output}"
+    );
+    let unknown_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{unknown_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":1}},"end":{{"line":0,"character":13}}}},"severity":1,"code":"LS0103","source":"lsharp","message":"unknown form"}}]}}"##
+    );
+    assert!(
+        output.contains(&unknown_expected),
+        "didOpen の unknown form parse diagnostics が標準 fields を保持するべき: {output}"
     );
 }
 

@@ -1364,22 +1364,33 @@
         last-char (string-char-at src last-offset)]
         (if (or (= last-char 41) (= last-char 93)) last-offset raw-start))
       raw-start)))
-(defn lsp-parse-diagnostic-end-offset [start src]
-  (if (< start (string-length src)) (+ start 1) start))
-(defn lsp-parse-diagnostic-code-text [start src]
-  (if (< start (string-length src)) "LS0101" "LS0102"))
-(defn lsp-parse-diagnostic-message-text [start src]
-  (if (< start (string-length src))
-    (let [char (string-char-at src start)]
-      (if (= char 41) "unexpected token )" (if (= char 93) "unexpected token ]" "unexpected token")))
-    "unexpected input end"))
+(defn lsp-parse-diagnostic-end-offset [code start src]
+  (if (= code 1003)
+    (scan-symbol-end src start (string-length src))
+    (if (< start (string-length src)) (+ start 1) start)))
+(defn lsp-parse-diagnostic-code-text [code start src]
+  (if (= code 1003)
+    "LS0103"
+    (if (= code 1004)
+      "LS0104"
+      (if (< start (string-length src)) "LS0101" "LS0102"))))
+(defn lsp-parse-diagnostic-message-text [code start src]
+  (if (= code 1003)
+    "unknown form"
+    (if (= code 1004)
+      "multiple parse errors"
+      (if (< start (string-length src))
+        (let [char (string-char-at src start)]
+          (if (= char 41) "unexpected token )" (if (= char 93) "unexpected token ]" "unexpected token")))
+        "unexpected input end"))))
 (defn lsp-parse-diagnostic-to-lsp [diag src]
   (let [start-offset (lsp-parse-diagnostic-start-offset diag src)
-    end-offset (lsp-parse-diagnostic-end-offset start-offset src)
+    raw-code (vector-get diag 1)
+    end-offset (lsp-parse-diagnostic-end-offset raw-code start-offset src)
     start-position (lsp-position-from-offset src start-offset)
     end-position (lsp-position-from-offset src end-offset)
-    code-text (lsp-parse-diagnostic-code-text start-offset src)
-    message-text (lsp-parse-diagnostic-message-text start-offset src)
+    code-text (lsp-parse-diagnostic-code-text raw-code start-offset src)
+    message-text (lsp-parse-diagnostic-message-text raw-code start-offset src)
     result (vector-new 10)
     base (push-int-vector-local
       (push-int-vector-local
@@ -1900,10 +1911,13 @@
 (defn parse-diagnostics [src]
   (let [spans (tokenize-with-spans src)
     pos-ref (ref-new 0)
-    delimiter-diagnostics (parse-delimiter-diagnostics spans src)]
+    delimiter-diagnostics (parse-delimiter-diagnostics spans src)
+    unknown-form-diagnostics (parse-top-level-unknown-form-diagnostics spans)]
     (if (> (vector-length delimiter-diagnostics) 0)
       delimiter-diagnostics
-      (parse-diagnostics-loop spans pos-ref src (collect-diagnostics)))))
+      (if (> (vector-length unknown-form-diagnostics) 0)
+        unknown-form-diagnostics
+        (parse-diagnostics-loop spans pos-ref src (collect-diagnostics))))))
 (defn parse-diagnostics-count [src] (let [diagnostics (parse-diagnostics src)] (vector-length diagnostics)))
 (defn check-diagnostics-count-program [program] (infer-program-analysis-diagnostic-count (infer-program-analysis program)))
 (defn check-diagnostics-first-code [program] (infer-program-analysis-first-error-code (infer-program-analysis program)))

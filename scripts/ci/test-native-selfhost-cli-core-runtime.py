@@ -44,6 +44,8 @@ LSP_PARSE_LIST_EOF_URI = "file:///tmp/lsharp-lsp-parse-list-eof.ls"
 LSP_PARSE_LIST_EOF_SOURCE = "("
 LSP_PARSE_DO_EOF_URI = "file:///tmp/lsharp-lsp-parse-do-eof.ls"
 LSP_PARSE_DO_EOF_SOURCE = "(defn main [] (do"
+LSP_PARSE_UNKNOWN_URI = "file:///tmp/lsharp-lsp-parse-unknown.ls"
+LSP_PARSE_UNKNOWN_SOURCE = "(unknown-form)"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
 LSP_EMPTY_DO_SOURCE = "(defn main [] (do))\n"
 VALIDATION_SOURCE = """(defn cancel []
@@ -959,6 +961,36 @@ def main():
                 f"lsp unexpected do EOF parse diagnostics projection mismatch: {do_eof_parse_frames[2]!r}"
             )
 
+        unknown_parse_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_PARSE_UNKNOWN_URI,
+            LSP_PARSE_UNKNOWN_SOURCE,
+            "unknown-form-parse",
+        )
+        if unknown_parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_UNKNOWN_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 1},
+                            "end": {"line": 0, "character": 13},
+                        },
+                        "severity": 1,
+                        "code": "LS0103",
+                        "source": "lsharp",
+                        "message": "unknown form",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp unknown form parse diagnostics projection mismatch: {unknown_parse_frames[2]!r}"
+            )
+
         definition_frames = run_lsp_definition(program, root)
         if definition_frames[2] != {
             "jsonrpc": "2.0",
@@ -1085,7 +1117,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 38 cases")
+    print("native CLI core runtime matrix passed: 39 cases")
 
 
 if __name__ == "__main__":

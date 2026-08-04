@@ -5305,6 +5305,19 @@
         (vector-new 0)
         (make-diagnostic 0 code (string-length src) 0)))))
 
+;; Rust parserのトップレベル宣言境界に合わせ、未知のform名を診断する。
+;; selfhostのAST parserは式として回復できるため、LSP用のparse診断で補う。
+(defn parse-top-level-unknown-form-diagnostics [spans]
+  (if (< (vector-length spans) 6)
+    (vector-new 0)
+    (if (= (span-kind spans 0) 0)
+      (if (= (span-kind spans 1) 20)
+        (vector-push-single-rooted-v3
+          (vector-new 0)
+          (make-diagnostic 0 1003 (span-start spans 1) 0))
+        (vector-new 0))
+      (vector-new 0))))
+
 ;; 次の同期ポイント (閉じ括弧 or トップレベル) まで回復
 ;; kind=1 (RParen), kind=99 (EOF) で停止
 (defn recover-to-next-step-v3 [spans pos-ref]
