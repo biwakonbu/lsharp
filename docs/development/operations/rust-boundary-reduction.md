@@ -4480,9 +4480,13 @@ selfhost_fixed_point=true、code `13,375,205`、program SHA-256
 `b4268dceb3f8e2ecf4f254d28a10a86f6be630870b2b1a0857aae79e3dc78081`、stderr 0、`--version` smoke passを記録した。同じLinux ELFを
 Lima VM内で実行した native core runtime matrixも 32 cases全 passだった。検証後はVM workdir、lock、program/scriptを回収し、VMは停止した。
 
-これは標準 single-document definitionの URI/location projectionに限定した verified partialであり、full symbol range、references/renameの全 semantic
-projection、cross-document URI provenance、全 diagnostics/type/lint parity、component sidecar、release asset acquisition/rollback、Mac/Linux
-packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `8850c7d4`。
+さらに test-only `5922ad15` では、同じ current-source App.Cli artifactへ standard `references` と `rename` requestを追加し、5 framesの
+definition・references・renameを一つのLSP processで実行した。Mac Apple Silicon と Linux x86_64 の native core runtime matrixは各 32 cases
+全 passで、selfhost sourceは変更していないため stage1 -> stage3 regenerationは重複実行していない。
+
+これは標準 single-document definition/references/renameの URI/location/workspace edit projectionに限定した verified partialであり、full symbol
+range、cross-document URI provenance、全 diagnostics/type/lint parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged
+provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commits: `8850c7d4`, `5922ad15`。
 
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 

@@ -97,9 +97,13 @@ target `x86_64-unknown-linux-gnu`、selfhost_fixed_point=true、source tree SHA-
 core runtime matrix 32 cases全 passを確認した。Linuxゲート後は task-owned VM workdir、program/script、replay lockを回収し、12GiB VMは
 停止状態で使用量 3.5GiB / 空き 7.2GiBだった。
 
-これは標準 single-document definitionの URI/location projectionに限定した verified partialであり、full symbol range、references/renameの
-全 semantic projection、cross-document URI provenance、全 diagnostics/type/lint parity、component/packaged release parity、Rust-free
-aggregateは未完了のため V2-16b / V2-16c / V2-16e は [~] のまま維持する。Evidence commit: 8850c7d4.
+さらに test-only `5922ad15` では、同じ current-source App.Cli artifactへ standard `references` と `rename` requestを追加し、5 framesの
+definition・references・renameを一つのLSP processで実行した。Mac Apple Silicon と Linux x86_64 の native core runtime matrixは各 32 cases
+全 passで、selfhost sourceは変更していないため stage regenerationは重複実行していない。
+
+これは標準 single-document definition/references/rename の URI/location/workspace edit projectionに限定した verified partialであり、full
+symbol range、cross-document URI provenance、全 diagnostics/type/lint parity、component/packaged release parity、Rust-free aggregateは
+未完了のため V2-16b / V2-16c / V2-16e は [~] のまま維持する。Evidence commits: 8850c7d4, 5922ad15.
 
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
