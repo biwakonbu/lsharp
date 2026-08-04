@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `33d5483f`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownership、`substring` 3引数 type contractの反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
+- 確認時点の code checkpoint は `8ab2dd58`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownership、`substring` 3引数 type contract、standalone stdin bufferの容量倍増の反映後）。selfhost production sourceは `8ab2dd58` と一致し、Mac/Linux current-source native gateまで検証済みである。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -158,6 +158,31 @@
   dynamic root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset acquisition/rollback、
   Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
   ADR: [`decisions-v0.3-native-standalone-allocator-memory-growth.md`](docs/adr/decisions-v0.3-native-standalone-allocator-memory-growth.md)。
+
+  続く `8ab2dd58` では、`(4 * 1024 * 1024) - 1` bytes の stdin payloadで、chunkごとの String再確保を繰り返す旧経路を
+  REDとして固定した。standalone `read-stdin` は初期容量4096 bytesの単一 String bufferを使い、必要時に容量を倍増して
+  新しい String objectへ bytesを `memory.copy` する narrow fixを追加した。fd_readのscratch/iovec、String length offset、
+  standalone WASI call indexも実際のWasm bytesとruntimeで確認した。
+
+  Evidence:
+
+  - Rust focused E2E `selfhost_standalone_io::test_e2e_selfhost_standalone_read_stdin_runtime` — 1 passed / 315.43s。
+  - Mac Apple Silicon current-source stage0は source commit `8ab2dd589410fa668ffa5c01f596bdfa046d466c` と一致し、1 passed / 825.61s、
+    materialized native I/O matrixは18 cases全 pass。
+  - Linux x86_64 current-source stage1 -> stage2 -> stage3 fixed pointは
+    `ci-artifacts/native-linux-x86-hostgen-vm/8ab2dd58-standalone-stdin-over-4m/actual-selfregen-summary.json` で
+    `status=pass`、stage2/stage3 code length各 `11,449,265`、stdout SHA-256各
+    `179821d0fddaceaac637b08a128beee7c31c4afdc4bd4a90e88b013755855f3d` を確認した。
+  - 同じ source commitの Linux x86_64 App.Cli target-only materializeは `selfhost_fixed_point=true`、code `13,374,828` bytes、
+    program SHA-256 `f21ebd22261a2dd392e5123293faac948dcf40c586069966cfcab46545960cc4`、stderr 0 bytesを記録し、Linux native I/O matrixも
+    18 cases全 passした。これは target-only materializeを含む current-source runtime evidenceであり、全公開commandの完了証拠ではない。
+  - Static read-stdin contract、Wasm validation、Python `py_compile`、`git diff --check`を通過し、VM workdir/replay lock、Wasmtime tarball、
+    matrix workdirを回収してVMを停止した。
+
+  これは standalone stdin bufferの容量倍増と4MiB超 payloadの両対応target verified partialである。fd error/EOFの全 semantics、
+  より大きい/同時実行のdynamic root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset
+  acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`V2-16b` / `LEGACY-IO-01` は
+  `[~]` のまま維持する。ADR: [`decisions-v0.3-native-standalone-stdin-capacity-growth.md`](docs/adr/decisions-v0.3-native-standalone-stdin-capacity-growth.md)。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を

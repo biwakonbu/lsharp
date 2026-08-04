@@ -4151,3 +4151,32 @@ Evidence:
 root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged
 provenance parity、Rust-free aggregateは未完了であり、`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。ADR:
 [`decisions-v0.3-native-standalone-allocator-memory-growth.md`](../../adr/decisions-v0.3-native-standalone-allocator-memory-growth.md)。
+
+### V2-16b / LEGACY-IO-01 standalone stdin geometric buffer growth (2026-08-04)
+
+`8ab2dd589410fa668ffa5c01f596bdfa046d466c` で、`(4 * 1024 * 1024) - 1` bytesのstdin payloadを受ける standalone
+`read-stdin` のREDを固定した。旧経路は読み込みごとにStringを再確保していたため、payloadサイズに比例してallocator負荷と
+linear-memory growthを増やしていた。新経路は初期容量4096 bytesの単一String bufferを使い、capacity不足時だけ容量を倍増し、
+新しいString objectへ既存bytesを`memory.copy`してからfd_readを続ける。fd_readのscratch/iovec、String length offset、
+standalone WASI call indexを保存Wasmとruntimeで検証した。既存のallocator growth、GC、root/data layout、容量失敗診断はこの
+batchへ混ぜていない。
+
+Evidence:
+
+- Rust focused E2E `selfhost_standalone_io::test_e2e_selfhost_standalone_read_stdin_runtime` — 1 passed / 315.43s。
+- Mac Apple Silicon current-source stage0は source commit `8ab2dd589410fa668ffa5c01f596bdfa046d466c` と一致し、1 passed / 825.61s、
+  materialized native I/O matrixは18 cases全 pass。
+- Linux x86_64 current-source stage1 -> stage2 -> stage3 fixed pointは
+  `ci-artifacts/native-linux-x86-hostgen-vm/8ab2dd58-standalone-stdin-over-4m/actual-selfregen-summary.json` で
+  target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,449,265`、
+  stdout SHA-256各 `179821d0fddaceaac637b08a128beee7c31c4afdc4bd4a90e88b013755855f3d`、stderr空を記録した。
+- 同じsource commitのLinux x86_64 App.Cli target-only materializeは `selfhost_fixed_point=true`、code `13,374,828` bytes、
+  program SHA-256 `f21ebd22261a2dd392e5123293faac948dcf40c586069966cfcab46545960cc4`、stderr 0 bytesとなり、native I/O matrixも
+  18 cases全 passした。これは current-source target-only runtime evidenceであり、全公開commandのcompletionではない。
+- Static read-stdin contract、Wasm validation、Python `py_compile`、`git diff --check`を通過した。Linux VM workdir/replay lock、
+  Wasmtime tarball、matrix workdirを回収し、VMを停止した。
+
+このverified partialはstandalone stdin bufferの容量倍増と4MiB超payloadの両対応target executionを閉じる。fd error/EOFの全組合せ、
+より大きい/同時実行のdynamic root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset
+acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。`V2-16b` / `LEGACY-IO-01` は
+`[~]` のまま維持する。代表ADR: `docs/adr/decisions-v0.3-native-standalone-stdin-capacity-growth.md`。
