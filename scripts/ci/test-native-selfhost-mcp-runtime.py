@@ -83,7 +83,7 @@ def main():
     }:
         raise AssertionError(f"initialize response mismatch: {responses[0]!r}")
     tool_names = {tool["name"] for tool in responses[1]["result"]["tools"]}
-    if not {"lsharp_check", "lsharp_format", "lsharp_install"} <= tool_names:
+    if not {"lsharp_check", "lsharp_format", "lsharp_install", "lsharp_validate"} <= tool_names:
         raise AssertionError(f"MCP tool list is incomplete: {sorted(tool_names)!r}")
 
     check = responses[2]["result"]
