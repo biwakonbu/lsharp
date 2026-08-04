@@ -286,6 +286,25 @@ fn test_e2e_selfhost_typeinfer_ref_builtins_preserve_inner_type() {
     );
 }
 
+/// source-level の let binding を跨いでも ref-set は ref-new の要素型を保持する。
+#[test]
+fn test_e2e_selfhost_typeinfer_ref_set_source_contract() {
+    typecheck_only(
+        r#"
+(defn main []
+  (let [r (ref-new "x")]
+    (ref-set r "y")))
+"#,
+    );
+    should_fail_typecheck(
+        r#"
+(defn bad []
+  (let [r (ref-new "x")]
+    (ref-set r 1)))
+"#,
+    );
+}
+
 /// write-file-bytes は String と Vector を受け取り、Int の結果型を返す。
 #[test]
 fn test_e2e_selfhost_typeinfer_write_file_bytes_contract() {
