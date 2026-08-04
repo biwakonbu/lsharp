@@ -4054,3 +4054,18 @@ verified partial boundaryを構成する。native成功経路に Rust fallback�
 source ownershipに限定されるため、個別 source file symlink / 特殊 filesystem entryの explicit fixture、installer / registry / provider/auth、
 current-source Mac Apple Silicon / Linux x86_64 runtime、packaged/release/rollback parityは残る。`I-09` / `M3-05-N9` / `EC-M3-05` と
 Rust-free全体は `[~]` のまま維持する。ADR: [`decisions-v0.3-native-mcp-package-src-child-symlink-boundary.md`](../../adr/decisions-v0.3-native-mcp-package-src-child-symlink-boundary.md)。
+
+### V2-16b / LEGACY-IO-01 substring three-argument type boundary (2026-08-04)
+
+`33d5483f` で `substring` の3引数 applyに対する narrow type contractを追加した。valid
+`(substring "abc" 0 1)` は `String` resultを返し、invalid `(substring "abc" true 1)` は途中引数の type mismatchとして失敗する。
+これは generic applyの引数収集・curried function型・最終 unifyを I/O/runtime ABIから分離して検証するREDである。
+
+Evidence:
+
+- `cargo test -p lsharp-wasm --test e2e e2e::selfhost_typeinfer_builtin_parity:: -- --nocapture` — 6 tests passed。
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-type-builtins.py --program ci-artifacts/native-release/aarch64-apple-darwin/d2dcea7e-standalone-command-line/program.native` — 5 tests passed。ただし保存済み artifactは source commitが現 checkoutと一致しない replay-onlyであり、current-source native evidenceには数えない。
+
+current-source Mac Apple Silicon / Linux x86_64 native check、全 builtinの診断 code/span、runtime/codegen、公開 command、component、packaged/release
+provenanceは残る。同じ production sourceを変更しない test-only batchのため、Linux stage2/stage3 replayは重複起動しない。`V2-16b` / `LEGACY-IO-01` は
+`[~]` のまま維持する。ADR: [`decisions-v0.3-native-typeinfer-substring-arity-boundary.md`](../../adr/decisions-v0.3-native-typeinfer-substring-arity-boundary.md)。

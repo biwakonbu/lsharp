@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `f76dafb9`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownershipの contract反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
+- 確認時点の code checkpoint は `33d5483f`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownership、`substring` 3引数 type contractの反映後）。selfhost production sourceは `d2dcea7e` のままで、以降は runner/test と evidence の差分である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -112,6 +112,13 @@
   native I/O matrixも8 cases全 passだった。これは nread-bearing fd_read errnoとempty/4096/4097 stdinの両対応target verified partialであり、
   fd error/EOFの全 semantics、argv/full command-line、全公開command、component sidecar、release asset acquisition/rollback、
   Mac/Linux packaged parityは未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+  さらに `33d5483f` で `substring` の3引数 applyを type-inference REDへ追加し、valid `String -> Int -> Int -> String` と途中の
+  `Bool` 引数 mismatchを同じ selfhost harnessで比較した。Rust oracleの
+  `cargo test -p lsharp-wasm --test e2e e2e::selfhost_typeinfer_builtin_parity:: -- --nocapture` は6 tests全 passし、native builtin
+  mismatch fixtureにも `(substring "abc" true 1)` を追加した。保存済み Mac artifact `d2dcea7e` への replay-only sanityは5 tests全 pass
+  だったが、artifactの source commitが現 checkoutと一致しないため current-source native evidenceには数えない。current-source Mac/Linux
+  native check、全 builtin、全型診断、全公開command、component/packaged release parityは未完了であり、`V2-16b` は `[~]` のまま維持する。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
