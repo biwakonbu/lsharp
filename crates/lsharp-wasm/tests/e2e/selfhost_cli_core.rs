@@ -17931,6 +17931,37 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     );
 }
 
+/// TEST-CLI-02-AN32h: actual Cli は parse diagnostic の span/code/message を標準 LSP object へ投影すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic() {
+    let uri = "file:///tmp/lsharp-lsp-parse-standard.ls";
+    let initialize_body =
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
+    let open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":")"}}}}}}"##
+    );
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        initialize_body.len(),
+        initialize_body,
+        open_body.len(),
+        open_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}}]}}"##
+    );
+    assert!(
+        output.contains(&expected),
+        "didOpen の parse diagnostics が標準 range/code/message を保持するべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN32e: actual Cli は didOpen の empty-do lint を標準 LSP Diagnostic object へ投影すること
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnostic() {

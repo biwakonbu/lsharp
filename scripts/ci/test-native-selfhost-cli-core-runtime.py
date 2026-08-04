@@ -26,6 +26,8 @@ LSP_TYPE_UNDEFINED_URI = "file:///tmp/lsharp-lsp-type-undefined.ls"
 LSP_TYPE_UNDEFINED_SOURCE = "(defn main [] missing)\n"
 LSP_TYPE_IF_URI = "file:///tmp/lsharp-lsp-type-if.ls"
 LSP_TYPE_IF_SOURCE = "(defn main [] (if 1 true false))\n"
+LSP_PARSE_URI = "file:///tmp/lsharp-lsp-parse-standard.ls"
+LSP_PARSE_SOURCE = ")"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
 LSP_EMPTY_DO_SOURCE = "(defn main [] (do))\n"
 VALIDATION_SOURCE = """(defn cancel []
@@ -628,6 +630,32 @@ def main():
                 f"lsp if type diagnostics projection mismatch: {if_type_frames[2]!r}"
             )
 
+        parse_frames = run_lsp_source_diagnostics(
+            program, root, LSP_PARSE_URI, LSP_PARSE_SOURCE, "parse"
+        )
+        if parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 1},
+                        },
+                        "severity": 1,
+                        "code": "LS0101",
+                        "source": "lsharp",
+                        "message": "unexpected token )",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp parse diagnostics projection mismatch: {parse_frames[2]!r}"
+            )
+
         empty_do_frames = run_lsp_source_diagnostics(
             program, root, LSP_EMPTY_DO_URI, LSP_EMPTY_DO_SOURCE, "empty-do"
         )
@@ -686,7 +714,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 30 cases")
+    print("native CLI core runtime matrix passed: 31 cases")
 
 
 if __name__ == "__main__":
