@@ -1836,6 +1836,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これは current-source Linux native selfhostとMCP runtimeの verified partialを追加するが、現HEADとの差分はtest-onlyであり、
   release acquisition/rollback、Mac/Linux packaged provenance parity、全公開 command、native MCPの診断/migration structured parity、
   実 install/provider、`LEGACY-TOOL-01` aggregateは未完了のまま維持する。Evidence commit: `0e0a6a6c`。
+  続く current `HEAD=a0845320584ba044c690404fd0249770a5118fff` では、Mac Apple Siliconの
+  `scripts/ci/native-macos-aarch64-selfhost-release.sh` を一度だけ実行し、current-source stage2→stage3 fixed-pointから
+  `App.Cli` native release programを生成した。E2Eは `1 passed` / `900.55s`、artifactは `4,748 KiB`、manifestは target
+  `aarch64-apple-darwin`、同じ source commit、`selfhost_fixed_point=true`、program SHA-256
+  `281d178673c975d89fbb47b810d1fdac380935a173912e6fc46843107f5704c7` を記録し、`file` は Mach-O 64-bit arm64だった。
+  `--version` は `lsharp 0.1.0`、stderr `0` bytesで、同じ programを使った public core CLI matrix `23 cases` と native MCP
+  runtime `6 requests` も全 passした。生成時の cargo targetは終了時に自動削除し、Mac側の current-source runtime artifactは
+  `ci-artifacts/native-release/aarch64-apple-darwin/current-a0845320/` に保持している。これは Mac current-source
+  App.Cli/MCPの verified partialを追加するが、Linuxと同一source commitでの同時 packaged provenance parity、公開 release
+  asset acquisition/rollback、全公開 command semantics、native MCPの診断/migration structured parity、実 install/provider、
+  `LEGACY-TOOL-01` aggregateは未完了のまま維持する。Evidence commit: `a0845320`。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
@@ -2006,6 +2017,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   source tree fingerprint、program digest、`--version` smoke、MCP 6-request runtimeを実行した。これは current-source Linux regeneration
   と target runtimeの verified partialを広げるが、public release asset acquisition、rollback archiveの実行、Mac/Linux packaged
   provenance parity、Rust oracle/host integrationの完全隔離、`LEGACY-BOOT-01` aggregateは未完了のまま維持する。
+  さらに `HEAD=a0845320584ba044c690404fd0249770a5118fff` の Mac Apple Silicon current-source App.Cli releaseを生成し、
+  manifest source commit/target/fixed-point/program digest、Mach-O arm64、`--version` smoke、CLI `23 cases`、MCP `6 requests`を
+  実行した。これは Mac側の current-source release-program producerと runtimeの verified partialであり、公式 release assetへの
+  acquisition、archive rollback、Linuxとの同一 source commitを含む packaged provenance parity、component sidecarの完了証拠には
+  数えない。Mac/Linux VM・cargo target・一時 lockは検証後に停止・回収済みである。
 
 ## ISSUES-derived quality and runtime work
 

@@ -4302,3 +4302,29 @@ doc formatを含み、成功経路の stderrは空だった。
 test-only commitの親であるため、後続の `0e0a6a6c`で追加したruntime assertionは同じprogramへ再実行して確認した。
 release asset acquisition/rollback、Mac/Linux packaged provenance parity、全公開 command、native MCPのdiagnostic/migration
 structured parity、実 install/provider、`LEGACY-TOOL-01` aggregateは未完了であり、`V2-16c` / `V2-16e`は`[~]`のまま維持する。
+
+### V2-16c / V2-16e current-source Mac App.Cli release and runtime (2026-08-04)
+
+`HEAD=a0845320584ba044c690404fd0249770a5118fff` が clean であることを確認した上で、
+`scripts/ci/native-macos-aarch64-selfhost-release.sh` を一度だけ実行した。E2Eは
+`e2e::selfhost_native_stage_chain::test_e2e_native_macos_aarch64_actual_app_cli_release_program` の
+`1 passed` / `900.55s` で、current-source stage2→stage3 fixed-pointから `App.Cli` release programを生成した。
+
+- artifact: `ci-artifacts/native-release/aarch64-apple-darwin/current-a0845320/`
+- target: `aarch64-apple-darwin`
+- manifest source commit: `a0845320584ba044c690404fd0249770a5118fff`
+- `selfhost_fixed_point`: `true`
+- program SHA-256: `281d178673c975d89fbb47b810d1fdac380935a173912e6fc46843107f5704c7`
+- `file`: Mach-O 64-bit executable arm64
+- artifact size: `4,748 KiB`
+- `--version`: `lsharp 0.1.0`, stderr `0` bytes
+
+同じ `program.native`を再利用して `scripts/ci/test-native-selfhost-cli-core-runtime.py` の public core CLI matrix
+`23 cases` と `scripts/ci/test-native-selfhost-mcp-runtime.py` の JSON-RPC `6 requests` を実行し、いずれも passした。
+MCPは `initialize`、`tools/list`、`lsharp_check`、`lsharp_format`、`lsharp_install`、`lsharp_validate` を含む。
+生成後に cargo targetは自動削除され、Mac側の一時実行資源は残していない。
+
+これは Mac current-source App.Cli/MCP runtimeのverified partialである。Linux x86_64とは生成時の source commitが異なるため、
+同一commitの両target packaged provenance parity、公式 release asset acquisition、archive rollback、全公開 commandのsemantic
+parity、native MCPのdiagnostic/migration structured parity、実 install/provider、component sidecar、Rust-free aggregateの
+証拠には拡大解釈しない。`V2-16c` / `V2-16e` は `[~]` のまま維持する。
