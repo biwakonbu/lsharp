@@ -17860,6 +17860,33 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_lint_diagnostic() 
     );
 }
 
+/// TEST-CLI-02-AN32f: actual Cli はハイフン付き束縛名の lint message を Rust oracle と同じに復元すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_hyphenated_lint_name() {
+    let uri = "file:///tmp/lsharp-lsp-lint-hyphen.ls";
+    let open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"(defn main [] (let [unused-a 42] 0))\n"}}}}}}"##
+    );
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unusebka is not used"}}]}}"##
+    );
+    assert!(
+        output.contains(&expected),
+        "didOpen のハイフン付き lint message が Rust oracle の復元値を保持するべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN32e: actual Cli は didOpen の empty-do lint を標準 LSP Diagnostic object へ投影すること
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnostic() {

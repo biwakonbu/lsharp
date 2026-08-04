@@ -20,6 +20,8 @@ LSP_DIDCHANGE_VALID_SOURCE = "(defn main [] 42)\n"
 LSP_DIDCHANGE_INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 LSP_LINT_URI = "file:///tmp/lsharp-lsp-lint.ls"
 LSP_LINT_SOURCE = "(defn main [] (let [unused 42] 0))\n"
+LSP_HYPHEN_LINT_URI = "file:///tmp/lsharp-lsp-lint-hyphen.ls"
+LSP_HYPHEN_LINT_SOURCE = "(defn main [] (let [unused-a 42] 0))\n"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
 LSP_EMPTY_DO_SOURCE = "(defn main [] (do))\n"
 VALIDATION_SOURCE = """(defn cancel []
@@ -528,6 +530,40 @@ def main():
                 f"lsp lint diagnostics projection mismatch: {lint_frames[2]!r}"
             )
 
+        hyphen_lint_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_HYPHEN_LINT_URI,
+            LSP_HYPHEN_LINT_SOURCE,
+            "hyphenated-lint",
+        )
+        if len(hyphen_lint_frames) != 3:
+            raise AssertionError(
+                f"lsp hyphenated lint diagnostics frame count mismatch: {hyphen_lint_frames!r}"
+            )
+        if hyphen_lint_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_HYPHEN_LINT_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 2,
+                        "code": "L0001",
+                        "source": "lsharp",
+                        "message": "let binding unusebka is not used",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp hyphenated lint diagnostics projection mismatch: {hyphen_lint_frames[2]!r}"
+            )
+
         empty_do_frames = run_lsp_source_diagnostics(
             program, root, LSP_EMPTY_DO_URI, LSP_EMPTY_DO_SOURCE, "empty-do"
         )
@@ -586,7 +622,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 27 cases")
+    print("native CLI core runtime matrix passed: 28 cases")
 
 
 if __name__ == "__main__":
