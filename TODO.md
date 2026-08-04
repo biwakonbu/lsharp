@@ -120,6 +120,21 @@
   だったが、artifactの source commitが現 checkoutと一致しないため current-source native evidenceには数えない。current-source Mac/Linux
   native check、全 builtin、全型診断、全公開command、component/packaged release parityは未完了であり、`V2-16b` は `[~]` のまま維持する。
 
+  続く `ee08f23b` current-source gateでは、`bash scripts/ci/native-macos-aarch64-stage0-release.sh` を一度だけ実行し、Mac Apple
+  Siliconの App.Cli stage chainを `1 passed` / `832.82s` で完了した。stage0 manifestは target `aarch64-apple-darwin`、source commit
+  `ee08f23b132d6146716c5c025cf9d543cfc4b88a` と一致し、packageは
+  `ci-artifacts/native-stage0/aarch64-apple-darwin/ee08f23b-substring-type-contract/` に保存した。同packageを
+  `scripts/native-selfhost-dev.sh` の入口へ渡して current-source App.Cliをmaterializeし、
+  `scripts/ci/test-native-selfhost-type-builtins.py` は `5 tests` 全 pass（`substring` mismatchを含む）だった。
+  同じ source commitの Linux x86_64 gateも `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=ee08f23b-substring-type-contract bash
+  scripts/ci/native-linux-x86-selfregen.sh` を一度だけ実行し、
+  `ci-artifacts/native-linux-x86-hostgen-vm/ee08f23b-substring-type-contract/actual-selfregen-summary.json` で target
+  `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,442,429`、stdout SHA-256各
+  `2526caaefa9e86b934d5d08eb800847ac96e6b3989f3c3c37c7d2c933516086e` を確認した。VM free-space gateは
+  `7,683,088,384` / `4,294,967,296` bytesで passし、成功後にVM workdirとreplay lockを回収してVMを停止した。
+  これは current-source Mac/Linux stage provenanceとstage2/stage3 fixed point、およびMac native substring type fixtureの verified
+  partialであり、Linux側の全 builtin matrix、全型診断、全公開command、component/packaged release parityは未完了である。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の

@@ -4069,3 +4069,24 @@ Evidence:
 current-source Mac Apple Silicon / Linux x86_64 native check、全 builtinの診断 code/span、runtime/codegen、公開 command、component、packaged/release
 provenanceは残る。同じ production sourceを変更しない test-only batchのため、Linux stage2/stage3 replayは重複起動しない。`V2-16b` / `LEGACY-IO-01` は
 `[~]` のまま維持する。ADR: [`decisions-v0.3-native-typeinfer-substring-arity-boundary.md`](../../adr/decisions-v0.3-native-typeinfer-substring-arity-boundary.md)。
+
+### V2-16b / LEGACY-IO-01 current-source native provenance gate (2026-08-04)
+
+`ee08f23b132d6146716c5c025cf9d543cfc4b88a` の clean checkoutで、Mac Apple Siliconの current-source App.Cli stage chainを
+`bash scripts/ci/native-macos-aarch64-stage0-release.sh` から一度だけ実行した。Rust E2Eは `1 passed` / `832.82s`、stage0
+manifestは target `aarch64-apple-darwin`、source commit `ee08f23b...` と一致し、stage0 packageを
+`ci-artifacts/native-stage0/aarch64-apple-darwin/ee08f23b-substring-type-contract/` に保存した。保存packageを
+`scripts/native-selfhost-dev.sh` へ渡して current-source App.Cliをmaterializeし、
+`PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-type-builtins.py --program target/native-current-app-cli-ee08f23b/program.native`
+は `5 tests` 全 passとなった。ここには `substring` の valid callと途中 `Bool` argument mismatchが含まれる。
+
+同じ source commitから Linux x86_64 actual self-regenerationを
+`NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=ee08f23b-substring-type-contract bash scripts/ci/native-linux-x86-selfregen.sh`
+で一度だけ実行した。`ci-artifacts/native-linux-x86-hostgen-vm/ee08f23b-substring-type-contract/actual-selfregen-summary.json` は
+target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,442,429`、stdout
+SHA-256各 `2526caaefa9e86b934d5d08eb800847ac96e6b3989f3c3c37c7d2c933516086e` を記録した。VM free-space gateは
+`7,683,088,384` bytes available / `4,294,967,296` bytes requiredで passし、成功後にVM workdirとreplay lockを削除し、VMを停止した。
+
+この gateで current-source Mac/Linux stage provenanceとstage2/stage3 fixed point、Mac native substring type fixtureを確認した。
+Linux側の全 builtin/type-diagnostic matrix、全公開 command、component、release asset acquisition/rollback、Mac/Linux packaged
+artifact provenance parity、Rust-free全体の完了は示さない。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。

@@ -22,9 +22,15 @@ native builtin type matrixには `substring` の valid `String -> Int -> Int -> 
 - `cargo test -p lsharp-wasm --test e2e e2e::selfhost_typeinfer_builtin_parity:: -- --nocapture` — 6 tests passed。
 - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-type-builtins.py --program ci-artifacts/native-release/aarch64-apple-darwin/d2dcea7e-standalone-command-line/program.native` — 5 tests passed（replay-only、source commit不一致）。
 - `33d5483f` の変更は Rust oracleと `scripts/ci/test-native-selfhost-type-builtins.py` の同一 invalid fixtureを保持する。
+- `ee08f23b` current-source Mac Apple Silicon stage0 release gate — `1 passed` / `832.82s`。source commitは
+  `ee08f23b132d6146716c5c025cf9d543cfc4b88a`、targetは `aarch64-apple-darwin` と一致した。
+- 同じ current-source stage0 packageから `scripts/native-selfhost-dev.sh` で App.Cliをmaterializeし、native type builtin matrixは
+  `5 tests` 全 passとなった（`substring` valid/mismatchを含む）。
+- `ee08f23b` Linux x86_64 actual self-regeneration — `actual-selfregen-summary.json` は target `x86_64-unknown-linux-gnu`、
+  host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,442,429`、stdout SHA-256各
+  `2526caaefa9e86b934d5d08eb800847ac96e6b3989f3c3c37c7d2c933516086e`。成功後にVM workdir/lockを削除し、VMを停止した。
 
 ## 残る境界
 
-現行 checkout source commitでの Mac Apple Silicon / Linux x86_64 native check、全 builtinの型診断、診断 code/span parity、runtime/codegen、
-全公開 command、component、packaged/release provenanceは未検証である。current-source stage0の strict provenanceを迂回する旧 artifact再利用は
-採用しない。
+Linux側の全 builtin/type-diagnostic matrix、診断 code/span parity、runtime/codegen、全公開 command、component、packaged/release
+provenanceは未検証である。current-source stage0の strict provenanceを迂回する旧 artifact再利用は採用しない。
