@@ -4233,3 +4233,15 @@ Evidence:
 これは builtin polymorphic reuseの source-level verified partialである。全 builtin family、全型診断 code/span、runtime/codegen parity、
 全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは
 未完了であり、TODOの `V2-16b` は `[~]` のまま維持する。
+
+### V2-16c Linux native App.Cli core command matrix replay (2026-08-04)
+
+`ad65eaff` の Linux x86_64 `App.Cli` target-only native programへ `scripts/ci/test-native-selfhost-cli-core-runtime.py` を渡し、
+public core command matrixを replayした。`--help`、`--version`、parse/check/fmt、text/metadata test、Preview1 `compile` / `build`、
+review、doc JSON、doc-ack、doc-check、install、repl、bare LSP、`lsp --stdio` の initialize/didOpen/hover、unsupported doc formatを
+含む `22 cases` が全 passし、成功経路の stderrは空だった。実行後はVM workdirを削除し、`lsharp-linux-x86` を停止した。
+
+この program は production selfhost source `ad65eaff` から生成された保存 artifactであり、現HEADの test/docs commitとは一致しない。
+従ってこれは Linux x86_64の public command replay evidenceであって、current-source provenance gateではない。実 install/package registry、
+対話 REPL、LSP全 semantic projection、component helper、stage0 acquisition/release/rollback、Mac/Linux packaged provenance parity、
+`V2-16c` / `LEGACY-TOOL-01` aggregateは未完了のまま維持する。

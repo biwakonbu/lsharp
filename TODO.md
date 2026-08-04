@@ -1797,6 +1797,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   stage1/stage2/stage3 replayは重複実行していない。これは public command routingと代表的な doc/REPL/LSP wireの両target verified partialを
   追加するが、実 install/package registry、対話 REPL、LSP の全 semantic projection、component helper、全公開 command、stage0 package
   acquisition/release/rollback、Mac/Linux packaged provenance parity、`LEGACY-TOOL-01` aggregateは未完了である。
+  さらに `ad65eaff` の Linux x86_64 `App.Cli` target-only native programへ同じ core runnerを渡し、`22 cases` 全 passを確認した。
+  `--help`、`--version`、parse/check/fmt/test、Preview1 compile/build、review/doc/doc-ack/doc-check、install/repl、bare LSP、
+  `lsp --stdio` hover、unsupported doc formatを含むが、保存 artifactは現HEADの test/docs commitとは一致しないため replay-onlyである。
+  native source provenance、実 install/package registry、対話 REPL、LSP全 semantic projection、component helper、両target packaged
+  release parity、`LEGACY-TOOL-01` aggregateは未完了のまま残す。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
