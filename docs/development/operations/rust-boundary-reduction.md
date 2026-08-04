@@ -4345,3 +4345,15 @@ runtime representation compatibilityにより `Int` receiverもこの型診断�
 変更は test-only なので、`a0845320` sourceから生成済みの Mac artifactを replayし、stage1→stage3 regenerationは重複実行していない。
 これは Map receiver diagnosticの verified partialであり、Mapの key/value semantic typing、全 builtin family、全型診断、全公開
 command、component/packaged release parity、Rust-free aggregateは未完了のまま `V2-16b` を `[~]` とする。
+
+### V2-16b native ref-set source-level contract (2026-08-04)
+
+`c97c01c0` で、`ref-new` と `ref-set` の let bindingを跨ぐ source-level contractを Rust oracle と native type-builtin matrixへ追加した。
+valid fixtureは `(let [r (ref-new "x")] (ref-set r "y"))`、invalid fixtureは同じ `r` へ Intを書き込む
+`(ref-set r 1)` である。Rust focused testは `1 passed`、`e2e::selfhost_typeinfer_builtin_parity::` moduleは `11 passed`、
+current Mac App.Cli artifact `ci-artifacts/native-release/aarch64-apple-darwin/current-a0845320/program.native` の native matrixは
+`5 tests` 全 passとなり、invalid pathは exit `1` と `function argument type mismatch` を返した。
+
+既存の `Ref a -> a -> Unit` schemeとselfhost implementationは変更していない。test-only変更なので `a0845320` source由来の Mac artifactを
+replayし、stage1→stage3 regenerationは重複実行していない。これは ref source-level lookup/applyの verified partialであり、全 builtin
+family、全型診断、全公開 command、component/packaged release parity、Rust-free aggregateは未完了のまま `V2-16b` を `[~]` とする。

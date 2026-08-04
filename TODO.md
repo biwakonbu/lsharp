@@ -229,6 +229,13 @@
   selfhost implementationの変更はなく、test-only replayのため重い stage1→stage3 regenerationは重複実行していない。この verified
   partialは receiver boundary に限られ、Mapの key/value semantic typing、全 builtin family、全型診断、全公開command、component/packaged
   release parity、Rust-free aggregateは未完了であり、`V2-16b` は `[~]` のまま維持する。Evidence commit: `cf9ac17f`。
+  続く `c97c01c0` では、`ref-new` と `ref-set` の source-level let binding contractを追加した。`(ref-new "x")` を束縛して
+  `(ref-set r "y")` は成功し、`(ref-set r 1)` は `function argument type mismatch` で拒否する同一 fixtureを Rust oracle と
+  native type-builtin matrixへ追加した。Rust focused test `1 passed`、builtin parity module `11 passed`、current Mac App.Cli artifact
+  の native matrix `5 tests` 全 passを確認した。既存の `Ref a -> a -> Unit` schemeとselfhost implementationは変更しておらず、
+  test-only replayのため stage1→stage3 regenerationは重複実行していない。これは ref source-level apply境界の verified partialであり、
+  全 builtin family、全型診断、全公開command、component/packaged release parity、Rust-free aggregateは未完了のまま、`V2-16b` は
+  `[~]` を維持する。Evidence commit: `c97c01c0`。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
