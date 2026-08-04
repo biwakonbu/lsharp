@@ -65,12 +65,17 @@ def main():
                 "tools/call",
                 {"name": "lsharp_install", "arguments": {"name": "demo"}},
             ),
+            request(
+                6,
+                "tools/call",
+                {"name": "lsharp_validate", "arguments": {"source": SOURCE}},
+            ),
         ]
     )
     with tempfile.TemporaryDirectory(prefix="lsharp-native-mcp-runtime-") as directory:
         responses = run_shim(program, payload, pathlib.Path(directory))
 
-    if len(responses) != 5:
+    if len(responses) != 6:
         raise AssertionError(f"MCP response count mismatch: {responses!r}")
     if responses[0]["result"]["serverInfo"] != {
         "name": "lsharp",
@@ -104,7 +109,19 @@ def main():
     ]:
         raise AssertionError(f"lsharp_install boundary mismatch: {install!r}")
 
-    print("native MCP runtime contract passed: 5 requests")
+    validate = responses[5]["result"]
+    if validate.get("isError") is not False or validate["structuredContent"] != {
+        "status": "unknown",
+        "trace_gaps": [],
+        "open_questions": 0,
+        "independent_reviews": 0,
+        "contradicting_observations": 0,
+        "stale_reviews": 0,
+        "stale_evidence": 0,
+    }:
+        raise AssertionError(f"lsharp_validate response mismatch: {validate!r}")
+
+    print("native MCP runtime contract passed: 6 requests")
 
 
 if __name__ == "__main__":
