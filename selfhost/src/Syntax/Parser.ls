@@ -5318,6 +5318,89 @@
         (vector-new 0))
       (vector-new 0))))
 
+;; Rust parserのMultipleに対応する最小のトップレベル回復診断。
+;; malformed defn の signature が複数ある場合は、最初の失敗位置を保持する。
+(defn make-parse-multiple-state-v3 [done idx depth error-count first-span]
+  (vector-push-single-rooted-v3
+    (vector-push-quad-rooted-v3
+      (vector-new 5)
+      done
+      idx
+      depth
+      error-count)
+    first-span))
+
+(defn parse-multiple-top-level-step-v3 [spans idx count depth error-count first-span]
+  (if (>= idx count)
+    (make-parse-multiple-state-v3 1 idx depth error-count first-span)
+    (let [kind (span-kind spans idx)
+      next-kind (if (< (+ idx 1) count) (span-kind spans (+ idx 1)) 99)
+      signature-kind (if (< (+ idx 2) count) (span-kind spans (+ idx 2)) 99)
+      malformed-defn
+        (and
+          (= depth 0)
+          (and (= kind 0) (and (= next-kind 30) (= signature-kind 2))))]
+      (if (= kind 0)
+        (make-parse-multiple-state-v3
+          0
+          (+ idx 1)
+          (+ depth 1)
+          (if malformed-defn (+ error-count 1) error-count)
+          (if (and malformed-defn (= error-count 0))
+            (span-start spans (+ idx 2))
+            first-span))
+        (if (= kind 1)
+          (make-parse-multiple-state-v3
+            0
+            (+ idx 1)
+            (if (> depth 0) (- depth 1) depth)
+            error-count
+            first-span)
+          (make-parse-multiple-state-v3 0 (+ idx 1) depth error-count first-span))))))
+
+(defn parse-multiple-top-level-step-64-loop-bounded
+  [spans idx count depth error-count first-span remaining]
+  (do
+    (root_push spans)
+    (let [step
+            (parse-multiple-top-level-step-v3
+              spans idx count depth error-count first-span)]
+      (do
+        (root_push step)
+        (let [parsed
+                (if (= (vector-get step 0) 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (parse-multiple-top-level-step-64-loop-bounded
+                      spans
+                      (vector-get step 1)
+                      count
+                      (vector-get step 2)
+                      (vector-get step 3)
+                      (vector-get step 4)
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-multiple-top-level-diagnostics [spans]
+  (let [step
+          (parse-multiple-top-level-step-64-loop-bounded
+            spans
+            0
+            (/ (vector-length spans) 3)
+            0
+            0
+            0
+            64)]
+    (if (> (vector-get step 3) 1)
+      (vector-push-single-rooted-v3
+        (vector-new 0)
+        (make-diagnostic 0 1004 (vector-get step 4) 0))
+      (vector-new 0))))
+
 ;; 次の同期ポイント (閉じ括弧 or トップレベル) まで回復
 ;; kind=1 (RParen), kind=99 (EOF) で停止
 (defn recover-to-next-step-v3 [spans pos-ref]

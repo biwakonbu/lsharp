@@ -46,6 +46,8 @@ LSP_PARSE_DO_EOF_URI = "file:///tmp/lsharp-lsp-parse-do-eof.ls"
 LSP_PARSE_DO_EOF_SOURCE = "(defn main [] (do"
 LSP_PARSE_UNKNOWN_URI = "file:///tmp/lsharp-lsp-parse-unknown.ls"
 LSP_PARSE_UNKNOWN_SOURCE = "(unknown-form)"
+LSP_PARSE_MULTIPLE_URI = "file:///tmp/lsharp-lsp-parse-multiple.ls"
+LSP_PARSE_MULTIPLE_SOURCE = "(defn [) (defn [)"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
 LSP_EMPTY_DO_SOURCE = "(defn main [] (do))\n"
 VALIDATION_SOURCE = """(defn cancel []
@@ -989,6 +991,36 @@ def main():
         }:
             raise AssertionError(
                 f"lsp unknown form parse diagnostics projection mismatch: {unknown_parse_frames[2]!r}"
+            )
+
+        multiple_parse_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_PARSE_MULTIPLE_URI,
+            LSP_PARSE_MULTIPLE_SOURCE,
+            "multiple-parse-errors",
+        )
+        if multiple_parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_MULTIPLE_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 6},
+                            "end": {"line": 0, "character": 7},
+                        },
+                        "severity": 1,
+                        "code": "LS0104",
+                        "source": "lsharp",
+                        "message": "multiple parse errors",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp multiple parse diagnostics projection mismatch: {multiple_parse_frames[2]!r}"
             )
 
         definition_frames = run_lsp_definition(program, root)

@@ -1911,13 +1911,16 @@
 (defn parse-diagnostics [src]
   (let [spans (tokenize-with-spans src)
     pos-ref (ref-new 0)
+    multiple-diagnostics (parse-multiple-top-level-diagnostics spans)
     delimiter-diagnostics (parse-delimiter-diagnostics spans src)
     unknown-form-diagnostics (parse-top-level-unknown-form-diagnostics spans)]
-    (if (> (vector-length delimiter-diagnostics) 0)
-      delimiter-diagnostics
-      (if (> (vector-length unknown-form-diagnostics) 0)
-        unknown-form-diagnostics
-        (parse-diagnostics-loop spans pos-ref src (collect-diagnostics))))))
+    (if (> (vector-length multiple-diagnostics) 0)
+      multiple-diagnostics
+      (if (> (vector-length delimiter-diagnostics) 0)
+        delimiter-diagnostics
+        (if (> (vector-length unknown-form-diagnostics) 0)
+          unknown-form-diagnostics
+          (parse-diagnostics-loop spans pos-ref src (collect-diagnostics)))))))
 (defn parse-diagnostics-count [src] (let [diagnostics (parse-diagnostics src)] (vector-length diagnostics)))
 (defn check-diagnostics-count-program [program] (infer-program-analysis-diagnostic-count (infer-program-analysis program)))
 (defn check-diagnostics-first-code [program] (infer-program-analysis-first-error-code (infer-program-analysis program)))

@@ -17990,8 +17990,12 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     let unknown_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{unknown_uri}","languageId":"lsharp","version":1,"text":"(unknown-form)"}}}}}}"##
     );
+    let multiple_uri = "file:///tmp/lsharp-lsp-parse-multiple.ls";
+    let multiple_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{multiple_uri}","languageId":"lsharp","version":1,"text":"(defn [) (defn [)"}}}}}}"##
+    );
     let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         initialize_body.len(),
         initialize_body,
         open_body.len(),
@@ -18007,7 +18011,9 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
         do_eof_body.len(),
         do_eof_body,
         unknown_body.len(),
-        unknown_body
+        unknown_body,
+        multiple_body.len(),
+        multiple_body
     );
 
     let output = compile_and_run_with_args_and_stdin(
@@ -18063,6 +18069,13 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     assert!(
         output.contains(&unknown_expected),
         "didOpen の unknown form parse diagnostics が標準 fields を保持するべき: {output}"
+    );
+    let multiple_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{multiple_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":6}},"end":{{"line":0,"character":7}}}},"severity":1,"code":"LS0104","source":"lsharp","message":"multiple parse errors"}}]}}"##
+    );
+    assert!(
+        output.contains(&multiple_expected),
+        "didOpen の multiple parse errors diagnostics が標準 fields を保持するべき: {output}"
     );
 }
 
