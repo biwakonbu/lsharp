@@ -4502,6 +4502,22 @@ Mac Apple Silicon と Linux x86_64 の current-source App.Cli artifactへ native
 全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。
 V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `5dc93e27`。
 
+### V2-16b / V2-16c native standard LS1003 Diagnostic projection (2026-08-05)
+
+test-only `468279b0` で、parameterized self-application `(defn main [x] (x x))` の infinite typeを同じ didOpen wire contractへ追加した。
+Rust actual bundleの `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は `1 passed / 341.59s`。
+Mac Apple Siliconの保存済み `8850c7d4` App.Cli artifactと、同じ production source checkpointから作成したLinux x86_64 App.Cli ELFへ
+`scripts/ci/test-native-selfhost-cli-core-runtime.py` を適用し、LS1003を含むnative core runtime matrixは各 `33 cases` 全 passとなった。
+zero-based point range、severity 1、code `LS1003`、source `lsharp`、message `infinite type` をRust/native双方で固定している。
+selfhost sourceは変更していないためstage1 -> stage3 regenerationは実行せず、Linuxは既存ELFのreplay-onlyとした。replay後はVM workdirを回収し、
+`lsharp-linux-x86` を停止した。
+
+これは parameterized self-applicationのLS1003 standard Diagnostic projectionに限定した verified partialである。zero-argument defn内の
+lambda self-application `(defn main [] (fn [x] (x x)))` は保存済みnative artifactで `LS1002` / `type error` へ丸められるため、lambda/defn経路全体の
+infinite-type parity、複数診断の順序/dedup、他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component sidecar、release asset
+acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
+Evidence commit: `468279b0`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、

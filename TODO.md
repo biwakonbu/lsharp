@@ -114,6 +114,18 @@ Linux x86_64 の current-source App.Cli artifactへ同じ native runnerを適用
 span end、全 rule code/message parity、component/packaged release parity、Rust-free aggregateは未完了のため V2-16b / V2-16c / V2-16e は
 [~] のまま維持する。Evidence commit: 5dc93e27.
 
+さらに test-only `468279b0` では、parameterized self-application `(defn main [x] (x x))` の infinite typeを同じ didOpen wire contractへ追加した。
+Rust actual bundleの `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は `1 passed / 341.59s`、Mac Apple Siliconの
+保存済み `8850c7d4` App.Cli artifactとLinux x86_64の同じsource checkpointから作成したApp.Cli ELFへ native runnerを適用し、LS1003を含む
+native core runtime matrixは各 `33 cases` 全 passだった。zero-based point range、severity 1、code `LS1003`、source `lsharp`、message
+`infinite type` をRust/native双方で固定し、selfhost sourceは変更していないためstage regenerationは実行していない。Linux replay後はVM workdirを回収し、
+`lsharp-linux-x86` を停止した。
+
+これは parameterized self-applicationのLS1003 standard Diagnostic projectionに限定した verified partialである。zero-argument defn内の
+lambda self-application `(defn main [] (fn [x] (x x)))` は保存済みnative artifactで `LS1002` / `type error` へ丸められるため、lambda/defn経路全体の
+infinite-type parity、複数診断の順序/dedup、他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component/packaged release parity、
+Rust-free aggregateは未完了であり、V2-16b / V2-16c / V2-16eは[~]のまま維持する。Evidence commit: `468279b0`。
+
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
   `map-contains?` を含む valid builtin call matrixと、builtin argument mismatch matrix、`+` の valid/invalid、
