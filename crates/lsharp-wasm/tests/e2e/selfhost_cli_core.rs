@@ -17966,12 +17966,24 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     let open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":")"}}}}}}"##
     );
+    let close_uri = "file:///tmp/lsharp-lsp-parse-close.ls";
+    let close_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{close_uri}","languageId":"lsharp","version":1,"text":"]"}}}}}}"##
+    );
+    let eof_uri = "file:///tmp/lsharp-lsp-parse-eof.ls";
+    let eof_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{eof_uri}","languageId":"lsharp","version":1,"text":"["}}}}}}"##
+    );
     let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         initialize_body.len(),
         initialize_body,
         open_body.len(),
-        open_body
+        open_body,
+        close_body.len(),
+        close_body,
+        eof_body.len(),
+        eof_body
     );
 
     let output = compile_and_run_with_args_and_stdin(
@@ -17985,6 +17997,20 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     assert!(
         output.contains(&expected),
         "didOpen の parse diagnostics が標準 range/code/message を保持するべき: {output}"
+    );
+    let close_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{close_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token ]"}}]}}"##
+    );
+    assert!(
+        output.contains(&close_expected),
+        "didOpen の unexpected close parse diagnostics が標準 fields を保持するべき: {output}"
+    );
+    let eof_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{eof_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":1}},"end":{{"line":0,"character":1}}}},"severity":1,"code":"LS0102","source":"lsharp","message":"unexpected input end"}}]}}"##
+    );
+    assert!(
+        output.contains(&eof_expected),
+        "didOpen の unexpected EOF parse diagnostics が標準 fields を保持するべき: {output}"
     );
 }
 

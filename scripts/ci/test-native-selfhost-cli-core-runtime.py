@@ -34,6 +34,10 @@ LSP_TYPE_INFINITE_URI = "file:///tmp/lsharp-lsp-type-infinite.ls"
 LSP_TYPE_INFINITE_SOURCE = "(defn main [x] (x x))\n"
 LSP_PARSE_URI = "file:///tmp/lsharp-lsp-parse-standard.ls"
 LSP_PARSE_SOURCE = ")"
+LSP_PARSE_CLOSE_URI = "file:///tmp/lsharp-lsp-parse-close.ls"
+LSP_PARSE_CLOSE_SOURCE = "]"
+LSP_PARSE_EOF_URI = "file:///tmp/lsharp-lsp-parse-eof.ls"
+LSP_PARSE_EOF_SOURCE = "["
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
 LSP_EMPTY_DO_SOURCE = "(defn main [] (do))\n"
 VALIDATION_SOURCE = """(defn cancel []
@@ -799,6 +803,66 @@ def main():
                 f"lsp parse diagnostics projection mismatch: {parse_frames[2]!r}"
             )
 
+        close_parse_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_PARSE_CLOSE_URI,
+            LSP_PARSE_CLOSE_SOURCE,
+            "unexpected-close-parse",
+        )
+        if close_parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_CLOSE_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 1},
+                        },
+                        "severity": 1,
+                        "code": "LS0101",
+                        "source": "lsharp",
+                        "message": "unexpected token ]",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp unexpected close parse diagnostics projection mismatch: {close_parse_frames[2]!r}"
+            )
+
+        eof_parse_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_PARSE_EOF_URI,
+            LSP_PARSE_EOF_SOURCE,
+            "unexpected-eof-parse",
+        )
+        if eof_parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_EOF_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 1},
+                            "end": {"line": 0, "character": 1},
+                        },
+                        "severity": 1,
+                        "code": "LS0102",
+                        "source": "lsharp",
+                        "message": "unexpected input end",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp unexpected EOF parse diagnostics projection mismatch: {eof_parse_frames[2]!r}"
+            )
+
         definition_frames = run_lsp_definition(program, root)
         if definition_frames[2] != {
             "jsonrpc": "2.0",
@@ -925,7 +989,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 33 cases")
+    print("native CLI core runtime matrix passed: 35 cases")
 
 
 if __name__ == "__main__":
