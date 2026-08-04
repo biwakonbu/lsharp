@@ -4328,3 +4328,20 @@ MCPは `initialize`、`tools/list`、`lsharp_check`、`lsharp_format`、`lsharp_
 同一commitの両target packaged provenance parity、公式 release asset acquisition、archive rollback、全公開 commandのsemantic
 parity、native MCPのdiagnostic/migration structured parity、実 install/provider、component sidecar、Rust-free aggregateの
 証拠には拡大解釈しない。`V2-16c` / `V2-16e` は `[~]` のまま維持する。
+
+### V2-16b native map-remove receiver diagnostic contract (2026-08-04)
+
+`cf9ac17f` で、`map-remove` の receiver mismatch を Rust oracle と native type-builtin matrixへ追加した。
+fixtureは `(map-remove true 1)` で、Rust focused testは `1 passed`、
+`e2e::selfhost_typeinfer_builtin_parity::` moduleは `10 passed`、current Mac App.Cli artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-a0845320/program.native` の native type-builtin matrixは
+`5 tests` 全 passとなった。期待値は native CLI exit `1` と `function argument type mismatch` である。
+
+同じ batchの初期REDとして key 型 mismatch `(map-remove (map-insert (map-new) 1 2) true)` も試したが、canonical `Map` は
+key/value 型を保持しない消去型であり、`map-remove` の型は `forall k. (Map, k) -> Map` である。また既存の `Int` と heap handleの
+runtime representation compatibilityにより `Int` receiverもこの型診断の境界にならないため、key mismatch/Int receiverを新しい
+意味論として固定しなかった。selfhost implementationは変更していない。
+
+変更は test-only なので、`a0845320` sourceから生成済みの Mac artifactを replayし、stage1→stage3 regenerationは重複実行していない。
+これは Map receiver diagnosticの verified partialであり、Mapの key/value semantic typing、全 builtin family、全型診断、全公開
+command、component/packaged release parity、Rust-free aggregateは未完了のまま `V2-16b` を `[~]` とする。

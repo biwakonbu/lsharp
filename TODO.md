@@ -222,6 +222,13 @@
   repeated collection useを同じ fixtureへ追加し、Rust oracleと同じLinux replay matrixを通過した。続く `56f78589` では Floatの4演算子
   全て（`+.`, `-.`, `*.`, `/.`）の valid/mismatch source contractを同じ matrixへ拡張した。builtin全体、全型診断、全公開command、component/packaged
   release parity、Rust-free aggregateは未完了であり、`V2-16b` は `[~]` のまま維持する。
+  続く `cf9ac17f` では、`map-remove` の Bool receiver mismatch `(map-remove true 1)` を Rust oracle と native type-builtin matrixの
+  同一 fixtureへ追加した。Rust focused test `1 passed`、builtin parity module `10 passed`、current Mac App.Cli artifactへの native
+  matrix `5 tests` 全 passを確認した。REDで試した key 型 mismatch は、canonical `Map` が key/value 型を保持しない消去型であること、
+  さらに既存の `Int` と heap handle の runtime representation compatibility があることから仕様契約にならず採用しなかった。
+  selfhost implementationの変更はなく、test-only replayのため重い stage1→stage3 regenerationは重複実行していない。この verified
+  partialは receiver boundary に限られ、Mapの key/value semantic typing、全 builtin family、全型診断、全公開command、component/packaged
+  release parity、Rust-free aggregateは未完了であり、`V2-16b` は `[~]` のまま維持する。Evidence commit: `cf9ac17f`。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
