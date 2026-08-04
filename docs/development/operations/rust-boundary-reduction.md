@@ -4239,7 +4239,9 @@ Evidence:
 `ad65eaff` の Linux x86_64 `App.Cli` target-only native programへ `scripts/ci/test-native-selfhost-cli-core-runtime.py` を渡し、
 public core command matrixを replayした。`--help`、`--version`、parse/check/fmt、text/metadata test、Preview1 `compile` / `build`、
 review、doc JSON、doc-ack、doc-check、install、repl、bare LSP、`lsp --stdio` の initialize/didOpen/hover、unsupported doc formatを
-含む `22 cases` が全 passし、成功経路の stderrは空だった。実行後はVM workdirを削除し、`lsharp-linux-x86` を停止した。
+含む `22 cases` が全 passし、成功経路の stderrは空だった。続く `d05d2642` で `validate --source --format text` の
+unknown trace-gap reportと exit `2` を追加し、同じ Linux replayは `23 cases` 全 passとなった。実行後はVM workdirを削除し、
+`lsharp-linux-x86` を停止した。
 
 この program は production selfhost source `ad65eaff` から生成された保存 artifactであり、現HEADの test/docs commitとは一致しない。
 従ってこれは Linux x86_64の public command replay evidenceであって、current-source provenance gateではない。実 install/package registry、

@@ -1801,7 +1801,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `--help`、`--version`、parse/check/fmt/test、Preview1 compile/build、review/doc/doc-ack/doc-check、install/repl、bare LSP、
   `lsp --stdio` hover、unsupported doc formatを含むが、保存 artifactは現HEADの test/docs commitとは一致しないため replay-onlyである。
   native source provenance、実 install/package registry、対話 REPL、LSP全 semantic projection、component helper、両target packaged
-  release parity、`LEGACY-TOOL-01` aggregateは未完了のまま残す。
+  release parity、`LEGACY-TOOL-01` aggregateは未完了のまま残す。続く `d05d2642` で `validate --source --format text` の
+  unknown trace-gap report / exit `2` を同じ runnerへ追加し、Linux replayは `23 cases` 全 passとなった。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
