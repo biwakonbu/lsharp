@@ -144,6 +144,21 @@
   空要素・UTF-8・空白保持を閉じる verified partialであり、fd error/EOFの全 semantics、dynamic layout、全公開command、component/
   packaged release parity、Rust-free aggregateは未完了である。ADR: [`decisions-v0.3-native-standalone-command-line-argv-boundary.md`](docs/adr/decisions-v0.3-native-standalone-command-line-argv-boundary.md)。
 
+  続く `19b01384` では、262144-byte stdinで旧 standalone bump allocatorが linear memory `0x1000000`（16 MiB）へ trapする
+  REDを固定した。allocatorの heap end が現在の `memory.size << 16`を超える場合に必要ページだけ `memory.grow`してから bump
+  pointerを保存する narrow fixを追加した。Rust focused E2Eは `1 passed` / `317.18s`、Mac Apple Silicon current-source
+  stage0は source commit `19b01384281a8efdcc9f0b9ecddb4faeed36b113` と一致し `1 passed` / `827.33s`、native I/O matrixは
+  256KiB stdinを含む17 cases全 passだった。同じ source commitの Linux x86_64 current-source stage1 -> stage2 -> stage3
+  fixed pointは target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各
+  `11,445,101`、stdout SHA-256各 `4ddaa27ed209bf8fce4305ea459a10ed99d308db7c1818222f5cfae38dbf44bc`、stderr空となった。
+  stage2 artifactを再利用した Linux App.Cli target-only materializeは `selfhost_fixed_point=true`、code `13,370,664` bytes、
+  program SHA-256 `25a3dd5c9ca786ac54c7f88ba1be7cccbf77589cee9cb65bf477817167af961d`、`--version`の
+  `lsharp 0.1.0`、native I/O matrix17 cases全 passを記録し、stage0 package manifestも同 target/source commitを保持する。
+  これは standalone allocator growthと256KiB stdinの両対応target verified partialであり、fd error/EOFの全 semantics、より大きい
+  dynamic root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset acquisition/rollback、
+  Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+  ADR: [`decisions-v0.3-native-standalone-allocator-memory-growth.md`](docs/adr/decisions-v0.3-native-standalone-allocator-memory-growth.md)。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の

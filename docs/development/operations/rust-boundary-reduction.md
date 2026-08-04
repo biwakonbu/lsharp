@@ -4127,3 +4127,27 @@ Evidence:
 この batchで argvの空要素、UTF-8、空白保持を verified partialとして追加した。current-source Linux native regeneration/runtime、
 fd error/EOFの全組合せ、dynamic root/data/heap layout、全公開command、component sidecar、release asset acquisition/rollback、
 Mac/Linux packaged provenance parity、Rust-free aggregateは残る。ADR: [`decisions-v0.3-native-standalone-command-line-argv-boundary.md`](../../adr/decisions-v0.3-native-standalone-command-line-argv-boundary.md)。
+
+### V2-16b / LEGACY-IO-01 standalone allocator memory growth (2026-08-04)
+
+`19b01384` で、262144-byte stdinを旧 standalone bump allocatorへ渡すと linear memory `0x1000000`（16 MiB）で trapする
+REDを固定した。aligned heap endが `memory.size << 16`を超える場合に必要ページ数を算出し、`memory.grow`後に既存の bump allocationを
+続ける narrow fixを追加した。GC、root table、data layout、容量失敗の診断はこの修正へ混ぜていない。
+
+Evidence:
+
+- Rust focused E2E `selfhost_standalone_io::test_e2e_selfhost_standalone_read_stdin_runtime` — 1 passed / 317.18s。
+- Mac Apple Silicon current-source stage0は source commit `19b01384281a8efdcc9f0b9ecddb4faeed36b113` と一致し、1 passed / 827.33s、
+  materialized native I/O matrixは256KiB stdinを含む17 cases全 pass。
+- Linux x86_64 current-source stage1 -> stage2 -> stage3 fixed pointは target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、
+  `status=pass`、stage2/stage3 code length各 `11,445,101`、stdout SHA-256各
+  `4ddaa27ed209bf8fce4305ea459a10ed99d308db7c1818222f5cfae38dbf44bc`、stderr空。
+- 同じ Linux stage2 artifactからの current-source App.Cli target-only materializeは `selfhost_fixed_point=true`、code `13,370,664` bytes、
+  program SHA-256 `25a3dd5c9ca786ac54c7f88ba1be7cccbf77589cee9cb65bf477817167af961d`、`--version` `lsharp 0.1.0`、native I/O matrix17 cases全 pass。
+  stage0 package manifestは target `x86_64-unknown-linux-gnu`と同 source commitを保持した。
+- Static read-stdin contract、Python `py_compile`、`git diff --check`を通過し、VM workdir/replay lock、Wasmtime tarball、matrix workdirを回収してVMを停止した。
+
+これは standalone allocator growthと256KiB stdinの両対応target verified partialである。fd error/EOFの全 semantics、より大きい dynamic
+root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset acquisition/rollback、Mac/Linux packaged
+provenance parity、Rust-free aggregateは未完了であり、`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。ADR:
+[`decisions-v0.3-native-standalone-allocator-memory-growth.md`](../../adr/decisions-v0.3-native-standalone-allocator-memory-growth.md)。
