@@ -17974,8 +17974,20 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     let eof_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{eof_uri}","languageId":"lsharp","version":1,"text":"["}}}}}}"##
     );
+    let defn_eof_uri = "file:///tmp/lsharp-lsp-parse-defn-eof.ls";
+    let defn_eof_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{defn_eof_uri}","languageId":"lsharp","version":1,"text":"(defn main ["}}}}}}"##
+    );
+    let list_eof_uri = "file:///tmp/lsharp-lsp-parse-list-eof.ls";
+    let list_eof_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{list_eof_uri}","languageId":"lsharp","version":1,"text":"("}}}}}}"##
+    );
+    let do_eof_uri = "file:///tmp/lsharp-lsp-parse-do-eof.ls";
+    let do_eof_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{do_eof_uri}","languageId":"lsharp","version":1,"text":"(defn main [] (do"}}}}}}"##
+    );
     let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         initialize_body.len(),
         initialize_body,
         open_body.len(),
@@ -17983,7 +17995,13 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
         close_body.len(),
         close_body,
         eof_body.len(),
-        eof_body
+        eof_body,
+        defn_eof_body.len(),
+        defn_eof_body,
+        list_eof_body.len(),
+        list_eof_body,
+        do_eof_body.len(),
+        do_eof_body
     );
 
     let output = compile_and_run_with_args_and_stdin(
@@ -18011,6 +18029,27 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic()
     assert!(
         output.contains(&eof_expected),
         "didOpen の unexpected EOF parse diagnostics が標準 fields を保持するべき: {output}"
+    );
+    let defn_eof_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{defn_eof_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":12}},"end":{{"line":0,"character":12}}}},"severity":1,"code":"LS0102","source":"lsharp","message":"unexpected input end"}}]}}"##
+    );
+    assert!(
+        output.contains(&defn_eof_expected),
+        "didOpen の defn unexpected EOF parse diagnostics が標準 fields を保持するべき: {output}"
+    );
+    let list_eof_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{list_eof_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":1}},"end":{{"line":0,"character":1}}}},"severity":1,"code":"LS0102","source":"lsharp","message":"unexpected input end"}}]}}"##
+    );
+    assert!(
+        output.contains(&list_eof_expected),
+        "didOpen の list unexpected EOF parse diagnostics が標準 fields を保持するべき: {output}"
+    );
+    let do_eof_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{do_eof_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":17}},"end":{{"line":0,"character":17}}}},"severity":1,"code":"LS0102","source":"lsharp","message":"unexpected input end"}}]}}"##
+    );
+    assert!(
+        output.contains(&do_eof_expected),
+        "didOpen の do unexpected EOF parse diagnostics が標準 fields を保持するべき: {output}"
     );
 }
 

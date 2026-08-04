@@ -38,6 +38,12 @@ LSP_PARSE_CLOSE_URI = "file:///tmp/lsharp-lsp-parse-close.ls"
 LSP_PARSE_CLOSE_SOURCE = "]"
 LSP_PARSE_EOF_URI = "file:///tmp/lsharp-lsp-parse-eof.ls"
 LSP_PARSE_EOF_SOURCE = "["
+LSP_PARSE_DEFN_EOF_URI = "file:///tmp/lsharp-lsp-parse-defn-eof.ls"
+LSP_PARSE_DEFN_EOF_SOURCE = "(defn main ["
+LSP_PARSE_LIST_EOF_URI = "file:///tmp/lsharp-lsp-parse-list-eof.ls"
+LSP_PARSE_LIST_EOF_SOURCE = "("
+LSP_PARSE_DO_EOF_URI = "file:///tmp/lsharp-lsp-parse-do-eof.ls"
+LSP_PARSE_DO_EOF_SOURCE = "(defn main [] (do"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
 LSP_EMPTY_DO_SOURCE = "(defn main [] (do))\n"
 VALIDATION_SOURCE = """(defn cancel []
@@ -863,6 +869,96 @@ def main():
                 f"lsp unexpected EOF parse diagnostics projection mismatch: {eof_parse_frames[2]!r}"
             )
 
+        defn_eof_parse_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_PARSE_DEFN_EOF_URI,
+            LSP_PARSE_DEFN_EOF_SOURCE,
+            "unexpected-defn-EOF-parse",
+        )
+        if defn_eof_parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_DEFN_EOF_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 12},
+                            "end": {"line": 0, "character": 12},
+                        },
+                        "severity": 1,
+                        "code": "LS0102",
+                        "source": "lsharp",
+                        "message": "unexpected input end",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp unexpected defn EOF parse diagnostics projection mismatch: {defn_eof_parse_frames[2]!r}"
+            )
+
+        list_eof_parse_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_PARSE_LIST_EOF_URI,
+            LSP_PARSE_LIST_EOF_SOURCE,
+            "unexpected-list-EOF-parse",
+        )
+        if list_eof_parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_LIST_EOF_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 1},
+                            "end": {"line": 0, "character": 1},
+                        },
+                        "severity": 1,
+                        "code": "LS0102",
+                        "source": "lsharp",
+                        "message": "unexpected input end",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp unexpected list EOF parse diagnostics projection mismatch: {list_eof_parse_frames[2]!r}"
+            )
+
+        do_eof_parse_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_PARSE_DO_EOF_URI,
+            LSP_PARSE_DO_EOF_SOURCE,
+            "unexpected-do-EOF-parse",
+        )
+        if do_eof_parse_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_PARSE_DO_EOF_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 17},
+                            "end": {"line": 0, "character": 17},
+                        },
+                        "severity": 1,
+                        "code": "LS0102",
+                        "source": "lsharp",
+                        "message": "unexpected input end",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp unexpected do EOF parse diagnostics projection mismatch: {do_eof_parse_frames[2]!r}"
+            )
+
         definition_frames = run_lsp_definition(program, root)
         if definition_frames[2] != {
             "jsonrpc": "2.0",
@@ -989,7 +1085,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 35 cases")
+    print("native CLI core runtime matrix passed: 38 cases")
 
 
 if __name__ == "__main__":
