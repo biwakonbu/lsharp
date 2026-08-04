@@ -17787,6 +17787,52 @@ fn test_e2e_selfhost_cli_lsp_stdio_didchange_publishes_type_diagnostics_with_uri
     );
 }
 
+/// TEST-CLI-02-AN32c: actual Cli は valid didChange で stale type diagnostics を消去すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didchange_clears_stale_type_diagnostics() {
+    let uri = "file:///tmp/lsharp-lsp-didchange-clear.ls";
+    let open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"(defn main [] 42)\n"}}}}}}"##
+    );
+    let invalid_change_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":"{uri}","version":2}},"contentChanges":[{{"text":"(defn bad [] (+ 1 true))\n"}}]}}}}"##
+    );
+    let valid_change_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":"{uri}","version":3}},"contentChanges":[{{"text":"(defn main [] 42)\n"}}]}}}}"##
+    );
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        invalid_change_body.len(),
+        invalid_change_body,
+        valid_change_body.len(),
+        valid_change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let invalid = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
+    );
+    let cleared = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[]}}"##
+    );
+    let invalid_position = output
+        .find(&invalid)
+        .unwrap_or_else(|| panic!("invalid diagnostics が必要: {output}"));
+    let cleared_position = output
+        .find(&cleared)
+        .unwrap_or_else(|| panic!("valid didChange 後の空 diagnostics が必要: {output}"));
+    assert!(
+        invalid_position < cleared_position,
+        "valid didChange は stale diagnostics の後に空 diagnostics を返すべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN33: actual Cli main は `lsp --stdio` publishDiagnostics notification を schema snapshot に一致させること
 #[test]
 #[ignore]

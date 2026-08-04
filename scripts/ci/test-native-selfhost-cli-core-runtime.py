@@ -143,44 +143,56 @@ def run_lsp_stdio(program, root):
     return parse_lsp_frames(result.stdout), uri
 
 
-def run_lsp_didchange_diagnostics(program, root):
+def run_lsp_didchange_diagnostics(program, root, *, clear=False):
     uri = "file:///tmp/lsharp-lsp-didchange.ls"
-    wire = b"".join(
-        [
-            lsp_frame(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "initialize",
-                    "params": {"capabilities": {}, "rootUri": None},
-                }
-            ),
-            lsp_frame(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "textDocument/didOpen",
-                    "params": {
-                        "textDocument": {
-                            "uri": uri,
-                            "languageId": "lsharp",
-                            "version": 1,
-                            "text": LSP_DIDCHANGE_VALID_SOURCE,
-                        }
-                    },
-                }
-            ),
+    messages = [
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"capabilities": {}, "rootUri": None},
+            }
+        ),
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": LSP_DIDCHANGE_VALID_SOURCE,
+                    }
+                },
+            }
+        ),
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": {"uri": uri, "version": 2},
+                    "contentChanges": [{"text": LSP_DIDCHANGE_INVALID_SOURCE}],
+                },
+            }
+        ),
+    ]
+    if clear:
+        messages.append(
             lsp_frame(
                 {
                     "jsonrpc": "2.0",
                     "method": "textDocument/didChange",
                     "params": {
-                        "textDocument": {"uri": uri, "version": 2},
-                        "contentChanges": [{"text": LSP_DIDCHANGE_INVALID_SOURCE}],
+                        "textDocument": {"uri": uri, "version": 3},
+                        "contentChanges": [{"text": LSP_DIDCHANGE_VALID_SOURCE}],
                     },
                 }
-            ),
-        ]
-    )
+            )
+        )
+    wire = b"".join(messages)
     result = subprocess.run(
         [str(program), "lsp", "--stdio"],
         cwd=root,
@@ -400,6 +412,33 @@ def main():
                 f"lsp didChange diagnostics projection mismatch: {diagnostics!r}"
             )
 
+        clear_frames, clear_uri = run_lsp_didchange_diagnostics(
+            program, root, clear=True
+        )
+        if len(clear_frames) != 6:
+            raise AssertionError(
+                f"lsp didChange clear frame count mismatch: {clear_frames!r}"
+            )
+        if clear_frames[4] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "sourceBytes": len(LSP_DIDCHANGE_VALID_SOURCE.encode("utf-8")),
+                "uri": clear_uri,
+            },
+        }:
+            raise AssertionError(
+                f"lsp valid didChange projection mismatch: {clear_frames[4]!r}"
+            )
+        if clear_frames[5] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {"uri": clear_uri, "diagnostics": []},
+        }:
+            raise AssertionError(
+                f"lsp stale diagnostics clear mismatch: {clear_frames[5]!r}"
+            )
+
         invalid_doc = subprocess.run(
             [str(program), "doc", "input.ls", "--format", "yaml"],
             cwd=root,
@@ -417,7 +456,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 24 cases")
+    print("native CLI core runtime matrix passed: 25 cases")
 
 
 if __name__ == "__main__":
