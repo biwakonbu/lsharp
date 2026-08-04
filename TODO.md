@@ -126,6 +126,16 @@ lambda self-application `(defn main [] (fn [x] (x x)))` は保存済みnative ar
 infinite-type parity、複数診断の順序/dedup、他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component/packaged release parity、
 Rust-free aggregateは未完了であり、V2-16b / V2-16c / V2-16eは[~]のまま維持する。Evidence commit: `468279b0`。
 
+続く test-only `e28835bd` では、standard parse Diagnosticの unexpected close `]`（LS0101）と未閉じ vector `[`（LS0102）を同じ didOpen wire contractへ追加した。
+Rust actual bundleの `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic` は `1 passed / 329.99s`、保存済み Mac Apple Silicon
+App.Cli artifactとLinux x86_64 App.Cli ELFへ native runnerを適用した native core runtime matrixは各 `35 cases` 全 passだった。`]` は range
+`0:0..0:1`、`[` は point range `0:1..0:1` とし、severity 1、source `lsharp`、message `unexpected token ]` / `unexpected input end` を固定した。
+selfhost sourceは変更していないためstage regenerationは実行せず、Linux replay後はVM workdirを回収して`lsharp-linux-x86`を停止した。
+
+これは parse LS0101 / LS0102 の標準 projectionに限定した verified partialであり、LS0103 unknown-form、LS0104 multiple-parse-errors、複数診断の順序/dedup、
+他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component/packaged release parity、Rust-free aggregateは未完了である。
+V2-16b / V2-16c / V2-16eは[~]のまま維持する。Evidence commit: `e28835bd`。
+
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
   `map-contains?` を含む valid builtin call matrixと、builtin argument mismatch matrix、`+` の valid/invalid、

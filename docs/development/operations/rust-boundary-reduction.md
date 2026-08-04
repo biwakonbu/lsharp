@@ -4518,6 +4518,19 @@ infinite-type parity、複数診断の順序/dedup、他のparse/type/lint rule�
 acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
 Evidence commit: `468279b0`。
 
+### V2-16b / V2-16c native standard parse LS0101 / LS0102 Diagnostic projection (2026-08-05)
+
+test-only `e28835bd` で、standard parse Diagnosticの unexpected close `]`（LS0101）と未閉じ vector `[`（LS0102）を同じ didOpen wire contractへ追加した。
+Rust actual bundleの `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic` は `1 passed / 329.99s`。
+保存済み Mac Apple Silicon App.Cli artifactとLinux x86_64 App.Cli ELFへ `scripts/ci/test-native-selfhost-cli-core-runtime.py` を適用し、
+native core runtime matrixは各 `35 cases` 全 passとなった。`]` は range `0:0..0:1`、`[` は point range `0:1..0:1` とし、severity 1、source
+`lsharp`、message `unexpected token ]` / `unexpected input end` をRust/native双方で固定している。selfhost sourceは変更していないためstage1 -> stage3
+regenerationは実行せず、Linuxは既存ELFのreplay-onlyとした。replay後はVM workdirを回収し、`lsharp-linux-x86` を停止した。
+
+これは parse LS0101 / LS0102の標準 projectionに限定した verified partialであり、LS0103 unknown-form、LS0104 multiple-parse-errors、複数診断の順序/dedup、
+他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance
+parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `e28835bd`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
