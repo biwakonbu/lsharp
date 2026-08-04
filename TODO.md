@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `ad65eaff`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownership、`substring` 3引数 type contract、standalone stdin bufferの容量倍増、standalone read-file 4MiB chunkの反映後）。selfhost production sourceは `ad65eaff` と一致し、Mac/Linux current-source native gateまで検証済みである。
+- 確認時点の code checkpoint は `8850c7d4`（`d2dcea7e` 以降の standalone/runtime、LSP Diagnostic、標準 URI navigation の反映後）。selfhost production sourceは `8850c7d4` と一致し、標準 LSP definition の Mac/Linux current-source native gateまで検証済みである。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -79,6 +79,27 @@ target-only lane は保存済み stage2 と VM-side lock を再利用し、Seed 
 他の parse/type/lint rule の正確な span end、全 rule code/message parity、全 diagnostics/type/lint parity、definition/references/rename の全 semantic projection、
 component/packaged release parity、Rust-free aggregate は未完了のため V2-16b / V2-16c / V2-16e は [~] のまま維持する。
 Evidence commits: 1409e18b, d3e852a6, 6e09ff86, 1b6784db, 43ef943e, 86139edb, e2cef471.
+
+さらに `8850c7d4` では、標準 single-document LSP fixture `(defn helper [x] x)` / `(defn main [] (helper 1))` の definition responseを
+URI付き `Location` objectへ投影する contractを追加した。REDでは native App.Cli が参照側 definition rangeを `0:0..0:0` と返したため、
+`lsp-find-defn-offset-before-loop` の accumulatorを同名の局所束縛で隠していた failure boundaryを特定し、最小の `next-match` 更新へ修正した。
+Rust actual bundleの `test_e2e_selfhost_cli_lsp_stdio_standard_uri_navigation_contract` は修正後 1 passed / 346.13s で、definitionの
+URI `file:///tmp/lsharp-uri-contract.ls` と zero-based range `0:6..0:6` を固定した。
+
+Mac Apple Siliconの current-source actual release gateは 1 passed / 919.31s、native core runtime matrixは 32 cases全 passだった。
+Linux x86_64の `ci-artifacts/native-linux-x86-hostgen-vm/8850c7d4-lsp-definition/actual-selfregen-summary.json` は target
+`x86_64-unknown-linux-gnu`、host `Linux/x86_64`、status `pass`、stage2/stage3 code length各 `11,448,943`、stdout SHA-256各
+`a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e`、stderr空の一致を記録した。保存済みstage2をVM-side lock付きで
+再利用した `ci-artifacts/native-linux-x86-hostgen-vm/8850c7d4-lsp-definition-cli/manifest.json` は source commit `8850c7d4...`、
+target `x86_64-unknown-linux-gnu`、selfhost_fixed_point=true、source tree SHA-256
+`52f77188d7a54a9b8d4659853368102f3890a6fc916ca230dbd35ba6ddcf9b58`、code `13,375,205`、program SHA-256
+`b4268dceb3f8e2ecf4f254d28a10a86f6be630870b2b1a0857aae79e3dc78081`、stderr 0を記録し、`--version` smokeと同じLinux ELFの native
+core runtime matrix 32 cases全 passを確認した。Linuxゲート後は task-owned VM workdir、program/script、replay lockを回収し、12GiB VMは
+停止状態で使用量 3.5GiB / 空き 7.2GiBだった。
+
+これは標準 single-document definitionの URI/location projectionに限定した verified partialであり、full symbol range、references/renameの
+全 semantic projection、cross-document URI provenance、全 diagnostics/type/lint parity、component/packaged release parity、Rust-free
+aggregateは未完了のため V2-16b / V2-16c / V2-16e は [~] のまま維持する。Evidence commit: 8850c7d4.
 
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、

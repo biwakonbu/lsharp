@@ -4462,6 +4462,28 @@ Lima VM内の一時 program/scriptとreplay lockを検証後に回収し、VMを
 component/packaged release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
 Evidence commits: 1409e18b, d3e852a6, 6e09ff86, 1b6784db, 43ef943e, 86139edb, e2cef471。
 
+### V2-16c native standard definition Location projection (2026-08-05)
+
+`8850c7d4` で、標準 single-document LSP fixture `(defn helper [x] x)` / `(defn main [] (helper 1))` の definition responseを URI付き
+`Location` objectへ投影する contractを追加した。REDでは native App.Cliの参照側 definition rangeが `0:0..0:0` になったため、
+`lsp-find-defn-offset-before-loop` の accumulatorを同名の局所束縛で隠していた failure boundaryを確定し、`next-match` を使う最小修正で
+definitionの zero-based rangeを `0:6..0:6` へ戻した。references/renameの既存内部処理や broad append helper、spill floor、offset-depth ctx/state refactorは
+このbatchの変更対象にしていない。
+
+Rust actual bundleの `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_standard_uri_navigation_contract` は 1 passed / 346.13s。
+Mac Apple Siliconの current-source actual release gateは 1 passed / 919.31s、native core runtime matrixは 32 cases全 passだった。
+Linux x86_64の current-source actual self-regeneration summaryは target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、status `pass`、
+stage2/stage3 code length各 `11,448,943`、stdout SHA-256各
+`a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e`、stderr空で一致した。stage2を再利用した target-only App.Cli artifactは
+source commit `8850c7d4...`、source tree SHA-256 `52f77188d7a54a9b8d4659853368102f3890a6fc916ca230dbd35ba6ddcf9b58`、
+selfhost_fixed_point=true、code `13,375,205`、program SHA-256
+`b4268dceb3f8e2ecf4f254d28a10a86f6be630870b2b1a0857aae79e3dc78081`、stderr 0、`--version` smoke passを記録した。同じLinux ELFを
+Lima VM内で実行した native core runtime matrixも 32 cases全 passだった。検証後はVM workdir、lock、program/scriptを回収し、VMは停止した。
+
+これは標準 single-document definitionの URI/location projectionに限定した verified partialであり、full symbol range、references/renameの全 semantic
+projection、cross-document URI provenance、全 diagnostics/type/lint parity、component sidecar、release asset acquisition/rollback、Mac/Linux
+packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `8850c7d4`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
