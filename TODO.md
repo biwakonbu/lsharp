@@ -59,6 +59,12 @@ App.Cli ELF に native runner を再適用し、unused-let、hyphenated unused-l
 contractへ追加した。Rust actual bundle の `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は
 1 passed / 348.51s、Mac Apple Silicon と Linux x86_64 の保存済み App.Cli artifactは 30 cases 全 passだった。
 
+さらに `e2cef471` の test-only batch では、parse source `")"` の LS0101 (`unexpected token )`) を同じ didOpen wire contractへ
+追加した。Rust actual bundle の `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic` は 1 passed / 342.45s で、
+range `0:0..0:1`、severity 1、code LS0101、source lsharp、message `unexpected token )` を固定した。Mac Apple Silicon と
+Linux x86_64 の保存済み App.Cli artifactへ runnerを再適用した native core runtime matrixは 31 cases 全 passだった。
+`selfhost/src` は変更していないため stage1→stage3 regenerationは実行せず、既存 fixed-point artifactをreplay-onlyで再利用した。
+
 Linux x86_64 では ci-artifacts/native-linux-x86-hostgen-vm/d3e852a6-lsp-lint-current/actual-selfregen-summary.json に
 target x86_64-unknown-linux-gnu、host Linux/x86_64、status=pass、stage2/stage3 code length 各 11,448,943、
 stdout SHA-256 各 a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e、stderr 空の一致を記録した。
@@ -66,13 +72,13 @@ stdout SHA-256 各 a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c66
 ci-artifacts/native-linux-x86-hostgen-vm/d3e852a6-lsp-lint-cli/manifest.json は source commit
 d3e852a6572cbdf4ea705eee851d67230b20772e、selfhost_fixed_point=true、code 13,375,178、
 program SHA-256 b155abe13cb16c71f6c34e02152b33b4f819c9a8cceb769386740317f3a6f988、--version smoke stderr 0 を記録した。
-同じ Linux ELF を VM 内で native core matrix 30 cases、type builtins 5 tests、MCP 6 requests 全 pass した。
+同じ Linux ELF を VM 内で native core matrix 31 cases、type builtins 5 tests、MCP 6 requests 全 pass した。
 target-only lane は保存済み stage2 と VM-side lock を再利用し、Seed fixed-point の重複 replay を避けた。
 
-これは unused-let (`L0001`) と empty-do (`L0002`) の標準 wire projectionに限定した verified partial であり、複数 lint 診断の順序/dedup、
-正確な span end、全 rule code/message parity、全 diagnostics/type/lint parity、definition/references/rename の全 semantic projection、
+これは unused-let (`L0001`)、empty-do (`L0002`)、type (`LS1001`/`LS1002`)、parse (`LS0101`) の標準 wire projectionに限定した verified partial であり、複数 lint 診断の順序/dedup、
+他の parse/type/lint rule の正確な span end、全 rule code/message parity、全 diagnostics/type/lint parity、definition/references/rename の全 semantic projection、
 component/packaged release parity、Rust-free aggregate は未完了のため V2-16b / V2-16c / V2-16e は [~] のまま維持する。
-Evidence commits: 1409e18b, d3e852a6, 6e09ff86, 1b6784db, 43ef943e, 86139edb.
+Evidence commits: 1409e18b, d3e852a6, 6e09ff86, 1b6784db, 43ef943e, 86139edb, e2cef471.
 
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、

@@ -4450,10 +4450,17 @@ stage1→stage3 regenerationは重複実行せず、既存fixed-point artifact�
 Linux x86_64 App.Cli artifactへ runnerを再適用した native core runtime matrixは各 30 cases 全 passとなった。`selfhost/src` は
 変更していないため、stage1→stage3 regenerationは重複実行せず、既存fixed-point artifactをreplay-onlyで再利用した。
 
-これは unused-let と empty-do の標準projectionに限定したverified partialであり、複数lint診断の順序/dedup、
-正確なspan end、全rule code/message parity、全diagnostics/type/lint parity、definition/references/renameの全semantic projection、
+続く `e2cef471` の test-only batch では、parse source `")"` の LS0101 (`unexpected token )`) を同じ didOpen wire contractへ追加した。
+Rust actual bundle の `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic` は 1 passed / 342.45s で、
+range `0:0..0:1`、severity 1、code LS0101、source lsharp、message `unexpected token )` を固定した。Mac Apple Silicon と
+Linux x86_64 App.Cli artifactへ runnerを再適用した native core runtime matrixは各 31 cases 全 passとなった。`selfhost/src` は
+変更していないため、stage1→stage3 regenerationは重複実行せず、既存fixed-point artifactをreplay-onlyで再利用した。Linuxは
+Lima VM内の一時 program/scriptとreplay lockを検証後に回収し、VMを停止した。
+
+これは unused-let、empty-do、type (`LS1001`/`LS1002`)、parse (`LS0101`) の標準projectionに限定したverified partialであり、複数lint診断の順序/dedup、
+他のparse/type/lint ruleの正確なspan end、全rule code/message parity、全diagnostics/type/lint parity、definition/references/renameの全semantic projection、
 component/packaged release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
-検証後はVM workdir、replay lockを削除し、lsharp-linux-x86を停止した。Evidence commits: 1409e18b, d3e852a6, 6e09ff86, 1b6784db, 43ef943e, 86139edb。
+Evidence commits: 1409e18b, d3e852a6, 6e09ff86, 1b6784db, 43ef943e, 86139edb, e2cef471。
 
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
