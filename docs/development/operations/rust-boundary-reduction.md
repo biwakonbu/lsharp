@@ -4180,3 +4180,33 @@ Evidence:
 より大きい/同時実行のdynamic root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset
 acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。`V2-16b` / `LEGACY-IO-01` は
 `[~]` のまま維持する。代表ADR: `docs/adr/decisions-v0.3-native-standalone-stdin-capacity-growth.md`。
+
+### V2-16b / LEGACY-IO-01 standalone read-file 4MiB bounded chunk (2026-08-04)
+
+`ad65eaffdd7b928ec5e2d226c6f4695236afd05c` で、正確に4MiBの file を standalone `read-file` へ渡す REDを
+`test_e2e_selfhost_standalone_read_file_returns_all_bytes_over_4m` と native I/O matrixへ追加した。旧経路は4096-byte readごとに
+`string-concat` を繰り返し、5分超実行しても assertionへ到達しなかった。実装は既存の open/read/close と fail-closed semanticsを
+維持し、file objectとiovecを4MiBへ拡張して、bounded chunkからStringを生成する narrow fixに留めた。任意サイズのdynamic file
+bufferと全fd error/EOF semanticsはこの batchの対象外である。
+
+Evidence:
+
+- Rust focused E2E `selfhost_standalone_io::test_e2e_selfhost_standalone_read_file_returns_all_bytes_over_4m` — 1 passed / 316.52s。
+- Mac Apple Silicon current-source stage0は source commit `ad65eaffdd7b928ec5e2d226c6f4695236afd05c` と一致し、1 passed / 828.19s、
+  native I/O matrixは19 cases全 pass。
+- Linux x86_64 current-source stage1 -> stage2 -> stage3 fixed pointは
+  `ci-artifacts/native-linux-x86-hostgen-vm/ad65eaff-standalone-file-over-4m/actual-selfregen-summary.json` で target
+  `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,448,943`、stdout SHA-256各
+  `a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e`、stderr空を確認した。
+- 同じ stage2 artifactを再利用した Linux x86_64 `App.Cli` target-only materializeは
+  `ci-artifacts/native-linux-x86-hostgen-vm/ad65eaff-standalone-file-over-4m-linux-cli/actual-selfregen-summary.json` で
+  `selfhost_fixed_point=true`、code `13,374,506` bytes、program SHA-256
+  `a090cd8474c6115ac3a2bcf5570226cc912d7479d0285f6991ca02fb5a1d6469`、stderr `0` bytes、`--version` `lsharp 0.1.0`を確認した。
+  同じ Linux target-only native programに公式 Wasmtime 43.0.0を渡した native I/O matrixは19 cases全 passだった。
+- Static read-stdin contract、Python `py_compile`、`git diff --check`を通過した。Linux VM workdir、replay lock、matrix workdir、
+  Wasmtime tarballを回収し、VMを停止した。
+
+これは standalone `read-file` の4MiB bounded chunkと両対応target runtimeの verified partialである。任意サイズのdynamic file buffer、
+fd_read/fd_close/path_openの全 error/EOF組合せ、同時実行時のdynamic root/data/heap layout、GC/容量失敗診断、全公開command、component
+sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、TODOの
+`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。ADR: `docs/adr/decisions-v0.3-native-standalone-read-file-4m-chunk.md`。

@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `8ab2dd58`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownership、`substring` 3引数 type contract、standalone stdin bufferの容量倍増の反映後）。selfhost production sourceは `8ab2dd58` と一致し、Mac/Linux current-source native gateまで検証済みである。
+- 確認時点の code checkpoint は `ad65eaff`（`d2dcea7e` の standalone command-line/zero-print narrow fix、`9b7ac735` の read-file native matrix、core CLI native matrix、`I-09` child source ownership、`substring` 3引数 type contract、standalone stdin bufferの容量倍増、standalone read-file 4MiB chunkの反映後）。selfhost production sourceは `ad65eaff` と一致し、Mac/Linux current-source native gateまで検証済みである。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -183,6 +183,36 @@
   より大きい/同時実行のdynamic root/data/heap layout、GC/容量失敗診断、全公開command、component sidecar、release asset
   acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`V2-16b` / `LEGACY-IO-01` は
   `[~]` のまま維持する。ADR: [`decisions-v0.3-native-standalone-stdin-capacity-growth.md`](docs/adr/decisions-v0.3-native-standalone-stdin-capacity-growth.md)。
+
+  続く `ad65eaffdd7b928ec5e2d226c6f4695236afd05c` batchでは、正確に4MiBの file を旧 standalone `read-file` へ渡す REDを
+  `test_e2e_selfhost_standalone_read_file_returns_all_bytes_over_4m` と native I/O matrixへ追加した。旧経路は4096-byte
+  readごとに `string-concat` を繰り返し、5分超実行しても assertionへ到達しなかったため、bounded chunkの failure boundaryを
+  固定した。Wasm emitterは既存の open/read/close と fail-closed semanticsを保ったまま、file objectとiovecを4MiBへ拡張し、
+  4MiB単位で一度に読み込んでStringを生成する narrow fixを追加した。任意サイズのdynamic file bufferや全fd error/EOF semanticsは
+  この変更では閉じていない。
+
+  Evidence:
+
+  - Rust focused E2E `selfhost_standalone_io::test_e2e_selfhost_standalone_read_file_returns_all_bytes_over_4m` — 1 passed / 316.52s。
+  - Mac Apple Silicon current-source stage0は source commit `ad65eaffdd7b928ec5e2d226c6f4695236afd05c` と一致し、1 passed / 828.19s、
+    materialized native I/O matrixは19 cases全 pass。
+  - Linux x86_64 current-source stage1 -> stage2 -> stage3 fixed pointは
+    `ci-artifacts/native-linux-x86-hostgen-vm/ad65eaff-standalone-file-over-4m/actual-selfregen-summary.json` で
+    target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length各 `11,448,943`、stdout SHA-256各
+    `a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e`、stderr空を確認した。stage1 manifestの source commitも同じ
+    `ad65eaff...` と一致した。
+  - 同じ stage2 artifactを再利用した Linux x86_64 `App.Cli` target-only materializeは
+    `ci-artifacts/native-linux-x86-hostgen-vm/ad65eaff-standalone-file-over-4m-linux-cli/actual-selfregen-summary.json` で
+    `selfhost_fixed_point=true`、code `13,374,506` bytes、program SHA-256
+    `a090cd8474c6115ac3a2bcf5570226cc912d7479d0285f6991ca02fb5a1d6469`、stderr `0` bytes、`--version` `lsharp 0.1.0`を記録した。
+    同じ Linux target-only native programに公式 Wasmtime 43.0.0を渡した I/O matrixは19 cases全 passだった。
+  - Static read-stdin contract、Python `py_compile`、`git diff --check`を通過した。Linux VM workdir、replay lock、matrix workdir、
+    Wasmtime tarballを回収し、`lsharp-linux-x86` は停止済みである。
+
+  これは standalone `read-file` の4MiB bounded chunkと両対応target runtimeの verified partialである。任意サイズのdynamic file
+  buffer、fd_read/fd_close/path_openの全 error/EOF組合せ、同時実行時のdynamic root/data/heap layout、GC/容量失敗診断、全公開command、
+  component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、
+  `V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。ADR: [`decisions-v0.3-native-standalone-read-file-4m-chunk.md`](docs/adr/decisions-v0.3-native-standalone-read-file-4m-chunk.md)。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
