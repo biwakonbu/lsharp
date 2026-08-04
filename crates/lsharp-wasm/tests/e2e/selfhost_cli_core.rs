@@ -17833,6 +17833,33 @@ fn test_e2e_selfhost_cli_lsp_stdio_didchange_clears_stale_type_diagnostics() {
     );
 }
 
+/// TEST-CLI-02-AN32d: actual Cli は didOpen の lint diagnostics を標準 LSP Diagnostic object へ投影すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_lint_diagnostic() {
+    let uri = "file:///tmp/lsharp-lsp-lint.ls";
+    let open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"(defn main [] (let [unused 42] 0))\n"}}}}}}"##
+    );
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}}]}}"##
+    );
+    assert!(
+        output.contains(&expected),
+        "didOpen の lint diagnostics が標準 LSP Diagnostic fields を保持するべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN33: actual Cli main は `lsp --stdio` publishDiagnostics notification を schema snapshot に一致させること
 #[test]
 #[ignore]

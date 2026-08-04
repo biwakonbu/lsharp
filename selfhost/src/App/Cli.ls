@@ -1457,8 +1457,8 @@
       3
       (if (string-eq severity "hint") 4 1))))
 (defn lsp-review-diagnostic-to-lsp [diag]
-  (let [result (vector-new 6)]
-    (push-int-vector-local
+  (let [result (vector-new 10)
+    base (push-int-vector-local
       (push-int-vector-local
         (push-int-vector-local
           (push-int-vector-local
@@ -1468,7 +1468,11 @@
             (vector-get diag 4))
           (vector-get diag 5))
         (vector-get diag 0))
-      (lsp-diagnostic-source-lint))))
+      (lsp-diagnostic-source-lint))
+    with-end-line (push-int-vector-local base (vector-get diag 4))
+    with-end-col (push-int-vector-local with-end-line (vector-get diag 5))
+    with-code (push-object-vector-local with-end-col (vector-get diag 6))]
+    (push-object-vector-local with-code (vector-get diag 2))))
 (defn lsp-source-lint-diagnostics-loop [raw idx count diagnostics]
   (if (>= idx count)
     diagnostics
