@@ -256,6 +256,16 @@
   full diagnostics/type/lint parity、definition/references/renameの全 semantic projection、component/release parity、Rust-free aggregateは
   未完了のため、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。Evidence commit: `1512cac9`。
 
+  続く `16871a7a` では、文字列（`string-concat`、`string-eq`、`string-char-at`、`substring`）、Vector（`vector-new`、`vector-set`、
+  `vector-push`）、Map（`map-get`、`map-contains?`）、Ref（`ref-get`）の10個の引数位置 mismatchを、Bool/Intの明確な不一致として
+  Rust oracleとnative type-builtin matrixへ追加した。Rust focused testは `1 passed`、Mac Apple Silicon current-source App.Cli artifactの
+  native suiteは `5 tests` 全 pass、Linux x86_64の保存済み `cbbafe94` App.Cli artifact replayも `5 tests` 全 passした。成功経路の
+  stderrは空で、selfhost production sourceは変更していないためstage1 -> stage3 regenerationは重複実行していない。初期REDで試した
+  Vector/Map/Ref receiverへのInt mismatchは、Rust oracleの既存 `Int`/heap handle compatibilityにより受理されるため、Map key mismatchと同じく
+  新しい仕様境界として採用しなかった。これは builtin argument diagnosticsのverified partialであり、全builtin family、全型診断、runtime/codegen parity、
+  全公開command、component/release parity、Rust-free aggregateは未完了のため、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
+  Evidence commit: `16871a7a`。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の

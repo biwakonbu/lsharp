@@ -4411,3 +4411,23 @@ Evidence:
 これは stale diagnostics clearの verified partialである。current-source Linux packaged provenance、全 diagnostics/type/lint parity、複数診断の全文、
 definition/references/renameの全 semantic projection、cross-document URI provenance、component sidecar、release asset acquisition/rollback、
 Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
+
+### V2-16b native remaining builtin argument diagnostics (2026-08-04)
+
+`16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
+`string-char-at`、`substring`、Vectorの `vector-new`、`vector-set`、`vector-push`、Mapの `map-get`、`map-contains?`、Refの `ref-get` で、
+receiver mismatchはBool、index/size/argument mismatchはBoolまたはIntを使い、Rust/native双方で `function argument type mismatch` になることを固定した。
+
+Evidence:
+
+- Rust focused E2E `e2e::selfhost_typeinfer_builtin_parity::test_e2e_selfhost_typeinfer_remaining_builtin_argument_mismatches` は `1 passed`。
+- Mac Apple Siliconの current-source `a0845320` App.Cli artifactを再利用した `scripts/ci/test-native-selfhost-type-builtins.py` は `5 tests` 全 pass。
+- Linux x86_64では保存済み `cbbafe94` App.Cli ELFをLima VMへコピーして同じsuiteをreplayし、`5 tests` 全 pass、stderr空を確認した。VM作業領域は削除し、
+  `lsharp-linux-x86` は停止済みである。
+- `selfhost/src` は変更していないため、Mac/Linuxのstage1 -> stage3 regenerationは重複実行していない。Linux artifactのmanifest source commitは現HEADと
+  異なるため、Linux結果はreplay-only evidenceとして扱う。
+
+初期REDで試した Vector/Map/Ref receiverへのInt mismatchは、Rust oracleの既存 `Int`/heap handle compatibilityにより受理された。同じ理由で、
+canonical Mapがkey/value型を保持しないkey mismatchと同様、この入力は新しい診断契約に採用していない。これはbuiltin argument diagnosticsの
+verified partialであり、全builtin family、全型診断 code/span、runtime/codegen parity、全公開command、component sidecar、release asset
+acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了のため、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
