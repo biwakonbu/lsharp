@@ -4215,11 +4215,13 @@ sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance par
 
 `e962b6ef` で、native builtin matrixに Float `+.` の source-level valid/mismatch fixtureを追加した。続く `13185038` では、
 同じ定義内で `(print 1)` と `(print "x")` を連続して使う polymorphic builtin contractを、Rust oracleとnative fixtureへ追加した。
-どちらも既存の selfhost implementationを変更せず、builtin scheme lookup後に型ごとの fresh instantiationを要求する narrow contractである。
+さらに `3d163344` では、同じ定義内で vector の要素型と map のキー・値型を変えて `vector-push/get` と `map-insert/get` を再利用する
+contractを追加した。どれも既存の selfhost implementationを変更せず、builtin scheme lookup後に型ごとの fresh instantiationを要求する
+narrow contractである。
 
 Evidence:
 
-- Rust focused oracleは Float contractと repeated `print` contractをそれぞれ `1 passed` で通過した。
+- Rust focused oracleは Float、repeated `print`、collection reuse contractをそれぞれ `1 passed` で通過した。
 - Linux x86_64では `ad65eaff` の既存 App.Cli native programへ更新後の
   `scripts/ci/test-native-selfhost-type-builtins.py` を replayし、valid/invalid matrix、LSPを含む `5 tests` 全 passとなった。
 - replay対象の program は production selfhost source commit `ad65eaff` から生成された保存artifactであり、test-only commitの source
