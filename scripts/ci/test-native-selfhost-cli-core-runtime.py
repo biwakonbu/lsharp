@@ -22,6 +22,10 @@ LSP_LINT_URI = "file:///tmp/lsharp-lsp-lint.ls"
 LSP_LINT_SOURCE = "(defn main [] (let [unused 42] 0))\n"
 LSP_HYPHEN_LINT_URI = "file:///tmp/lsharp-lsp-lint-hyphen.ls"
 LSP_HYPHEN_LINT_SOURCE = "(defn main [] (let [unused-a 42] 0))\n"
+LSP_TYPE_UNDEFINED_URI = "file:///tmp/lsharp-lsp-type-undefined.ls"
+LSP_TYPE_UNDEFINED_SOURCE = "(defn main [] missing)\n"
+LSP_TYPE_IF_URI = "file:///tmp/lsharp-lsp-type-if.ls"
+LSP_TYPE_IF_SOURCE = "(defn main [] (if 1 true false))\n"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
 LSP_EMPTY_DO_SOURCE = "(defn main [] (do))\n"
 VALIDATION_SOURCE = """(defn cancel []
@@ -564,6 +568,66 @@ def main():
                 f"lsp hyphenated lint diagnostics projection mismatch: {hyphen_lint_frames[2]!r}"
             )
 
+        undefined_type_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_TYPE_UNDEFINED_URI,
+            LSP_TYPE_UNDEFINED_SOURCE,
+            "undefined-type",
+        )
+        if undefined_type_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_TYPE_UNDEFINED_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 1,
+                        "code": "LS1001",
+                        "source": "lsharp",
+                        "message": "undefined symbol",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp undefined type diagnostics projection mismatch: {undefined_type_frames[2]!r}"
+            )
+
+        if_type_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_TYPE_IF_URI,
+            LSP_TYPE_IF_SOURCE,
+            "if-type",
+        )
+        if if_type_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_TYPE_IF_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 1,
+                        "code": "LS1002",
+                        "source": "lsharp",
+                        "message": "if condition must be Bool",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp if type diagnostics projection mismatch: {if_type_frames[2]!r}"
+            )
+
         empty_do_frames = run_lsp_source_diagnostics(
             program, root, LSP_EMPTY_DO_URI, LSP_EMPTY_DO_SOURCE, "empty-do"
         )
@@ -622,7 +686,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 28 cases")
+    print("native CLI core runtime matrix passed: 30 cases")
 
 
 if __name__ == "__main__":

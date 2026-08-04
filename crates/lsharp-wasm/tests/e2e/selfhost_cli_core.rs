@@ -17887,6 +17887,50 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_hyphenated_lint_name() {
     );
 }
 
+/// TEST-CLI-02-AN32g: actual Cli は type diagnostic の code/message を標準 LSP object へ投影すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics() {
+    let undefined_uri = "file:///tmp/lsharp-lsp-type-undefined.ls";
+    let undefined_open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{undefined_uri}","languageId":"lsharp","version":1,"text":"(defn main [] missing)\n"}}}}}}"##
+    );
+    let if_uri = "file:///tmp/lsharp-lsp-type-if.ls";
+    let if_open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{if_uri}","languageId":"lsharp","version":1,"text":"(defn main [] (if 1 true false))\n"}}}}}}"##
+    );
+    let initialize_body =
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        initialize_body.len(),
+        initialize_body,
+        undefined_open_body.len(),
+        undefined_open_body,
+        if_open_body.len(),
+        if_open_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let undefined_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{undefined_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1001","source":"lsharp","message":"undefined symbol"}}]}}"##
+    );
+    let if_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{if_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}}]}}"##
+    );
+    assert!(
+        output.contains(&undefined_expected),
+        "didOpen の undefined symbol diagnostics が標準 type fields を保持するべき: {output}"
+    );
+    assert!(
+        output.contains(&if_expected),
+        "didOpen の non-Bool if diagnostics が標準 type fields を保持するべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN32e: actual Cli は didOpen の empty-do lint を標準 LSP Diagnostic object へ投影すること
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnostic() {
