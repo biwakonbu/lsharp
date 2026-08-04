@@ -135,6 +135,15 @@
   これは current-source Mac/Linux stage provenanceとstage2/stage3 fixed point、およびMac native substring type fixtureの verified
   partialであり、Linux側の全 builtin matrix、全型診断、全公開command、component/packaged release parityは未完了である。
 
+  さらに command-line runtimeの同一 fixtureを、区切り文字付き出力で空要素の位置まで観測できる形へ拡張した。
+  `prog name`、空要素、UTF-8の `雪 空`、空白を含む `tail value` を渡す special-argv caseは Rust standalone E2Eと
+  native I/O matrixで `prog name||雪 空|4` を確認し、通常の `alpha` / `beta` と strict argc=0も同じ matrixへ保持した。
+  Rust focused E2Eは `1 passed` / `336.08s`、Mac Apple Siliconの保存済み current-source App.Cli artifactは `16 cases` 全 pass、
+  Linux x86_64の保存済み target-only artifact（`eb8086a8`、replay-only）は `16 cases` 全 passだった。Linux artifactは current-source
+  provenance gateではないため、同 targetの current-source native regeneration/runtime evidenceは残る。この batchは argvの
+  空要素・UTF-8・空白保持を閉じる verified partialであり、fd error/EOFの全 semantics、dynamic layout、全公開command、component/
+  packaged release parity、Rust-free aggregateは未完了である。ADR: [`decisions-v0.3-native-standalone-command-line-argv-boundary.md`](docs/adr/decisions-v0.3-native-standalone-command-line-argv-boundary.md)。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の

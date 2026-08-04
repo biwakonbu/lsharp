@@ -482,8 +482,11 @@ fn test_e2e_selfhost_standalone_command_line_runtime() {
             r#"(defn main []
   (do
     (print-string (command-line-arg 0))
+    (print-string "|")
     (print-string (command-line-arg 1))
+    (print-string "|")
     (print-string (command-line-arg 2))
+    (print-string "|")
     (print (command-line-args))))"#,
             &dir,
             "LSHARP_STANDALONE_COMMAND_LINE_CLI_ARTIFACT",
@@ -495,20 +498,31 @@ fn test_e2e_selfhost_standalone_command_line_runtime() {
             "",
         )
         .expect("standalone command-line runtime with args の実行に失敗");
-        let without_args =
-            lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
-                &standalone_wasm,
-                Some(&dir),
-                &[],
-                "",
-            )
-            .expect("standalone command-line runtime without args の実行に失敗");
+        let without_args = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &standalone_wasm,
+            Some(&dir),
+            &[],
+            "",
+        )
+        .expect("standalone command-line runtime without args の実行に失敗");
+        let special_args = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &standalone_wasm,
+            Some(&dir),
+            &["prog name", "", "雪 空", "tail value"],
+            "",
+        )
+        .expect("standalone command-line runtime with special args の実行に失敗");
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(with_args.exit_code, 0);
-        assert_eq!(with_args.stdout.as_bytes(), b"alphabeta2\n");
+        assert_eq!(with_args.stdout.as_bytes(), b"alpha|beta||2\n");
         assert_eq!(without_args.exit_code, 0);
-        assert_eq!(without_args.stdout.as_bytes(), b"0\n");
+        assert_eq!(without_args.stdout.as_bytes(), b"|||0\n");
+        assert_eq!(special_args.exit_code, 0);
+        assert_eq!(
+            special_args.stdout.as_bytes(),
+            "prog name||雪 空|4\n".as_bytes()
+        );
     });
 }
 

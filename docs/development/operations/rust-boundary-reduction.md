@@ -4109,3 +4109,21 @@ Evidence:
 この batchで source ownershipの regular directory/file、`.ls` filtering、directory/direct-file symlink fail-closed、special entry exclusion、
 docs exclusionを確認した。installer / registry / provider/auth、current-source Mac Apple Silicon / Linux x86_64 runtime、
 packaged/release/rollback parity、Rust-free全体の完了は未検証であり、`I-09` / `M3-05-N9` / `EC-M3-05` は `[~]` のまま維持する。
+
+### V2-16b / LEGACY-IO-01 special argv ownership (2026-08-04)
+
+standalone command-line runtimeの同一 fixtureを区切り文字付き出力へ拡張し、argvの空要素を前後の要素と区別できる
+observable contractを固定した。`prog name`、空要素、UTF-8の `雪 空`、空白を含む `tail value` を渡すと
+`prog name||雪 空|4` となり、通常の `alpha` / `beta`、外部CLIの empty-argv0（argc=1）、Rust runnerの strict argc=0も
+既存境界として維持する。
+
+Evidence:
+
+- `cargo test -p lsharp-wasm --test e2e selfhost_standalone_io::test_e2e_selfhost_standalone_command_line_runtime -- --nocapture` — 1 passed / 336.08s。
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-io-runtime.py` — Mac Apple Silicon保存artifactで16 cases passed。
+- 同じnative runnerを Linux x86_64 `eb8086a8` target-only保存artifactへ渡し、16 cases passed。これは replay-onlyであり、current-source Linux provenance evidenceには数えない。
+- Python `py_compile`、`git diff --check` — passed。
+
+この batchで argvの空要素、UTF-8、空白保持を verified partialとして追加した。current-source Linux native regeneration/runtime、
+fd error/EOFの全組合せ、dynamic root/data/heap layout、全公開command、component sidecar、release asset acquisition/rollback、
+Mac/Linux packaged provenance parity、Rust-free aggregateは残る。ADR: [`decisions-v0.3-native-standalone-command-line-argv-boundary.md`](../../adr/decisions-v0.3-native-standalone-command-line-argv-boundary.md)。

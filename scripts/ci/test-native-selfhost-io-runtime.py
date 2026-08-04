@@ -15,8 +15,11 @@ PRINT_ZERO_SOURCE = "(defn main [] (print 0))\n"
 COMMAND_LINE_SOURCE = """(defn main []
   (do
     (print-string (command-line-arg 0))
+    (print-string "|")
     (print-string (command-line-arg 1))
+    (print-string "|")
     (print-string (command-line-arg 2))
+    (print-string "|")
     (print (command-line-args))))
 """
 
@@ -87,14 +90,21 @@ CASES = (
         "name": "command-line",
         "source": COMMAND_LINE_SOURCE,
         "args": ["alpha", "beta"],
-        "stdout": b"alphabeta2\n",
+        "stdout": b"alpha|beta||2\n",
         "exit_code": 0,
     },
     {
         "name": "command-line-empty-argv0",
         "source": COMMAND_LINE_SOURCE,
         "args": [],
-        "stdout": b"1\n",
+        "stdout": b"|||1\n",
+        "exit_code": 0,
+    },
+    {
+        "name": "command-line-special-args",
+        "source": COMMAND_LINE_SOURCE,
+        "args": ["prog name", "", "雪 空", "tail value"],
+        "stdout": "prog name||雪 空|4\n".encode("utf-8"),
         "exit_code": 0,
     },
     {
