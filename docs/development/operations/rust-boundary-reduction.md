@@ -4357,3 +4357,35 @@ current Mac App.Cli artifact `ci-artifacts/native-release/aarch64-apple-darwin/c
 既存の `Ref a -> a -> Unit` schemeとselfhost implementationは変更していない。test-only変更なので `a0845320` source由来の Mac artifactを
 replayし、stage1→stage3 regenerationは重複実行していない。これは ref source-level lookup/applyの verified partialであり、全 builtin
 family、全型診断、全公開 command、component/packaged release parity、Rust-free aggregateは未完了のまま `V2-16b` を `[~]` とする。
+
+### V2-16c native didChange diagnostics refresh (2026-08-04)
+
+`8cc58a4a` で、標準 LSP wireの `initialize -> didOpen(valid) -> didChange(invalid) -> publishDiagnostics` sequenceを、Rust oracleと
+native CLI runtime matrixの同一 fixtureへ追加した。`file:///tmp/lsharp-lsp-didchange.ls` を didOpen、didChange、publishDiagnosticsの
+全てで保持し、invalid source `(defn bad [] (+ 1 true))` に対して次の標準 Diagnostic objectを要求した。
+
+```json
+{
+  "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+  "severity": 1,
+  "code": "LS1004",
+  "source": "lsharp",
+  "message": "function argument type mismatch"
+}
+```
+
+Evidence:
+
+- Rust focused E2E `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didchange_publishes_type_diagnostics_with_uri` は `1 passed` / `336.41s`。
+- Mac Apple Siliconの current-source `a0845320` App.Cli artifact
+  `ci-artifacts/native-release/aarch64-apple-darwin/current-a0845320/program.native` を再利用した
+  `scripts/ci/test-native-selfhost-cli-core-runtime.py` は `native CLI core runtime matrix passed: 24 cases`、exit `0`、stderr空だった。
+- native sequenceは4 frames（initialize response、didOpen projection、didChange projection、publishDiagnostics）を返し、didOpen/didChange
+  の source byte数とwire URI、publishDiagnosticsの URI・severity・code・source・message・rangeを完全一致で検証した。
+- `scripts/ci/test-native-selfhost-cli-core-runtime.py` の `py_compile` と `git diff --check` は passした。今回 `selfhost/src` は変更していないため、
+  production source `a0845320` からの重い stage1 -> stage3 regenerationは重複実行していない。
+
+これは didChange後の type diagnostics refreshとwire URI/標準 Diagnostic fieldsに限定した verified partialである。Linux current-source
+App.Cliでの同じ direct LSP sequence、全 diagnostics/type/lint parity、複数診断の全文、definition/references/renameの全 semantic
+projection、cross-document URI provenance、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、
+Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。

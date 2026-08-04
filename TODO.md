@@ -237,6 +237,16 @@
   全 builtin family、全型診断、全公開command、component/packaged release parity、Rust-free aggregateは未完了のまま、`V2-16b` は
   `[~]` を維持する。Evidence commit: `c97c01c0`。
 
+  続く `8cc58a4a` では、標準 LSP wire の `initialize -> didOpen(valid) -> didChange(invalid) -> publishDiagnostics` sequenceを
+  Rust oracle と native CLI runtime matrixへ追加した。`file:///tmp/lsharp-lsp-didchange.ls` のURIを保持し、invalid sourceの
+  `LS1004`、severity `1`、source `lsharp`、message `function argument type mismatch`、zero-based rangeを固定した。
+  Rust focused testは `1 passed`、Mac Apple Siliconの current-source `a0845320` App.Cli artifactを再利用した native core CLI matrixは
+  `24 cases` 全 pass、exit `0`、stderr空だった。selfhost production sourceは変わっていないため、stage1 -> stage3 regenerationは
+  重複実行していない。これは didChange後のtype diagnostics refreshとwire URI/標準 fieldsの verified partialであり、Linux
+  current-source App.Cliでの同じ direct LSP sequence、full diagnostics/type/lint parity、definition/references/renameの全 semantic
+  projection、component/release parity、Rust-free aggregateは未完了のため、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
+  Evidence commit: `8cc58a4a`。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の
