@@ -14,6 +14,7 @@ LSP_SHIM = ROOT / "scripts/native-selfhost-lsp-stdio.py"
 VALID_SOURCE = "(defn main [] (+ 1 2))\n"
 INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 VALID_BUILTIN_SOURCES = {
+    "float-add": "(defn main [] (+. 1.0 2.0))\n",
     "subtraction": "(defn main [] (- 3 1))\n",
     "multiplication": "(defn main [] (* 3 2))\n",
     "division": "(defn main [] (/ 6 2))\n",
@@ -52,6 +53,7 @@ VALID_BUILTIN_SOURCES = {
     "write-file-bytes": "(defn main [] (write-file-bytes \"raw.wasm\" (vector-new 2)))\n",
 }
 INVALID_BUILTIN_SOURCES = {
+    "float-add": "(defn bad [] (+. 1.0 2))\n",
     "subtraction": "(defn bad [] (- 3 true))\n",
     "string-length": "(defn bad [] (string-length 3))\n",
     "string-char-at": "(defn bad [] (string-char-at 3 0))\n",

@@ -471,3 +471,10 @@ fn test_e2e_selfhost_typeinfer_zero_argument_builtin_call_applies_unit() {
         "引数なし builtin 呼び出しは Unit 入力を消費して結果型を返すべき"
     );
 }
+
+/// Float builtin は Float 引数を要求し、Int の混在を拒否する。
+#[test]
+fn test_e2e_selfhost_typeinfer_float_builtin_source_contract() {
+    typecheck_only("(defn main [] (+. 1.0 2.0))");
+    should_fail_typecheck("(defn main [] (+. 1.0 2))");
+}
