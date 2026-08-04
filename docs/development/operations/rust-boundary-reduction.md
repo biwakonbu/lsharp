@@ -4389,3 +4389,25 @@ Evidence:
 App.Cliでの同じ direct LSP sequence、全 diagnostics/type/lint parity、複数診断の全文、definition/references/renameの全 semantic
 projection、cross-document URI provenance、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、
 Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
+
+### V2-16c native stale diagnostics clear (2026-08-04)
+
+`1512cac9` で、同じ string URIに対する `didChange(invalid) -> publishDiagnostics(LS1004) -> didChange(valid) -> publishDiagnostics([])`
+sequenceを追加した。invalid sourceで公開した type diagnosticが、valid sourceへの更新後に同じ URIの空 diagnosticsへ置き換わり、
+stale recordが残らないことをRust oracleとnative CLI runtimeで確認した。
+
+Evidence:
+
+- Rust focused E2E `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didchange_clears_stale_type_diagnostics` は `1 passed` / `334.00s`。
+- Mac Apple Siliconの current-source `a0845320` App.Cli artifact
+  `ci-artifacts/native-release/aarch64-apple-darwin/current-a0845320/program.native` を再利用した native core CLI matrixは
+  `native CLI core runtime matrix passed: 25 cases`、exit `0`、stderr空だった。
+- Linux x86_64では保存済み `cbbafe94` App.Cli ELF
+  `ci-artifacts/native-linux-x86-hostgen-vm/cbbafe94-mcp-current-source-cli/program.native` をLima VMへコピーして同じmatrixを実行し、
+  `native CLI core runtime matrix passed: 25 cases`、exit `0`、stderr空を確認した。VM作業領域は削除し、`lsharp-linux-x86` は停止済みである。
+- `cbbafe94` から現HEADまで `selfhost/src` の差分はないため、stage1 -> stage3 regenerationは重複実行していない。ただしLinux artifactの
+  manifest source commitは現HEADと異なるため、このLinux結果は replay-only evidenceであり、current-source provenance gateへ拡大解釈しない。
+
+これは stale diagnostics clearの verified partialである。current-source Linux packaged provenance、全 diagnostics/type/lint parity、複数診断の全文、
+definition/references/renameの全 semantic projection、cross-document URI provenance、component sidecar、release asset acquisition/rollback、
+Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。

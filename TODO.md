@@ -247,6 +247,15 @@
   projection、component/release parity、Rust-free aggregateは未完了のため、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
   Evidence commit: `8cc58a4a`。
 
+  続く `1512cac9` では、同じ URIで `didChange(invalid) -> publishDiagnostics(LS1004) -> didChange(valid) -> publishDiagnostics([])` を
+  追加し、stale type diagnosticsをvalid sourceで消去する順序を固定した。Rust focused testは `1 passed` / `334.00s`、Mac Apple Siliconの
+  current-source `a0845320` App.Cli artifactは native core CLI matrix `25 cases` 全 pass、Linux x86_64の保存済み `cbbafe94` App.Cli
+  ELF replayもVM内で `25 cases` 全 pass、いずれもexit `0` / stderr空だった。`cbbafe94` から現HEADまで `selfhost/src` の差分はなく、
+  stage1 -> stage3 regenerationは重複実行していない。ただしLinux artifactのmanifest source commitは現HEADと異なるためLinux結果は
+  replay-only evidenceであり、current-source provenance gateには数えない。これは stale diagnostics clearの verified partialであり、
+  full diagnostics/type/lint parity、definition/references/renameの全 semantic projection、component/release parity、Rust-free aggregateは
+  未完了のため、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。Evidence commit: `1512cac9`。
+
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
   外部 source として辿らず、source traversal / in-memory package API generation の既存 not-found / empty / ignore 契約を
   Rust/native の同一 fixture で閉じる。root `src/` directory symlinkについては、実装前の RED、外部 source の
