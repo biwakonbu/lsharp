@@ -16,6 +16,8 @@ METADATA_SOURCE = """(defn abs [x]
 """
 DOC_JSON_SOURCE = "(defn main [] 42)\n"
 LSP_SOURCE = "(defn add [x y] (+ x y))\n(defn main [] (add 1 2))\n"
+LSP_DIDCHANGE_VALID_SOURCE = "(defn main [] 42)\n"
+LSP_DIDCHANGE_INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 VALIDATION_SOURCE = """(defn cancel []
   :intent "intent:checkout/safe-cancel" "Users can cancel an order"
   :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
@@ -138,6 +140,63 @@ def run_lsp_stdio(program, root):
         )
     if result.stderr:
         raise AssertionError(f"lsp --stdio emitted stderr: {result.stderr!r}")
+    return parse_lsp_frames(result.stdout), uri
+
+
+def run_lsp_didchange_diagnostics(program, root):
+    uri = "file:///tmp/lsharp-lsp-didchange.ls"
+    wire = b"".join(
+        [
+            lsp_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"capabilities": {}, "rootUri": None},
+                }
+            ),
+            lsp_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didOpen",
+                    "params": {
+                        "textDocument": {
+                            "uri": uri,
+                            "languageId": "lsharp",
+                            "version": 1,
+                            "text": LSP_DIDCHANGE_VALID_SOURCE,
+                        }
+                    },
+                }
+            ),
+            lsp_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didChange",
+                    "params": {
+                        "textDocument": {"uri": uri, "version": 2},
+                        "contentChanges": [{"text": LSP_DIDCHANGE_INVALID_SOURCE}],
+                    },
+                }
+            ),
+        ]
+    )
+    result = subprocess.run(
+        [str(program), "lsp", "--stdio"],
+        cwd=root,
+        input=wire,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"lsp didChange diagnostics failed: exit={result.returncode} "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    if result.stderr:
+        raise AssertionError(
+            f"lsp didChange diagnostics emitted stderr: {result.stderr!r}"
+        )
     return parse_lsp_frames(result.stdout), uri
 
 
@@ -290,6 +349,57 @@ def main():
         if hover.get("id") != 2 or hover.get("result", {}).get("contents") != "defn add":
             raise AssertionError(f"lsp hover projection mismatch: {hover!r}")
 
+        didchange_frames, didchange_uri = run_lsp_didchange_diagnostics(program, root)
+        if len(didchange_frames) != 4:
+            raise AssertionError(
+                f"lsp didChange diagnostics frame count mismatch: {didchange_frames!r}"
+            )
+        if didchange_frames[1] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "sourceBytes": len(LSP_DIDCHANGE_VALID_SOURCE.encode("utf-8")),
+                "uri": didchange_uri,
+            },
+        }:
+            raise AssertionError(
+                f"lsp didChange didOpen projection mismatch: {didchange_frames[1]!r}"
+            )
+        if didchange_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "sourceBytes": len(LSP_DIDCHANGE_INVALID_SOURCE.encode("utf-8")),
+                "uri": didchange_uri,
+            },
+        }:
+            raise AssertionError(
+                f"lsp didChange projection mismatch: {didchange_frames[2]!r}"
+            )
+        diagnostics = didchange_frames[3]
+        if diagnostics != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": didchange_uri,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 1,
+                        "code": "LS1004",
+                        "source": "lsharp",
+                        "message": "function argument type mismatch",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp didChange diagnostics projection mismatch: {diagnostics!r}"
+            )
+
         invalid_doc = subprocess.run(
             [str(program), "doc", "input.ls", "--format", "yaml"],
             cwd=root,
@@ -307,7 +417,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 23 cases")
+    print("native CLI core runtime matrix passed: 24 cases")
 
 
 if __name__ == "__main__":

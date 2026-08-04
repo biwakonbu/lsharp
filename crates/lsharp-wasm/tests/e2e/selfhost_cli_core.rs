@@ -17755,6 +17755,38 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_schema_snapshot()
     );
 }
 
+/// TEST-CLI-02-AN32b: actual Cli は didChange 後の type diagnostics と wire URI を更新すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didchange_publishes_type_diagnostics_with_uri() {
+    let uri = "file:///tmp/lsharp-lsp-didchange.ls";
+    let open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"(defn main [] 42)\n"}}}}}}"##
+    );
+    let change_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":"{uri}","version":2}},"contentChanges":[{{"text":"(defn bad [] (+ 1 true))\n"}}]}}}}"##
+    );
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
+    );
+    assert!(
+        output.contains(&expected),
+        "didChange 後の type diagnostics が wire URI/標準 fields を保持するべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN33: actual Cli main は `lsp --stdio` publishDiagnostics notification を schema snapshot に一致させること
 #[test]
 #[ignore]
