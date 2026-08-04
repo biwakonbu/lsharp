@@ -30,6 +30,8 @@ LSP_TYPE_IF_URI = "file:///tmp/lsharp-lsp-type-if.ls"
 LSP_TYPE_IF_SOURCE = "(defn main [] (if 1 true false))\n"
 LSP_TYPE_ARGUMENT_URI = "file:///tmp/lsharp-lsp-type-argument.ls"
 LSP_TYPE_ARGUMENT_SOURCE = "(defn bad [] (+ 1 true))\n"
+LSP_TYPE_INFINITE_URI = "file:///tmp/lsharp-lsp-type-infinite.ls"
+LSP_TYPE_INFINITE_SOURCE = "(defn main [x] (x x))\n"
 LSP_PARSE_URI = "file:///tmp/lsharp-lsp-parse-standard.ls"
 LSP_PARSE_SOURCE = ")"
 LSP_EMPTY_DO_URI = "file:///tmp/lsharp-lsp-empty-do.ls"
@@ -741,6 +743,36 @@ def main():
                 f"lsp argument type diagnostics projection mismatch: {argument_type_frames[2]!r}"
             )
 
+        infinite_type_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_TYPE_INFINITE_URI,
+            LSP_TYPE_INFINITE_SOURCE,
+            "infinite-type",
+        )
+        if infinite_type_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_TYPE_INFINITE_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 1,
+                        "code": "LS1003",
+                        "source": "lsharp",
+                        "message": "infinite type",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp infinite type diagnostics projection mismatch: {infinite_type_frames[2]!r}"
+            )
+
         parse_frames = run_lsp_source_diagnostics(
             program, root, LSP_PARSE_URI, LSP_PARSE_SOURCE, "parse"
         )
@@ -893,7 +925,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 32 cases")
+    print("native CLI core runtime matrix passed: 33 cases")
 
 
 if __name__ == "__main__":
