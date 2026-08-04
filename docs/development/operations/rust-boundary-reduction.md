@@ -4253,8 +4253,8 @@ unknown trace-gap reportと exit `2` を追加し、同じ Linux replayは `23 c
 `bb2725be` で、保存済み `ad65eaff` Linux x86_64 `App.Cli` target-only native programを
 `scripts/ci/test-native-selfhost-mcp-runtime.py` から実行した。実際の
 `scripts/native-selfhost-mcp.py` に対して JSON-RPC `initialize`、`tools/list`、
-`lsharp_check`、`lsharp_format`、`lsharp_install` の5 requestsを送り、
-`native MCP runtime contract passed: 5 requests`、exit `0`、stderr空を確認した。
+`lsharp_check`、`lsharp_format`、`lsharp_install`、`lsharp_validate` の6 requestsを送り、
+`native MCP runtime contract passed: 6 requests`、exit `0`、stderr空を確認した。
 
 selfhost CLIの legacy `check --format json` は clean sourceで
 `command/type/diagnostics/migration/failureKinds` を返すため、shimは各 fieldを検証し、
@@ -4263,6 +4263,10 @@ diagnostics count `0`、migration空、failureKindsが空または全て `0` の
 非ゼロ failure kindは構造化 MCP の owner/range semanticsを満たせないため、捨てずに明示
 fail-closedとした。`lsharp_install`は既存の explicit external provider adapter boundaryを
 返し、registry/network/provider helperを実行しない。
+
+`lsharp_validate` は native processの exit `2`（source graphが unknown）をプロトコル失敗へ昇格せず、
+`status:"unknown"` と zero counters の valid structured resultとして保持した。empty/ malformed JSONや
+schema不一致は従来どおり tool error へ fail-closedする。
 
 これは production source `ad65eaff` から生成された保存 artifactへの replay-only evidenceであり、
 現HEADの source provenance gateではない。native MCPの診断/migration structured parity、実
