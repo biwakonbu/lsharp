@@ -475,8 +475,22 @@ fn test_e2e_selfhost_typeinfer_zero_argument_builtin_call_applies_unit() {
 /// Float builtin は Float 引数を要求し、Int の混在を拒否する。
 #[test]
 fn test_e2e_selfhost_typeinfer_float_builtin_source_contract() {
-    typecheck_only("(defn main [] (+. 1.0 2.0))");
-    should_fail_typecheck("(defn main [] (+. 1.0 2))");
+    for source in [
+        "(defn main [] (+. 1.0 2.0))",
+        "(defn main [] (-. 3.0 1.0))",
+        "(defn main [] (*. 2.0 4.0))",
+        "(defn main [] (/. 8.0 2.0))",
+    ] {
+        typecheck_only(source);
+    }
+    for source in [
+        "(defn main [] (+. 1.0 2))",
+        "(defn main [] (-. 3.0 true))",
+        "(defn main [] (*. 2.0 \"x\"))",
+        "(defn main [] (/. false 2.0))",
+    ] {
+        should_fail_typecheck(source);
+    }
 }
 
 /// polymorphic な print builtin は同じ source 内で型ごとに再 instantiate できる。

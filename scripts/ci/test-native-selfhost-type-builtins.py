@@ -15,6 +15,9 @@ VALID_SOURCE = "(defn main [] (+ 1 2))\n"
 INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 VALID_BUILTIN_SOURCES = {
     "float-add": "(defn main [] (+. 1.0 2.0))\n",
+    "float-subtraction": "(defn main [] (-. 3.0 1.0))\n",
+    "float-multiplication": "(defn main [] (*. 2.0 4.0))\n",
+    "float-division": "(defn main [] (/. 8.0 2.0))\n",
     "print-polymorphic": '(defn main [] (do (print 1) (print "x") 0))\n',
     "polymorphic-collection-reuse": '(defn main [] (let [ints (vector-push (vector-new 1) 7) strings (vector-push (vector-new 1) "x") int-map (map-insert (map-new) 1 "one") string-map (map-insert (map-new) "two" 2)] (do (vector-get ints 0) (vector-get strings 0) (map-get int-map 1) (map-get string-map "two") 0)))\n',
     "subtraction": "(defn main [] (- 3 1))\n",
@@ -56,6 +59,9 @@ VALID_BUILTIN_SOURCES = {
 }
 INVALID_BUILTIN_SOURCES = {
     "float-add": "(defn bad [] (+. 1.0 2))\n",
+    "float-subtraction": "(defn bad [] (-. 3.0 true))\n",
+    "float-multiplication": '(defn bad [] (*. 2.0 "x"))\n',
+    "float-division": "(defn bad [] (/. false 2.0))\n",
     "subtraction": "(defn bad [] (- 3 true))\n",
     "string-length": "(defn bad [] (string-length 3))\n",
     "string-char-at": "(defn bad [] (string-char-at 3 0))\n",
