@@ -4268,6 +4268,10 @@ fail-closedとした。`lsharp_install`は既存の explicit external provider a
 `status:"unknown"` と zero counters の valid structured resultとして保持した。empty/ malformed JSONや
 schema不一致は従来どおり tool error へ fail-closedする。
 
+`cf3692e5` でこの6-request runtime contractを追加し、`1f0de6a7` で migration rowを含む legacy summaryの
+negative contractを追加した。native MCP suiteは `113 tests` 全 passで、clean summary以外を structured MCP successへ
+暗黙投影せず、migration・診断・非ゼロ failure kindを含む legacy outputを明示的に fail-closedすることを確認した。
+
 これは production source `ad65eaff` から生成された保存 artifactへの replay-only evidenceであり、
 現HEADの source provenance gateではない。native MCPの診断/migration structured parity、実
 install/provider、LSP全 semantic projection、component helper、両target packaged release parity、

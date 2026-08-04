@@ -1812,6 +1812,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   明示的に fail-closed とし、install は `native MCP package installation requires an explicit external provider adapter` を返す。
   `lsharp_validate` は native process exit `2` の unknown reportを structured resultとして保持した。Linux runtimeは
   `native MCP runtime contract passed: 6 requests`、stderr空で passし、VM workdirを削除して停止した。
+  `cf3692e5` でこの6-request runtime contractを追加し、`1f0de6a7` で migration rowを含む legacy clean-looking summaryを
+  structured MCP successへ投影しない negative testを追加した。native MCP suiteは `113 tests` 全 passで、migration、診断、非ゼロ
+  failure kindを含む legacy summaryは情報を捨てず明示的に fail-closedする境界を固定した。
   これは保存済み production artifactに対する replay-only evidenceであり、現HEADの source provenance gateではない。
   native MCPの診断/migration structured parity、実 install/provider、LSP全 semantic projection、component helper、両target packaged
   release parity、`LEGACY-TOOL-01` aggregateは未完了のまま維持する。
