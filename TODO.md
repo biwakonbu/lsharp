@@ -41,12 +41,13 @@
 
 ### 再開時の次の一件
 
-直近の verified partial として、1409e18b / d3e852a6 で unused-let lint の review diagnostic を標準 LSP Diagnostic object へ投影した。
-RED では legacy の source/rule/line/col/messageHash payload を確認し、GREEN では point range、severity 2、code L0001、
-source lsharp、message "let binding unused is not used" を Rust actual bundle で固定した。Rust focused E2E は RED 357.54s の後に
-GREEN 1 passed / 341.85s となった。Mac Apple Silicon の current-source release gate
-ci-artifacts/native-release/aarch64-apple-darwin/current-d3e852a6-lsp-lint/program.native は
-manifest source_commit == HEAD、selfhost_fixed_point=true、artifact 4,748 KiB、stderr 0、native core matrix 26 cases 全 pass だった。
+直近の verified partial として、1409e18b / d3e852a6 で review の unused-let lint diagnostic を標準 LSP Diagnostic object へ投影し、
+続く test-only batch で empty-do (`L0002`) も同じ wire fields へ固定した。Rust actual bundle の focused E2E は
+`test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnostic` が 1 passed / 430.65s となり、point range、
+severity 2、code L0002、source lsharp、message "do block has no expressions" を確認した。Mac Apple Silicon の
+`ci-artifacts/native-release/aarch64-apple-darwin/current-d3e852a6-lsp-lint/program.native` は production source commit
+`d3e852a6572cbdf4ea705eee851d67230b20772e` と一致し、後続 `c50b7b3c` は docs-only、selfhost_fixed_point=true、artifact 4,748 KiB、
+stderr 0、native core matrix 27 cases 全 pass だった。
 
 Linux x86_64 では ci-artifacts/native-linux-x86-hostgen-vm/d3e852a6-lsp-lint-current/actual-selfregen-summary.json に
 target x86_64-unknown-linux-gnu、host Linux/x86_64、status=pass、stage2/stage3 code length 各 11,448,943、
@@ -58,10 +59,10 @@ program SHA-256 b155abe13cb16c71f6c34e02152b33b4f819c9a8cceb769386740317f3a6f988
 同じ Linux ELF を VM 内で native core matrix 26 cases、type builtins 5 tests、MCP 6 requests 全 pass した。
 target-only lane は保存済み stage2 と VM-side lock を再利用し、Seed fixed-point の重複 replay を避けた。
 
-これは lint の単一 unused-let Diagnostic projection と標準 wire fields に限定した verified partial であり、複数 lint 診断の順序/dedup、
+これは unused-let (`L0001`) と empty-do (`L0002`) の標準 wire projectionに限定した verified partial であり、複数 lint 診断の順序/dedup、
 正確な span end、全 rule code/message parity、全 diagnostics/type/lint parity、definition/references/rename の全 semantic projection、
 component/packaged release parity、Rust-free aggregate は未完了のため V2-16b / V2-16c / V2-16e は [~] のまま維持する。
-Evidence commits: 1409e18b, d3e852a6。
+Evidence commits: 1409e18b, d3e852a6, 6e09ff86.
 
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、

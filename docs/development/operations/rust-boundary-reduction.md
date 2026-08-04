@@ -4430,10 +4430,17 @@ d3e852a6572cbdf4ea705eee851d67230b20772e、code 13,375,178、program SHA-256
 b155abe13cb16c71f6c34e02152b33b4f819c9a8cceb769386740317f3a6f988、--version smoke stderr 0だった。
 同じLinux ELFを停止前のLima VM内で native core 26 cases、type builtins 5 tests、MCP 6 requests全 passした。
 
-これは単一unused-let diagnosticの標準projectionに限定したverified partialであり、複数lint診断の順序/dedup、
+続く test-only batch では、同じ projection を `empty-do` rule へ拡張した。Rust actual bundle の
+`test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnostic` は 1 passed / 430.65s で、
+point range、severity 2、code L0002、source lsharp、message `do block has no expressions` を固定した。Mac Apple Silicon と
+Linux x86_64 の保存済み current-source App.Cli artifactに同じ native runnerを適用し、unused-let と empty-do を含む native core
+runtime matrix は各 27 cases 全 pass となった。Linux は x86_64 VM 内で実行し、VM内の一時 program/script は検証後に回収した。
+production selfhost source は d3e852a6 から変更せず、後続 c50b7b3c は docs-only のため、既存の d3e artifact を replay-only で再利用した。
+
+これは unused-let と empty-do の標準projectionに限定したverified partialであり、複数lint診断の順序/dedup、
 正確なspan end、全rule code/message parity、全diagnostics/type/lint parity、definition/references/renameの全semantic projection、
 component/packaged release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
-検証後はVM workdir、replay lockを削除し、lsharp-linux-x86を停止した。Evidence commits: 1409e18b, d3e852a6。
+検証後はVM workdir、replay lockを削除し、lsharp-linux-x86を停止した。Evidence commits: 1409e18b, d3e852a6, 6e09ff86。
 
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
