@@ -518,3 +518,14 @@ fn test_e2e_selfhost_typeinfer_collection_builtins_are_polymorphic_across_repeat
 "#,
     );
 }
+
+/// map-remove は map receiver の型を要求し、非 Map receiver を明示的に拒否する。
+#[test]
+fn test_e2e_selfhost_typeinfer_map_remove_rejects_receiver_type_mismatch() {
+    should_fail_typecheck(
+        r#"
+(defn main []
+  (map-remove true 1))
+"#,
+    );
+}

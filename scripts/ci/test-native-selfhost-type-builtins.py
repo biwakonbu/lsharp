@@ -68,6 +68,7 @@ INVALID_BUILTIN_SOURCES = {
     "vector-length": "(defn bad [] (vector-length 3))\n",
     "vector-get": "(defn bad [] (vector-get 3 0))\n",
     "map-insert": "(defn bad [] (map-insert 3 1 2))\n",
+    "map-remove-receiver": "(defn bad [] (map-remove true 1))\n",
     "command-line-arg": "(defn bad [] (command-line-arg true))\n",
     "file-exists?": "(defn bad [] (file-exists? 3))\n",
     "comparison-gt": "(defn bad [] (> 3 true))\n",
