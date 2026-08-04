@@ -219,7 +219,8 @@
   `ad65eaff` の既存 App.Cli artifactへ更新後の matrixを replayして `5 tests` 全 passとなった。production selfhost sourceは
   `ad65eaff` から変わっていないため重い Mac/Linux current-source stage replayは重複実行していない。この Linux結果は test-only fixtureの
   replay evidenceであり、新しい source provenance gateとは数えない。さらに `3d163344` で vector/map の要素・キー・値型を変えた
-  repeated collection useを同じ fixtureへ追加し、Rust oracleと同じLinux replay matrixを通過した。builtin全体、全型診断、全公開command、component/packaged
+  repeated collection useを同じ fixtureへ追加し、Rust oracleと同じLinux replay matrixを通過した。続く `56f78589` では Floatの4演算子
+  全て（`+.`, `-.`, `*.`, `/.`）の valid/mismatch source contractを同じ matrixへ拡張した。builtin全体、全型診断、全公開command、component/packaged
   release parity、Rust-free aggregateは未完了であり、`V2-16b` は `[~]` のまま維持する。
 
 - [~] `I-09` / `M3-05-N9` / `EC-M3-05` nested package source ownership — regular な package 内の `src/` directory symlink を
