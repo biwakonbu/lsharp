@@ -15,6 +15,7 @@ VALID_SOURCE = "(defn main [] (+ 1 2))\n"
 INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 VALID_BUILTIN_SOURCES = {
     "float-add": "(defn main [] (+. 1.0 2.0))\n",
+    "print-polymorphic": '(defn main [] (do (print 1) (print "x") 0))\n',
     "subtraction": "(defn main [] (- 3 1))\n",
     "multiplication": "(defn main [] (* 3 2))\n",
     "division": "(defn main [] (/ 6 2))\n",

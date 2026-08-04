@@ -478,3 +478,9 @@ fn test_e2e_selfhost_typeinfer_float_builtin_source_contract() {
     typecheck_only("(defn main [] (+. 1.0 2.0))");
     should_fail_typecheck("(defn main [] (+. 1.0 2))");
 }
+
+/// polymorphic な print builtin は同じ source 内で型ごとに再 instantiate できる。
+#[test]
+fn test_e2e_selfhost_typeinfer_builtin_print_is_polymorphic_across_repeated_uses() {
+    typecheck_only("(defn main [] (do (print 1) (print \"x\") 0))");
+}
