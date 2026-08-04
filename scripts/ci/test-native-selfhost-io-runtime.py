@@ -13,6 +13,7 @@ READ_STDIN_OVER_4096 = b"a" * 4096 + b"b"
 READ_STDIN_OVER_256K = b"a" * (262144 - 1) + b"b"
 READ_STDIN_OVER_4M = b"a" * ((4 * 1024 * 1024) - 1) + b"b"
 READ_FILE_OVER_4096 = b"a" * 4096 + b"b"
+READ_FILE_OVER_4M = b"a" * ((4 * 1024 * 1024) - 1) + b"b"
 PRINT_ZERO_SOURCE = "(defn main [] (print 0))\n"
 COMMAND_LINE_SOURCE = """(defn main []
   (do
@@ -94,6 +95,13 @@ CASES = (
         "source": '(defn main [] (print-string (read-file "input.txt")))\n',
         "files": (("input.txt", READ_FILE_OVER_4096),),
         "stdout": READ_FILE_OVER_4096,
+        "exit_code": 0,
+    },
+    {
+        "name": "read-file-over-4m",
+        "source": '(defn main [] (print-string (read-file "input.txt")))\n',
+        "files": (("input.txt", READ_FILE_OVER_4M),),
+        "stdout": READ_FILE_OVER_4M,
         "exit_code": 0,
     },
     {

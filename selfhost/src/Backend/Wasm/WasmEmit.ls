@@ -1070,7 +1070,8 @@
     b28 (emit-standalone-byte-seq-4 b27 32 5 172 11)]
     b28))
 (defn emit-standalone-read-file-body-chunked []
-  ;; 4096-byte chunk を allocator/string-concat で累積し、EOF まで読み取る。
+  ;; 4MiB chunk を allocator/string-concat で累積し、EOF まで読み取る。
+  ;; 4MiB超の任意長を閉じる動的 bufferは別契約として残す。
   ;; open/read/close errno は fail-closed、WASI scratch は 2176/2184/2240 を使う。
   (let [
     b0 (emit-standalone-byte-seq-8 (vector-new 2048) 3 3 127 2 126 3 127 32)
@@ -1083,12 +1084,16 @@
     b7 (emit-standalone-byte-seq-8 b6 1 54 2 0 32 4 167 65)
     b8 (emit-standalone-byte-seq-8 b7 0 54 2 4 32 8 69 4)
     b9 (emit-standalone-byte-seq-8 b8 64 65 192 17 40 2 0 33)
-    b10 (emit-standalone-byte-seq-8 b9 3 66 136 32 16 1 33 5)
+    b10a (emit-standalone-byte-seq-2 b9 3 66)
+    b10b (emit-leb128-s b10a 4194312)
+    b10 (emit-standalone-byte-seq-4 b10b 16 1 33 5)
     b11 (emit-standalone-byte-seq-8 b10 32 5 167 65 1 54 2 0)
     b12 (emit-standalone-byte-seq-8 b11 32 5 167 65 0 54 2 4)
     b13 (emit-standalone-byte-seq-8 b12 2 64 3 64 65 128 17 32)
     b14 (emit-standalone-byte-seq-8 b13 5 167 65 8 106 54 2 0)
-    b15 (emit-standalone-byte-seq-8 b14 65 128 17 65 128 32 54 2)
+    b15a (emit-standalone-byte-seq-4 b14 65 128 17 65)
+    b15b (emit-leb128-s b15a 4194304)
+    b15 (emit-standalone-byte-seq-2 b15b 54 2)
     b16 (emit-standalone-byte-seq-8 b15 4 65 136 17 65 0 54 2)
     b17 (emit-standalone-byte-seq-8 b16 0 32 3 65 128 17 65 1)
     b18 (emit-standalone-byte-seq-8 b17 65 136 17 16 15 33 7 32)
