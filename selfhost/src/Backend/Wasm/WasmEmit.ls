@@ -904,7 +904,17 @@
     b3 (emit-standalone-byte-seq-8 b2 40 2 0 33 2 32 2 69)
     b4a (emit-standalone-byte-seq-8 b3 4 64 65 128 192 0 33 2)
     b4 (emit-standalone-byte-seq-1 b4a 11)
-    b5 (emit-standalone-byte-seq-8 b4 65 32 32 2 32 1 106 54)
+    ;; heap end が現在の linear memory を超える場合は必要ページだけ先に拡張する。
+    b5a (emit-standalone-byte-seq-8 b4 32 2 32 1 106 63 0 65)
+    b5b (emit-leb128-s b5a 16)
+    b5c (emit-standalone-byte-seq-4 b5b 116 75 4 64)
+    b5d (emit-standalone-byte-seq-6 b5c 32 2 32 1 106 65)
+    b5e (emit-leb128-s b5d 65535)
+    b5f (emit-standalone-byte-seq-4 b5e 106 65 16 118)
+    b5g (emit-standalone-byte-seq-4 b5f 63 0 107 64)
+    b5h (emit-standalone-byte-seq-2 b5g 0 26)
+    b5i (emit-standalone-byte-seq-1 b5h 11)
+    b5 (emit-standalone-byte-seq-8 b5i 65 32 32 2 32 1 106 54)
     b6 (emit-standalone-byte-seq-6 b5 2 0 32 2 173 11)]
     b6))
 (defn emit-standalone-print-body []

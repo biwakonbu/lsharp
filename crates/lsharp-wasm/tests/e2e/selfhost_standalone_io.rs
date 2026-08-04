@@ -440,11 +440,13 @@ fn test_e2e_selfhost_standalone_read_stdin_runtime() {
         }
         let boundary_4096 = format!("{}b", "a".repeat(4095));
         let boundary_over_4096 = format!("{}b", "a".repeat(4096));
+        let boundary_over_256k = format!("{}b", "a".repeat(262143));
         let cases = vec![
             ("payload", "payload".to_string()),
             ("empty", String::new()),
             ("4096", boundary_4096),
             ("over-4096", boundary_over_4096),
+            ("over-256k", boundary_over_256k),
         ];
         for (label, stdin) in cases {
             let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(

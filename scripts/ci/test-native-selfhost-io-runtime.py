@@ -10,6 +10,7 @@ import tempfile
 READ_STDIN_SOURCE = "(defn main [] (print-string (read-stdin)))\n"
 READ_STDIN_4096 = b"a" * 4095 + b"b"
 READ_STDIN_OVER_4096 = b"a" * 4096 + b"b"
+READ_STDIN_OVER_256K = b"a" * (262144 - 1) + b"b"
 READ_FILE_OVER_4096 = b"a" * 4096 + b"b"
 PRINT_ZERO_SOURCE = "(defn main [] (print 0))\n"
 COMMAND_LINE_SOURCE = """(defn main []
@@ -57,6 +58,13 @@ CASES = (
         "source": READ_STDIN_SOURCE,
         "stdin": READ_STDIN_OVER_4096,
         "stdout": READ_STDIN_OVER_4096,
+        "exit_code": 0,
+    },
+    {
+        "name": "read-stdin-over-256k",
+        "source": READ_STDIN_SOURCE,
+        "stdin": READ_STDIN_OVER_256K,
+        "stdout": READ_STDIN_OVER_256K,
         "exit_code": 0,
     },
     {
