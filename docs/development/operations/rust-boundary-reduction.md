@@ -4276,3 +4276,25 @@ negative contractを追加した。native MCP suiteは `113 tests` 全 passで�
 現HEADの source provenance gateではない。native MCPの診断/migration structured parity、実
 install/provider、LSP全 semantic projection、component helper、両target packaged release parity、
 `LEGACY-TOOL-01` aggregateは未完了のため、`V2-16c`は`[~]`のまま維持する。
+
+### V2-16c / V2-16e current-source Linux fixed point and MCP runtime (2026-08-04)
+
+`cbbafe94` の current checkoutで、`LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES=1` と既存の VM-side lockを使い、Linux x86_64
+actual stage1→stage2→stage3を一回だけ再生成した。stage1 manifestは target `x86_64-unknown-linux-gnu`、source commit
+`cbbafe9423509030270a4f76ef909ff42ed23663`、code `4,434,755`、data `2,757`、entrypoint `4,432,195`、function-start `3,425`、
+main function `3,434`。fixed-point summaryは `status=pass`、stage2/stage3 code length各 `11,448,943`、stdout SHA-256各
+`a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e`、stderr空だった。host probeを省略したのは、今回の目的が
+current source provenanceとstage fixed pointであり、個別 builtin probeを同じ仮説の証拠へ重複させないためである。
+
+同じstage2 artifactを再利用した `App.Cli` target-only exportは target `x86_64-unknown-linux-gnu`、source tree SHA-256
+`e4a69c95109f00bf3019572efe01c6dff0e7555d14be19308574d0cacadeeedd`、`selfhost_fixed_point=true`、program SHA-256
+`a090cd8474c6115ac3a2bcf5570226cc912d7479d0285f6991ca02fb5a1d6469`、code `13,374,506`、`--version` `lsharp 0.1.0`、stderr空を
+確認した。この実Linux programを `scripts/ci/test-native-selfhost-mcp-runtime.py` へ渡し、JSON-RPC 6 requests、`tools/list` の
+`lsharp_validate` advertisement、check/format/install/validateのstructured/external boundaryを確認して
+`native MCP runtime contract passed: 6 requests`となった。runtime作業領域とVMは終了後に回収・停止した。
+
+これは current-source Linux native selfhostとMCP runtimeのverified partialであり、保存場所は
+`ci-artifacts/native-linux-x86-hostgen-vm/cbbafe94-mcp-current-source-skip/` と `...-cli/` である。生成時点の source commitは
+test-only commitの親であるため、後続の `0e0a6a6c`で追加したruntime assertionは同じprogramへ再実行して確認した。
+release asset acquisition/rollback、Mac/Linux packaged provenance parity、全公開 command、native MCPのdiagnostic/migration
+structured parity、実 install/provider、`LEGACY-TOOL-01` aggregateは未完了であり、`V2-16c` / `V2-16e`は`[~]`のまま維持する。

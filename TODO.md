@@ -1818,6 +1818,20 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これは保存済み production artifactに対する replay-only evidenceであり、現HEADの source provenance gateではない。
   native MCPの診断/migration structured parity、実 install/provider、LSP全 semantic projection、component helper、両target packaged
   release parity、`LEGACY-TOOL-01` aggregateは未完了のまま維持する。
+  さらに `cbbafe94` の current checkoutで、host probeを省略する `LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES=1` と既存VM-side lockを
+  使い、Linux x86_64 actual stage1→stage2→stage3を一回だけ再生成した。stage1 manifestは target
+  `x86_64-unknown-linux-gnu`、source commit `cbbafe9423509030270a4f76ef909ff42ed23663`、code `4,434,755`、data `2,757`、
+  entrypoint `4,432,195`、function-start `3,425`、main function `3,434`。stage2/stage3は各 `11,448,943` bytes、stdout SHA-256各
+  `a66bf8c746a9cf91a6b0cdb0509a9f12b3b7987301f025646d69fdffd1c6677e`、stderr空で `status=pass` となった。
+  同じstage2を再利用した current Linux x86_64 `App.Cli` target-only exportは source tree SHA-256
+  `e4a69c95109f00bf3019572efe01c6dff0e7555d14be19308574d0cacadeeedd`、`selfhost_fixed_point=true`、program SHA-256
+  `a090cd8474c6115ac3a2bcf5570226cc912d7479d0285f6991ca02fb5a1d6469`、code `13,374,506`、`--version` `lsharp 0.1.0`、stderr空を
+  確認した。実Linux programへ `initialize`、`tools/list`、check/format/install/validateの6-request MCP runtime contractを渡し、
+  `native MCP runtime contract passed: 6 requests` を確認した。`tools/list` の validate advertisementも含む。artifactは
+  `ci-artifacts/native-linux-x86-hostgen-vm/cbbafe94-mcp-current-source-skip/` と `...-cli/` に保存し、VM workdirは削除、VMは停止した。
+  これは current-source Linux native selfhostとMCP runtimeの verified partialを追加するが、現HEADとの差分はtest-onlyであり、
+  release acquisition/rollback、Mac/Linux packaged provenance parity、全公開 command、native MCPの診断/migration structured parity、
+  実 install/provider、`LEGACY-TOOL-01` aggregateは未完了のまま維持する。Evidence commit: `0e0a6a6c`。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、
@@ -1981,6 +1995,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   current source commit/provenanceを持たないため、`HEAD=5db1c2a4` の release evidenceや両 target packaged parityには
   採用しない。current-source release archiveの生成、provider acquisition、rollback archive実行は未完の外部 release
   boundaryとして残す。
+
+  その後 `cbbafe94` の current checkoutで、host probeを省略する明示設定とVM-side lockを使った actual stage1→stage2→stage3
+  fixed-pointを完了し、stage1/stage2/stage3 manifestの source commit、target、code/data/entrypoint/function metadata、
+  stage2/stage3 stdout hash一致を確認した。さらに同じstage2から Linux x86_64 `App.Cli` target-only native releaseをmaterializeし、
+  source tree fingerprint、program digest、`--version` smoke、MCP 6-request runtimeを実行した。これは current-source Linux regeneration
+  と target runtimeの verified partialを広げるが、public release asset acquisition、rollback archiveの実行、Mac/Linux packaged
+  provenance parity、Rust oracle/host integrationの完全隔離、`LEGACY-BOOT-01` aggregateは未完了のまま維持する。
 
 ## ISSUES-derived quality and runtime work
 
