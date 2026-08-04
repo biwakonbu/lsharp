@@ -85,6 +85,32 @@ def assert_check_accepts_valid_migration_diagnostics(test):
         )
 
 
+def assert_check_projects_legacy_clean_summary(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_check",
+                    "arguments": {"source": "(defn main [] 42)"},
+                },
+            ),
+            root,
+            check_mode="legacy-clean",
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertFalse(response["result"]["isError"])
+        test.assertEqual(
+            response["result"]["structuredContent"],
+            {"ok": True, "diagnostics": [], "migrationDiagnostics": []},
+        )
+
+
 def assert_check_rejects_invalid_arguments_before_native(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

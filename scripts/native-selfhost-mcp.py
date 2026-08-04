@@ -713,6 +713,62 @@ def validate_check_migration_diagnostic(value, index):
         raise ToolError(f"{label}.message must be a string")
 
 
+LEGACY_CHECK_FIELDS = {
+    "command",
+    "type",
+    "diagnostics",
+    "migration",
+    "failureKinds",
+}
+
+
+def project_legacy_check_output(value):
+    if not isinstance(value, dict):
+        raise ToolError("native check report root must be a JSON object")
+    if set(value) != LEGACY_CHECK_FIELDS:
+        raise ToolError("native check report legacy summary fields are incomplete")
+    if value["command"] != "check":
+        raise ToolError("native check report command must be check")
+    if not isinstance(value["type"], str):
+        raise ToolError("native check report type must be a string")
+
+    diagnostics = value["diagnostics"]
+    if not isinstance(diagnostics, dict):
+        raise ToolError("native check report diagnostics must be an object")
+    diagnostic_fields = {"count", "firstErrorCode", "message"}
+    if set(diagnostics) != diagnostic_fields:
+        raise ToolError("native check report legacy diagnostics fields are incomplete")
+    count = diagnostics["count"]
+    first_error_code = diagnostics["firstErrorCode"]
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ToolError("native check report diagnostics count must be a non-negative integer")
+    if isinstance(first_error_code, bool) or not isinstance(first_error_code, int):
+        raise ToolError("native check report diagnostics firstErrorCode must be an integer")
+    if not isinstance(diagnostics["message"], str):
+        raise ToolError("native check report diagnostics message must be a string")
+    if not isinstance(value["migration"], list):
+        raise ToolError("native check report migration must be an array")
+    if not isinstance(value["failureKinds"], list):
+        raise ToolError("native check report failureKinds must be an array")
+    if any(
+        isinstance(kind, bool) or not isinstance(kind, int) or kind != 0
+        for kind in value["failureKinds"]
+    ):
+        raise ToolError("native check report failureKinds contains an unsupported failure")
+    if count != 0 or value["migration"]:
+        raise ToolError(
+            "native check report legacy diagnostics cannot satisfy the structured MCP output"
+        )
+    return {"ok": True, "diagnostics": [], "migrationDiagnostics": []}
+
+
+def normalize_check_output(value):
+    if isinstance(value, dict) and set(value) == LEGACY_CHECK_FIELDS:
+        return project_legacy_check_output(value)
+    validate_check_output(value)
+    return value
+
+
 def validate_check_output(value):
     if not isinstance(value, dict):
         raise ToolError("native check report root must be a JSON object")
@@ -1770,8 +1826,7 @@ def call_check(program, arguments, temporary_directory):
     path = input_file(arguments, temporary_directory)
     completed = run_native(program, ["check", str(path), "--format", "json"])
     value = parse_json_output(completed)
-    validate_check_output(value)
-    return value
+    return normalize_check_output(value)
 
 
 def call_validate(program, arguments, temporary_directory):
