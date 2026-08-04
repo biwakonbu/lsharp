@@ -305,6 +305,30 @@ def run_lsp_definition(program, root):
                 },
             }
         ),
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 94,
+                "method": "textDocument/references",
+                "params": {
+                    "textDocument": {"uri": LSP_NAV_URI},
+                    "position": {"line": 1, "character": 15},
+                    "context": {"includeDeclaration": True},
+                },
+            }
+        ),
+        lsp_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 95,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": {"uri": LSP_NAV_URI},
+                    "position": {"line": 1, "character": 15},
+                    "newName": "value",
+                },
+            }
+        ),
     ]
     result = subprocess.run(
         [str(program), "lsp", "--stdio"],
@@ -315,11 +339,11 @@ def run_lsp_definition(program, root):
     )
     if result.returncode != 0:
         raise AssertionError(
-            f"lsp definition failed: exit={result.returncode} "
+            f"lsp navigation failed: exit={result.returncode} "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
     if result.stderr:
-        raise AssertionError(f"lsp definition emitted stderr: {result.stderr!r}")
+        raise AssertionError(f"lsp navigation emitted stderr: {result.stderr!r}")
     return parse_lsp_frames(result.stdout)
 
 
@@ -725,6 +749,58 @@ def main():
         }:
             raise AssertionError(
                 f"lsp definition projection mismatch: {definition_frames[2]!r}"
+            )
+
+        if definition_frames[3] != {
+            "jsonrpc": "2.0",
+            "id": 94,
+            "result": [
+                {
+                    "uri": LSP_NAV_URI,
+                    "range": {
+                        "start": {"line": 0, "character": 6},
+                        "end": {"line": 0, "character": 6},
+                    },
+                },
+                {
+                    "uri": LSP_NAV_URI,
+                    "range": {
+                        "start": {"line": 1, "character": 15},
+                        "end": {"line": 1, "character": 15},
+                    },
+                },
+            ],
+        }:
+            raise AssertionError(
+                f"lsp references projection mismatch: {definition_frames[3]!r}"
+            )
+
+        if definition_frames[4] != {
+            "jsonrpc": "2.0",
+            "id": 95,
+            "result": {
+                "changes": {
+                    LSP_NAV_URI: [
+                        {
+                            "range": {
+                                "start": {"line": 0, "character": 6},
+                                "end": {"line": 0, "character": 12},
+                            },
+                            "newText": "value",
+                        },
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 15},
+                                "end": {"line": 1, "character": 21},
+                            },
+                            "newText": "value",
+                        },
+                    ]
+                }
+            },
+        }:
+            raise AssertionError(
+                f"lsp rename projection mismatch: {definition_frames[4]!r}"
             )
 
         empty_do_frames = run_lsp_source_diagnostics(
