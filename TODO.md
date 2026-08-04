@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `8850c7d4`（`d2dcea7e` 以降の standalone/runtime、LSP Diagnostic、標準 URI navigation の反映後）。selfhost production sourceは `8850c7d4` と一致し、標準 LSP definition の Mac/Linux current-source native gateまで検証済みである。
+- 確認時点の code checkpoint は `48d48bb1`（`8850c7d4` 以降の標準 LSP parse Diagnostic と LS0103 unknown-form projectionの反映後）。selfhost production sourceは `48d48bb1` と一致し、標準 parse Diagnosticを含む Mac/Linux current-source native gateまで検証済みである。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -145,6 +145,28 @@ native core runtime matrixは各 `38 cases` 全 passだった。point rangeは�
 この batchも LS0102 の複数構文文脈に対する標準 projectionの verified partialに限定される。LS0103 unknown-form、LS0104 multiple-parse-errors、
 複数診断の順序/dedup、他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component/packaged release parity、Rust-free aggregateは
 未完了であり、V2-16b / V2-16c / V2-16eは[~]のまま維持する。Evidence commit: `c1982e1d`。
+
+続く `48d48bb1` では、先頭の unknown top-level form `(unknown-form)` を raw parse diagnostic `1003` として生成し、標準 LSP Diagnosticの
+range `0:1..0:13`、severity 1、code `LS0103`、source `lsharp`、message `unknown form` へ投影した。Rust actual bundleの
+`e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic` は `1 passed / 327.96s`。
+Mac Apple Siliconの current-source App.Cli release gateは `1 passed / 857.41s`、manifest source commitは `48d48bb1...`、
+`selfhost_fixed_point=true`、native core runtime matrixは `39 cases` 全 passだった。
+
+Linux x86_64の current-source actual self-regeneration summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/48d48bb1-lsp-unknown/actual-selfregen-summary.json` に target `x86_64-unknown-linux-gnu`、
+host `Linux/x86_64`、status `pass`、stage2/stage3 code length各 `11,451,770`、stdout SHA-256各
+`30ed6c388b1e69ac19a11630e838685d4f9c8ebd75cb3286db5b9e9c7237ec83`、stderr空の一致を記録した。VM free-space gateは
+available `7,658,594,304` / required `4,294,967,296` bytesだった。stage2をVM-side lock付きで再利用した target-only App.Cli artifactの
+`ci-artifacts/native-linux-x86-hostgen-vm/48d48bb1-lsp-unknown-cli/manifest.json` は source commit `48d48bb1...`、
+source tree SHA-256 `f538dd95ae7e3bfe7074248083b82fcb14db70c980d58369ed5af6d68074ccba`、`selfhost_fixed_point=true`、
+code `13,378,933` bytes、program SHA-256 `d4296870f1a95815872ee1e4d2a4ecbe225adc0c2d0f9646a21253a7ddcddd14`、
+`--version` smoke `lsharp 0.1.0`、stderr 0を記録した。同じ Linux ELFをVM内で実行した native core runtime matrixは `39 cases` 全 passで、
+検証後はrunnerの一時領域を削除し、`lsharp-linux-x86` を停止した。selfhost source変更を含むため stage1 -> stage2 -> stage3 replayは一度だけ実行した。
+
+これは先頭の unknown top-level formに対する LS0103 standard Diagnostic projectionと、同一 current-source App.Cli artifactの両対応target
+runtimeに限定した verified partialである。後続 top-level form、LS0104 multiple-parse-errors、複数診断の順序/dedup、他のparse/type/lint ruleの
+正確なspan end、全rule code/message parity、component/packaged release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは
+[~]のまま維持する。Evidence commit: `48d48bb1`。
 
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、

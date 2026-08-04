@@ -4542,6 +4542,31 @@ stage1 -> stage3 regenerationは実行せず、Linuxは既存ELFのreplay-only�
 他のparse/type/lint ruleの正確なspan end、全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance
 parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `c1982e1d`。
 
+### V2-16b / V2-16c native standard parse LS0103 unknown-form projection (2026-08-05)
+
+`48d48bb1` で、先頭の unknown top-level form `(unknown-form)` を raw parse diagnostic `1003` として生成し、標準 LSP Diagnosticの
+range `0:1..0:13`、severity 1、code `LS0103`、source `lsharp`、message `unknown form` へ投影した。既存の delimiter/EOF recoveryを
+優先し、unknown-form検出は先頭 top-level formの raw symbolに限定した。`LS0104` producerや複数診断の収集はこのbatchの対象外である。
+
+Rust actual bundleの `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic` は
+`1 passed / 327.96s`。Mac Apple Siliconの current-source App.Cli release gateは `1 passed / 857.41s`、manifest source commitは
+`48d48bb1...`、`selfhost_fixed_point=true`、native core runtime matrixは `39 cases` 全 passだった。
+
+Linux x86_64の current-source actual self-regeneration summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/48d48bb1-lsp-unknown/actual-selfregen-summary.json` に target `x86_64-unknown-linux-gnu`、
+host `Linux/x86_64`、status `pass`、stage2/stage3 code length各 `11,451,770`、stdout SHA-256各
+`30ed6c388b1e69ac19a11630e838685d4f9c8ebd75cb3286db5b9e9c7237ec83`、stderr各 `0` を記録した。VM free-space gateは available
+`7,658,594,304` / required `4,294,967,296` bytesで、検証後にVM workdirを削除した。stage2をVM-side lock付きで再利用した target-only
+App.Cli artifactの `ci-artifacts/native-linux-x86-hostgen-vm/48d48bb1-lsp-unknown-cli/manifest.json` は source commit `48d48bb1...`、
+source tree SHA-256 `f538dd95ae7e3bfe7074248083b82fcb14db70c980d58369ed5af6d68074ccba`、`selfhost_fixed_point=true`、code `13,378,933` bytes、
+program SHA-256 `d4296870f1a95815872ee1e4d2a4ecbe225adc0c2d0f9646a21253a7ddcddd14`、`--version` smoke `lsharp 0.1.0`、stderr 0を記録した。
+同じ Linux ELFをLima VM内で実行した native core runtime matrixは `39 cases` 全 passだった。runnerの一時領域とVMは検証後に回収・停止した。
+
+これは先頭の unknown top-level formに対する LS0103 standard Diagnostic projectionと、同一 current-source App.Cli artifactの両対応target runtimeに
+限定した verified partialである。後続 top-level form、LS0104 multiple-parse-errors、複数診断の順序/dedup、他のparse/type/lint ruleの正確な span end、
+全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。
+V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `48d48bb1`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
