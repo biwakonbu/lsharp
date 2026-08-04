@@ -1803,6 +1803,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   native source provenance、実 install/package registry、対話 REPL、LSP全 semantic projection、component helper、両target packaged
   release parity、`LEGACY-TOOL-01` aggregateは未完了のまま残す。続く `d05d2642` で `validate --source --format text` の
   unknown trace-gap report / exit `2` を同じ runnerへ追加し、Linux replayは `23 cases` 全 passとなった。
+  続く `bb2725be` では、実際の `ad65eaff` Linux x86_64 App.Cli target-only programを
+  `scripts/ci/test-native-selfhost-mcp-runtime.py` と `scripts/native-selfhost-mcp.py` へ接続し、
+  JSON-RPC `initialize`、`tools/list`、`lsharp_check`、`lsharp_format`、`lsharp_install` の
+  `5 requests` を実行した。selfhost CLIの legacy `check --format json` は clean sourceに限り
+  `command/type/diagnostics/migration/failureKinds` を検証して structured MCP `{ok:true, diagnostics:[], migrationDiagnostics:[]}`
+  へ投影し、正常な `failureKinds:[0]` を許可する。診断、migration row、非ゼロ failure kindは owner/rangeを失わないため
+  明示的に fail-closed とし、install は `native MCP package installation requires an explicit external provider adapter` を返す。
+  Linux runtimeは `native MCP runtime contract passed: 5 requests`、stderr空で passし、VM workdirを削除して停止した。
+  これは保存済み production artifactに対する replay-only evidenceであり、現HEADの source provenance gateではない。
+  native MCPの診断/migration structured parity、実 install/provider、LSP全 semantic projection、component helper、両target packaged
+  release parity、`LEGACY-TOOL-01` aggregateは未完了のまま維持する。
 - [~] `V2-16e` / `LEGACY-BOOT-01` bootstrap/oracle/rollback isolation — source commit と
   fingerprint を検証する stage0 package と両 target の daily Rust-free core slice は verified。
   public acquisition、current-checkout regeneration、release asset、rollback 実行、

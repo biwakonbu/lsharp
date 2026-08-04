@@ -4247,3 +4247,24 @@ unknown trace-gap reportと exit `2` を追加し、同じ Linux replayは `23 c
 従ってこれは Linux x86_64の public command replay evidenceであって、current-source provenance gateではない。実 install/package registry、
 対話 REPL、LSP全 semantic projection、component helper、stage0 acquisition/release/rollback、Mac/Linux packaged provenance parity、
 `V2-16c` / `LEGACY-TOOL-01` aggregateは未完了のまま維持する。
+
+### V2-16c Linux native MCP runtime boundary replay (2026-08-04)
+
+`bb2725be` で、保存済み `ad65eaff` Linux x86_64 `App.Cli` target-only native programを
+`scripts/ci/test-native-selfhost-mcp-runtime.py` から実行した。実際の
+`scripts/native-selfhost-mcp.py` に対して JSON-RPC `initialize`、`tools/list`、
+`lsharp_check`、`lsharp_format`、`lsharp_install` の5 requestsを送り、
+`native MCP runtime contract passed: 5 requests`、exit `0`、stderr空を確認した。
+
+selfhost CLIの legacy `check --format json` は clean sourceで
+`command/type/diagnostics/migration/failureKinds` を返すため、shimは各 fieldを検証し、
+diagnostics count `0`、migration空、failureKindsが空または全て `0` の場合だけ
+`{ok:true, diagnostics:[], migrationDiagnostics:[]}`へ投影する。診断、migration row、
+非ゼロ failure kindは構造化 MCP の owner/range semanticsを満たせないため、捨てずに明示
+fail-closedとした。`lsharp_install`は既存の explicit external provider adapter boundaryを
+返し、registry/network/provider helperを実行しない。
+
+これは production source `ad65eaff` から生成された保存 artifactへの replay-only evidenceであり、
+現HEADの source provenance gateではない。native MCPの診断/migration structured parity、実
+install/provider、LSP全 semantic projection、component helper、両target packaged release parity、
+`LEGACY-TOOL-01` aggregateは未完了のため、`V2-16c`は`[~]`のまま維持する。
