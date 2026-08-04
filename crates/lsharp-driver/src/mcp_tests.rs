@@ -1411,6 +1411,77 @@ entry = "src/main.ls"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_package_api_tool_rejects_direct_src_file_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let root =
+            std::env::temp_dir().join(format!("lsp_mcp_direct_symlink_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let package_dir = root.join(".lsharp/packages/demo-1.0.0");
+        std::fs::create_dir_all(package_dir.join("src")).unwrap();
+        std::fs::write(
+            package_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let external_source = root.join("external-source.ls");
+        std::fs::write(
+            &external_source,
+            "(module Geometry)\n(defn distance [left] left)\n",
+        )
+        .unwrap();
+        symlink(&external_source, package_dir.join("src/Linked.ls")).unwrap();
+
+        let error = call_tool(
+            "lsharp_package_api",
+            &json!({
+                "project_dir": root.display().to_string(),
+                "name": "demo"
+            }),
+        )
+        .expect_err("direct source file symlink は外部 source を API に投影せず拒否するべき");
+        assert!(
+            error.contains("package src tree must not contain symlinks"),
+            "{error}"
+        );
+        assert!(!error.contains("Geometry"), "{error}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_package_api_tool_ignores_special_src_entry() {
+        use std::os::unix::net::UnixListener;
+
+        let root = std::path::PathBuf::from("/tmp")
+            .join(format!("lsp_mcp_special_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let package_dir = root.join(".lsharp/packages/demo-1.0.0");
+        std::fs::create_dir_all(package_dir.join("src")).unwrap();
+        std::fs::write(
+            package_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let socket = UnixListener::bind(package_dir.join("src/S.ls")).unwrap();
+
+        let result = call_tool(
+            "lsharp_package_api",
+            &json!({
+                "project_dir": root.display().to_string(),
+                "name": "demo"
+            }),
+        )
+        .expect("special source entry は API 生成対象から除外するべき");
+
+        assert_eq!(result["modules"], json!([]));
+        drop(socket);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn test_package_api_tool_generates_api_from_source_when_missing() {
         let root = std::env::temp_dir().join(format!(

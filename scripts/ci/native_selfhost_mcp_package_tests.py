@@ -532,6 +532,73 @@ def assert_package_api_rejects_nested_src_symlink(test):
         test.assertFalse((root / "native.log").exists())
 
 
+def assert_package_api_rejects_direct_src_file_symlink(test):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        (package / "src").mkdir()
+        external_source = root / "external-source.ls"
+        external_source.write_text(
+            "(module Geometry)\n(defn distance [left] left)\n",
+            encoding="utf-8",
+        )
+        (package / "src" / "Linked.ls").symlink_to(external_source)
+
+        result = test.run_shim(
+            program,
+            request(
+                1,
+                "tools/call",
+                {
+                    "name": "lsharp_package_api",
+                    "arguments": {"project_dir": str(root), "name": "demo"},
+                },
+            ),
+            root,
+        )
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        message = response["result"]["content"][0]["text"]
+        test.assertIn("src/**/*.ls", message)
+        test.assertNotIn("Geometry", json.dumps(response, ensure_ascii=False))
+        test.assertFalse((root / "native.log").exists())
+
+
+def assert_package_api_ignores_special_src_entry(test):
+    import socket
+
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix="lsp-") as temporary_directory:
+        root = pathlib.Path(temporary_directory)
+        program = test.write_fake_program(root)
+        package = write_package(root, "demo-1.0.0", "demo", "1.0.0")
+        (package / "src").mkdir()
+        socket_path = package / "src" / "S.ls"
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(str(socket_path))
+        try:
+            result = test.run_shim(
+                program,
+                request(
+                    1,
+                    "tools/call",
+                    {
+                        "name": "lsharp_package_api",
+                        "arguments": {"project_dir": str(root), "name": "demo"},
+                    },
+                ),
+                root,
+            )
+        finally:
+            listener.close()
+        test.assertEqual(result.returncode, 0, result.stderr.decode())
+        response = test.responses(result.stdout)[0]
+        test.assertTrue(response["result"]["isError"])
+        test.assertIn("src/**/*.ls", response["result"]["content"][0]["text"])
+        test.assertFalse((root / "native.log").exists())
+
+
 def assert_package_api_rejects_malformed_native_doc(test):
     with tempfile.TemporaryDirectory() as temporary_directory:
         root = pathlib.Path(temporary_directory)

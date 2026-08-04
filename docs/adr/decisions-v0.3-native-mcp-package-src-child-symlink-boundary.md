@@ -28,9 +28,12 @@ projectionと docs exclusionを確認した。
 
 - `cargo test -p lsharp-tooling api_doc::tests::test_build_api_doc_for_package_` — 3 tests passed。
 - `cargo test -p lsharp-tooling api_doc::tests::test_build_api_doc_for_package` — 4 tests passed。
-- `cargo test -p lsharp-driver --bin lsharp mcp_server::tests::test_package_api_tool` — 11 tests passed。
+- `cargo test -p lsharp-tooling api_doc::tests::test_build_api_doc_for_package` — 6 tests passed。直接 source file symlinkと Unix socket
+  special entryを追加し、それぞれ symlink拒否、source列挙からの除外を確認した。
+- `cargo test -p lsharp-driver --bin lsharp mcp_server::tests::test_package_api_tool` — 13 tests passed。Rust MCPでも同じ境界を確認した。
 - `cargo test -p lsharp-driver --bin lsharp tests::test_cmd_install` — 24 tests passed。
-- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-mcp.py` — 109 tests passed。
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-mcp.py` — 111 tests passed。native MCPは直接 source file symlinkを
+  fail-closedにし、special entryを source列挙から除外して fake `doc` programを起動しない。
 - `cargo test -p lsharp-driver --bin lsharp tests::test_collect_package_source_files_rejects_nested_symlink -- --exact` — passed。
 - `f76dafb9` の native fixtureでは fake programの log が `["doc", "<package>/src/Geometry/Vec2.ls", "--json"]` となり、docs entryは native executionへ渡らない。
 
@@ -39,6 +42,6 @@ native成功経路では fake programのlogが作られず、`Geometry`はrespon
 
 ## 残る境界
 
-この決定はpackage source treeの regular directory/file、`.ls` filtering、child symlink拒否、docs exclusionまでを閉じる。個別 source file symlinkや
-特殊 filesystem entryの explicit fixture、package installer/provider/auth、current-source Mac Apple Silicon / Linux x86_64 runtime、packaged/release/rollback parityは未検証であり、
+この決定はpackage source treeの regular directory/file、`.ls` filtering、directory/直接 file symlink拒否、special filesystem entryの除外、docs exclusionまでを閉じる。package installer/provider/auth、
+current-source Mac Apple Silicon / Linux x86_64 runtime、packaged/release/rollback parityは未検証であり、
 `I-09` / `M3-05-N9` / `EC-M3-05`とRust-free全体の完了を意味しない。

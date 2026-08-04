@@ -4090,3 +4090,22 @@ SHA-256各 `2526caaefa9e86b934d5d08eb800847ac96e6b3989f3c3c37c7d2c933516086e` �
 この gateで current-source Mac/Linux stage provenanceとstage2/stage3 fixed point、Mac native substring type fixtureを確認した。
 Linux側の全 builtin/type-diagnostic matrix、全公開 command、component、release asset acquisition/rollback、Mac/Linux packaged
 artifact provenance parity、Rust-free全体の完了は示さない。`V2-16b` / `LEGACY-IO-01` は `[~]` のまま維持する。
+
+### I-09 / M3-05-N9 direct file symlink and special entry ownership (2026-08-04)
+
+package `src/` の direct source file symlinkと special filesystem entryを、既存の child directory symlink / regular nested source
+fixtureへ追加した。`src/Linked.ls -> external-source.ls` は Rust API-doc collectorと Rust MCPで
+`package src tree must not contain symlinks`として拒否し、外部 `Geometry` sourceを投影しない。Unix socketを `src/S.ls` に置いた
+fixtureは regular `.ls` fileとして扱わず、Rust tooling/MCPでは空の source ownership、native MCPでは生成対象なしの明示エラーとなり、
+fake native `doc` programは起動しない。
+
+Evidence:
+
+- `cargo test -p lsharp-tooling api_doc::tests::test_build_api_doc_for_package` — 6 tests passed。
+- `cargo test -p lsharp-driver --bin lsharp mcp_server::tests::test_package_api_tool` — 13 tests passed。
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci/test-native-selfhost-mcp.py` — 111 tests passed。
+- Python `py_compile`、`git diff --check`、docs audit — passed。
+
+この batchで source ownershipの regular directory/file、`.ls` filtering、directory/direct-file symlink fail-closed、special entry exclusion、
+docs exclusionを確認した。installer / registry / provider/auth、current-source Mac Apple Silicon / Linux x86_64 runtime、
+packaged/release/rollback parity、Rust-free全体の完了は未検証であり、`I-09` / `M3-05-N9` / `EC-M3-05` は `[~]` のまま維持する。

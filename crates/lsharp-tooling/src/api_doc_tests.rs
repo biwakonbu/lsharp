@@ -153,6 +153,49 @@ fn test_build_api_doc_for_package_rejects_nested_src_symlink() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
+#[test]
+fn test_build_api_doc_for_package_rejects_direct_src_file_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let root = std::env::temp_dir().join(format!("lsp_direct_symlink_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let external_source = root.join("external-source.ls");
+    std::fs::write(
+        &external_source,
+        "(module Geometry)\n(defn distance [left] left)\n",
+    )
+    .unwrap();
+    symlink(&external_source, root.join("src/Linked.ls")).unwrap();
+
+    let error = build_api_doc_for_package(&root, "demo", "1.0.0")
+        .expect_err("direct source file symlink は外部 source を辿らないべき");
+    assert!(error
+        .to_string()
+        .contains("package src tree must not contain symlinks"));
+    assert!(!error.to_string().contains("Geometry"));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn test_build_api_doc_for_package_ignores_special_src_entry() {
+    use std::os::unix::net::UnixListener;
+
+    let root = std::env::temp_dir().join(format!("lsp_special_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let socket = UnixListener::bind(root.join("src/S.ls")).unwrap();
+
+    let api = build_api_doc_for_package(&root, "demo", "1.0.0").unwrap();
+
+    assert!(api.modules.is_empty());
+    drop(socket);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn test_build_api_doc_for_file_uses_file_stem_and_header_comment_for_module_metadata() {
     let dir = std::env::temp_dir().join("lsharp_api_doc_module_fallback");

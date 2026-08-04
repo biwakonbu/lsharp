@@ -146,6 +146,10 @@
   fixtureへ追加し、Rust tooling 4 tests、Rust MCP 11 tests、native MCP 109 testsを通過した。nested module `Geometry.Vec2` の
   name/function projection、docs directoryの source tree外扱い、native `doc` invocationの nested source pathを確認済みである。
   これは regular directory/file、`.ls` filtering、symlink拒否、docs exclusionの source ownership verified partialである。
+  続く I-09 fixtureでは `src/Linked.ls` の直接 source file symlinkを外部 `Geometry` sourceとして辿らず拒否し、Unix socketを
+  `src/S.ls` に置いた special filesystem entryは `.ls` sourceとして列挙しないことを確認した。Rust toolingは6 tests、Rust MCPは13 tests、
+  native MCPは111 testsを通過し、native側はいずれも fake `doc` programを起動しなかった。これは直接 file symlinkと special entryを
+  含む source ownership verified partialである。
   個別 source file symlink / 特殊 filesystem entry、installer、provider/auth、current-source runtime、
   Mac/Linux packaged/rollback parity はこの一件に含めない。
 
