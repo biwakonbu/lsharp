@@ -227,22 +227,11 @@
   (vector-push-quad-rooted (vector-new 4) (ast-type-decl) name-hash params variants))
 ;; closed type-alias: [23, name-hash, raw-target-type-expr]
 ;; parametric type-alias: [23, name-hash, param-name-hashes, raw-target-type-expr]
-;; source span を持つ alias は対応する形の末尾に [start, end] を追加する。
 (defn make-type-alias [name-hash target-type-expr]
   (vector-push-triple-rooted (vector-new 3) (ast-typealias) name-hash target-type-expr))
 
 (defn make-type-alias-with-params [name-hash params target-type-expr]
   (vector-push-quad-rooted (vector-new 4) (ast-typealias) name-hash params target-type-expr))
-(defn make-type-alias-with-span [name-hash target-type-expr start end]
-  (vector-push-single-rooted
-    (vector-push-quad-rooted (vector-new 5) (ast-typealias) name-hash target-type-expr start)
-    end))
-(defn make-type-alias-with-params-and-span [name-hash params target-type-expr start end]
-  (vector-push-single-rooted
-    (vector-push-single-rooted
-      (vector-push-quad-rooted (vector-new 6) (ast-typealias) name-hash params target-type-expr)
-      start)
-    end))
 (defn make-type-constrained [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash))
 (defn make-module-decl [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-module-decl) name-hash 0))
 (defn make-module-decl-with-span [name-hash name-start name-end]

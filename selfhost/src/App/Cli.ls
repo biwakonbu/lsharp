@@ -1459,6 +1459,50 @@
           (position-col end-position))
         (lsp-type-diagnostic-code-text code))
       (lsp-type-diagnostic-message-text code))))
+(defn lsp-recursive-alias-span-result [start end]
+  (push-int-vector-local (push-int-vector-local (vector-new 2) start) end))
+(defn lsp-recursive-alias-span-close-loop [spans idx count depth start]
+  (if (>= idx count)
+    (lsp-recursive-alias-span-result start -1)
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (lsp-recursive-alias-span-close-loop spans (+ idx 1) count (+ depth 1) start)
+        (if (= kind 1)
+          (if (= depth 1)
+            (lsp-recursive-alias-span-result start (span-end spans idx))
+            (lsp-recursive-alias-span-close-loop spans (+ idx 1) count (- depth 1) start))
+          (lsp-recursive-alias-span-close-loop spans (+ idx 1) count depth start))))))
+(defn lsp-recursive-alias-span-find-loop [spans src idx count depth]
+  (if (>= idx count)
+    (lsp-recursive-alias-span-result -1 -1)
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (if (= depth 0)
+          (let [name-idx (+ idx 1)]
+            (if (and (< name-idx count) (= (span-kind spans name-idx) 20))
+              (if (string-eq
+                    (substring src (span-start spans name-idx) (span-end spans name-idx))
+                    "type-alias")
+                (lsp-recursive-alias-span-close-loop spans idx count 0 (span-start spans idx))
+                (lsp-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1)))
+              (lsp-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1))))
+          (lsp-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1)))
+        (if (= kind 1)
+          (lsp-recursive-alias-span-find-loop
+            spans
+            src
+            (+ idx 1)
+            count
+            (if (> depth 0) (- depth 1) 0))
+          (lsp-recursive-alias-span-find-loop spans src (+ idx 1) count depth))))))
+(defn lsp-recursive-alias-span [src]
+  (let [spans (tokenize-with-spans src)]
+    (do
+      (root_push spans)
+      (let [result (lsp-recursive-alias-span-find-loop spans src 0 (/ (vector-length spans) 3) 0)]
+        (do
+          (root_pop)
+          result)))))
 (defn lsp-source-type-diagnostics [src]
   (if (> (string-length src) 0)
     (let [program (parse-program src)
@@ -1468,7 +1512,23 @@
       end (infer-program-analysis-first-error-end analysis)]
       (if (= code 0)
         (vector-new 0)
-        (push-object-vector-local (vector-new 1) (lsp-type-diagnostic-to-lsp code src start end))))
+        (let [span
+                (if (= code (error-code-recursive-alias))
+                  (lsp-recursive-alias-span src)
+                  (lsp-recursive-alias-span-result start end))]
+          (do
+            (root_push span)
+            (let [result
+                    (push-object-vector-local
+                      (vector-new 1)
+                      (lsp-type-diagnostic-to-lsp
+                        code
+                        src
+                        (vector-get span 0)
+                        (vector-get span 1)))]
+              (do
+                (root_pop)
+                result))))))
     (vector-new 0)))
 (defn lsp-review-severity-to-lsp [severity]
   (if (string-eq severity "warning")
