@@ -4818,3 +4818,42 @@ Mac Apple Siliconの b3150a34 current-source gateはまだ再実行していな�
 `(defn main [] (let [unused 42] (if 1 true false)))` に対して `LS1002` type diagnosticを `L0001` lint diagnosticより先に保持し、
 同一開始位置の異なる診断を誤って dedup しない wire contractを固定する。複数diagnostic以外の全 rule code/message parity、
 native public checkのclosed alias parity、component/packaged parity、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
+
+### V2-16b / V2-16c native multiple Diagnostic ordering and lint dedup (2026-08-11)
+
+`c00368ad` で、LSP の複数 Diagnosticを同じ didOpen wire contractへ追加した。REDでは現行 dedup が開始 line/columnだけで lint ruleを
+同一視し、`(defn main [] (let [unused (do)] 0))` の `L0001` を残して `L0002` を落とすことを確認した。既存の parse/type same-start
+severity precedence contractは維持する必要があるため、`selfhost/src/Tools/Lsp/LspServerNav.ls` は lint 同士だけ `rule + start/end`
+が一致した場合に dedupし、異なる lint ruleを保持する最小修正とした。
+
+Rust focused evidenceは次の通りである。
+
+- `test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics`: `1 passed / 337.22s`
+- `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_multiple_diagnostics_in_stable_order`: `1 passed / 337.76s`
+- 既存の parse/type precedence regression (`selfhost_lsp_diagnostic_dedup` filter): `2 passed / 11.06s`
+
+Mac Apple Siliconの current-source gateは `c00368ad` で `1 passed / 885.52s`。artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-c00368ad-lsp-multiple/manifest.json` は target `aarch64-apple-darwin`、
+source commit `c00368ad62bd70b32670c205f41e876b8bfced71`、`selfhost_fixed_point=true`、program SHA-256
+`781c38851a63f23dfa4bd453a5b2393c3d2472adc967caa49687c408d708088d`を記録し、Mach-O arm64 artifactは 4.7 MiBだった。同じ実バイナリの
+`scripts/ci/test-native-selfhost-cli-core-runtime.py` は `native CLI core runtime matrix passed: 43 cases`、stderr 0となった。
+
+Linux x86_64の current-source fixed-point summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/c00368ad-lsp-multiple/actual-selfregen-summary.json` に target `x86_64-unknown-linux-gnu`、
+host `Linux/x86_64`、`status: pass`、stage2/stage3 stdout SHA-256双方
+`f7bef7837aeeb0285f7a59afd63751f69c2896afb47e53105d0af359d7683494`、stage2/stage3 code length双方 `11,467,504`、stderr 0を記録した。
+stage2 manifestは source commit `c00368ad62bd70b32670c205f41e876b8bfced71`、data `2,775` bytes、entrypoint `11,462,896`、
+function-start length `3,430`、main function index `3,439`である。fixed-point gateのVM free-spaceは available `7,666,597,888` /
+required `4,294,967,296` bytesだった。
+
+同じ stage2をVM-side lock付きで再利用した Linux App.Cli target-only artifactは
+`ci-artifacts/native-linux-x86-hostgen-vm/c00368ad-lsp-multiple-cli/manifest.json` に保存した。manifestは source tree SHA-256
+`e16009095143803fc2a3a4efa7a5c7cc2f11b2ab52effbbb7fc4742cfb3bb675`、`selfhost_fixed_point=true`、program SHA-256
+`1f9fd12ec488dd0e29cf04ebc6a7943c9009bd96ecf4097dad4275642bd4590a`、code length `13,460,926`、stderr 0を記録する。生成 ELFは
+x86-64 Linuxで、`--version` は `lsharp 0.1.0`を返し、同じ実バイナリのLinux VM native core runtime matrixは `43 cases` 全 passだった。
+target-only free-space gateは available `7,666,573,312` / required `4,294,967,296` bytes。検証後に guest runner/workdirと lockを回収し、
+`lsharp-linux-x86`を停止した。VM設定は `4 CPU / 16GiB memory / 12GiB disk` のままである。
+
+これは type+lint の複数 wire projectionと同一開始位置の distinct lint dedupに限定した verified partialである。native public `check` /
+`infer-program-analysis` の closed recursive alias parity、別の type diagnostic、全 rule code/message/span parity、component/packaged parity、
+release acquisition/rollback、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。Evidence commit: `c00368ad`。
