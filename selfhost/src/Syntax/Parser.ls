@@ -3055,8 +3055,9 @@
       (make-type-decl-head-v3 0 (vector-new 0)))))
 
 (defn parse-type-alias-v3 [spans pos-ref src]
-  (do
-    (p-advance pos-ref) ;; type-alias を消費
+  (let [alias-start (span-start spans (- (ref-get pos-ref) 1))]
+    (do
+      (p-advance pos-ref) ;; type-alias を消費
     (if (== (p-current spans pos-ref) 0)
       (do
         (p-advance pos-ref) ;; alias head の ( を消費
@@ -3071,7 +3072,13 @@
                     (do
                       (root_push target-type-expr)
                       (p-expect spans pos-ref 1) ;; ) を消費
-                      (let [parsed (make-type-alias-with-params name-h params target-type-expr)]
+                      (let [parsed
+                              (make-type-alias-with-params-and-span
+                                name-h
+                                params
+                                target-type-expr
+                                alias-start
+                                (previous-token-end-v3 spans pos-ref))]
                         (do
                           (root_pop)
                           (root_pop)
@@ -3088,13 +3095,18 @@
               (do
                 (root_push target-type-expr)
                 (p-expect spans pos-ref 1) ;; ) を消費
-                (let [parsed (make-type-alias name-h target-type-expr)]
+                (let [parsed
+                        (make-type-alias-with-span
+                          name-h
+                          target-type-expr
+                          alias-start
+                          (previous-token-end-v3 spans pos-ref))]
                   (do
                     (root_pop)
                     parsed))))))
         (do
           (parse-skip-to-close-v3 spans pos-ref 1)
-          (make-type-alias 0 0))))))
+          (make-type-alias 0 0)))))))
 
 (defn parse-type-constrained-v3 [spans pos-ref src]
   (do
@@ -5321,14 +5333,16 @@
 
 ;; Rust parserのトップレベル宣言境界に合わせ、未知のform名を診断する。
 ;; selfhostのAST parserは式として回復できるため、LSP用のparse診断で補う。
-(defn parse-top-level-unknown-form-diagnostics [spans]
+(defn parse-top-level-unknown-form-diagnostics [spans src]
   (if (< (vector-length spans) 6)
     (vector-new 0)
     (if (= (span-kind spans 0) 0)
       (if (= (span-kind spans 1) 20)
-        (vector-push-single-rooted-v3
+        (if (string-eq (substring src (span-start spans 1) (span-end spans 1)) "type-alias")
           (vector-new 0)
-          (make-diagnostic 0 1003 (span-start spans 1) 0))
+          (vector-push-single-rooted-v3
+            (vector-new 0)
+            (make-diagnostic 0 1003 (span-start spans 1) 0)))
         (vector-new 0))
       (vector-new 0))))
 

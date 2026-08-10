@@ -683,3 +683,4 @@
 (defn error-code-arg-mismatch [] 4)  ;; E0004: 関数引数の型不一致
 (defn error-code-infinite [] 5)      ;; E0005: 無限型 (occurs check)
 (defn error-code-general [] 6)       ;; E0006: 一般的な型不一致
+(defn error-code-recursive-alias [] 8) ;; E0008: 再帰型エイリアス

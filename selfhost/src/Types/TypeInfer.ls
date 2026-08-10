@@ -935,13 +935,31 @@
 (defn typeinfer-predeclare-defns [program env counter]
   (typeinfer-predeclare-defns-loop program 0 (vector-length program) env (map-new) counter))
 
-;; type-alias の raw target を取得する。parametric alias は [tag, name, params, target] を使う。
+;; type-alias の raw target を取得する。source-aware alias は末尾に span を持つ。
+(defn typeinfer-alias-parametric? [decl]
+  (let [decl-len (vector-length decl)]
+    (if (= decl-len 4)
+      1
+      (if (= decl-len 6) 1 0))))
+
 (defn typeinfer-type-alias-target [decl]
   (if (<= (vector-length decl) 2)
     0
-    (if (>= (vector-length decl) 4)
+    (if (= (typeinfer-alias-parametric? decl) 1)
       (vector-get decl 3)
       (vector-get decl 2))))
+
+(defn typeinfer-alias-span-start [decl]
+  (let [decl-len (vector-length decl)]
+    (if (= decl-len 5)
+      (vector-get decl 3)
+      (if (= decl-len 6) (vector-get decl 4) -1))))
+
+(defn typeinfer-alias-span-end [decl]
+  (let [decl-len (vector-length decl)]
+    (if (= decl-len 5)
+      (vector-get decl 4)
+      (if (= decl-len 6) (vector-get decl 5) -1))))
 
 ;; Rust implementation と同じく、alias 自身を target に含む宣言は拒否する。
 ;; raw TypeExpr を直接走査するため、closed / parametric の両形式と nested target に対応する。
@@ -991,6 +1009,23 @@
 
 (defn typeinfer-recursive-alias-count [program]
   (typeinfer-recursive-alias-count-loop program 0 (vector-length program) 0))
+
+(defn typeinfer-recursive-alias-first-decl-loop [program idx len]
+  (if (>= idx len)
+    0
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-typealias))
+        (if (= (typeinfer-type-expr-contains-name
+                 (typeinfer-type-alias-target decl)
+                 (vector-get decl 1))
+               1)
+          decl
+          (typeinfer-recursive-alias-first-decl-loop program (+ idx 1) len))
+        (typeinfer-recursive-alias-first-decl-loop program (+ idx 1) len)))))
+
+(defn typeinfer-recursive-alias-first-decl [program]
+  (typeinfer-recursive-alias-first-decl-loop program 0 (vector-length program)))
 
 ;; parametric alias entry = [parameter-type-vars, resolved-target-type]
 (defn typeinfer-make-parametric-alias-entry [param-types target-type]
@@ -1044,7 +1079,7 @@
           target-expr (typeinfer-type-alias-target decl)]
             (if (= target-expr 0)
             (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len closed-aliases parametric-aliases counter)
-            (if (>= (vector-length decl) 4)
+            (if (= (typeinfer-alias-parametric? decl) 1)
               (let [params (vector-get decl 2)]
                 (if (= (vector-length params) 0)
                   (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
@@ -1097,9 +1132,7 @@
       (if (= tag (ast-typealias))
         (let [target-expr (typeinfer-type-alias-target decl)
           is-closed
-            (if (< (vector-length decl) 4)
-              1
-              (if (= (vector-length (vector-get decl 2)) 0) 1 0))]
+            (if (= (typeinfer-alias-parametric? decl) 0) 1 0)]
           (if (= is-closed 1)
             (if (= target-expr 0)
               (typeinfer-refresh-closed-aliases-loop
@@ -1560,24 +1593,28 @@
   (do
     ;; program の子ノードを prepass / top-level inference の全 allocation 中も保持する。
     (root_push program)
-    (let [recursive-count (typeinfer-recursive-alias-count program)]
+    (let [recursive-count (typeinfer-recursive-alias-count program)
+      recursive-decl (typeinfer-recursive-alias-first-decl program)]
       (if (> recursive-count 0)
-        (let [result
-                (typeinfer-program-analysis-state
-                  (type-env-new)
-                  (subst-new)
-                  (mk-int)
-                  1
-                  recursive-count
-                  (error-code-general)
-                  -1
-                  -1
-                  -1
-                  -1
-                  (vector-new 0))]
+        (do
+          (root_push recursive-decl)
+          (let [result
+                  (typeinfer-program-analysis-state
+                    (type-env-new)
+                    (subst-new)
+                    (mk-int)
+                    1
+                    recursive-count
+                    (error-code-recursive-alias)
+                    -1
+                    (vector-get recursive-decl 1)
+                    (typeinfer-alias-span-start recursive-decl)
+                    (typeinfer-alias-span-end recursive-decl)
+                    (vector-new 0))]
           (do
             (root_pop)
-            result))
+            (root_pop)
+            result)))
         (let [counter (typeinfer-make-alias-aware-counter program)
           alias-env (var-counter-alias-env counter)]
           (do

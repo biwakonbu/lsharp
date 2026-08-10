@@ -34,6 +34,8 @@ LSP_TYPE_ARGUMENT_URI = "file:///tmp/lsharp-lsp-type-argument.ls"
 LSP_TYPE_ARGUMENT_SOURCE = "(defn bad [] (+ 1 true))\n"
 LSP_TYPE_INFINITE_URI = "file:///tmp/lsharp-lsp-type-infinite.ls"
 LSP_TYPE_INFINITE_SOURCE = "(defn main [x] (x x))\n"
+LSP_TYPE_RECURSIVE_ALIAS_URI = "file:///tmp/lsharp-lsp-type-recursive-alias.ls"
+LSP_TYPE_RECURSIVE_ALIAS_SOURCE = "(type-alias Rec Rec) (defn ok [] : Int 42)\n"
 LSP_PARSE_URI = "file:///tmp/lsharp-lsp-parse-standard.ls"
 LSP_PARSE_SOURCE = ")"
 LSP_PARSE_CLOSE_URI = "file:///tmp/lsharp-lsp-parse-close.ls"
@@ -817,6 +819,36 @@ def main():
         }:
             raise AssertionError(
                 f"lsp infinite type diagnostics projection mismatch: {infinite_type_frames[2]!r}"
+            )
+
+        recursive_alias_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_TYPE_RECURSIVE_ALIAS_URI,
+            LSP_TYPE_RECURSIVE_ALIAS_SOURCE,
+            "recursive-alias-type",
+        )
+        if recursive_alias_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_TYPE_RECURSIVE_ALIAS_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 20},
+                        },
+                        "severity": 1,
+                        "code": "LS1008",
+                        "source": "lsharp",
+                        "message": "recursive type alias",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp recursive alias diagnostics projection mismatch: {recursive_alias_frames[2]!r}"
             )
 
         parse_frames = run_lsp_source_diagnostics(

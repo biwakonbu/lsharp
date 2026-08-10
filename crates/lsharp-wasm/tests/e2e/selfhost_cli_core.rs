@@ -17890,6 +17890,19 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_hyphenated_lint_name() {
 /// TEST-CLI-02-AN32g: actual Cli は type diagnostic の code/message を標準 LSP object へ投影すること
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics() {
+    let recursive_source = "(type-alias Rec Rec) (defn ok [] : Int 42)\n";
+    let recursive_program =
+        lsharp_syntax::parse(recursive_source).expect("recursive alias fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    let recursive_error = oracle
+        .infer_program(&recursive_program)
+        .expect_err("Rust oracle は recursive alias を拒否するべき");
+    assert_eq!(recursive_error.code(), "LS1008");
+    let recursive_span = recursive_error
+        .span()
+        .expect("Rust oracle の recursive alias 診断は span を持つべき");
+    assert_eq!((recursive_span.start, recursive_span.end), (0, 20));
+
     let undefined_uri = "file:///tmp/lsharp-lsp-type-undefined.ls";
     let undefined_open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{undefined_uri}","languageId":"lsharp","version":1,"text":"(defn main [] missing)\n"}}}}}}"##
@@ -17910,10 +17923,14 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     let infinite_open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{infinite_uri}","languageId":"lsharp","version":1,"text":"(defn main [x] (x x))\n"}}}}}}"##
     );
+    let recursive_uri = "file:///tmp/lsharp-lsp-type-recursive-alias.ls";
+    let recursive_open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{recursive_uri}","languageId":"lsharp","version":1,"text":"{recursive_source}"}}}}}}"##
+    );
     let initialize_body =
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
     let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         initialize_body.len(),
         initialize_body,
         undefined_open_body.len(),
@@ -17925,7 +17942,9 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
         argument_open_body.len(),
         argument_open_body,
         infinite_open_body.len(),
-        infinite_open_body
+        infinite_open_body,
+        recursive_open_body.len(),
+        recursive_open_body
     );
 
     let output = compile_and_run_with_args_and_stdin(
@@ -17948,6 +17967,9 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     let infinite_expected = format!(
         r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{infinite_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":15}},"end":{{"line":0,"character":20}}}},"severity":1,"code":"LS1003","source":"lsharp","message":"infinite type"}}]}}"##
     );
+    let recursive_expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{recursive_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":20}}}},"severity":1,"code":"LS1008","source":"lsharp","message":"recursive type alias"}}]}}"##
+    );
     assert!(
         output.contains(&undefined_expected),
         "didOpen の undefined symbol diagnostics が標準 type fields を保持するべき: {output}"
@@ -17967,6 +17989,10 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     assert!(
         output.contains(&infinite_expected),
         "didOpen の infinite type diagnostics が標準 type fields を保持するべき: {output}"
+    );
+    assert!(
+        output.contains(&recursive_expected),
+        "didOpen の recursive alias diagnostics が標準 type fields を保持するべき: {output}"
     );
 }
 

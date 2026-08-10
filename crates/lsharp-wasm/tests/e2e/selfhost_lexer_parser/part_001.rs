@@ -145,8 +145,8 @@ fn test_e2e_selfhost_parser_recursive_type_alias_is_rejected() {
 
     assert_eq!(
         lines,
-        ["1", "6"],
-        "recursive type-alias は宣言単体でも E0006 として拒否されるべき"
+        ["1", "8"],
+        "recursive type-alias は宣言単体でも E0008 として拒否されるべき"
     );
 }
 

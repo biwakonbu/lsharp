@@ -73,7 +73,7 @@
 (defn parse-diagnostics-first-code [diagnostics] (if (> (vector-length diagnostics) 0) (parse-diagnostic-code (vector-get diagnostics 0)) 0))
 (defn parse-diagnostic-body-from-code [code] (if (= code 1001) "unexpected token )" (if (= code 1002) "unexpected token ]" "parse error")))
 (defn parse-diagnostics-body-text [diagnostics] (if (> (vector-length diagnostics) 0) (parse-diagnostic-body-from-code (parse-diagnostics-first-code diagnostics)) ""))
-(defn check-diagnostic-body-from-code [code] (if (= code (canonical-assertion-type-error-code)) "assert predicate type error" (if (= code (canonical-assertion-non-bool-code)) "assert predicate must be Bool" (if (= code (canonical-assertion-empty-code)) "assert requires at least one predicate" (if (= code (canonical-assertion-vacuous-code)) "assert predicate is vacuous" (if (= code (error-code-undefined)) "undefined symbol" (if (= code (error-code-if-cond)) "if condition must be Bool" (if (= code (error-code-if-branch)) "if branches must have same type" (if (= code (error-code-arg-mismatch)) "function argument type mismatch" (if (= code (error-code-infinite)) "infinite type" "type error"))))))))))
+(defn check-diagnostic-body-from-code [code] (if (= code (canonical-assertion-type-error-code)) "assert predicate type error" (if (= code (canonical-assertion-non-bool-code)) "assert predicate must be Bool" (if (= code (canonical-assertion-empty-code)) "assert requires at least one predicate" (if (= code (canonical-assertion-vacuous-code)) "assert predicate is vacuous" (if (= code (error-code-undefined)) "undefined symbol" (if (= code (error-code-if-cond)) "if condition must be Bool" (if (= code (error-code-if-branch)) "if branches must have same type" (if (= code (error-code-arg-mismatch)) "function argument type mismatch" (if (= code (error-code-infinite)) "infinite type" (if (= code (error-code-recursive-alias)) "recursive type alias" "type error")))))))))))
 (defn check-case-diagnostic-body-from-code [code] (if (= code (canonical-case-type-error-code)) "case expression type error" (if (= code (canonical-case-value-error-code)) "case actual and expected types must be Int or Bool" (if (= code (canonical-case-empty-code)) "case requires at least one expectation" "case type error"))))
 (defn check-property-diagnostic-body-from-code [code] (if (= code (canonical-property-type-error-code)) "property predicate type error" (if (= code (canonical-property-non-bool-code)) "property predicate must be Bool" (if (= code (canonical-property-empty-code)) "property requires typed binders, a postcondition, and positive cases" (if (= code (canonical-assertion-vacuous-code)) "property predicate is vacuous" "property predicate type error")))))
 (defn check-diagnostics-body-text [program] (let [code (check-diagnostics-first-code program)] (if (= code 0) "" (check-diagnostic-body-from-code code))))
@@ -1431,10 +1431,11 @@
     (if (= code (error-code-if-cond)) "LS1002"
       (if (= code (error-code-if-branch)) "LS1002"
         (if (= code (error-code-arg-mismatch)) "LS1004"
-          (if (= code (error-code-infinite)) "LS1003" "LS1002"))))))
+          (if (= code (error-code-infinite)) "LS1003"
+            (if (= code (error-code-recursive-alias)) "LS1008" "LS1002")))))))
 (defn lsp-type-diagnostic-message-text [code] (check-diagnostic-body-from-code code))
 (defn lsp-type-diagnostic-to-lsp [code src start end]
-  (let [has-span (or (= code (error-code-undefined)) (or (= code (error-code-if-cond)) (or (= code (error-code-if-branch)) (or (= code (error-code-arg-mismatch)) (= code (error-code-infinite))))))
+  (let [has-span (or (= code (error-code-undefined)) (or (= code (error-code-if-cond)) (or (= code (error-code-if-branch)) (or (= code (error-code-arg-mismatch)) (or (= code (error-code-infinite)) (= code (error-code-recursive-alias)))))))
     start-offset (if has-span start 0)
     end-offset (if has-span end 0)
     start-position (lsp-position-from-offset src start-offset)
@@ -1921,7 +1922,7 @@
     pos-ref (ref-new 0)
     multiple-diagnostics (parse-multiple-top-level-diagnostics spans)
     delimiter-diagnostics (parse-delimiter-diagnostics spans src)
-    unknown-form-diagnostics (parse-top-level-unknown-form-diagnostics spans)]
+    unknown-form-diagnostics (parse-top-level-unknown-form-diagnostics spans src)]
     (if (> (vector-length multiple-diagnostics) 0)
       multiple-diagnostics
       (if (> (vector-length delimiter-diagnostics) 0)
