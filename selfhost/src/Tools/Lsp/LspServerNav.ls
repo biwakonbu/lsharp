@@ -1215,13 +1215,35 @@
 
 ;; === 診断の重複除去 (AC-209) ===
 
-;; 同一スパン判定: line と col が同じなら 1、異なれば 0
+;; projected LSP diagnostic の終端を取得する。legacy raw diagnostic は開始位置を終端として扱う。
+(defn dedup-diag-end-line [diag]
+  (if (>= (vector-length diag) 8) (vector-get diag 6) (vector-get diag 2)))
+(defn dedup-diag-end-col [diag]
+  (if (>= (vector-length diag) 8) (vector-get diag 7) (vector-get diag 3)))
+
+;; lint 同士は rule と start/end span が一致した場合だけ重複とみなす。
+(defn dedup-diag-same-lint-identity [a b]
+  (if (= (vector-get a 1) (vector-get b 1))
+    (if (= (dedup-diag-end-line a) (dedup-diag-end-line b))
+      (if (= (dedup-diag-end-col a) (dedup-diag-end-col b)) 1 0)
+      0)
+    0))
+
+;; parse/type の既存 same-start precedence は維持し、lint の異なる rule を落とさない。
 (defn dedup-diag-same-span [a b]
   (let [line-a (vector-get a 2)
     col-a (vector-get a 3)
     line-b (vector-get b 2)
-    col-b (vector-get b 3)]
-    (if (= line-a line-b) (if (= col-a col-b) 1 0) 0)))
+    col-b (vector-get b 3)
+    source-a (vector-get a 5)
+    source-b (vector-get b 5)]
+    (if (= line-a line-b)
+      (if (= col-a col-b)
+        (if (= source-a 3)
+          (if (= source-b 3) (dedup-diag-same-lint-identity a b) 0)
+          1)
+        0)
+      0)))
 
 ;; severity の高い方 (数値が小さい方) を選択
 (defn dedup-diag-pick-best [a b]

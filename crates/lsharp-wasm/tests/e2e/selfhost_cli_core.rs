@@ -17996,6 +17996,62 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     );
 }
 
+/// TEST-CLI-02-AN32i: actual Cli は type と lint の複数 diagnostics を安定順序で保持すること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_multiple_diagnostics_in_stable_order() {
+    let uri = "file:///tmp/lsharp-lsp-multiple-diagnostics.ls";
+    let source = "(defn main [] (let [unused 42] (if 1 true false)))\n";
+    let open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"{source}"}}}}}}"##
+    );
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":31}},"end":{{"line":0,"character":48}}}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}},{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}}]}}"##
+    );
+    assert!(
+        output.contains(&expected),
+        "type diagnostic を lint diagnostic より先に保持し、両方を publish するべき: {output}"
+    );
+}
+
+/// TEST-CLI-02-AN32j: actual Cli は同一開始位置でも異なる lint diagnostics を dedup しないこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics() {
+    let uri = "file:///tmp/lsharp-lsp-same-start-diagnostics.ls";
+    let source = "(defn main [] (let [unused (do)] 0))\n";
+    let open_body = format!(
+        r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"{source}"}}}}}}"##
+    );
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let expected = format!(
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}},{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0002","source":"lsharp","message":"do block has no expressions"}}]}}"##
+    );
+    assert!(
+        output.contains(&expected),
+        "同一開始位置でも rule が異なる lint diagnostics を両方 publish するべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN32h: actual Cli は parse diagnostic の span/code/message を標準 LSP object へ投影すること
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic() {

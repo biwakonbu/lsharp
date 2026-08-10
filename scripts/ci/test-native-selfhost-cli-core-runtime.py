@@ -22,6 +22,10 @@ LSP_DIDCHANGE_VALID_SOURCE = "(defn main [] 42)\n"
 LSP_DIDCHANGE_INVALID_SOURCE = "(defn bad [] (+ 1 true))\n"
 LSP_LINT_URI = "file:///tmp/lsharp-lsp-lint.ls"
 LSP_LINT_SOURCE = "(defn main [] (let [unused 42] 0))\n"
+LSP_MULTIPLE_DIAGNOSTICS_URI = "file:///tmp/lsharp-lsp-multiple-diagnostics.ls"
+LSP_MULTIPLE_DIAGNOSTICS_SOURCE = "(defn main [] (let [unused 42] (if 1 true false)))\n"
+LSP_SAME_START_DIAGNOSTICS_URI = "file:///tmp/lsharp-lsp-same-start-diagnostics.ls"
+LSP_SAME_START_DIAGNOSTICS_SOURCE = "(defn main [] (let [unused (do)] 0))\n"
 LSP_HYPHEN_LINT_URI = "file:///tmp/lsharp-lsp-lint-hyphen.ls"
 LSP_HYPHEN_LINT_SOURCE = "(defn main [] (let [unused-a 42] 0))\n"
 LSP_TYPE_UNDEFINED_URI = "file:///tmp/lsharp-lsp-type-undefined.ls"
@@ -637,6 +641,86 @@ def main():
                 f"lsp lint diagnostics projection mismatch: {lint_frames[2]!r}"
             )
 
+        multiple_diagnostics_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_MULTIPLE_DIAGNOSTICS_URI,
+            LSP_MULTIPLE_DIAGNOSTICS_SOURCE,
+            "multiple-diagnostics",
+        )
+        if multiple_diagnostics_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_MULTIPLE_DIAGNOSTICS_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 31},
+                            "end": {"line": 0, "character": 48},
+                        },
+                        "severity": 1,
+                        "code": "LS1002",
+                        "source": "lsharp",
+                        "message": "if condition must be Bool",
+                    },
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 2,
+                        "code": "L0001",
+                        "source": "lsharp",
+                        "message": "let binding unused is not used",
+                    },
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp multiple diagnostics projection mismatch: {multiple_diagnostics_frames[2]!r}"
+            )
+
+        same_start_diagnostics_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_SAME_START_DIAGNOSTICS_URI,
+            LSP_SAME_START_DIAGNOSTICS_SOURCE,
+            "same-start-diagnostics",
+        )
+        if same_start_diagnostics_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_SAME_START_DIAGNOSTICS_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 2,
+                        "code": "L0001",
+                        "source": "lsharp",
+                        "message": "let binding unused is not used",
+                    },
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 0},
+                        },
+                        "severity": 2,
+                        "code": "L0002",
+                        "source": "lsharp",
+                        "message": "do block has no expressions",
+                    },
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp same-start diagnostics projection mismatch: {same_start_diagnostics_frames[2]!r}"
+            )
+
         hyphen_lint_frames = run_lsp_source_diagnostics(
             program,
             root,
@@ -1213,7 +1297,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 41 cases")
+    print("native CLI core runtime matrix passed: 43 cases")
 
 
 if __name__ == "__main__":
