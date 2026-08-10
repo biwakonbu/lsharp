@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `bf9868de`（`368ac2c0`でLS1002 if-branch Diagnostic span、`7c830835`でnative runnerの41 cases表示、`a0a3dd55`でLS1001 undefined-symbol Diagnostic span、`f937afd3`でLS1004 argument-mismatch Diagnostic span、`bf9868de`でLS1003 infinite-type Diagnostic spanをproduction selfhost sourceへ反映した後）。selfhost production sourceは`bf9868de`と一致し、標準 type DiagnosticのLS1001/LS1002 branch/LS1003/LS1004 spanを含むMac/Linux current-source native gateまで検証済みである。
+- 確認時点の code checkpoint は `86a9b1fe`（`368ac2c0`でLS1002 if-branch Diagnostic span、`7c830835`でnative runnerの41 cases表示、`a0a3dd55`でLS1001 undefined-symbol Diagnostic span、`f937afd3`でLS1004 argument-mismatch Diagnostic span、`bf9868de`でLS1003 infinite-type Diagnostic span、`86a9b1fe`でLS1002 if-condition Diagnostic spanをproduction selfhost sourceへ反映した後）。selfhost production sourceは`86a9b1fe`と一致し、標準 type DiagnosticのLS1001/LS1002 if-condition/if-branch/LS1003/LS1004 spanを含むMac/Linux current-source native gateまで検証済みである。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,9 +41,9 @@
 
 ### 再開時の次の一件
 
-直近の verified partial は `bf9868de` の標準 LS1003 infinite-type Diagnostic span projectionである。次のREDは、別の標準 type Diagnosticの
-正確なspan、または複数diagnosticの順序/dedupを一つだけ選び、同じRust/native fixtureで失敗値と範囲を固定する。LS1002 if-conditionの正確なspan、
-type diagnostic span、全診断の順序/dedup、全rule code/message parity、component/packaged parity、Rust-free aggregateは未完了であり、V2-16b /
+直近の verified partial は `86a9b1fe` の標準 LS1002 if-condition Diagnostic span projectionである。次のREDは、recursive type alias (`LS1008`) の
+code/message/span parityを一つのRust/native fixtureで固定する。複数diagnosticの順序/dedup、別のtype diagnostic span、全rule code/message parity、
+component/packaged parity、Rust-free aggregateは未完了であり、V2-16b /
 V2-16c / V2-16eは[~]のまま維持する。
 
 #### これまでの standard projection evidence
@@ -328,6 +328,42 @@ runner/workdirを回収し、`lsharp-linux-x86`を停止した。
 これはLS1003 parameterized self-applicationのexact range projectionと、同一current-source App.Cli artifactの両対応target runtimeに限定したverified partialである。
 LS1002 if-conditionの正確なspan、複数diagnosticの順序/dedup、全rule code/message parity、parser/type/lint全体のdiagnostic parity、component/packaged
 release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `bf9868de`。
+
+### V2-16b / V2-16c native standard LS1002 if-condition Diagnostic span projection (2026-08-11)
+
+REDでは、既存fixture `(defn main [] (if 1 true false))` のLS1002 if-conditionがnative App.Cliからpoint range `0:0..0:0`で返る差分を固定し、
+Rust oracleが返すif式全体のexact range `0:14..0:31`をRust/native共通のdidOpen wire contractへ追加した。保存済みMac artifact runnerは actual
+`0:0..0:0`で失敗し、Rust focused E2Eは `0 passed / 1 failed / 359.36s`となった。
+
+`86a9b1fe`では、selfhost `TypeInfer.ls` のif-condition failure resultへ既存のif式 `if-start/if-end` spanを保持し、`App.Cli`の標準 type
+Diagnostic projectionで`error-code-if-cond`もspanを使用するようにした。LS1001、LS1002 if-branch、LS1003、LS1004の既存
+code/message/range契約は変更していない。同じRust focused E2Eは `1 passed / 359.18s`となった。実装・fixture・native runnerのcommitは
+`86a9b1fe`で、`main`へpush済みである。
+
+Mac Apple Siliconのcurrent-source App.Cli release gateは `1 passed / 1035.64s`。artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-86a9b1fe-lsp-if/manifest.json`は target `aarch64-apple-darwin`、source commit
+`86a9b1fe3f6e341f5cfe70eec7f3aef8694e1b0c`、`selfhost_fixed_point=true`、program `4,393,216` bytes、program SHA-256
+`bc84916ac0e6dbad8c607b349c70d342994a93b2911650747a9b42080c1562df`、stderr 0を記録した。同じMac programのnative core runtime matrixは
+LS1002 if-conditionを含む `41 cases`全passだった。
+
+Linux x86_64のcurrent-source actual self-regeneration summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/86a9b1fe-lsp-if/actual-selfregen-summary.json`にtarget `x86_64-unknown-linux-gnu`、host
+`Linux/x86_64`、status `pass`、stage2/stage3 code length各`11,466,916`、stdout SHA-256各
+`a6d4029c9af9ff73f504183932bf7e80679fba9f87bdcb1b119f2f634b8ebb68`、両stderr 0を記録した。stage2/stage3 manifestは source commit
+`86a9b1fe3f6e341f5cfe70eec7f3aef8694e1b0c`、data `2,757` bytes、entrypoint `11,462,308`、function-start length `3,430`、main function index
+`3,439`で一致した。Rust/native stage1 gateは `1 passed / 426.38s`、VM free-space gateは current selfregen available
+`7,668,736,000` / required `4,294,967,296` bytesだった。
+
+verified stage2をVM-side lock付きで再利用したtarget-only App.Cli artifactの
+`ci-artifacts/native-linux-x86-hostgen-vm/86a9b1fe-lsp-if-cli/manifest.json`は target `x86_64-unknown-linux-gnu`、source tree SHA-256
+`37236748940400c811636f07be22786e02eb1e77bbfb0ab69356fcc9aa7e108f`、`selfhost_fixed_point=true`、code `13,404,669` bytes、program
+`13,446,952` bytes、program SHA-256 `8beb7c0a4f4e9694f64e3002ec6a488376e24e03e434f4c17f9fecfe1ee1e9bc`、`--version` smoke
+`lsharp 0.1.0`、stderr 0を記録した。同じLinux ELFをVM内で実行したnative core runtime matrixは `41 cases`全passだった。target-only free-space
+gateは available `7,668,666,368` / required `4,294,967,296` bytesだった。target-only後にguest runner/workdirを回収し、`lsharp-linux-x86`を停止した。
+
+これはLS1002 if-conditionのexact range projectionと、同一current-source App.Cli artifactの両対応target runtimeに限定したverified partialである。
+recursive aliasなど別のtype diagnostic、複数diagnosticの順序/dedup、全rule code/message parity、parser/type/lint全体のdiagnostic parity、component/packaged
+release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `86a9b1fe`。
 
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、
