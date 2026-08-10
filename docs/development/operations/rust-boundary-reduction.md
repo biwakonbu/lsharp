@@ -4567,6 +4567,35 @@ program SHA-256 `d4296870f1a95815872ee1e4d2a4ecbe225adc0c2d0f9646a21253a7ddcddd1
 全rule code/message parity、component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。
 V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commit: `48d48bb1`。
 
+### V2-16b / V2-16c native standard parse LS0104 multiple-parse-errors projection (2026-08-10)
+
+`b6cfb12a` で、複数の malformed top-level `defn` signature `(defn [) (defn [)` をRust parserの`Multiple`相当として検出し、最初の失敗位置
+`0:6..0:7`を保持したraw parse diagnostic `1004`から、標準 LSP Diagnosticのseverity 1、code `LS0104`、source `lsharp`、message
+`multiple parse errors`へ投影した。検出はこの繰り返し`defn` signatureの形に限定し、既存のdelimiter/unknown-form/recovery経路は広げていない。
+Rust actual bundleの`e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic`は`1 passed / 334.31s`だった。
+
+Mac Apple Siliconのcurrent-source App.Cli release gateは`1 passed / 1009.01s`、artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-9182bb2b-lsp-multiple/manifest.json`はtarget `aarch64-apple-darwin`、source commit
+`9182bb2b...`、`selfhost_fixed_point=true`、program SHA-256
+`cf35bb64954e2e8412d59a9d8653a4f5261449b3e0dda706adedc7f063ae504e`、artifact `4,748 KiB`を記録した。同じMac programへnative core runtime
+matrixを適用し、LS0104を含む`40 cases`全pass、stderr空を確認した。
+
+Linux x86_64のcurrent-source actual self-regeneration summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/b6cfb12a-lsp-multiple/actual-selfregen-summary.json`にtarget `x86_64-unknown-linux-gnu`、host
+`Linux/x86_64`、status `pass`、stage2/stage3 code length各`11,465,699`、stdout SHA-256各
+`813f14713001b31e1e2988efeaaf8fbc8486e4499e3de186736cec81bb686fc4`、stderr空の一致を記録した。verified stage2をVM-side lock付きで再利用した
+target-only App.Cli artifactの
+`ci-artifacts/native-linux-x86-hostgen-vm/b6cfb12a-lsp-multiple-cli/manifest.json`はsource commit `b6cfb12a...`、source tree SHA-256
+`9eeb550a3218ab824ef2faa8768e50b35a1bee4e73af1b38a8a0cfedbe12e745`、`selfhost_fixed_point=true`、code `13,393,023` bytes、program SHA-256
+`922da0904d40b97ce3967686a57c8892ee4fd935856746be138307173dc186fc`、`--version` smoke、stderr 0を記録した。同じLinux ELFをVM内で実行した
+native core runtime matrixはLS0104を含む`40 cases`全passだった。VM free-space gateはavailable約`7.2 GiB` / required `4 GiB`で、runner/workdirと
+replay lockを検証後に回収し、`lsharp-linux-x86`を停止した。
+
+これは繰り返しmalformed top-level `defn` signatureのLS0104 standard Diagnostic projectionと、同一current-source App.Cli artifactの両対応target
+runtimeに限定したverified partialである。その他の複数parse error形状、複数診断の順序/dedup、他のparse/type/lint ruleの正確なspan end、全rule code/message parity、
+component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
+Evidence commits: `b6cfb12a`, `9182bb2b`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
