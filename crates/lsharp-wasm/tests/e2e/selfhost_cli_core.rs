@@ -17946,7 +17946,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
         r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{argument_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":13}},"end":{{"line":0,"character":23}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
     );
     let infinite_expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{infinite_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1003","source":"lsharp","message":"infinite type"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{infinite_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":15}},"end":{{"line":0,"character":20}}}},"severity":1,"code":"LS1003","source":"lsharp","message":"infinite type"}}]}}"##
     );
     assert!(
         output.contains(&undefined_expected),

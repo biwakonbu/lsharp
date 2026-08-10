@@ -21,7 +21,7 @@
 (defn make-infer-apply-error [node code]
   (let [start (infer-apply-span-start node)
     end (infer-apply-span-end node)]
-    (if (= code (error-code-arg-mismatch))
+    (if (or (= code (error-code-arg-mismatch)) (= code (error-code-infinite)))
       (if (and (>= start 0) (>= end start))
         (make-error-result-code-with-span code start end)
         (make-error-result-code code))

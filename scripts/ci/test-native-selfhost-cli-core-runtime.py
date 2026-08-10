@@ -804,8 +804,8 @@ def main():
                 "diagnostics": [
                     {
                         "range": {
-                            "start": {"line": 0, "character": 0},
-                            "end": {"line": 0, "character": 0},
+                            "start": {"line": 0, "character": 15},
+                            "end": {"line": 0, "character": 20},
                         },
                         "severity": 1,
                         "code": "LS1003",
