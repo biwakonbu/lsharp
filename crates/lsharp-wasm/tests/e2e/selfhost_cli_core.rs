@@ -17934,7 +17934,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
         &stdin,
     );
     let undefined_expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{undefined_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1001","source":"lsharp","message":"undefined symbol"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{undefined_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":14}},"end":{{"line":0,"character":21}}}},"severity":1,"code":"LS1001","source":"lsharp","message":"undefined symbol"}}]}}"##
     );
     let if_expected = format!(
         r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{if_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}}]}}"##

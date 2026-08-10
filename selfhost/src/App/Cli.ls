@@ -1434,8 +1434,9 @@
           (if (= code (error-code-infinite)) "LS1003" "LS1002"))))))
 (defn lsp-type-diagnostic-message-text [code] (check-diagnostic-body-from-code code))
 (defn lsp-type-diagnostic-to-lsp [code src start end]
-  (let [start-offset (if (= code (error-code-if-branch)) start 0)
-    end-offset (if (= code (error-code-if-branch)) end 0)
+  (let [has-span (or (= code (error-code-undefined)) (= code (error-code-if-branch)))
+    start-offset (if has-span start 0)
+    end-offset (if has-span end 0)
     start-position (lsp-position-from-offset src start-offset)
     end-position (lsp-position-from-offset src end-offset)
     result (vector-new 10)
