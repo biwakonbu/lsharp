@@ -1503,11 +1503,118 @@
         (do
           (root_pop)
           result)))))
+(defn lsp-recursive-alias-close-index-loop [spans idx count depth]
+  (if (>= idx count)
+    -1
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (lsp-recursive-alias-close-index-loop spans (+ idx 1) count (+ depth 1))
+        (if (= kind 1)
+          (if (= depth 1)
+            idx
+            (lsp-recursive-alias-close-index-loop spans (+ idx 1) count (- depth 1)))
+          (lsp-recursive-alias-close-index-loop spans (+ idx 1) count depth))))))
+(defn lsp-recursive-alias-target-has-name-loop [spans src idx count depth name-start name-end]
+  (if (>= idx count)
+    0
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (lsp-recursive-alias-target-has-name-loop
+          spans src (+ idx 1) count (+ depth 1) name-start name-end)
+        (if (= kind 1)
+          (if (= depth 0)
+            0
+            (lsp-recursive-alias-target-has-name-loop
+              spans src (+ idx 1) count (- depth 1) name-start name-end))
+          (if (and
+                (= kind 20)
+                (string-eq
+                  (substring src (span-start spans idx) (span-end spans idx))
+                  (substring src name-start name-end)))
+            1
+            (lsp-recursive-alias-target-has-name-loop
+              spans src (+ idx 1) count depth name-start name-end)))))))
+(defn lsp-recursive-alias-decl-detected? [spans src open-idx count]
+  (let [head-idx (+ open-idx 2)]
+    (if (>= head-idx count)
+      0
+      (if (= (span-kind spans head-idx) 20)
+        (let [target-idx (+ head-idx 1)]
+          (lsp-recursive-alias-target-has-name-loop
+            spans
+            src
+            target-idx
+            count
+            0
+            (span-start spans head-idx)
+            (span-end spans head-idx)))
+        (if (= (span-kind spans head-idx) 0)
+          (let [head-close (lsp-recursive-alias-close-index-loop spans head-idx count 0)
+            name-idx (+ head-idx 1)
+            target-idx (+ head-close 1)]
+            (if (and
+                  (>= head-close 0)
+                  (and
+                    (< name-idx count)
+                    (and
+                      (< target-idx count)
+                      (= (span-kind spans name-idx) 20))))
+              (lsp-recursive-alias-target-has-name-loop
+                spans
+                src
+                target-idx
+                count
+                0
+                (span-start spans name-idx)
+                (span-end spans name-idx))
+              0))
+          0)))))
+(defn lsp-recursive-alias-detected-loop [spans src idx count depth]
+  (if (>= idx count)
+    0
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (if (= depth 0)
+          (let [name-idx (+ idx 1)]
+            (if (and
+                  (< name-idx count)
+                  (and
+                    (= (span-kind spans name-idx) 20)
+                    (string-eq
+                      (substring src (span-start spans name-idx) (span-end spans name-idx))
+                      "type-alias")))
+              (if (= (lsp-recursive-alias-decl-detected? spans src idx count) 1)
+                1
+                (lsp-recursive-alias-detected-loop spans src (+ idx 1) count (+ depth 1)))
+              (lsp-recursive-alias-detected-loop spans src (+ idx 1) count (+ depth 1))))
+          (lsp-recursive-alias-detected-loop spans src (+ idx 1) count (+ depth 1)))
+        (if (= kind 1)
+          (lsp-recursive-alias-detected-loop
+            spans
+            src
+            (+ idx 1)
+            count
+            (if (> depth 0) (- depth 1) 0))
+          (lsp-recursive-alias-detected-loop spans src (+ idx 1) count depth))))))
+(defn lsp-recursive-alias-detected? [src]
+  (let [spans (tokenize-with-spans src)]
+    (do
+      (root_push spans)
+      (let [result
+              (lsp-recursive-alias-detected-loop
+                spans src 0 (/ (vector-length spans) 3) 0)]
+        (do
+          (root_pop)
+          result)))))
 (defn lsp-source-type-diagnostics [src]
   (if (> (string-length src) 0)
     (let [program (parse-program src)
       analysis (infer-program-analysis program)
-      code (infer-program-analysis-first-error-code analysis)
+      analysis-code (infer-program-analysis-first-error-code analysis)
+      code
+        (if (= (lsp-recursive-alias-detected? src) 1)
+          (error-code-recursive-alias)
+          analysis-code)
       start (infer-program-analysis-first-error-start analysis)
       end (infer-program-analysis-first-error-end analysis)]
       (if (= code 0)
