@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `9182bb2b`（production selfhost sourceのLS0104 multiple-parse-errors projectionを`b6cfb12a`で追加し、native core matrixの件数表示を`9182bb2b`で補正した後）。selfhost production sourceは`b6cfb12a`と一致し、標準 parse Diagnosticを含むMac/Linux current-source native gateまで検証済みである。
+- 確認時点の code checkpoint は `7c830835`（`368ac2c0`でproduction selfhost sourceへLS1002 if-branch Diagnostic spanを追加し、Mac current-source gate後にrunnerのmatrix件数表示だけを`7c830835`で41 casesへ補正した後）。selfhost production sourceは`368ac2c0`と一致し、標準 type Diagnosticのif-branch spanを含むMac/Linux current-source native gateまで検証済みである。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,7 +41,14 @@
 
 ### 再開時の次の一件
 
-直近の verified partial として、1409e18b / d3e852a6 で review の unused-let lint diagnostic を標準 LSP Diagnostic object へ投影し、
+直近の verified partial は `368ac2c0` / `7c830835` の標準 LS1002 if-branch Diagnostic span projectionである。次のREDは、別の標準 type
+Diagnosticの正確なspan、または複数diagnosticの順序/dedupを一つだけ選び、同じRust/native fixtureで失敗値と範囲を固定する。LS1002 branch以外の
+type diagnostic span、全診断の順序/dedup、全rule code/message parity、component/packaged parity、Rust-free aggregateは未完了であり、V2-16b /
+V2-16c / V2-16eは[~]のまま維持する。
+
+#### これまでの standard projection evidence
+
+これまでの verified partial として、1409e18b / d3e852a6 で review の unused-let lint diagnostic を標準 LSP Diagnostic object へ投影し、
 続く test-only batch で empty-do (`L0002`) も同じ wire fields へ固定した。Rust actual bundle の focused E2E は
 `test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnostic` が 1 passed / 430.65s となり、point range、
 severity 2、code L0002、source lsharp、message "do block has no expressions" を確認した。Mac Apple Silicon の
@@ -195,6 +202,36 @@ replay lockを検証後に回収し、`lsharp-linux-x86`を停止した。
 これは繰り返しmalformed top-level `defn` signatureのLS0104 standard Diagnostic projectionと、同一current-source App.Cli artifactの両対応target
 runtimeに限定したverified partialである。その他の複数parse error形状、複数診断の順序/dedup、他のparse/type/lint ruleの正確なspan end、全rule code/message parity、
 component/packaged release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commits: `b6cfb12a`, `9182bb2b`。
+
+### V2-16b / V2-16c native standard LS1002 if-branch Diagnostic span projection (2026-08-10)
+
+`368ac2c0` で、`(defn main [] (if true 1 false))` のbranch unification failureにif式の開始・終了offsetを保持させ、selfhostのTypeInfer結果から
+標準LSP Diagnostic range `0:14..0:31`へ投影した。既存のLS1002 if-condition、LS1004 argument mismatch、LS1001 undefined symbol、LS1003 infinite typeの
+point range契約は変更していない。Rust actual bundleの
+`test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は `1 passed / 344.07s` だった。
+
+Mac Apple Siliconのcurrent-source App.Cli release gateは `1 passed / 879.61s`。artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-368ac2c0-lsp-if-branch/manifest.json` は target `aarch64-apple-darwin`、source commit
+`368ac2c053b928f670e13e93a0899a61ff30addd`、`selfhost_fixed_point=true`、program `4,393,216` bytes、program SHA-256
+`f9158e72488a971e5a24333ae08163cfb1b41b2e39e111c4e14c56b88cc291fe`、stderr 0を記録した。同じMac programのnative core runtime matrixは
+LS1002 branchを含む `41 cases` 全passだった。後続 `7c830835` はrunnerの件数表示だけを41 casesへ補正したcommitで、selfhost sourceの内容は変えていない。
+
+Linux x86_64のcurrent-source actual self-regeneration summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/7c830835-lsp-if-branch/actual-selfregen-summary.json` に target `x86_64-unknown-linux-gnu`、host
+`Linux/x86_64`、status `pass`、stage2/stage3 code length各 `11,466,310`、stdout SHA-256各
+`f7b2688f8d65ddbeca91ef51ecc62b6d8a9406dd5cb1eb21d54308aee95d1ecc`、両stderr 0を記録した。stage2/stage3 manifestは source commit
+`7c83083501b42979567459bfe183a542536279ef`、data `2,757` bytes、entrypoint `11,461,702`、function-start length `3,430`、main function index
+`3,439`で一致した。verified stage2をVM-side lock付きで再利用した target-only App.Cli artifactの
+`ci-artifacts/native-linux-x86-hostgen-vm/7c830835-lsp-if-branch-cli/manifest.json` は source tree SHA-256
+`9182b2b5f25ceb95357bb1e382026cc6966cb6bd0f212e13283897af4278d72b`、`selfhost_fixed_point=true`、code `13,395,487` bytes、program
+`13,438,760` bytes、program SHA-256 `b29a5e4cb878c780cb66e37a14fc27416960f5fd5fcedc4d2fc15ff259aaa0e7`、`--version` smoke
+`lsharp 0.1.0`、stderr 0を記録した。同じLinux ELFをVM内で実行したnative core runtime matrixは `41 cases` 全passだった。
+VM free-space gateは available `7,670,906,880` / required `4,294,967,296` bytesで、target-only後のVM workdir、runner、replay lockを回収して
+`lsharp-linux-x86`を停止した。
+
+これはif branch mismatchのLS1002 range projectionと、同一current-source App.Cli artifactの両対応target runtimeに限定したverified partialである。
+LS1002 branch以外の正確なspan、複数diagnosticの順序/dedup、全rule code/message parity、parser/type/lint全体のdiagnostic parity、component/packaged
+release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。Evidence commits: `368ac2c0`, `7c830835`。
 
 - [~] `V2-16b` native built-in type environment retention — `0459ad98` の current-source Mac Apple Silicon
   stage0から生成した native `App.Cli`で、numeric/string/container/reference、`file-exists?`、`int-to-string`、

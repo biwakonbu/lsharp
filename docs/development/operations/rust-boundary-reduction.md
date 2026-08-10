@@ -4596,6 +4596,37 @@ runtimeに限定したverified partialである。その他の複数parse error�
 component sidecar、release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
 Evidence commits: `b6cfb12a`, `9182bb2b`。
 
+### V2-16b / V2-16c native standard LS1002 if-branch Diagnostic span projection (2026-08-10)
+
+`368ac2c0` で、`(defn main [] (if true 1 false))` のbranch unification failureにif式の開始・終了offsetを保持させ、selfhostのTypeInfer結果から
+標準LSP Diagnostic range `0:14..0:31`へ投影した。既存のLS1002 if-condition、LS1004 argument mismatch、LS1001 undefined symbol、LS1003 infinite typeの
+point range契約は変更していない。Rust actual bundleの
+`e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は `1 passed / 344.07s`だった。
+
+Mac Apple Siliconのcurrent-source App.Cli release gateは `1 passed / 879.61s`。artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-368ac2c0-lsp-if-branch/manifest.json` は target `aarch64-apple-darwin`、source commit
+`368ac2c053b928f670e13e93a0899a61ff30addd`、`selfhost_fixed_point=true`、program `4,393,216` bytes、program SHA-256
+`f9158e72488a971e5a24333ae08163cfb1b41b2e39e111c4e14c56b88cc291fe`を記録した。同じMac programのnative core runtime matrixはLS1002 branchを含む
+`41 cases`全pass、stderr空だった。後続`7c830835`はrunnerの件数表示だけを41 casesへ補正したcommitで、selfhost sourceの内容は変えていない。
+
+Linux x86_64のcurrent-source actual self-regeneration summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/7c830835-lsp-if-branch/actual-selfregen-summary.json`に target `x86_64-unknown-linux-gnu`、host
+`Linux/x86_64`、status `pass`、stage2/stage3 code length各`11,466,310`、stdout SHA-256各
+`f7b2688f8d65ddbeca91ef51ecc62b6d8a9406dd5cb1eb21d54308aee95d1ecc`、両stderr 0を記録した。stage2/stage3 manifestは source commit
+`7c83083501b42979567459bfe183a542536279ef`、data `2,757` bytes、entrypoint `11,461,702`、function-start length `3,430`、main function index
+`3,439`で一致した。verified stage2をVM-side lock付きで再利用したtarget-only App.Cli artifactの
+`ci-artifacts/native-linux-x86-hostgen-vm/7c830835-lsp-if-branch-cli/manifest.json`は source tree SHA-256
+`9182b2b5f25ceb95357bb1e382026cc6966cb6bd0f212e13283897af4278d72b`、`selfhost_fixed_point=true`、code `13,395,487` bytes、program
+`13,438,760` bytes、program SHA-256 `b29a5e4cb878c780cb66e37a14fc27416960f5fd5fcedc4d2fc15ff259aaa0e7`、`--version` smoke
+`lsharp 0.1.0`、stderr 0を記録した。同じLinux ELFをVM内で実行したnative core runtime matrixは`41 cases`全passだった。VM free-space gateは
+available `7,670,906,880` / required `4,294,967,296` bytesで、target-only後のVM workdir、runner、replay lockを回収して
+`lsharp-linux-x86`を停止した。
+
+これはif branch mismatchのLS1002 range projectionと、同一current-source App.Cli artifactの両対応target runtimeに限定したverified partialである。
+LS1002 branch以外の正確なspan、複数diagnosticの順序/dedup、全rule code/message parity、parser/type/lint全体のdiagnostic parity、component sidecar、
+release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
+Evidence commits: `368ac2c0`, `7c830835`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
