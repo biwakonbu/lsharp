@@ -4627,6 +4627,37 @@ LS1002 branch以外の正確なspan、複数diagnosticの順序/dedup、全rule 
 release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
 Evidence commits: `368ac2c0`, `7c830835`。
 
+### V2-16b / V2-16c native standard LS1001 undefined-symbol Diagnostic span projection (2026-08-10)
+
+REDでは、`(defn main [] missing)` の undefined-symbol diagnosticがnative App.Cliからpoint range `0:0..0:0`で返る差分を固定し、期待する
+exact range `0:14..0:21`をRust/native共通のdidOpen wire contractへ追加した。Rust actual bundleの
+`test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics` は `0 passed / 1 failed / 453.73s` となり、failure valueを確認した。
+`a0a3dd55` では、selfhost `App.Cli` のLS1001/LS1002 span projectionだけを拡張し、既存のpoint-range type diagnostic契約を変更せずに修正した。
+同じRust focused E2Eは `1 passed / 375.44s` となった。
+
+Mac Apple Siliconのcurrent-source App.Cli release gateは `1 passed / 932.19s`。artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-a0a3dd55-lsp-undefined/manifest.json` は target `aarch64-apple-darwin`、source commit
+`a0a3dd55b25443669ce081cafae03b3d7f59660e`、`selfhost_fixed_point=true`、program `4,393,216` bytes、program SHA-256
+`d90da889334ab53fa93686f2ccab768afb909f2557c0674de428db06975ff3e2`を記録した。同じMac programのnative core runtime matrixはLS1001を含む
+`41 cases`全pass、stderr空だった。
+
+Linux x86_64のcurrent-source actual self-regeneration summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/a0a3dd55-lsp-undefined/actual-selfregen-summary.json`にtarget `x86_64-unknown-linux-gnu`、host
+`Linux/x86_64`、status `pass`、stage2/stage3 code length各`11,466,310`、stdout SHA-256各
+`f7b2688f8d65ddbeca91ef51ecc62b6d8a9406dd5cb1eb21d54308aee95d1ecc`、両stderr 0を記録した。stage2/stage3 manifestは source commit
+`a0a3dd55b25443669ce081cafae03b3d7f59660e`、data `2,757` bytes、entrypoint `11,461,702`、function-start length `3,430`、main function index
+`3,439`で一致した。verified stage2をVM-side lock付きで再利用した target-only App.Cli artifactの
+`ci-artifacts/native-linux-x86-hostgen-vm/a0a3dd55-lsp-undefined-cli/manifest.json`は source tree SHA-256
+`1923a45103b2293ca32f05d5d339bbca0f4e57d582806f90a247dacd0130f79c`、`selfhost_fixed_point=true`、code `13,395,530` bytes、program
+`13,438,760` bytes、program SHA-256 `266d5567f09be6a6c3497d7707f4c756d9a27ab29c4f892cf085f1b526d71411`、`--version` smoke
+`lsharp 0.1.0`、stderr 0を記録した。同じLinux ELFをVM内で実行したnative core runtime matrixは`41 cases`全passだった。VM free-space gateは
+available約`7.1 GiB` / required `4 GiB`で、target-only後のVM workdir、runner、replay lockを回収して`lsharp-linux-x86`を停止した。
+
+これはundefined symbolのLS1001 exact range projectionと、同一current-source App.Cli artifactの両対応target runtimeに限定したverified partialである。
+LS1001以外の正確なspan、複数diagnosticの順序/dedup、全rule code/message parity、parser/type/lint全体のdiagnostic parity、component sidecar、
+release asset acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2-16eは[~]を維持する。
+Evidence commit: `a0a3dd55`。
+
 ### V2-16b native remaining builtin argument diagnostics (2026-08-04)
 
 `16871a7a` で、builtinの引数位置別 mismatchを一つのfixture familyへ追加した。対象は文字列の `string-concat`、`string-eq`、
