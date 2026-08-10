@@ -4782,3 +4782,39 @@ Evidence:
 canonical Mapがkey/value型を保持しないkey mismatchと同様、この入力は新しい診断契約に採用していない。これはbuiltin argument diagnosticsの
 verified partialであり、全builtin family、全型診断 code/span、runtime/codegen parity、全公開command、component sidecar、release asset
 acquisition/rollback、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了のため、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。
+
+### V2-16b / V2-16c native standard LS1008 recursive type-alias Diagnostic span projection (2026-08-11)
+
+前回の source-aware alias AST shape 変更は、Linux x86_64 の target-only App.Cli で recursive alias の `publishDiagnostics` を生成せず、
+`check` が `Int` と `diagnostics:0` を返す failure boundaryを示した。この仮説の artifactは現行 evidenceとして採用せず、検証後に削除した。
+alias AST と TypeInfer の既存 shapeを保ったまま、`selfhost/src/App/Cli.ls` の LSP projectionだけが source tokenをbalanced formとして走査し、
+top-level の closed/parameterized `type-alias` self-referenceを検出した場合に `LS1008` / `E0008` の code projectionへ接続する最小修正を
+`b3150a34` で反映した。recursive aliasの通常 `check` / `infer-program-analysis` parityを完了したものではない。
+
+Rust focused contractは次の通りで、`1 passed / 352.49s` となった。
+
+```text
+CARGO_TARGET_DIR=target cargo test -p lsharp-wasm --test e2e \
+  selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics -- --nocapture
+```
+
+Linux x86_64 の current-source fixed-point gateは、`ci-artifacts/native-linux-x86-hostgen-vm/b3150a34-ls1008-scanner/actual-selfregen-summary.json`
+に target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status: pass`、stage2/stage3 stdout SHA-256双方
+`f7bef7837aeeb0285f7a59afd63751f69c2896afb47e53105d0af359d7683494`、stage2/stage3 code length双方 `11,467,504`、stderr 0を記録した。
+stage2 manifestは source commit `b3150a344a648ff2a35e67e8b00219e3c8c15b1e`、data `2,775` bytes、entrypoint `11,462,896`、
+function-start length `3,430`、main function index `3,439`を記録する。VM free-space gateは available `7,667,183,616` / required
+`4,294,967,296` bytesで、検証後に workdir と lockを回収し、VMを停止した。VM構成は `4 CPU / 16GiB memory / 12GiB disk` のままである。
+
+同じ verified stage2をVM-side lock付きで再利用した Linux x86_64 App.Cli target-only artifactは
+`ci-artifacts/native-linux-x86-hostgen-vm/b3150a34-ls1008-scanner-cli/manifest.json` に保存した。manifestは source commit
+`b3150a344a648ff2a35e67e8b00219e3c8c15b1e`、source tree SHA-256
+`5099604fee3eaad924bd406f1ad6978348669c7ef5080a7d5a6d34883db61d0b`、`selfhost_fixed_point: true`、program SHA-256
+`184272c945096034f66e4603d2d38c665c62113cd7f08ab182c2897ce8f580ce`、code length `13,453,656`、stderr 0を記録する。生成 ELFは
+x86-64 Linuxで、`--version` は `lsharp 0.1.0` を返した。この実バイナリをVM内で実行した
+`scripts/ci/test-native-selfhost-cli-core-runtime.py` は `native CLI core runtime matrix passed: 41 cases` となった。
+
+Mac Apple Siliconの b3150a34 current-source gateはまだ再実行していない。先行する `1404087a` の Mac evidenceは source-token scanner修正前
+なので、b3150a34の両対応target evidenceへ拡大解釈しない。次のREDは複数 Diagnosticの順序/dedupであり、
+`(defn main [] (let [unused 42] (if 1 true false)))` に対して `LS1002` type diagnosticを `L0001` lint diagnosticより先に保持し、
+同一開始位置の異なる診断を誤って dedup しない wire contractを固定する。複数diagnostic以外の全 rule code/message parity、
+native public checkのclosed alias parity、component/packaged parity、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。

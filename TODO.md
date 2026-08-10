@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `86a9b1fe`（`368ac2c0`でLS1002 if-branch Diagnostic span、`7c830835`でnative runnerの41 cases表示、`a0a3dd55`でLS1001 undefined-symbol Diagnostic span、`f937afd3`でLS1004 argument-mismatch Diagnostic span、`bf9868de`でLS1003 infinite-type Diagnostic span、`86a9b1fe`でLS1002 if-condition Diagnostic spanをproduction selfhost sourceへ反映した後）。selfhost production sourceは`86a9b1fe`と一致し、標準 type DiagnosticのLS1001/LS1002 if-condition/if-branch/LS1003/LS1004 spanを含むMac/Linux current-source native gateまで検証済みである。
+- 確認時点の code checkpoint は `b3150a34`（`368ac2c0`でLS1002 if-branch Diagnostic span、`7c830835`でnative runnerの41 cases表示、`a0a3dd55`でLS1001 undefined-symbol Diagnostic span、`f937afd3`でLS1004 argument-mismatch Diagnostic span、`bf9868de`でLS1003 infinite-type Diagnostic span、`86a9b1fe`でLS1002 if-condition Diagnostic span、`b3150a34`でrecursive type alias (`LS1008`) のLSP code/span投影をproduction selfhost sourceへ反映した後）。selfhost production sourceは`b3150a34`と一致し、標準 type DiagnosticのLS1001/LS1002 if-condition/if-branch/LS1003/LS1004/LS1008 spanを含むRust focused testとLinux x86_64 current-source native fixed point、App.Cli target-only、41 cases runtime matrixまで検証済みである。Mac Apple Siliconのb3150a34 current-source gateは未再実行のため、LS1008の両対応target完了とは扱わない。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,10 +41,12 @@
 
 ### 再開時の次の一件
 
-直近の verified partial は `86a9b1fe` の標準 LS1002 if-condition Diagnostic span projectionである。次のREDは、recursive type alias (`LS1008`) の
-code/message/span parityを一つのRust/native fixtureで固定する。複数diagnosticの順序/dedup、別のtype diagnostic span、全rule code/message parity、
-component/packaged parity、Rust-free aggregateは未完了であり、V2-16b /
-V2-16c / V2-16eは[~]のまま維持する。
+直近の verified partial は `b3150a34` の標準 recursive type alias (`LS1008`) LSP code/message/span projectionである。source-token scannerで
+closed/parameterized aliasのLSP projectionをLinux nativeでも固定したが、native public `check` / `infer-program-analysis` のclosed alias
+診断は別契約として未検証である。Mac Apple Siliconのb3150a34 current-source gateも残っている。次のREDは複数diagnosticの順序/dedupを
+一つのRust/native fixtureで固定する。fixtureは `(defn main [] (let [unused 42] (if 1 true false)))` とし、type `LS1002`を先、lint
+`L0001`を後に保持すること、同じ開始位置の診断を誤って落とさないことをobservable contractにする。別のtype diagnostic span、全rule
+code/message parity、component/packaged parity、Rust-free aggregateは未完了であり、V2-16b / V2-16c / V2-16eは[~]のまま維持する。
 
 #### これまでの standard projection evidence
 
