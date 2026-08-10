@@ -11,6 +11,22 @@
 ;; infer-lambda: lambda 式の型推論
 ;; infer-apply: 関数適用の型推論 (0-64 引数の bounded アリティ分岐)
 
+;; parser が apply の末尾に保持した source span を診断へ戻す。
+(defn infer-apply-span-start [node]
+  (let [idx (+ (vector-get node 2) 3)]
+    (if (> (vector-length node) idx) (vector-get node idx) -1)))
+(defn infer-apply-span-end [node]
+  (let [idx (+ (vector-get node 2) 4)]
+    (if (> (vector-length node) idx) (vector-get node idx) -1)))
+(defn make-infer-apply-error [node code]
+  (let [start (infer-apply-span-start node)
+    end (infer-apply-span-end node)]
+    (if (= code (error-code-arg-mismatch))
+      (if (and (>= start 0) (>= end start))
+        (make-error-result-code-with-span code start end)
+        (make-error-result-code code))
+      (make-error-result-code code))))
+
 ;; lambda 式の型推論
 ;; [8, param-count, param-hash1, ..., body]
 ;; compile-safe な covered slice として 0/1/2/3/4 引数を扱う
@@ -52,7 +68,7 @@
             result))))))
 
 ;; 1 引数 apply の unify 中間値を native GC から保持する。
-(defn infer-apply-one-final [func-ty s1 arg1-ty counter]
+(defn infer-apply-one-final [node func-ty s1 arg1-ty counter]
   (do
     (root_push func-ty)
     (root_push s1)
@@ -78,7 +94,7 @@
                     (root_push s2)
                     (let [result
                             (if (= (unify-failed s2) 1)
-                              (make-error-result-code failure-code)
+                              (make-infer-apply-error node failure-code)
                               (infer-apply-one-success s2 ret-ty))]
                       (do
                         (root_pop)
@@ -122,7 +138,7 @@
             (root_pop)
             result))))))
 
-(defn infer-apply-two-final [func-ty s3 arg1-ty arg2-ty counter]
+(defn infer-apply-two-final [node func-ty s3 arg1-ty arg2-ty counter]
   (do
     (root_push func-ty)
     (root_push s3)
@@ -149,7 +165,7 @@
                     (root_push s4)
                     (let [result
                             (if (= (unify-failed s4) 1)
-                              (make-error-result-code failure-code)
+                              (make-infer-apply-error node failure-code)
                               (infer-apply-two-success s4 ret-ty))]
                       (do
                         (root_pop)
@@ -163,7 +179,7 @@
                         (root_pop)
                         result))))))))))))
 
-(defn infer-apply-two-after-arg2 [func-ty arg1-ty counter arg2-result]
+(defn infer-apply-two-after-arg2 [node func-ty arg1-ty counter arg2-result]
   (do
     (root_push func-ty)
     (root_push arg1-ty)
@@ -179,6 +195,7 @@
                   (root_push arg2-ty)
                   (let [next-result
                           (infer-apply-two-final
+                            node
                             func-ty
                             s3
                             arg1-ty
@@ -217,6 +234,7 @@
                       (root_push arg2-result)
                       (let [next-result
                               (infer-apply-two-after-arg2
+                                node
                                 func-ty
                                 arg1-ty
                                 counter
@@ -300,7 +318,7 @@
             (root_pop)
             result))))))
 
-(defn infer-apply-one-after-arg [func-ty counter arg1-result]
+(defn infer-apply-one-after-arg [node func-ty counter arg1-result]
   (do
     (root_push func-ty)
     (root_push counter)
@@ -315,6 +333,7 @@
                   (root_push arg1-ty)
                   (let [next-result
                           (infer-apply-one-final
+                            node
                             func-ty
                             s2
                             arg1-ty
@@ -350,6 +369,7 @@
                       (root_push arg1-result)
                       (let [next-result
                               (infer-apply-one-after-arg
+                                node
                                 func-ty
                                 counter
                                 arg1-result)]
@@ -596,7 +616,7 @@
                                           (root_push next-subst)
                                           (let [final-result
                                                   (if (= (unify-failed next-subst) 1)
-                                                    (make-error-result-code failure-code)
+                                                    (make-infer-apply-error node failure-code)
                                                     (make-result
                                                       next-subst
                                                       (apply-subst next-subst ret-ty)))]
@@ -686,7 +706,7 @@
               (error-code-arg-mismatch))
             s2 (unify applied-func-ty expected s1)]
             (if (= (unify-failed s2) 1)
-              (make-error-result-code failure-code)
+              (make-infer-apply-error node failure-code)
               (make-result s2 (apply-subst s2 ret-ty))))))
       (let [func-result (infer-expr func-node env subst counter)]
         (if (= (result-failed func-result) 1)

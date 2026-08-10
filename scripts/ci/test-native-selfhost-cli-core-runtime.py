@@ -552,8 +552,8 @@ def main():
                 "diagnostics": [
                     {
                         "range": {
-                            "start": {"line": 0, "character": 0},
-                            "end": {"line": 0, "character": 0},
+                            "start": {"line": 0, "character": 13},
+                            "end": {"line": 0, "character": 23},
                         },
                         "severity": 1,
                         "code": "LS1004",
@@ -774,8 +774,8 @@ def main():
                 "diagnostics": [
                     {
                         "range": {
-                            "start": {"line": 0, "character": 0},
-                            "end": {"line": 0, "character": 0},
+                            "start": {"line": 0, "character": 13},
+                            "end": {"line": 0, "character": 23},
                         },
                         "severity": 1,
                         "code": "LS1004",

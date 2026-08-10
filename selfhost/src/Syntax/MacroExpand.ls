@@ -192,7 +192,15 @@
                         node))))))))))))
 
 ;; apply ノードの置換
-;; [5, func-node, arg-count, arg1, arg2, ...]
+;; [5, func-node, arg-count, arg1, arg2, ..., start, end]
+(defn preserve-apply-span [node result]
+  (let [idx (+ (vector-get node 2) 3)]
+    (if (> (vector-length node) (+ idx 1))
+      (vector-push
+        (vector-push result (vector-get node idx))
+        (vector-get node (+ idx 1)))
+      result)))
+
 (defn substitute-apply [node bindings]
   (let [func-node (substitute-node (vector-get node 1) bindings)
     argc (vector-get node 2)
@@ -201,7 +209,7 @@
     (substitute-apply-args node bindings result 0 argc)))
 
 (defn substitute-apply-args [node bindings result idx count]
-  (if (>= idx count) result
+  (if (>= idx count) (preserve-apply-span node result)
     (let [arg (vector-get node (+ idx 3))
       new-arg (substitute-node arg bindings)]
       (substitute-apply-args node bindings
@@ -338,7 +346,7 @@
     (expand-apply-args-normal node table depth result 0 argc)))
 
 (defn expand-apply-args-normal [node table depth result idx count]
-  (if (>= idx count) result
+  (if (>= idx count) (preserve-apply-span node result)
     (let [arg (vector-get node (+ idx 3))
       new-arg (expand-node arg table depth)]
       (expand-apply-args-normal node table depth

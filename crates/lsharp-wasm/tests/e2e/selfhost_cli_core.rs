@@ -17779,7 +17779,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didchange_publishes_type_diagnostics_with_uri
         &stdin,
     );
     let expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":13}},"end":{{"line":0,"character":23}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
     );
     assert!(
         output.contains(&expected),
@@ -17816,7 +17816,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didchange_clears_stale_type_diagnostics() {
         &stdin,
     );
     let invalid = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":13}},"end":{{"line":0,"character":23}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
     );
     let cleared = format!(
         r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[]}}"##
@@ -17943,7 +17943,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
         r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{branch_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":14}},"end":{{"line":0,"character":31}}}},"severity":1,"code":"LS1002","source":"lsharp","message":"if branches must have same type"}}]}}"##
     );
     let argument_expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{argument_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{argument_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":13}},"end":{{"line":0,"character":23}}}},"severity":1,"code":"LS1004","source":"lsharp","message":"function argument type mismatch"}}]}}"##
     );
     let infinite_expected = format!(
         r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{infinite_uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":1,"code":"LS1003","source":"lsharp","message":"infinite type"}}]}}"##

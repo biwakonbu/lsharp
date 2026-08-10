@@ -14,7 +14,7 @@
 ;; tag=2: bool [2, 0/1]
 ;; tag=3: string [3, start, end, map-key-hash]  (ソース位置参照)
 ;; tag=4: var [4, name-hash]  (名前ハッシュで識別)
-;; tag=5: apply [5, func-node, arg-count, arg1, arg2, ...]
+;; tag=5: apply [5, func-node, arg-count, arg1, arg2, ..., start, end]
 ;; tag=6: if [6, cond, then, else]
 ;; tag=7: let [7, name-hash, init, body]
 ;; tag=8: lambda [8, param-count, param-hash1, ..., body]
@@ -5090,7 +5090,8 @@
 
 ;; === apply (関数呼び出し) ===
 (defn parse-apply-v3 [spans pos-ref src]
-  (let [func-node (parse-expr-v3 spans pos-ref src)]
+  (let [apply-start (span-start spans (- (ref-get pos-ref) 1))
+    func-node (parse-expr-v3 spans pos-ref src)]
     (do
       (root_push func-node)
       (let [result (vector-push-triple-rooted-v3 (vector-new 8) 5 func-node 0)
@@ -5099,11 +5100,21 @@
         arg-count (- (vector-length with-args) 3)
         parsed (do
           (root_set result-slot with-args)
-          (vector-set-at-rooted-v3 with-args 2 arg-count))]
+          (vector-set-at-rooted-v3 with-args 2 arg-count))
+        parsed-with-span (do
+          (root_set result-slot parsed)
+          (let [with-span
+                  (vector-push-pair-rooted-v3
+                    parsed
+                    apply-start
+                    (previous-token-end-v3 spans pos-ref))]
+            (do
+              (root_set result-slot with-span)
+              with-span)))]
         (do
           (root_pop)
           (root_pop)
-          parsed)))))
+          parsed-with-span)))))
 
 ;; 引数を収集
 (defn parse-apply-args-step-v3 [spans pos-ref src result]
