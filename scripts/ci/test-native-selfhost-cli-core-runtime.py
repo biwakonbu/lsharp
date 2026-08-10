@@ -28,6 +28,8 @@ LSP_TYPE_UNDEFINED_URI = "file:///tmp/lsharp-lsp-type-undefined.ls"
 LSP_TYPE_UNDEFINED_SOURCE = "(defn main [] missing)\n"
 LSP_TYPE_IF_URI = "file:///tmp/lsharp-lsp-type-if.ls"
 LSP_TYPE_IF_SOURCE = "(defn main [] (if 1 true false))\n"
+LSP_TYPE_BRANCH_URI = "file:///tmp/lsharp-lsp-type-branch.ls"
+LSP_TYPE_BRANCH_SOURCE = "(defn main [] (if true 1 false))\n"
 LSP_TYPE_ARGUMENT_URI = "file:///tmp/lsharp-lsp-type-argument.ls"
 LSP_TYPE_ARGUMENT_SOURCE = "(defn bad [] (+ 1 true))\n"
 LSP_TYPE_INFINITE_URI = "file:///tmp/lsharp-lsp-type-infinite.ls"
@@ -725,6 +727,36 @@ def main():
         }:
             raise AssertionError(
                 f"lsp if type diagnostics projection mismatch: {if_type_frames[2]!r}"
+            )
+
+        branch_type_frames = run_lsp_source_diagnostics(
+            program,
+            root,
+            LSP_TYPE_BRANCH_URI,
+            LSP_TYPE_BRANCH_SOURCE,
+            "if-branch-type",
+        )
+        if branch_type_frames[2] != {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": LSP_TYPE_BRANCH_URI,
+                "diagnostics": [
+                    {
+                        "range": {
+                            "start": {"line": 0, "character": 14},
+                            "end": {"line": 0, "character": 31},
+                        },
+                        "severity": 1,
+                        "code": "LS1002",
+                        "source": "lsharp",
+                        "message": "if branches must have same type",
+                    }
+                ],
+            },
+        }:
+            raise AssertionError(
+                f"lsp if branch type diagnostics projection mismatch: {branch_type_frames[2]!r}"
             )
 
         argument_type_frames = run_lsp_source_diagnostics(

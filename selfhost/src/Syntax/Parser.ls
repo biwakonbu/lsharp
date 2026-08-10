@@ -3425,34 +3425,37 @@
 
 ;; === if 式 ===
 (defn parse-if-v3 [spans pos-ref src]
-  (do
-    (p-advance pos-ref) ;; if を消費
-    (let [cond-node (parse-expr-v3 spans pos-ref src)]
-      (do
-        (root_push cond-node)
-        (let [then-node (parse-expr-v3 spans pos-ref src)]
-          (do
-            (root_push then-node)
-            (let [else-node (parse-expr-v3 spans pos-ref src)]
-              (do
-                (root_push else-node)
-                (let [result (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)]
-                  (do
-                    (let [final-result (finish-parse-if-result-after-expect-v3 spans pos-ref result)]
-                      (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        final-result))))))))))))
+  (let [if-start (span-start spans (- (ref-get pos-ref) 1))]
+    (do
+      (p-advance pos-ref) ;; if を消費
+      (let [cond-node (parse-expr-v3 spans pos-ref src)]
+        (do
+          (root_push cond-node)
+          (let [then-node (parse-expr-v3 spans pos-ref src)]
+            (do
+              (root_push then-node)
+              (let [else-node (parse-expr-v3 spans pos-ref src)]
+                (do
+                  (root_push else-node)
+                  (let [result (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)]
+                    (do
+                      (let [final-result (finish-parse-if-result-after-expect-v3 spans pos-ref result if-start)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          final-result)))))))))))))
 
-(defn finish-parse-if-result-after-expect-v3 [spans pos-ref result]
+(defn finish-parse-if-result-after-expect-v3 [spans pos-ref result if-start]
   (do
     (root_push result)
     (let [result-ref (ref-new result)]
       (do
         (root_push result-ref)
         (p-expect spans pos-ref 1) ;; ) を消費
-        (let [final-result (ref-get result-ref)]
+        (let [parsed (ref-get result-ref)
+          if-end (span-end spans (- (ref-get pos-ref) 1))
+          final-result (vector-push-pair-rooted-v3 parsed if-start if-end)]
           (do
             (root_pop)
             (root_pop)

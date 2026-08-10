@@ -1433,8 +1433,12 @@
         (if (= code (error-code-arg-mismatch)) "LS1004"
           (if (= code (error-code-infinite)) "LS1003" "LS1002"))))))
 (defn lsp-type-diagnostic-message-text [code] (check-diagnostic-body-from-code code))
-(defn lsp-type-diagnostic-to-lsp [code]
-  (let [result (vector-new 10)
+(defn lsp-type-diagnostic-to-lsp [code src start end]
+  (let [start-offset (if (= code (error-code-if-branch)) start 0)
+    end-offset (if (= code (error-code-if-branch)) end 0)
+    start-position (lsp-position-from-offset src start-offset)
+    end-position (lsp-position-from-offset src end-offset)
+    result (vector-new 10)
     base (push-int-vector-local
       (push-int-vector-local
         (push-int-vector-local
@@ -1442,24 +1446,27 @@
             (push-int-vector-local
               (push-int-vector-local result (lsp-type-severity-to-lsp))
               code)
-            1)
-          1)
+            (position-line start-position))
+          (position-col start-position))
         code)
       (lsp-diagnostic-source-type))]
     (push-object-vector-local
       (push-object-vector-local
         (push-int-vector-local
-          (push-int-vector-local base 1)
-          1)
+          (push-int-vector-local base (position-line end-position))
+          (position-col end-position))
         (lsp-type-diagnostic-code-text code))
       (lsp-type-diagnostic-message-text code))))
 (defn lsp-source-type-diagnostics [src]
   (if (> (string-length src) 0)
     (let [program (parse-program src)
-      code (check-diagnostics-first-code program)]
+      analysis (infer-program-analysis program)
+      code (infer-program-analysis-first-error-code analysis)
+      start (infer-program-analysis-first-error-start analysis)
+      end (infer-program-analysis-first-error-end analysis)]
       (if (= code 0)
         (vector-new 0)
-        (push-object-vector-local (vector-new 1) (lsp-type-diagnostic-to-lsp code))))
+        (push-object-vector-local (vector-new 1) (lsp-type-diagnostic-to-lsp code src start end))))
     (vector-new 0)))
 (defn lsp-review-severity-to-lsp [severity]
   (if (string-eq severity "warning")

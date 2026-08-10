@@ -111,6 +111,8 @@
   (let [cond-node (vector-get node 1)
     then-node (vector-get node 2)
     else-node (vector-get node 3)
+    if-start (if (> (vector-length node) 5) (vector-get node 4) -1)
+    if-end (if (> (vector-length node) 5) (vector-get node 5) -1)
     ;; 条件式を推論
     cond-result (infer-expr cond-node env subst counter)]
     (if (= (result-failed cond-result) 1)
@@ -136,7 +138,9 @@
                     else-ty (result-type else-result)
                     s5 (unify (apply-subst s4 then-ty) else-ty s4)]
                     (if (= (unify-failed s5) 1)
-                      (make-error-result-code (error-code-if-branch))
+                      (if (and (>= if-start 0) (>= if-end if-start))
+                        (make-error-result-code-with-span (error-code-if-branch) if-start if-end)
+                        (make-error-result-code (error-code-if-branch)))
                       (make-result s5 (apply-subst s5 else-ty)))))))))))))
 
 ;; ann 式の型推論
