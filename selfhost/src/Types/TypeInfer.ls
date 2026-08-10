@@ -122,7 +122,9 @@
         ;; 条件式は Bool であること
         s2 (unify cond-ty (mk-bool) s1)]
         (if (= (unify-failed s2) 1)
-          (make-error-result-code (error-code-if-cond))
+          (if (and (>= if-start 0) (>= if-end if-start))
+            (make-error-result-code-with-span (error-code-if-cond) if-start if-end)
+            (make-error-result-code (error-code-if-cond)))
           ;; then 枝を推論
           (let [then-result (infer-expr then-node env s2 counter)]
             (if (= (result-failed then-result) 1)
