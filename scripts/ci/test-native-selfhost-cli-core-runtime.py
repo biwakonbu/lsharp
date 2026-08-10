@@ -1149,7 +1149,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 39 cases")
+    print("native CLI core runtime matrix passed: 40 cases")
 
 
 if __name__ == "__main__":
