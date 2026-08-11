@@ -1099,15 +1099,32 @@
                       next-parametric-aliases
                       counter))))
               (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
-                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
-                next-closed-aliases (map-insert-object-safe closed-aliases name-hash target-type)]
-                (typeinfer-predeclare-closed-aliases-loop
-                  program
-                  (+ idx 1)
-                  len
-                  next-closed-aliases
-                  parametric-aliases
-                  counter)))))
+                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)]
+                (do
+                  ;; closed alias の target/map は再帰中の allocation を跨ぐため root する。
+                  (root_push closed-aliases)
+                  (root_push parametric-aliases)
+                  (root_push alias-env)
+                  (root_push target-type)
+                  (let [next-closed-aliases
+                          (map-insert-object-safe closed-aliases name-hash target-type)]
+                    (do
+                      (root_push next-closed-aliases)
+                      (let [result
+                              (typeinfer-predeclare-closed-aliases-loop
+                                program
+                                (+ idx 1)
+                                len
+                                next-closed-aliases
+                                parametric-aliases
+                                counter)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result)))))))))
         (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len closed-aliases parametric-aliases counter)))))
 
 ;; 初回 prepass 後に閉 alias だけを再評価する。parametric alias は fresh 型変数を
@@ -1126,15 +1143,31 @@
               (typeinfer-refresh-closed-aliases-loop
                 program (+ idx 1) len closed-aliases parametric-aliases)
               (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
-                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
-                next-closed-aliases
-                  (map-insert-object-safe closed-aliases (vector-get decl 1) target-type)]
-                (typeinfer-refresh-closed-aliases-loop
-                  program
-                  (+ idx 1)
-                  len
-                  next-closed-aliases
-                  parametric-aliases)))
+                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)]
+                (do
+                  ;; refresh の次 map も後続 alias の走査中に保持する。
+                  (root_push closed-aliases)
+                  (root_push parametric-aliases)
+                  (root_push alias-env)
+                  (root_push target-type)
+                  (let [next-closed-aliases
+                          (map-insert-object-safe closed-aliases (vector-get decl 1) target-type)]
+                    (do
+                      (root_push next-closed-aliases)
+                      (let [result
+                              (typeinfer-refresh-closed-aliases-loop
+                                program
+                                (+ idx 1)
+                                len
+                                next-closed-aliases
+                                parametric-aliases)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result)))))))
             (typeinfer-refresh-closed-aliases-loop
               program (+ idx 1) len closed-aliases parametric-aliases)))
         (typeinfer-refresh-closed-aliases-loop

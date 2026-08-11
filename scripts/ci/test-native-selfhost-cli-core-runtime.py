@@ -9,6 +9,7 @@ import tempfile
 
 
 INPUT_SOURCE = "(defn main [] 42)\n"
+CLOSED_ALIAS_SOURCE = '(type-alias Text String) (defn hello [] : Text "world")\n'
 RECURSIVE_ALIAS_SOURCE = "(type-alias Rec Rec) (defn ok [] : Int 42)\n"
 METADATA_SOURCE = """(defn abs [x]
   :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)]
@@ -385,6 +386,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="lsharp-native-cli-core-") as directory:
         root = pathlib.Path(directory)
         (root / "input.ls").write_text(INPUT_SOURCE, encoding="utf-8")
+        (root / "closed-alias.ls").write_text(CLOSED_ALIAS_SOURCE, encoding="utf-8")
         (root / "recursive-alias.ls").write_text(RECURSIVE_ALIAS_SOURCE, encoding="utf-8")
         (root / "metadata.ls").write_text(METADATA_SOURCE, encoding="utf-8")
         (root / "doc-json.ls").write_text(DOC_JSON_SOURCE, encoding="utf-8")
@@ -399,6 +401,23 @@ def main():
             b"decls:1\nfirst-decl:defn\nfirst-body:int\ndiagnostics:0\n",
         )
         require_exact("check", run(program, root, ["check", "input.ls"]), b"Int\ndiagnostics:0\n")
+        closed_alias = subprocess.run(
+            [str(program), "check", "closed-alias.ls"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if closed_alias.returncode != 0 or closed_alias.stderr:
+            raise AssertionError(
+                "closed alias check boundary mismatch: "
+                f"exit={closed_alias.returncode} stdout={closed_alias.stdout!r} "
+                f"stderr={closed_alias.stderr!r}"
+            )
+        require_exact(
+            "closed alias check",
+            closed_alias.stdout,
+            b"String\ndiagnostics:0\n",
+        )
         recursive_alias = subprocess.run(
             [str(program), "check", "recursive-alias.ls"],
             cwd=root,
