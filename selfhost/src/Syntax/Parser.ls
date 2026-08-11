@@ -3083,6 +3083,7 @@
       (if (== (p-current spans pos-ref) 20)
         (let [name-h (current-type-name-hash-v3 spans pos-ref src)]
           (do
+            (root_push name-h)
             (p-advance pos-ref) ;; alias 名を消費
             (let [target-type-expr (parse-type-expr-v3 spans pos-ref src)]
               (do
@@ -3090,6 +3091,7 @@
                 (p-expect spans pos-ref 1) ;; ) を消費
                 (let [parsed (make-type-alias name-h target-type-expr)]
                   (do
+                    (root_pop)
                     (root_pop)
                     parsed))))))
         (do
