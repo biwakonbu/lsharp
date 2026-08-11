@@ -228,7 +228,9 @@
 ;; closed type-alias: [23, name-hash, raw-target-type-expr]
 ;; parametric type-alias: [23, name-hash, param-name-hashes, raw-target-type-expr]
 (defn make-type-alias [name-hash target-type-expr]
-  (vector-push-triple-rooted (vector-new 3) (ast-typealias) name-hash target-type-expr))
+  ;; native の triple push で heap payload が欠落しないよう、2 段階で組み立てる。
+  (let [header (vector-push-pair-rooted (vector-new 3) (ast-typealias) name-hash)]
+    (vector-push-single-rooted header target-type-expr)))
 
 (defn make-type-alias-with-params [name-hash params target-type-expr]
   (vector-push-quad-rooted (vector-new 4) (ast-typealias) name-hash params target-type-expr))
