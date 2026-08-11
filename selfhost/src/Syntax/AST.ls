@@ -225,12 +225,12 @@
 ;; parametric ADT: [21, type 名, parameter 名 vector, variant vector]
 (defn make-type-decl-with-params-and-variants [name-hash params variants]
   (vector-push-quad-rooted (vector-new 4) (ast-type-decl) name-hash params variants))
-;; closed type-alias: [23, name-hash, raw-target-type-expr, 0]
+;; closed type-alias は zero-parameter alias と同じ形で保持する。
+;; [23, name-hash, empty-params, raw-target-type-expr]
 ;; parametric type-alias: [23, name-hash, param-name-hashes, raw-target-type-expr]
 (defn make-type-alias [name-hash target-type-expr]
-  ;; native の closed alias だけ target が欠落しないよう、quad append で構築する。
-  ;; TypeInfer は slot 2 の TypeExpr を見て closed shape と判定する。
-  (vector-push-quad-rooted (vector-new 4) (ast-typealias) name-hash target-type-expr 0))
+  ;; native の regular alias も、実績のある zero-parameter alias 経路へ揃える。
+  (vector-push-quad-rooted (vector-new 4) (ast-typealias) name-hash (vector-new 0) target-type-expr))
 
 (defn make-type-alias-with-params [name-hash params target-type-expr]
   (vector-push-quad-rooted (vector-new 4) (ast-typealias) name-hash params target-type-expr))

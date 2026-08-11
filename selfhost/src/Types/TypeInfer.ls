@@ -959,6 +959,12 @@
       (typeinfer-alias-params-vector? (vector-get decl 2))
       0)))
 
+(defn typeinfer-alias-closed? [decl]
+  (if (= (typeinfer-alias-parametric? decl) 0)
+    1
+    (let [params (vector-get decl 2)]
+      (if (= params 0) 0 (if (= (vector-length params) 0) 1 0)))))
+
 (defn typeinfer-type-alias-target [decl]
   (if (<= (vector-length decl) 2)
     0
@@ -1153,8 +1159,7 @@
       tag (vector-get decl 0)]
       (if (= tag (ast-typealias))
         (let [target-expr (typeinfer-type-alias-target decl)
-          is-closed
-            (if (= (typeinfer-alias-parametric? decl) 0) 1 0)]
+          is-closed (typeinfer-alias-closed? decl)]
           (if (= is-closed 1)
             (if (= target-expr 0)
               (typeinfer-refresh-closed-aliases-loop

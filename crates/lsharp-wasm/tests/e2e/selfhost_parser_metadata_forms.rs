@@ -196,9 +196,14 @@ fn test_e2e_selfhost_parser_parametric_type_alias_retains_params_and_target() {
 fn test_e2e_selfhost_parser_type_alias_retains_closed_target_expr() {
     let harness = r#"
 (defn type-alias-target-or-zero [node]
-  (if (> (vector-length node) 2)
-    (vector-get node 2)
-    0))
+  (if (> (vector-length node) 3)
+    (let [candidate (vector-get node 2)]
+      (if (= (vector-length candidate) 0)
+        (vector-get node 3)
+        candidate))
+    (if (> (vector-length node) 2)
+      (vector-get node 2)
+      0)))
 
 (defn main []
   (let [alias-node (vector-get (parse-program "(type-alias Str String)") 0)
