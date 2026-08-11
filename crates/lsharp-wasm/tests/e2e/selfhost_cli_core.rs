@@ -1381,6 +1381,54 @@ fn test_e2e_selfhost_cli_check_source_type_error_summary() {
     );
 }
 
+/// TEST-CLI-02-G3c: run-check-source が閉じた再帰型 alias を LS1008 として拒否すること
+#[test]
+fn test_e2e_selfhost_cli_check_source_recursive_alias_summary() {
+    let source = "(type-alias Rec Rec) (defn ok [] : Int 42)\n";
+    let program = lsharp_syntax::parse(source)
+        .expect("recursive alias check fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    let error = oracle
+        .infer_program(&program)
+        .expect_err("Rust oracle は閉じた recursive alias を拒否するべき");
+    assert_eq!(error.code(), "LS1008");
+    let span = error
+        .span()
+        .expect("Rust oracle の recursive alias 診断は span を持つべき");
+    assert_eq!((span.start, span.end), (0, 20));
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_check_recursive_alias_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), source).unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &["check", "input.ls"],
+        "",
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(output.exit_code, 1, "recursive alias check は compile error を返すべき");
+    let lines: Vec<&str> = output.stdout.trim().lines().collect();
+
+    assert!(
+        lines.contains(&"diagnostics:1,T0001@1:1,first-body:recursive type alias"),
+        "check recursive alias summary は LS1008 相当の body を返すべき: {:?}",
+        lines
+    );
+    assert!(
+        lines.contains(&"first-error-span:0:20"),
+        "check recursive alias summary は alias 宣言全体の span を返すべき: {:?}",
+        lines
+    );
+}
+
 /// TEST-CLI-02-G3b: run-check-source が未定義シンボルでも code 別 diagnostics body を返すこと
 #[test]
 #[ignore]

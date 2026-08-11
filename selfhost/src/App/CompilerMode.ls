@@ -1371,19 +1371,108 @@
             (root_pop)
             (root_pop)
             result))))))
-(defn make-check-program-context [program owners]
+(defn make-check-program-context-with-source [program owners source]
   (do
     (root_push program)
     (root_push owners)
-    (let [context1 (vector-push (vector-new 2) program)]
+    (root_push source)
+    (let [context1 (vector-push (vector-new 3) program)]
       (do
         (root_push context1)
         (let [context2 (vector-push context1 owners)]
           (do
+            (root_push context2)
+            (let [context3 (vector-push context2 source)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                context3))))))))
+(defn make-check-program-context [program owners]
+  (make-check-program-context-with-source program owners ""))
+
+;; public check が型診断の source span を再構成するための alias 宣言終端を探す。
+(defn check-recursive-alias-span-result [start end]
+  (push-int-vector-local (push-int-vector-local (vector-new 2) start) end))
+(defn check-recursive-alias-span-close-loop [spans idx count depth start]
+  (if (>= idx count)
+    (check-recursive-alias-span-result start -1)
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (check-recursive-alias-span-close-loop spans (+ idx 1) count (+ depth 1) start)
+        (if (= kind 1)
+          (if (= depth 1)
+            (check-recursive-alias-span-result start (span-end spans idx))
+            (check-recursive-alias-span-close-loop spans (+ idx 1) count (- depth 1) start))
+          (check-recursive-alias-span-close-loop spans (+ idx 1) count depth start))))))
+(defn check-recursive-alias-close-index-loop [spans idx count depth]
+  (if (>= idx count)
+    -1
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (check-recursive-alias-close-index-loop spans (+ idx 1) count (+ depth 1))
+        (if (= kind 1)
+          (if (= depth 1)
+            idx
+            (check-recursive-alias-close-index-loop spans (+ idx 1) count (- depth 1)))
+          (check-recursive-alias-close-index-loop spans (+ idx 1) count depth))))))
+(defn check-recursive-alias-span-find-loop [spans src idx count depth target-name-hash]
+  (if (>= idx count)
+    (check-recursive-alias-span-result -1 -1)
+    (let [kind (span-kind spans idx)]
+      (if (= kind 0)
+        (if (= depth 0)
+          (let [keyword-idx (+ idx 1)
+            name-idx (+ idx 2)]
+            (if (and
+                  (< name-idx count)
+                  (and
+                    (= (span-kind spans keyword-idx) 20)
+                    (string-eq
+                      (substring src (span-start spans keyword-idx) (span-end spans keyword-idx))
+                      "type-alias")))
+              (if (= (span-kind spans name-idx) 20)
+                (if (= (name-hash src (span-start spans name-idx) (span-end spans name-idx)) target-name-hash)
+                  (check-recursive-alias-span-close-loop spans idx count 0 (span-start spans idx))
+                  (check-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1) target-name-hash))
+                (if (= (span-kind spans name-idx) 0)
+                  (let [head-close
+                          (check-recursive-alias-close-index-loop spans name-idx count 0)
+                    alias-name-idx (+ name-idx 1)]
+                    (if (and
+                          (>= head-close 0)
+                          (and
+                            (< alias-name-idx count)
+                            (and
+                              (= (span-kind spans alias-name-idx) 20)
+                              (= (name-hash src (span-start spans alias-name-idx) (span-end spans alias-name-idx)) target-name-hash))))
+                      (check-recursive-alias-span-close-loop spans idx count 0 (span-start spans idx))
+                      (check-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1) target-name-hash)))
+                  (check-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1) target-name-hash)))
+              (check-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1) target-name-hash)))
+          (check-recursive-alias-span-find-loop spans src (+ idx 1) count (+ depth 1) target-name-hash))
+        (if (= kind 1)
+          (check-recursive-alias-span-find-loop spans src (+ idx 1) count (if (> depth 0) (- depth 1) 0) target-name-hash)
+          (check-recursive-alias-span-find-loop spans src (+ idx 1) count depth target-name-hash))))))
+(defn check-recursive-alias-span [src target-name-hash]
+  (if (= (string-length src) 0)
+    (check-recursive-alias-span-result -1 -1)
+    (let [spans (tokenize-with-spans src)]
+      (do
+        (root_push spans)
+        (let [result
+                (check-recursive-alias-span-find-loop
+                  spans
+                  src
+                  0
+                  (/ (vector-length spans) 3)
+                  0
+                  target-name-hash)]
+          (do
             (root_pop)
-            (root_pop)
-            (root_pop)
-            context2))))))
+            result))))))
 (defn load-check-program [path]
   (let [cache-ref (ref-new (map-new))
     parse-count-ref (ref-new 0)
@@ -1411,7 +1500,7 @@
                   cache-ref)]
                 (do
                   (root_push owners)
-                  (let [context (make-check-program-context program owners)]
+                  (let [context (make-check-program-context-with-source program owners (read-file path))]
                     (do
                       (root_pop)
                       (root_pop)

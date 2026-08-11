@@ -137,6 +137,7 @@
   (let [context-root-slot (root_push context)
     program (vector-get context 0)
     module-owners (vector-get context 1)
+    source (if (> (vector-length context) 2) (vector-get context 2) "")
     program-root-slot (root_push program)
     analysis (infer-program-analysis program)
     analysis-root-slot (root_push analysis)
@@ -145,8 +146,21 @@
     base-diagnostics-count (infer-program-analysis-diagnostic-count analysis)
     base-first-error-code (infer-program-analysis-first-error-code analysis)
     base-first-error-index (infer-program-analysis-first-error-index analysis)
-    base-first-error-start (infer-program-analysis-first-error-start analysis)
-    base-first-error-end (infer-program-analysis-first-error-end analysis)
+    base-first-error-name-hash (infer-program-analysis-first-error-name-hash analysis)
+    base-first-error-span
+      (if (and
+            (= base-first-error-code (error-code-recursive-alias))
+            (> (string-length source) 0))
+        (check-recursive-alias-span source base-first-error-name-hash)
+        (check-recursive-alias-span-result -1 -1))
+    base-first-error-start
+      (if (>= (vector-get base-first-error-span 0) 0)
+        (vector-get base-first-error-span 0)
+        (infer-program-analysis-first-error-start analysis))
+    base-first-error-end
+      (if (>= (vector-get base-first-error-span 1) 0)
+        (vector-get base-first-error-span 1)
+        (infer-program-analysis-first-error-end analysis))
     base-failure-kinds (infer-program-analysis-failure-kinds analysis)
     first-module-owner
       (if (and (> base-diagnostics-count 0)
@@ -225,17 +239,17 @@
             (do
               (print-string (string-concat "first-module-path:" first-module-path))
               (print-string "\n"))
-            (print-string ""))
-          (if (and (>= base-first-error-start 0) (>= base-first-error-end base-first-error-start))
-            (do
-              (print-string
-                (string-concat
-                  "first-error-span:"
-                  (string-concat
-                    (int-to-string base-first-error-start)
-                    (string-concat ":" (int-to-string base-first-error-end)))))
-              (print-string "\n"))
             (print-string "")))
+        (print-string ""))
+      (if (and (>= base-first-error-start 0) (>= base-first-error-end base-first-error-start))
+        (do
+          (print-string
+            (string-concat
+              "first-error-span:"
+              (string-concat
+                (int-to-string base-first-error-start)
+                (string-concat ":" (int-to-string base-first-error-end)))))
+          (print-string "\n"))
         (print-string ""))
         (if (> base-diagnostics-count 0)
           (do
@@ -824,7 +838,7 @@
                       (if (= status-code 0)
                         (exit-success)
                         (exit-runtime-error)))))))))))))
-(defn run-check-source [src opts] (run-check-program (make-check-program-context (parse-program src) (vector-new 0)) opts))
+(defn run-check-source [src opts] (run-check-program (make-check-program-context-with-source (parse-program src) (vector-new 0) src) opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
 (defn test-assertions-text [count] (string-concat "assertions:" (int-to-string count)))
