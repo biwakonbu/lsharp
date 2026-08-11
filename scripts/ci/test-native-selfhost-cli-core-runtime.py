@@ -9,6 +9,7 @@ import tempfile
 
 
 INPUT_SOURCE = "(defn main [] 42)\n"
+RECURSIVE_ALIAS_SOURCE = "(type-alias Rec Rec) (defn ok [] : Int 42)\n"
 METADATA_SOURCE = """(defn abs [x]
   :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)]
   :invariant (>= result 0)
@@ -384,6 +385,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="lsharp-native-cli-core-") as directory:
         root = pathlib.Path(directory)
         (root / "input.ls").write_text(INPUT_SOURCE, encoding="utf-8")
+        (root / "recursive-alias.ls").write_text(RECURSIVE_ALIAS_SOURCE, encoding="utf-8")
         (root / "metadata.ls").write_text(METADATA_SOURCE, encoding="utf-8")
         (root / "doc-json.ls").write_text(DOC_JSON_SOURCE, encoding="utf-8")
         (root / "validation.ls").write_text(VALIDATION_SOURCE, encoding="utf-8")
@@ -397,6 +399,28 @@ def main():
             b"decls:1\nfirst-decl:defn\nfirst-body:int\ndiagnostics:0\n",
         )
         require_exact("check", run(program, root, ["check", "input.ls"]), b"Int\ndiagnostics:0\n")
+        recursive_alias = subprocess.run(
+            [str(program), "check", "recursive-alias.ls"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if recursive_alias.returncode != 1 or recursive_alias.stderr:
+            raise AssertionError(
+                "recursive alias check boundary mismatch: "
+                f"exit={recursive_alias.returncode} stdout={recursive_alias.stdout!r} "
+                f"stderr={recursive_alias.stderr!r}"
+            )
+        require_contains(
+            "recursive alias check diagnostics",
+            recursive_alias.stdout,
+            b"diagnostics:1,T0001@1:1,first-body:recursive type alias\n",
+        )
+        require_contains(
+            "recursive alias check span",
+            recursive_alias.stdout,
+            b"first-error-span:0:20\n",
+        )
         require_exact("fmt", run(program, root, ["fmt", "input.ls"]), b"(defn main [] 42)\n")
         require_exact(
             "test",
@@ -1297,7 +1321,7 @@ def main():
             b"error: unsupported option: yaml\n",
         )
 
-    print("native CLI core runtime matrix passed: 43 cases")
+    print("native CLI core runtime matrix passed: 44 cases")
 
 
 if __name__ == "__main__":
