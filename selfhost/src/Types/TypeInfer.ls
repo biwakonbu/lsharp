@@ -936,11 +936,28 @@
   (typeinfer-predeclare-defns-loop program 0 (vector-length program) env (map-new) counter))
 
 ;; type-alias の raw target を取得する。source-aware alias は末尾に span を持つ。
+;; native では宣言長だけで closed / parametric を決めず、payload の形状も確認する。
+(defn typeinfer-type-expr-tag? [tag]
+  (if (= tag (ast-type-named))
+    1
+    (if (= tag (ast-type-app))
+      1
+      (if (= tag (ast-type-fun))
+        1
+        (if (= tag (ast-type-var)) 1 0)))))
+
+(defn typeinfer-alias-params-vector? [candidate]
+  (if (= candidate 0)
+    0
+    (if (= (vector-length candidate) 0)
+      1
+      (if (= (typeinfer-type-expr-tag? (vector-get candidate 0)) 1) 0 1))))
+
 (defn typeinfer-alias-parametric? [decl]
   (let [decl-len (vector-length decl)]
-    (if (= decl-len 4)
-      1
-      (if (= decl-len 6) 1 0))))
+    (if (or (= decl-len 4) (or (= decl-len 5) (= decl-len 6)))
+      (typeinfer-alias-params-vector? (vector-get decl 2))
+      0)))
 
 (defn typeinfer-type-alias-target [decl]
   (if (<= (vector-length decl) 2)
