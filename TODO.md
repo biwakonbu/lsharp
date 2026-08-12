@@ -19,7 +19,7 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `9ad7a98f`（`c00368ad`までの標準 Diagnostic order/dedup projectionに加え、closed type-alias の型名前ハッシュと通常形 parser frameをnative経路へ反映した後）。selfhost production sourceは`9ad7a98f`と一致し、closed alias `check`、recursive alias `check`、標準 type DiagnosticのLS1001/LS1002 if-condition/if-branch/LS1003/LS1004/LS1008、type+lint複数件、同一開始位置のdistinct lint ruleを含むRust focused test、Mac Apple Silicon current-source native gate/44 cases、Linux x86_64 current-source fixed point・App.Cli target-only・44 cases runtime matrixまで検証済みである。native internal `infer-program-analysis` の単独 closed recursive alias contract、全rule parity、component/packaged parityは未完了である。
+- 確認時点の code checkpoint は `88a1704a`（`9ad7a98f`のclosed type-alias native check boundaryに、recursive alias ASTのsource span保持とselfhost `infer-program-analysis`のLS1008分析 metadata接続を追加した後）。selfhost production sourceは`88a1704a`と一致し、Rust actual Wasmのdirect `infer-program-analysis` focused contract、Mac Apple Silicon current-source native release、Linux x86_64 current-source stage2/stage3 fixed point、App.Cli target-only、両targetのnative core runtime matrix `44 cases`まで検証済みである。native public surfaceからselfhost内部 `infer-program-analysis`を単独観測する契約、全rule parity、component/packaged parityは未完了である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,11 +41,13 @@
 
 ### 再開時の次の一件
 
-直近の verified partial は `9ad7a98f` の closed type-alias native check boundaryである。通常形
-`(type-alias Text String)` の name hashを型名前空間として保持し、Mac/Linux native `check`で
-`String` / `diagnostics:0`を返すこと、recursive alias `Rec`を `diagnostics:1` と明示的な失敗境界で拒否することを44 cases matrixへ固定した。
-次のREDは、closed recursive alias `(type-alias Rec Rec) (defn ok [] : Int 42)` をselfhost内部の
-`infer-program-analysis` fixtureから直接観測し、`LS1008`相当のcode/message/span、diagnostics count、failure metadataをRust/nativeで揃える契約である。
+直近の verified partial は `88a1704a` の recursive type-alias analysis provenanceである。closed alias ASTの既存 normalized shapeを保ったまま
+source span tailを保持し、recursive aliasの `LS1008` / message / span / alias-name hash / failure metadataを
+`infer-program-analysis`へ接続した。同じ source checkpointからMac/Linux native App.Cliを生成し、Macは `44 cases`、Linuxは stage2/stage3
+fixed point、App.Cli target-only、VM内 `44 cases` runtime matrixを確認した。native public surfaceから内部分析を単独観測する契約はまだ未接続である。
+次のREDはEC-M2-01のproject graphで、複数 `.ls` source file間の同一 `:intent` IDをduplicate-node code `2`、first/duplicate span、exit `1`、
+stdout空、manifest未生成でfail-closedにする契約である。再現commandは
+`cargo test -p lsharp-driver --test validate_cli validate_rejects_project_duplicate_across_source_files -- --nocapture` とする。
 別の type diagnostic span、全rule code/message parity、component/packaged parity、Rust-free aggregateは未完了であり、
 V2-16b / V2-16c / V2-16eは[~]のまま維持する。
 

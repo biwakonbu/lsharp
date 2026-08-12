@@ -4889,3 +4889,43 @@ stage2/stage3 manifestは source commit `9ad7a98fecbad72f31e01fa694fc181bc1dcc91
 これは通常 closed aliasのparser-to-inferenceとrecursive aliasのpublic `check`境界に限定したverified partialである。selfhost内部の
 `infer-program-analysis`単独観測、全rule code/message/span parity、component/packaged parity、release asset acquisition/rollback、
 Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。Evidence commits: `5883d577`, `9ad7a98f`。
+
+### V2-16b / V2-16c native recursive alias infer-program-analysis provenance (2026-08-12)
+
+`88a1704a` で、closed alias ASTの既存 normalized shapeを変更せず、optionalな source-span tailを parserから
+`infer-program-analysis`へ渡す経路を追加した。fixture `(type-alias Rec Rec) (defn ok [] : Int 42)` について、Rust oracleは
+parse成功後に `LS1008` / 再帰的な型エイリアス / span `0..20` を返し、selfhost direct analysisは diagnostics count `1`、code `8`、
+alias declarationのname hash、span `0..20`、failure-kinds count `0` を返す契約へ揃えた。実装前のREDでは analysis spanが `-1..-1` だった。
+
+focused Rust actual Wasm evidenceは次の通りである。
+
+- `selfhost_parser_recursive_type_alias_is_rejected`: `1 passed`。Rust oracleとselfhost direct analysisの同一fixtureを確認した。
+- type-alias regression batch: `8 passed`。既存の closed/parametric alias shapeを確認し、span tailを追加しても target/params shapeを壊さないことを確認した。
+- `git diff --check`: pass。
+
+Mac Apple Silicon current-source App.Cli release gateは `88a1704a` で `1 passed / 1090.31s`。artifact
+`ci-artifacts/native-release/aarch64-apple-darwin/current-88a1704a-recursive-analysis-span/manifest.json` は target
+`aarch64-apple-darwin`、source commit `88a1704ae66473710509594781524c269262b888`、`selfhost_fixed_point=true`、program SHA-256
+`2dfc4e6ebae0ddeb7bb12beac73f3ba9cb9a21f9fd24b1b8fabe624f5ea6f596`を記録する。同じMach-O arm64 programのnative core runtime matrixは
+`44 cases`全pass、stderr空だった。
+
+Linux x86_64 current-source fixed-point summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/88a1704a-recursive-analysis-span/actual-selfregen-summary.json` に target
+`x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status: pass`、stage2/stage3 stdout SHA-256双方
+`343d0fd23800cca95fcc5f42e02d8f460cee2952b06ed450416e5a9a5271ca92`、stage2/stage3 code length双方 `11,503,063`、stderr 0を記録する。
+stage2/stage3 manifestは source commit `88a1704ae66473710509594781524c269262b888`、data `2,801` bytes、entrypoint `11,498,455`、
+function-start length `3,439`、main function index `3,448`で一致した。VMは `4 CPU / 16GiB memory / 12GiB disk`、free-space gateは
+available `7.2GiB` / required `4GiB`で、検証後にworkdirとlockを回収して停止した。
+
+同じfixed-point stage2をVM-side lock付きで再利用したLinux App.Cli target-only artifactは
+`ci-artifacts/native-linux-x86-hostgen-vm/88a1704a-recursive-analysis-span-cli/manifest.json` に保存した。manifestは source
+`src/App/Cli.ls`、source commit `88a1704ae66473710509594781524c269262b888`、source tree SHA-256
+`49c073ff55d89de3094d7e417a2f3bf0174bbf4be95c9594a98378ca8955abfe`、`selfhost_fixed_point=true`、program SHA-256
+`368ad51e691eb816980e0abd2e342283362cf45a0e486e5e5c643f971eb97f91`、code length `13,509,409`、stderr 0を記録する。生成 ELFの
+`--version` は `lsharp 0.1.0` を返し、同じELFをVM内で実行した `scripts/ci/test-native-selfhost-cli-core-runtime.py` は
+`native CLI core runtime matrix passed: 44 cases` となった。target-only検証後もguest runner/workdirとlockを回収し、VMを停止した。
+
+これは recursive alias source spanとinternal analysis metadataのRust/native compiler bundle接続、および supported 2 targetの
+public App.Cli runtime evidenceに限定した verified partialである。native public `infer-program-analysis`単独観測、全rule code/message/span
+parity、component/packaged parity、release asset acquisition/rollback、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は
+`[~]`のまま維持する。Evidence commit: `88a1704a`。
