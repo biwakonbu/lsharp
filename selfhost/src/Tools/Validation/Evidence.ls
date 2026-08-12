@@ -397,7 +397,15 @@
 
 ;; native x86 では object/string を含む多引数再帰を state へ畳み、
 ;; serializer の各 step を一引数の tail call として保持する。
-(defn validation-source-manifest-json-state [items idx len out]
+(defn validation-source-nodes-json-state [items idx len out]
+  (vector-push-quad-rooted-v3 (vector-new 4) items idx len out))
+(defn validation-source-int-array-json-state [items idx len out]
+  (vector-push-quad-rooted-v3 (vector-new 4) items idx len out))
+(defn validation-source-coverage-json-state [items idx len out]
+  (vector-push-quad-rooted-v3 (vector-new 4) items idx len out))
+(defn validation-source-evidence-json-state [items idx len out]
+  (vector-push-quad-rooted-v3 (vector-new 4) items idx len out))
+(defn validation-source-edges-json-state [items idx len out]
   (vector-push-quad-rooted-v3 (vector-new 4) items idx len out))
 
 ;; source graph を Rust の version 1 manifest serializer と同じ wire shape へ投影する。
@@ -588,7 +596,7 @@
     (if (>= idx len)
       out
       (validation-source-nodes-json-state-loop
-        (validation-source-manifest-json-state
+        (validation-source-nodes-json-state
           nodes
           (+ idx 1)
           len
@@ -602,7 +610,7 @@
     (if (>= idx len)
       out
       (validation-source-int-array-json-state-loop
-        (validation-source-manifest-json-state
+        (validation-source-int-array-json-state
           items
           (+ idx 1)
           len
@@ -619,7 +627,7 @@
         bucket (vector-get entry 0)
         count (vector-get entry 1)]
         (validation-source-coverage-json-state-loop
-          (validation-source-manifest-json-state
+          (validation-source-coverage-json-state
             coverage
             (+ idx 1)
             len
@@ -666,7 +674,7 @@
       (validation-json-array-field "shrinks"
         (validation-json-array-wrap
           (validation-source-int-array-json-state-loop
-            (validation-source-manifest-json-state
+            (validation-source-int-array-json-state
               (source-evidence-record-shrinks evidence-record)
               0
               (vector-length (source-evidence-record-shrinks evidence-record))
@@ -675,7 +683,7 @@
       (validation-json-object-field "coverage"
         (validation-json-object-wrap
           (validation-source-coverage-json-state-loop
-            (validation-source-manifest-json-state
+            (validation-source-coverage-json-state
               (source-evidence-record-coverage evidence-record)
               0
               (vector-length (source-evidence-record-coverage evidence-record))
@@ -698,7 +706,7 @@
     (if (>= idx len)
       out
       (validation-source-evidence-json-state-loop
-        (validation-source-manifest-json-state
+        (validation-source-evidence-json-state
           registry
           (+ idx 1)
           len
@@ -776,7 +784,7 @@
     (if (>= idx len)
       out
       (validation-source-edges-json-state-loop
-        (validation-source-manifest-json-state
+        (validation-source-edges-json-state
           edges
           (+ idx 1)
           len
@@ -787,8 +795,8 @@
     edges (source-graph-edges graph)
     registry (source-evidence-graph-registry graph)
     reviews (source-evidence-graph-reviews graph)
-    nodes-state (validation-source-manifest-json-state nodes 0 (vector-length nodes) "")
-    evidence-state (validation-source-manifest-json-state registry 0 (vector-length registry) "")
+    nodes-state (validation-source-nodes-json-state nodes 0 (vector-length nodes) "")
+    evidence-state (validation-source-evidence-json-state registry 0 (vector-length registry) "")
     attestations (source-evidence-graph-attestations graph)
     reviews-state (validation-source-reviews-json-state
       reviews
@@ -796,7 +804,7 @@
       0
       (vector-length reviews)
       "")
-    edges-state (validation-source-manifest-json-state edges 0 (vector-length edges) "")
+    edges-state (validation-source-edges-json-state edges 0 (vector-length edges) "")
     nodes-json (validation-source-nodes-json-state-loop nodes-state)
     evidence-json (validation-source-evidence-json-state-loop evidence-state)
     reviews-json (validation-source-reviews-json-state-loop reviews-state)
