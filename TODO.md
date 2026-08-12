@@ -19,7 +19,8 @@
 
 ### 現在地
 
-- 確認時点の code checkpoint は `88a1704a`（`9ad7a98f`のclosed type-alias native check boundaryに、recursive alias ASTのsource span保持とselfhost `infer-program-analysis`のLS1008分析 metadata接続を追加した後）。selfhost production sourceは`88a1704a`と一致し、Rust actual Wasmのdirect `infer-program-analysis` focused contract、Mac Apple Silicon current-source native release、Linux x86_64 current-source stage2/stage3 fixed point、App.Cli target-only、両targetのnative core runtime matrix `44 cases`まで検証済みである。native public surfaceからselfhost内部 `infer-program-analysis`を単独観測する契約、全rule parity、component/packaged parityは未完了である。
+- 確認時点の code checkpoint は `47743365`（`4e2d0cf3` の selfhost validation serializer state 分離で default EmbeddedCli build blockerを解消し、`47743365` で Rust CLI の `validate --source` を複数 `.ls` source file の deterministic project aggregateへ拡張）。単一 file と directory の source collection、file 境界を越えた duplicate intent node の code `2`、first/duplicate span、stdout空・manifest未生成の Rust CLI contract は focused test と `validate_cli` 全体で検証済みである。Mac Apple Silicon の同 source checkpoint native App.Cli release は selfhost fixed point と native core runtime matrix `44 cases` を確認済みである。Linux x86_64 replayは stage1完了後に actual stage2/stage3 summaryを回収できず、current-source fixed point と project aggregate の Linux runtime evidence は未検証である。
+- 今回の Linux VM はジョブ終了後に停止し、`lsharp-linux-x86` は `Stopped`、replay lock と task-owned VM workdir は残っていない。VM は使用量約 `3.5 GiB` / 空き約 `7.2 GiB` で、次回は同じ仮説の replay を重複起動せず、current-source summary の有無を先に確認する。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,15 +42,16 @@
 
 ### 再開時の次の一件
 
-直近の verified partial は `88a1704a` の recursive type-alias analysis provenanceである。closed alias ASTの既存 normalized shapeを保ったまま
-source span tailを保持し、recursive aliasの `LS1008` / message / span / alias-name hash / failure metadataを
-`infer-program-analysis`へ接続した。同じ source checkpointからMac/Linux native App.Cliを生成し、Macは `44 cases`、Linuxは stage2/stage3
-fixed point、App.Cli target-only、VM内 `44 cases` runtime matrixを確認した。native public surfaceから内部分析を単独観測する契約はまだ未接続である。
-次のREDはEC-M2-01のproject graphで、複数 `.ls` source file間の同一 `:intent` IDをduplicate-node code `2`、first/duplicate span、exit `1`、
-stdout空、manifest未生成でfail-closedにする契約である。再現commandは
-`cargo test -p lsharp-driver --test validate_cli validate_rejects_project_duplicate_across_source_files -- --nocapture` とする。
-別の type diagnostic span、全rule code/message parity、component/packaged parity、Rust-free aggregateは未完了であり、
-V2-16b / V2-16c / V2-16eは[~]のまま維持する。
+`47743365` の verified partial は Rust driver の project source aggregation である。directory は regular `.ls` fileを
+deterministicに収集し、全 node を先に登録してから evidence/review/edge を解決する。cross-file duplicate node の
+fail-closed diagnostic は Rust CLI で固定したが、valid な複数 file graph の report/manifest、cross-file typed edge、
+duplicate evidence/review の source-specific diagnostics、selfhost/native App.Cli・EmbeddedCli・MCP parityは未接続である。
+次のREDは、異なる `:intent` IDを持つ2 fileとcross-file edgeを一つの projectとして受理し、deterministic report と
+`--emit-manifest` の node/edge/source provenance を生成する Rust CLI contractである。再現予定 command は
+`cargo test -p lsharp-driver --test validate_cli validate_accepts_project_directory_with_cross_file_edge -- --nocapture` とする。
+その後、current-source Linux x86_64 fixed-point summaryを一度だけ取得し、native public directory validationを別の
+observable contractとして追加する。別の type diagnostic span、全rule code/message parity、component/packaged parity、
+Rust-free aggregateは未完了であり、V2-16b / V2-16c / V2-16eは[~]のまま維持する。
 
 #### これまでの standard projection evidence
 
@@ -1199,10 +1201,13 @@ boundaryを固定した。native MCP 79 tests、Python compile、docs audit、di
   `constrained-by` / `tested-by`、fail-closed な typed ID は verified。ID 省略時は自動命名せず
   fail-closed とする。nested `module` / `private` / `impl` をまたぐ project-level duplicate 検査は
   shared fixture、Rust source suite、selfhost E2E、Mac Apple Silicon / Linux x86_64 native source-file
-  smokeで verified partial slice として ADR に記録した。project graph 全体の aggregate、manifest/MCP/
-  公開 surface、全 selfhost/native parity は残る。selfhost parser の ADT/record 定義 metadata 保持と
-  `IntentSource` の node/typed-edge projection は Rust-host actual Wasm の verified slice として
-  ADR に記録したが、EC-M2-01 全体の完了条件は満たしていない。
+  smokeで verified partial slice として ADR に記録した。`47743365` では Rust CLI の `validate --source` を
+  regular file または directory の deterministic project aggregateへ拡張し、cross-file duplicate nodeの
+  code `2`、first/duplicate span、exit `1`、stdout空、manifest未生成を verifiedした。validな複数 file graphの
+  report/manifest、cross-file typed edge、duplicate evidence/review、directory入力の selfhost/native App.Cli・
+  EmbeddedCli・MCP parity、Linux current-source runtimeは残る。selfhost parserの ADT/record 定義 metadata 保持と
+  `IntentSource` の node/typed-edge projection は Rust-host actual Wasm の verified slice として ADR に記録したが、
+  EC-M2-01 全体の完了条件は満たしていない。
 - [~] `EC-M2-02` evidence graph — required provenance を持つ evidence record、
   `supports` / `contradicts` の registry closure、source の `shrinks` / `coverage`、
   canonical manifest と MCP input/output schema の coverage bucket 名 non-blank 境界、
@@ -1309,7 +1314,9 @@ boundaryを固定した。native MCP 79 tests、Python compile、docs audit、di
   failed/unknown/stale/contradicted review evidence を独立 review として扱わない Rust canonical
   report boundary を追加し、failed review の complete graph が `unknown` になる RED→GREEN を固定した。
   これは Rust-host canonical report の verified partial sliceであり、selfhost/native parity、MCP、
-  current-source artifact/runtime、supported 2 targets は残件である。native source-file smoke の
+  `47743365` では `--source` に regular file または directory を指定でき、directory内の `.ls` fileを
+  deterministicに集約してcross-file duplicate nodeを診断-onlyで返す Rust driver boundaryを追加した。
+  selfhost/nativeのdirectory入力、project report/manifest producer、current-source artifact/runtime、supported 2 targets は残件である。native source-file smoke の
   inner runnerにも canonical fixtureの `--format text` unknown report（6行の固定順、exit `2`）を
   要求する contract を追加したが、これは fake Lima/provenance harness の verified sliceであり、
   current source-commit に一致する実 stage0 artifact/runtime の証拠ではない。さらに native
@@ -2426,6 +2433,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   property test と複数の GC/type/runtime limit lane、bounded regex repeat の 64-case property
   lane は verified。再利用可能な generator、leak/rooting stress、performance threshold、
   full fuzz target、native stage0 evidence を閉じる。
+- [~] `VALIDATION-PROJECT-01` project source aggregation — Issue `I-10`。Rust `validate --source` の
+  regular file/directory collection と cross-file duplicate node fail-closed boundaryは verified。
+  valid cross-file edgeの report/manifest、duplicate evidence/review diagnostics、selfhost/native
+  directory input、MCP/public surface、Linux current-source runtimeを閉じる。
 
 ## Scheduling rules
 

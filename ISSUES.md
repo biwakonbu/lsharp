@@ -11,7 +11,7 @@
 > `documented-limitation` (既知の制限として公式整理済み) / `resolved` (解消済み、履歴として保持)。
 >
 > **根拠検証日**: 2026-06-12 (記載の file:line はこの日時点の実測)。
-> **状態・タスク対応の再監査日**: 2026-07-25。
+> **状態・タスク対応の再監査日**: 2026-08-12。
 >
 > **改善方針**: [docs/development/planning/improvement-roadmap.md](docs/development/planning/improvement-roadmap.md)
 > **新設計**: [docs/development/planning/improvement-designs/](docs/development/planning/improvement-designs/README.md)
@@ -76,6 +76,40 @@
 4. evidence を ADR と TODO に反映し、task-relevant files だけを commit/push する。push 後に `HEAD == origin/main`、
    worktree、remote branch、残タスクを再監査する。
 
+## 2026-08-12 現在の checkpoint（作業再開用）
+
+### 現在の事実
+
+- `origin/main` と task-owned worktree の code checkpoint は `47743365897b5b30416f0bc11f63b36025ef6229`
+  (`feat(driver): aggregate source validation projects`) で一致している。`4e2d0cf3` では default
+  EmbeddedCli build を阻害していた selfhost validation serializer の異種 state 型を分離し、`47743365` では
+  Rust `validate --source` が regular file または directory を deterministic に収集して project graphへ集約する。
+- duplicate intent node の cross-file boundary は、duplicate code `2`、first/duplicate path と span、exit `1`、
+  stdout空、manifest未生成を `crates/lsharp-driver/tests/validate_cli.rs` で検証済みである。single-file pathも同じ
+  aggregatorを通るため、既存の file contract は維持している。
+- Mac Apple Silicon の current-source native App.Cli release は source commit `47743365` と fixed-point manifest を
+  持ち、native core runtime matrix `44 cases` が passした。Linux x86_64 replayは stage1後に actual stage2/stage3
+  summaryを回収できず、Linux fixed-point、Linux App.Cli target-only、directory validationの native runtime evidenceは未取得である。
+- Linux VM内の hostgen process、tmux、task-owned workdir、replay lockは終了後に残っていない。`lsharp-linux-x86` は
+  停止済みで、VM使用量は約 `3.5 GiB`、空きは約 `7.2 GiB` だった。次回は VM を再利用する前に current-source
+  manifest / lock / process ownership を確認する。
+
+### 未完了の境界と再開点
+
+- `EC-M2-01` / `EC-M2-03` の Rust project aggregate は valid cross-file edge の report/manifest、duplicate
+  evidence/review の source-specific diagnostics、MCP/public surfaceまで閉じていない。次の RED は TODO.md にある
+  `validate_accepts_project_directory_with_cross_file_edge` で、2 fileの node/edge/source provenanceを固定する。
+- `selfhost/src` の directory input、native App.Cli/EmbeddedCli/MCP parity、Linux current-source stage2/stage3
+  fixed point、Mac/Linux packaged provenance parityは未完了である。Macの44-case成功をLinuxやRust-free aggregateへ拡大解釈しない。
+- `ISSUE.md` という別名は作らず、本ファイルを問題台帳、`TODO.md` を未完タスク正本として維持する。
+
+### 再開 gate
+
+1. `git fetch origin main`、worktree、TODO、VM/process/lock/artifactを確認する。
+2. cross-file edge の Rust RED/GREEN と report/manifest contractを一つの semantic batchで検証する。
+3. selfhost/native parityが必要になった時点で、Mac/Linux heavy replayを同時起動せず、既存 stage2とVM-side lockを再利用する。
+4. docs audit、`git diff --check`、intentional filesだけの commit/push、remote SHAとVM停止状態を再確認する。
+
 ---
 
 ## サマリー
@@ -108,6 +142,7 @@
 | [I-07](#i-07) | rooting guard は部分実装、全 source/runtime 境界が未完 | 中 | in-design | imp-07 |
 | [I-08](#i-08) | テスト配置が巨大 E2E に集中 | 中 | in-design | imp-07 |
 | [I-09](#i-09) | installed package の nested source ownership が未完 | 中 | in-design | v0.3 MCP package ownership ADR |
+| [I-10](#i-10) | `validate --source` project aggregate の selfhost/native parity が未完 | 中-高 | in-design | v0.2 validation model |
 
 ### ドキュメント (DOC)
 
@@ -414,6 +449,26 @@
   `docs/`、installer、provider、runtime の完了へ拡張しない。
 - **残る境界**: installer が取得した tree、live provider/auth、current-source Mac/Linux runtime、packaged/rollback parity、
   実 Ed25519 は未検証であり、`EC-M3-05` と `M3-05-N9` は `[~]` を維持する。
+
+<a id="i-10"></a>
+### I-10: `validate --source` project aggregate の selfhost/native parity が未完
+
+- **影響度**: 中-高 / **状態**: in-design
+- **内容**: Rust driverは `47743365` で複数の regular `.ls` fileを deterministic な project graphへ集約し、
+  file境界を越えた duplicate intent nodeを code `2` と source span付きで fail-closedにできる。一方、validな
+  cross-file edgeの report/manifest、duplicate evidence/reviewの source-specific diagnostics、directory inputの
+  selfhost App.Cli / EmbeddedCli / MCP投影は未実装または未検証である。Mac Apple Siliconの current-source App.Cli
+  runtimeは成功したが、Linux x86_64の current-source fixed-point summaryとdirectory validation runtimeは未取得である。
+- **根拠**:
+  - `crates/lsharp-driver/src/validation_source_project.rs` -- deterministic `.ls` collection、全 node先行登録、cross-file duplicate検査
+  - `crates/lsharp-driver/src/main.rs` -- `--source` file/directory routing と `source validation error:2` diagnostic
+  - `crates/lsharp-driver/tests/validate_cli.rs` -- `validate_rejects_project_duplicate_across_source_files`
+  - `TODO.md` の `EC-M2-01` / `EC-M2-03` current checkpoint
+- **次の識別実験**: 異なる `:intent` IDを持つ2 fileとcross-file edgeを一つの projectとして受理し、deterministic report、
+  manifest、node/edge/source provenanceをRust CLIで固定する。selfhost/native directory parityやLinux replayへ同時に拡張しない。
+- **残る境界**: valid project aggregate、manifest/MCP/public surface parity、selfhost/native producer、Linux current-source
+  fixed point、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`EC-M2-01` / `EC-M2-03` と
+  `V2-16b` / `V2-16c` / `V2-16e` は `[~]` を維持する。
 
 ---
 
