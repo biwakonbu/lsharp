@@ -12,14 +12,14 @@
 `[x]` は使わない。日付別の進捗ログ、個別 test 名、artifact hash、完了済み phase はここへ蓄積せず、
 設計、ADR、test、artifact、運用記録を参照する。
 
-## Checkpoint — 2026-08-11
+## Checkpoint — 2026-08-12
 
 ここは一度区切って再開するための current truth である。完了済みの細かな test 名や hash を backlog の完了項目へ
 昇格させず、判断と代表 evidence は ADR へ置く。
 
 ### 現在地
 
-- 確認時点の code checkpoint は `c00368ad`（`368ac2c0`でLS1002 if-branch Diagnostic span、`7c830835`でnative runnerの41 cases表示、`a0a3dd55`でLS1001 undefined-symbol Diagnostic span、`f937afd3`でLS1004 argument-mismatch Diagnostic span、`bf9868de`でLS1003 infinite-type Diagnostic span、`86a9b1fe`でLS1002 if-condition Diagnostic span、`b3150a34`でrecursive type alias (`LS1008`) のLSP code/span投影、`c00368ad`で複数 Diagnosticの順序/dedupをproduction selfhost sourceへ反映した後）。selfhost production sourceは`c00368ad`と一致し、標準 type DiagnosticのLS1001/LS1002 if-condition/if-branch/LS1003/LS1004/LS1008とtype+lint複数件、同一開始位置のdistinct lint ruleを含むRust focused test、Mac Apple Silicon current-source native gate/43 cases、Linux x86_64 current-source fixed point・App.Cli target-only・43 cases runtime matrixまで検証済みである。native public `check` / `infer-program-analysis`のclosed recursive alias parity、全rule parity、component/packaged parityは未完了である。
+- 確認時点の code checkpoint は `9ad7a98f`（`c00368ad`までの標準 Diagnostic order/dedup projectionに加え、closed type-alias の型名前ハッシュと通常形 parser frameをnative経路へ反映した後）。selfhost production sourceは`9ad7a98f`と一致し、closed alias `check`、recursive alias `check`、標準 type DiagnosticのLS1001/LS1002 if-condition/if-branch/LS1003/LS1004/LS1008、type+lint複数件、同一開始位置のdistinct lint ruleを含むRust focused test、Mac Apple Silicon current-source native gate/44 cases、Linux x86_64 current-source fixed point・App.Cli target-only・44 cases runtime matrixまで検証済みである。native internal `infer-program-analysis` の単独 closed recursive alias contract、全rule parity、component/packaged parityは未完了である。
 - 共有 root checkout は他セッションの競合・未保存差分を含むため編集対象にしない。新規 worktree、`target`、一時 checkout は
   `/Users/biwakonbu/github/tmp/<task>/` に限定し、完了後は自分の所有物だけを片付ける。
 - Cloud で narrow contract の実装と task-only commit を作り、local task-owned worktree で結果を適用し、まとめて検証して
@@ -41,11 +41,12 @@
 
 ### 再開時の次の一件
 
-直近の verified partial は `c00368ad` の標準複数 Diagnostic order/dedup projectionである。type `LS1002` と lint `L0001` の両件保持・順序、
-同一開始位置の `L0001` / `L0002` distinct rule保持をMac/Linux native wire contractへ固定した。次のREDは、closed recursive alias
-`(type-alias Rec Rec) (defn ok [] : Int 42)` の native public `check` / `infer-program-analysis` parityを、`LS1008` code/message/span、
-diagnostics count、exit boundaryまで一つのRust/native fixtureで固定する。source-token scannerによるLSP projectionだけではこの公開command
-契約を満たさない。別のtype diagnostic span、全rule code/message parity、component/packaged parity、Rust-free aggregateは未完了であり、
+直近の verified partial は `9ad7a98f` の closed type-alias native check boundaryである。通常形
+`(type-alias Text String)` の name hashを型名前空間として保持し、Mac/Linux native `check`で
+`String` / `diagnostics:0`を返すこと、recursive alias `Rec`を `diagnostics:1` と明示的な失敗境界で拒否することを44 cases matrixへ固定した。
+次のREDは、closed recursive alias `(type-alias Rec Rec) (defn ok [] : Int 42)` をselfhost内部の
+`infer-program-analysis` fixtureから直接観測し、`LS1008`相当のcode/message/span、diagnostics count、failure metadataをRust/nativeで揃える契約である。
+別の type diagnostic span、全rule code/message parity、component/packaged parity、Rust-free aggregateは未完了であり、
 V2-16b / V2-16c / V2-16eは[~]のまま維持する。
 
 #### これまでの standard projection evidence

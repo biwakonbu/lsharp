@@ -4857,3 +4857,35 @@ target-only free-space gateは available `7,666,573,312` / required `4,294,967,2
 これは type+lint の複数 wire projectionと同一開始位置の distinct lint dedupに限定した verified partialである。native public `check` /
 `infer-program-analysis` の closed recursive alias parity、別の type diagnostic、全 rule code/message/span parity、component/packaged parity、
 release acquisition/rollback、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。Evidence commit: `c00368ad`。
+
+### V2-16b / V2-16c native closed type-alias check boundary (2026-08-12)
+
+通常形の closed alias `(type-alias Text String)` が native parserで不正な name hashへ変換され、`check`が
+`Int` / `T0001`へ落ちる failure boundaryを固定した。`5883d577`でalias名を型名前空間のhash helperへ揃え、
+`9ad7a98f`で通常形のalias parserを独立frameへ切り出した。最終sourceではRust focused parser contract
+`selfhost_parser_closed_type_alias`が `2 passed`となり、zero-parameter形・forward aliasの既存回帰も維持した。
+
+Mac Apple Siliconの `9ad7a98f` current-source App.Cli release gateは `1 passed / 858.35s`、
+`ci-artifacts/native-release/aarch64-apple-darwin/current-9ad7a98f-closed-alias-frame/manifest.json` は target
+`aarch64-apple-darwin`、source commit `9ad7a98fecbad72f31e01fa694fc181bc1dcc916`、`selfhost_fixed_point=true`、
+program SHA-256 `890aae43e516deb020684335ae2f5c35b9f982056f524753c3a328dcb1a4de39`を記録する。同じMach-O arm64 programの
+`test-native-selfhost-cli-core-runtime.py` は closed alias check、recursive alias check、LSP standard diagnosticsを含む `44 cases`全pass、stderr空だった。
+
+Linux x86_64のcurrent-source fixed-point summaryは
+`ci-artifacts/native-linux-x86-hostgen-vm/9ad7a98f-closed-alias-frame/actual-selfregen-summary.json` に target
+`x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status: pass`、stage2/stage3 stdout SHA-256双方
+`2fe2a986d9311b7838d8f954f73133affe8e22f09646407b99c599c36a49256a`、stage2/stage3 code length双方 `11,496,905`、stderr 0を記録する。
+stage2/stage3 manifestは source commit `9ad7a98fecbad72f31e01fa694fc181bc1dcc916`、data `2,801` bytes、entrypoint
+`11,492,297`、function-start length `3,437`、main function index `3,446`で一致し、VM free-space gateは available
+`7,666,020,352` / required `4,294,967,296` bytesだった。
+
+同じ fixed-point stage2をVM-side lock付きで再利用したLinux App.Cli target-only artifactは
+`ci-artifacts/native-linux-x86-hostgen-vm/9ad7a98f-closed-alias-frame-cli/manifest.json` に保存した。manifestは source tree SHA-256
+`85073b70299a660a5e66e0f809f7215c2e563afb5c100b6dd3f06b3f041bdee8`、`selfhost_fixed_point=true`、program SHA-256
+`cd151b5e8871b985ace83e63ffa0dfc34abb59c40ebb6c13de0f081041cce202`、code length `13,498,571`、stderr 0、`--version`
+`lsharp 0.1.0`を記録する。同じLinux ELFをVM内で実行したnative core runtime matrixは `44 cases`全passだった。VM作業領域、runner、
+再利用用temporary artifact、lockを回収し、`lsharp-linux-x86`は停止済みである。VM構成は `4 CPU / 16GiB memory / 12GiB disk` のままである。
+
+これは通常 closed aliasのparser-to-inferenceとrecursive aliasのpublic `check`境界に限定したverified partialである。selfhost内部の
+`infer-program-analysis`単独観測、全rule code/message/span parity、component/packaged parity、release asset acquisition/rollback、
+Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は `[~]` のまま維持する。Evidence commits: `5883d577`, `9ad7a98f`。
