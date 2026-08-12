@@ -3054,7 +3054,7 @@
           (make-type-decl-head-v3 name-hash (vector-new 0))))
       (make-type-decl-head-v3 0 (vector-new 0)))))
 
-(defn parse-closed-type-alias-v3 [spans pos-ref src]
+(defn parse-closed-type-alias-v3 [spans pos-ref src alias-start]
   (let [name-h (current-symbol-hash-v3 spans pos-ref src)]
     (do
       (p-advance pos-ref) ;; alias 名を消費
@@ -3062,13 +3062,19 @@
         (do
           (root_push target-type-expr)
           (p-expect spans pos-ref 1) ;; ) を消費
-          (let [parsed (make-type-alias name-h target-type-expr)]
+          (let [parsed
+                  (make-type-alias-with-span
+                    name-h
+                    target-type-expr
+                    alias-start
+                    (previous-token-end-v3 spans pos-ref))]
             (do
               (root_pop)
               parsed)))))))
 
 (defn parse-type-alias-v3 [spans pos-ref src]
-  (do
+  (let [alias-start (span-start spans (- (ref-get pos-ref) 1))]
+    (do
     (p-advance pos-ref) ;; type-alias を消費
     (if (== (p-current spans pos-ref) 0)
       (do
@@ -3084,7 +3090,13 @@
                     (do
                       (root_push target-type-expr)
                       (p-expect spans pos-ref 1) ;; ) を消費
-                      (let [parsed (make-type-alias-with-params name-h params target-type-expr)]
+                      (let [parsed
+                              (make-type-alias-with-params-and-span
+                                name-h
+                                params
+                                target-type-expr
+                                alias-start
+                                (previous-token-end-v3 spans pos-ref))]
                         (do
                           (root_pop)
                           (root_pop)
@@ -3094,10 +3106,10 @@
             (parse-skip-to-close-v3 spans pos-ref 1)
             (make-type-alias 0 0))))
       (if (== (p-current spans pos-ref) 20)
-        (parse-closed-type-alias-v3 spans pos-ref src)
+        (parse-closed-type-alias-v3 spans pos-ref src alias-start)
         (do
           (parse-skip-to-close-v3 spans pos-ref 1)
-          (make-type-alias 0 0))))))
+          (make-type-alias 0 0)))))))
 
 (defn parse-type-constrained-v3 [spans pos-ref src]
   (do

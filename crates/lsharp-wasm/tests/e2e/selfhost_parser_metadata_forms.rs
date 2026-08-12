@@ -178,6 +178,8 @@ fn test_e2e_selfhost_parser_parametric_type_alias_retains_params_and_target() {
       (print (vector-get target 1))
       (print (if (= (vector-get (vector-get target 2) 0) (ast-type-var)) 1 0))
       (print (if (= (vector-get (vector-get target 3) 0) (ast-type-var)) 1 0))
+      (print (vector-get alias-node 4))
+      (print (vector-get alias-node 5))
       0)))
 "#;
 
@@ -186,8 +188,8 @@ fn test_e2e_selfhost_parser_parametric_type_alias_retains_params_and_target() {
 
     assert_eq!(
         lines,
-        ["4", "2", "1", "1", "1", "1", "1", "1"],
-        "parametric type-alias は parameter vector と raw target type expression を保持するべき"
+        ["6", "2", "1", "1", "1", "1", "1", "1", "0", "36"],
+        "parametric type-alias は parameter vector、raw target、宣言 span を保持するべき"
     );
 }
 

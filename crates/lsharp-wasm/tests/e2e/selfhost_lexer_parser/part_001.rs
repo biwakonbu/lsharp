@@ -122,14 +122,37 @@ fn test_e2e_selfhost_parser_forward_type_alias_unifies_signature() {
 /// parser-to-inference bundle: recursive type-alias は Rust implementation と同じく拒否する
 #[test]
 fn test_e2e_selfhost_parser_recursive_type_alias_is_rejected() {
+    let source = "(type-alias Rec Rec) (defn ok [] : Int 42)\n";
+    let rust_program = lsharp_syntax::parse(source).expect("recursive alias fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    let error = oracle
+        .infer_program(&rust_program)
+        .expect_err("Rust oracle は recursive alias を拒否するべき");
+    assert_eq!(error.code(), "LS1008");
+    assert!(
+        error.to_string().contains("再帰的な型エイリアス"),
+        "Rust oracle の recursive alias message が不足: {error}"
+    );
+    let span = error.span().expect("Rust oracle の recursive alias は span を持つべき");
+    assert_eq!((span.start, span.end), (0, 20));
+
     let harness = r#"
 (defn main []
-  (let [analysis
-          (infer-program-analysis
-            (parse-program "(type-alias Rec Rec) (defn ok [] : Int 42)"))]
+  (let [program (parse-program "(type-alias Rec Rec) (defn ok [] : Int 42)")
+        analysis (infer-program-analysis program)
+        recursive-decl (vector-get program 0)
+        kinds (infer-program-analysis-failure-kinds analysis)]
     (do
       (print (infer-program-analysis-diagnostic-count analysis))
       (print (infer-program-analysis-first-error-code analysis))
+      (print (infer-program-analysis-first-error-index analysis))
+      (print (if (= (infer-program-analysis-first-error-name-hash analysis)
+                    (vector-get recursive-decl 1))
+                  1
+                  0))
+      (print (infer-program-analysis-first-error-start analysis))
+      (print (infer-program-analysis-first-error-end analysis))
+      (print (vector-length kinds))
       0)))
 "#;
 
@@ -145,8 +168,8 @@ fn test_e2e_selfhost_parser_recursive_type_alias_is_rejected() {
 
     assert_eq!(
         lines,
-        ["1", "8"],
-        "recursive type-alias は宣言単体でも E0008 として拒否されるべき"
+        ["1", "8", "-1", "1", "0", "20", "0"],
+        "recursive type-alias は code、alias provenance、宣言 spanを保持し、defn failure-kindsへ混入させないべき"
     );
 }
 

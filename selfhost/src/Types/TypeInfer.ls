@@ -972,6 +972,18 @@
       (vector-get decl 3)
       (vector-get decl 2))))
 
+(defn typeinfer-alias-span-start [decl]
+  (let [decl-len (vector-length decl)]
+    (if (= decl-len 6)
+      (vector-get decl 4)
+      (if (= decl-len 5) (vector-get decl 3) -1))))
+
+(defn typeinfer-alias-span-end [decl]
+  (let [decl-len (vector-length decl)]
+    (if (= decl-len 6)
+      (vector-get decl 5)
+      (if (= decl-len 5) (vector-get decl 4) -1))))
+
 ;; Rust implementation と同じく、alias 自身を target に含む宣言は拒否する。
 ;; raw TypeExpr を直接走査するため、closed / parametric の両形式と nested target に対応する。
 (defn typeinfer-type-expr-contains-name-range [type-expr idx end name-hash]
@@ -1651,8 +1663,8 @@
                     (error-code-recursive-alias)
                     -1
                     (vector-get recursive-decl 1)
-                    -1
-                    -1
+                    (typeinfer-alias-span-start recursive-decl)
+                    (typeinfer-alias-span-end recursive-decl)
                     (vector-new 0))]
           (do
             (root_pop)
