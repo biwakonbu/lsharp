@@ -484,6 +484,68 @@ fn validate_source_reports_unknown_without_contract_evidence() {
 }
 
 #[test]
+fn validate_rejects_project_duplicate_across_source_files() {
+    let project = project_dir("project-duplicate-across-source-files");
+    let source_dir = project.join("src");
+    fs::create_dir_all(&source_dir).expect("project source directory should be writable");
+    let first = source_dir.join("first.ls");
+    let second = source_dir.join("second.ls");
+    fs::write(
+        &first,
+        r#"(defn first [] :intent "intent:checkout/same" "first declaration" true)
+"#,
+    )
+    .expect("first source should be writable");
+    fs::write(
+        &second,
+        r#"(defn second [] :intent "intent:checkout/same" "second declaration" true)
+"#,
+    )
+    .expect("second source should be writable");
+    let output_dir = project.join("out");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let output_manifest = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args([
+            "validate",
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            output_manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("project source validation should run");
+    let manifest_exists = output_manifest.exists();
+    fs::remove_dir_all(&project).ok();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "project input errors must not be serialized as a report: {:?}",
+        output.stdout
+    );
+    assert!(!manifest_exists, "project input error must not emit a manifest");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("source validation error:2"),
+        "duplicate-node stable code missing: {stderr}"
+    );
+    assert!(
+        stderr.contains("intent:checkout/same"),
+        "duplicate stable ID missing: {stderr}"
+    );
+    assert!(stderr.contains("first.ls"), "first source path missing: {stderr}");
+    assert!(
+        stderr.contains("second.ls"),
+        "duplicate source path missing: {stderr}"
+    );
+}
+
+#[test]
 fn validate_source_rejects_orphan_edges_as_input_errors() {
     let path = source_path(
         "source-orphan",

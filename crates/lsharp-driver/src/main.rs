@@ -20,6 +20,7 @@ mod review_input;
 #[cfg(test)]
 #[path = "main_tests.rs"]
 mod tests;
+mod validation_source_project;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use error_codes::driver_io_error;
@@ -206,7 +207,7 @@ enum Command {
         /// versioned JSON manifest (省略時は lsharp.toml の [validation].manifest)
         file: Option<PathBuf>,
 
-        /// L# source file を intent graph として検証 (contract/evidence 未接続時は unknown)
+        /// L# source file または directory を intent graph として検証 (contract/evidence 未接続時は unknown)
         #[arg(long, conflicts_with = "file", value_name = "SOURCE")]
         source: Option<PathBuf>,
 
@@ -1610,19 +1611,29 @@ fn cmd_validate(
 /// source 側では node と node-to-node edge までを受け付ける。contract/evidence が
 /// まだ接続されていないため、入力が妥当でも report は unknown を返す。
 fn cmd_validate_source(
-    file: &Path,
+    source_path: &Path,
     format: CliValidationFormat,
     emit_manifest: Option<&Path>,
     review_inputs: &review_input::ReviewInputs,
     review_context: Option<&review_input::ReviewVerificationContext>,
 ) -> miette::Result<i32> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
-    let program = lsharp_syntax::parse(&source)
-        .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
-    let (graph, source_attestations) =
-        lsharp_types::validation_source::source_program_to_intent_graph_with_attestations(&program)
-            .map_err(|e| source_graph_error(file, &source, e))?;
+    let paths = validation_source_project::collect_source_paths(source_path)?;
+    let mut files = Vec::with_capacity(paths.len());
+    for path in paths {
+        let source = std::fs::read_to_string(&path)
+            .map_err(|error| driver_io_error(format!("{}: {error}", path.display())))?;
+        let program = lsharp_syntax::parse(&source)
+            .map_err(|error| miette::miette!("[{}] {}: {}", error.code(), path.display(), error))?;
+        files.push(validation_source_project::SourceFile {
+            path,
+            source,
+            program,
+        });
+    }
+    let project = validation_source_project::build(&files)
+        .map_err(|error| source_project_error(&files, error))?;
+    let graph = project.graph;
+    let source_attestations = project.attestations;
     let (graph, review_verifications, review_identity) =
         project_review_verifications(graph, &source_attestations, review_inputs, review_context)?;
     emit_validation_manifest(&graph, emit_manifest)?;
@@ -1729,6 +1740,48 @@ fn source_graph_error(
         file.display().to_string(),
         source.to_owned(),
     ))
+}
+
+fn source_project_error(
+    files: &[validation_source_project::SourceFile],
+    error: validation_source_project::SourceProjectError,
+) -> miette::Report {
+    match error {
+        validation_source_project::SourceProjectError::SourceGraph { file_index, error } => {
+            source_graph_error(&files[file_index].path, &files[file_index].source, error)
+        }
+        validation_source_project::SourceProjectError::DuplicateNode {
+            id,
+            first_file_index,
+            first_span,
+            duplicate_file_index,
+            duplicate_span,
+        } => {
+            let first = &files[first_file_index];
+            let duplicate = &files[duplicate_file_index];
+            let message = format!(
+                "source validation error:2: source intent node の stable ID が project 内で重複しています (id={id}, first={} ({}), duplicate={} ({}))",
+                first.path.display(),
+                first_span,
+                duplicate.path.display(),
+                duplicate_span,
+            );
+            miette::miette!(
+                labels = vec![miette::LabeledSpan::at(
+                    duplicate_span.start..duplicate_span.end,
+                    "duplicate source intent node"
+                )],
+                "{message}"
+            )
+            .with_source_code(miette::NamedSource::new(
+                duplicate.path.display().to_string(),
+                duplicate.source.clone(),
+            ))
+        }
+        validation_source_project::SourceProjectError::Graph { file_index, error } => {
+            miette::miette!("{}: {}", files[file_index].path.display(), error)
+        }
+    }
 }
 
 fn emit_validation_manifest(
