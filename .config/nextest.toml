@@ -22,8 +22,11 @@ retries = 0
 # 資源競合で偽 FAIL を出しうる。baseline の正確さを優先して絞る。
 test-threads = 4
 
-# e2e には分単位のものがあるため、既定の slow-timeout では
-# terminate されて偽 FAIL になる。打ち切らず報告だけさせる。
+# e2e には分単位のものがあるため、既定の slow-timeout では terminate されて
+# 偽 FAIL になる。120s ごとに SLOW と報告させるだけにして、実際に打ち切るのは
+# 120s x 30 = 60 分を超えたものだけにする。無条件に打ち切らない設定 (period だけ)
+# にはしない -- 本当にハングした 1 件で baseline 全体が終わらなくなるため、
+# 上限は残す。個々の e2e で最長のものでも分単位なので 60 分には当たらない。
 slow-timeout = { period = "120s", terminate-after = 30 }
 
 [profile.baseline.junit]

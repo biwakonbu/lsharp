@@ -155,8 +155,9 @@ scripts/dev-loop.sh                  # selfhost/src に変更があれば compon
 .lsharp-dev/bin/lsharp check foo.ls  # 以後はこの binary を使う
 ```
 
-- `scripts/dev-loop.sh` は `selfhost/src` 配下の source fingerprint (`scripts/native-selfhost-dev.sh` の
-  `source_fingerprint()` と同一アルゴリズム) を `.lsharp-dev/.component-fingerprint.sha256` と比較し、
+- `scripts/dev-loop.sh` は `selfhost/src` 配下の source fingerprint (算出は共有 helper
+  `scripts/lib/source-fingerprint.sh` の `lsharp_source_fingerprint`。producer / consumer と同じ実体を
+  source しており再実装ではない) を `.lsharp-dev/.component-fingerprint.sha256` と比較し、
   一致していれば何もしない。不一致のときだけ `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` を付けて
   Rust パイプラインで component を再生成する。この env を外すと古い component 自身が新しい source を
   コンパイルすることになるので必須である。
