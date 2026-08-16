@@ -5,6 +5,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WRAPPER="$ROOT/scripts/ci/package-native-linux-x86-actual-stage1-vm.sh"
 SOURCE_COMMIT="$(git -C "$ROOT" rev-parse --verify HEAD)"
 
+# 期待値は package-native-stage0.sh と同じ実装で算出する。
+# shellcheck source=../lib/source-fingerprint.sh
+source "$ROOT/scripts/lib/source-fingerprint.sh"
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -185,10 +189,22 @@ chmod +x program.native
 SH
 chmod +x "$HOST_BIN/cc"
 
+# package した stage0 は後段でこの fixture source root に対して実行する。
+# strict lane は manifest fingerprint と実 source tree の一致を要求するので、
+# packaging 側も同じ tree を fingerprint 対象にする。
+RUNNER_SOURCE="$TMP_ROOT/runner-source"
+RUNNER_STAGE="$TMP_ROOT/runner-stage"
+RUNNER_INPUT="$RUNNER_SOURCE/input.ls"
+mkdir -p "$RUNNER_SOURCE/src/App"
+printf '(module App.Cli)\n' >"$RUNNER_SOURCE/src/App/Cli.ls"
+printf '(defn main [] 42)\n' >"$RUNNER_INPUT"
+SOURCE_FINGERPRINT="$(lsharp_source_fingerprint "$RUNNER_SOURCE/src")"
+
 run_wrapper() {
   PATH="$HOST_BIN:$PATH" \
     LSHARP_NATIVE_LINUX_X86_VM_NAME="$VM_NAME" \
     LSHARP_NATIVE_LINUX_X86_STAGE0_PACKAGE_TEST_LOG="$LOG" \
+    NATIVE_STAGE0_SELFHOST_SRC="$RUNNER_SOURCE/src" \
     "$WRAPPER" "$@"
 }
 
@@ -217,7 +233,7 @@ run_wrapper \
   --actual-stage1-dir "$ACTUAL_STAGE1" \
   --output-dir "$OUTPUT_DIR"
 
-python3 - "$OUTPUT_DIR/manifest.json" "$SOURCE_COMMIT" <<'PY'
+python3 - "$OUTPUT_DIR/manifest.json" "$SOURCE_COMMIT" "$SOURCE_FINGERPRINT" <<'PY'
 import json
 import sys
 
@@ -226,6 +242,7 @@ expected = {
     "kind": "lsharp-native-selfhost-stage0",
     "target": "x86_64-unknown-linux-gnu",
     "source_commit": sys.argv[2],
+    "selfhost_src_fingerprint": sys.argv[3],
     "compiler": "bin/compiler",
     "transport_driver": "bin/transport-driver",
     "materializer": "bin/materializer",
@@ -248,13 +265,6 @@ assert_file_contains "$LOG" "program.native"
 
 compiler_output="$($OUTPUT_DIR/bin/compiler)"
 [[ "$compiler_output" == "fake-stage1-compiler" ]] || fail "packaged compiler did not come from VM materialization"
-
-RUNNER_SOURCE="$TMP_ROOT/runner-source"
-RUNNER_STAGE="$TMP_ROOT/runner-stage"
-RUNNER_INPUT="$RUNNER_SOURCE/input.ls"
-mkdir -p "$RUNNER_SOURCE/src/App"
-printf '(module App.Cli)\n' >"$RUNNER_SOURCE/src/App/Cli.ls"
-printf '(defn main [] 42)\n' >"$RUNNER_INPUT"
 
 runner_stderr="$TMP_ROOT/runner.stderr"
 runner_output="$TMP_ROOT/runner.stdout"

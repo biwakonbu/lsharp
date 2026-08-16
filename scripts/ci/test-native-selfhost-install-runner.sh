@@ -6,6 +6,9 @@ RUNNER="$ROOT/scripts/native-selfhost-dev.sh"
 INSTALLER="$ROOT/scripts/native-selfhost-install.py"
 DECODER="$ROOT/scripts/ci/decode-native-selfhost-transport.py"
 
+# shellcheck source=../lib/source-fingerprint.sh
+source "$ROOT/scripts/lib/source-fingerprint.sh"
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -23,8 +26,10 @@ DEPENDENCY_DIR="$TEST_ROOT/geometry"
 HOST_BIN="$TMP_ROOT/host-bin"
 HOST_COMMAND_LOG="$TMP_ROOT/host-command.log"
 
-mkdir -p "$TEST_ROOT/scripts/ci" "$STAGE0_DIR/bin" "$SOURCE_ROOT/src/App" \
+mkdir -p "$TEST_ROOT/scripts/ci" "$TEST_ROOT/scripts/lib" "$STAGE0_DIR/bin" "$SOURCE_ROOT/src/App" \
   "$PROJECT_DIR" "$DEPENDENCY_DIR/src" "$HOST_BIN"
+# runner は自身の位置から ROOT を解決するので、fixture 側にも共有ライブラリが要る。
+cp "$ROOT/scripts/lib/source-fingerprint.sh" "$TEST_ROOT/scripts/lib/source-fingerprint.sh"
 cp "$RUNNER" "$TEST_ROOT/scripts/native-selfhost-dev.sh"
 cp "$INSTALLER" "$TEST_ROOT/scripts/native-selfhost-install.py"
 cp "$DECODER" "$TEST_ROOT/scripts/ci/decode-native-selfhost-transport.py"
@@ -130,7 +135,10 @@ done
     commit -qm 'native install runner fixture'
 )
 CURRENT_SOURCE_COMMIT="$(cd "$TEST_ROOT" && git rev-parse HEAD)"
-python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
+# strict lane は source_commit と selfhost source fingerprint の両方一致を要求する。
+# fixture の実 source から算出して manifest に載せる。
+CURRENT_SOURCE_FINGERPRINT="$(lsharp_source_fingerprint "$SOURCE_ROOT/src")"
+python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" "$CURRENT_SOURCE_FINGERPRINT" <<'PY'
 import json
 import pathlib
 import sys
@@ -138,6 +146,7 @@ import sys
 path = pathlib.Path(sys.argv[1])
 manifest = json.loads(path.read_text(encoding="utf-8"))
 manifest["source_commit"] = sys.argv[2]
+manifest["selfhost_src_fingerprint"] = sys.argv[3]
 path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
 PY
 

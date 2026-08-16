@@ -1,6 +1,9 @@
 /target/
 # scripts/dev-loop.sh が作る local dev sidecar (driver binary のコピーと component)
 /.lsharp-dev/
+# scripts/native-selfhost-dev.sh の既定 stage directory。追跡すると
+# native-macos-aarch64-stage0-release.sh の clean worktree gate に引っかかる。
+/.native-selfhost-dev/
 *.wasm
 !/tests/fixtures/selfhost-debug/test_i64_if.wasm
 Cargo.lock
@@ -37,6 +40,9 @@ ci-artifacts/native-linux-x86-hostgen-vm/
 ci-artifacts/native-linux-x86-native-stage0-dev/
 ci-artifacts/native-stage0/
 /ci-artifacts/native-release/
+# native-macos-aarch64-stage0-release.sh の既定出力。追跡すると自身の
+# clean worktree gate に引っかかり producer を二度と実行できなくなる。
+/ci-artifacts/native-stage0/
 crates/lsharp-wasm/ci-artifacts/
 selfhost/src/Backend/Native/NativeCodegen.prefix*.ls
 selfhost/src/Backend/Native/NativeCodegen.mini*.ls

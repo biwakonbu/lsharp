@@ -145,6 +145,7 @@
 | [I-10](#i-10) | `validate --source` project aggregate の selfhost/native parity が未完 | 中-高 | in-design | v0.2 validation model |
 | [I-10](#i-10) | `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載 | 高 | open | -- |
 | [I-11](#i-11) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | open | -- |
+| [I-12](#i-12) | native stage0 の `check selfhost/src/App/Cli.ls` が segfault する | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -514,6 +515,37 @@
     されていない dead file である。
 - **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。
 - **関連**: I-10 (どちらも「テストが本当に何を検証しているか」の可視性を下げる)。
+
+---
+
+<a id="i-12"></a>
+### I-12: native stage0 の `check selfhost/src/App/Cli.ls` が segfault する
+
+- **影響度**: 中 / **状態**: open
+- **内容**: `d87cd5d1` の stage0 (`ci-artifacts/native-stage0/aarch64-apple-darwin/current`) に対して
+
+  ```
+  bash scripts/native-selfhost-dev.sh \
+    --stage0-dir ci-artifacts/native-stage0/aarch64-apple-darwin/current \
+    check selfhost/src/App/Cli.ls
+  ```
+
+  を実行すると、stage bootstrap (約 49s) が成功したあと materialize 済み program が落ちる。
+
+  ```
+  scripts/native-selfhost-dev.sh: line 449: 65772 Segmentation fault: 11  "$STAGE_DIR/program.native" "$@"
+  [exited with code 139]
+  ```
+
+- **切り分け済みの事実**:
+  - stage bootstrap 自体は成功する。stage0 package は壊れていない。
+  - 小さい fixture (`tests/fixtures/validation/*.ls`) を使う
+    `scripts/ci/native-selfhost-dev-source-file-smoke.sh` は exit 0 で通る。
+  - したがって入力サイズまたは内容に依存する問題であり、stage0 の有効性とは別問題である。
+- **未実施**: 最小再現入力の特定、crash 位置の特定 (linear memory 境界 / stack 深度のいずれか)。
+- **根拠**: 2026-08-16 実測 (T1-1 の副産物)。
+- **関連**: `LEGACY-IO-01` (dynamic root/data/heap layout)、`LEGACY-ROOT-01` (rooting discipline)、
+  [`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)。
 
 ---
 

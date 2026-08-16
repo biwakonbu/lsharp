@@ -14,6 +14,13 @@ REPL_HELPER="$ROOT/scripts/native-selfhost-repl.py"
 DOC_HELPER="$ROOT/scripts/native-selfhost-doc.py"
 COMPONENT_HELPER="$ROOT/scripts/native-selfhost-component.py"
 FORCE_BOOTSTRAP=0
+# dev lane が緩めるのは source_commit の一致だけ。fingerprint 不一致は両レーンとも拒否する。
+DEV_REUSE="${NATIVE_ALLOW_FINGERPRINT_REUSE:-0}"
+
+# fingerprint の計算実装は producer (scripts/ci/package-native-stage0.sh) と共有する。
+# ここで再実装するとアルゴリズムがずれ、正しい stage0 まで拒否されるようになる。
+# shellcheck source=lib/source-fingerprint.sh
+source "$ROOT/scripts/lib/source-fingerprint.sh"
 
 usage() {
   cat <<'EOF'
@@ -25,6 +32,10 @@ options:
   --stage-dir DIR   generated native stage directory
   --entry PATH      entry path relative to source root
   --bootstrap       regenerate the native program even when sources are unchanged
+  --dev-reuse       stage0 manifest の source_commit が current checkout と異なっても、
+                    selfhost source fingerprint が一致すれば再利用する (dev lane)。
+                    NATIVE_ALLOW_FINGERPRINT_REUSE=1 でも有効になる。
+                    dev lane の実行結果は evidence として採用しない
   --help            show this help
 EOF
 }
@@ -64,12 +75,7 @@ hash_file() {
 }
 
 source_fingerprint() {
-  (
-    cd "$SOURCE_ROOT/src"
-    while IFS= read -r source_path; do
-      printf '%s  %s\n' "$(hash_file "$source_path")" "$source_path"
-    done < <(find . -type f -print | LC_ALL=C sort)
-  ) | hash_stream
+  lsharp_source_fingerprint "$SOURCE_ROOT/src"
 }
 
 stage0_fingerprint() {
@@ -116,6 +122,18 @@ if not isinstance(source_commit, str) or re.fullmatch(r"[0-9a-f]{40}", source_co
         "error: stage0 manifest source_commit must be a 40-character lowercase hexadecimal commit"
     )
 print(source_commit)
+
+# selfhost source fingerprint は必須。欠落を「検証省略」に読み替えると、
+# このフィールドを持たない旧 stage0 が暗黙に採用されてしまう。
+source_fingerprint = manifest.get("selfhost_src_fingerprint")
+if (
+    not isinstance(source_fingerprint, str)
+    or re.fullmatch(r"[0-9a-f]{64}", source_fingerprint) is None
+):
+    raise SystemExit(
+        "error: stage0 manifest selfhost_src_fingerprint must be a 64-character lowercase sha256"
+    )
+print(source_fingerprint)
 
 for field in ("compiler", "transport_driver", "materializer"):
     value = manifest.get(field)
@@ -317,6 +335,10 @@ while [[ $# -gt 0 ]]; do
       FORCE_BOOTSTRAP=1
       shift
       ;;
+    --dev-reuse)
+      DEV_REUSE=1
+      shift
+      ;;
     --help)
       usage
       exit 0
@@ -355,17 +377,35 @@ manifest_paths=()
 while IFS= read -r path; do
   manifest_paths+=("$path")
 done < <(parse_stage0_manifest)
-[[ ${#manifest_paths[@]} -eq 5 ]] || die "stage0 manifest did not provide target, source commit, and three executables"
+[[ ${#manifest_paths[@]} -eq 6 ]] || die "stage0 manifest did not provide target, source commit, source fingerprint, and three executables"
 
 TARGET="${manifest_paths[0]}"
 SOURCE_COMMIT="${manifest_paths[1]}"
+MANIFEST_SOURCE_FINGERPRINT="${manifest_paths[2]}"
 CURRENT_SOURCE_COMMIT="$(git rev-parse --verify HEAD 2>/dev/null || true)"
-if [[ -n "$CURRENT_SOURCE_COMMIT" && "$SOURCE_COMMIT" != "$CURRENT_SOURCE_COMMIT" ]]; then
-  die "stage0 manifest source_commit does not match current checkout: manifest=$SOURCE_COMMIT checkout=$CURRENT_SOURCE_COMMIT"
+CURRENT_SOURCE_FINGERPRINT="$(source_fingerprint)"
+
+# stage0 の再利用可否は 2 条件で判定する (AGENTS.md の stage0 条件節)。
+#   strict lane (既定 / 証跡): source_commit と source fingerprint の両方が一致すること
+#   dev lane   (--dev-reuse): source fingerprint のみ一致すること
+# fingerprint 検証は strict lane を緩めるのではなく強める。従来は commit だけを見ていたため、
+# selfhost/src を編集して未コミットの状態 (= HEAD が変わらない) が素通りしていた。
+if [[ "$MANIFEST_SOURCE_FINGERPRINT" != "$CURRENT_SOURCE_FINGERPRINT" ]]; then
+  die "stage0 manifest selfhost_src_fingerprint does not match the current source tree: manifest=$MANIFEST_SOURCE_FINGERPRINT checkout=$CURRENT_SOURCE_FINGERPRINT"
 fi
-COMPILER="$STAGE0_DIR/${manifest_paths[2]}"
-TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[3]}"
-MATERIALIZER="$STAGE0_DIR/${manifest_paths[4]}"
+
+STAGE0_LANE="strict"
+if [[ -n "$CURRENT_SOURCE_COMMIT" && "$SOURCE_COMMIT" != "$CURRENT_SOURCE_COMMIT" ]]; then
+  if [[ "$DEV_REUSE" != "1" ]]; then
+    die "stage0 manifest source_commit does not match current checkout: manifest=$SOURCE_COMMIT checkout=$CURRENT_SOURCE_COMMIT"
+  fi
+  STAGE0_LANE="dev-reuse"
+  echo "native-selfhost-dev: dev-reuse lane (source_commit mismatch tolerated: manifest=$SOURCE_COMMIT checkout=$CURRENT_SOURCE_COMMIT)" >&2
+fi
+
+COMPILER="$STAGE0_DIR/${manifest_paths[3]}"
+TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[4]}"
+MATERIALIZER="$STAGE0_DIR/${manifest_paths[5]}"
 validate_stage0_payload "compiler" "$COMPILER"
 validate_stage0_payload "transport_driver" "$TRANSPORT_DRIVER"
 validate_stage0_payload "materializer" "$MATERIALIZER"
@@ -374,7 +414,16 @@ for executable in "$COMPILER" "$TRANSPORT_DRIVER" "$MATERIALIZER"; do
 done
 
 mkdir -p "$STAGE_DIR"
-FINGERPRINT="$(source_fingerprint)"
+
+# lane は stage directory に記録する。gate script は .lane の非存在をもって
+# 「この stage は証跡に採用してよい」と判定するため、strict lane では必ず消す。
+if [[ "$STAGE0_LANE" == "dev-reuse" ]]; then
+  printf '%s\n' "$STAGE0_LANE" >"$STAGE_DIR/.lane"
+else
+  rm -f "$STAGE_DIR/.lane"
+fi
+
+FINGERPRINT="$CURRENT_SOURCE_FINGERPRINT"
 STAGE0_FINGERPRINT="$(stage0_fingerprint)"
 
 if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT" "$STAGE0_FINGERPRINT"; then

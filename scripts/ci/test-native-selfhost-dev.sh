@@ -44,6 +44,9 @@ chmod +x "$TEST_ROOT/scripts/native-selfhost-dev.sh"
 cp "$ROOT/scripts/ci/decode-native-selfhost-transport.py" \
   "$TEST_ROOT/scripts/ci/decode-native-selfhost-transport.py"
 chmod +x "$TEST_ROOT/scripts/ci/decode-native-selfhost-transport.py"
+# runner は自身の位置から ROOT を決めるので、共有 fingerprint 実装も fixture 側へ複製する。
+mkdir -p "$TEST_ROOT/scripts/lib"
+cp "$ROOT/scripts/lib/source-fingerprint.sh" "$TEST_ROOT/scripts/lib/source-fingerprint.sh"
 
 cat >"$TEST_ROOT/scripts/native-selfhost-lsp-stdio.py" <<'PY'
 import os
@@ -253,16 +256,37 @@ chmod +x "$HOST_BIN/lsharp"
     commit -qm 'test native selfhost provenance'
 )
 CURRENT_SOURCE_COMMIT="$(cd "$TEST_ROOT" && git rev-parse HEAD)"
-python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
+
+# DEVLOOP-T1-2: stage0 の再利用は source_commit と selfhost source fingerprint の
+# 両方で判定する。fingerprint の計算は producer/consumer で共有する単一実装を使う。
+# shellcheck source=../lib/source-fingerprint.sh
+source "$ROOT/scripts/lib/source-fingerprint.sh"
+FIXTURE_FINGERPRINT="$(lsharp_source_fingerprint "$SOURCE_ROOT/src")"
+[[ "$FIXTURE_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] \
+  || fail "source fingerprint must be a 64-character lowercase sha256: $FIXTURE_FINGERPRINT"
+
+# manifest の任意フィールドを差し替える (値が __DELETE__ ならフィールドごと削除する)。
+write_manifest_fields() {
+  python3 - "$STAGE0_DIR/manifest.json" "$@" <<'PY'
 import json
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
 manifest = json.loads(path.read_text())
-manifest["source_commit"] = sys.argv[2]
+for assignment in sys.argv[2:]:
+    key, _, value = assignment.partition("=")
+    if value == "__DELETE__":
+        manifest.pop(key, None)
+    else:
+        manifest[key] = value
 path.write_text(json.dumps(manifest) + "\n")
 PY
+}
+
+write_manifest_fields \
+  "source_commit=$CURRENT_SOURCE_COMMIT" \
+  "selfhost_src_fingerprint=$FIXTURE_FINGERPRINT"
 
 run_runner() {
   (
@@ -400,6 +424,11 @@ assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|stage0-changed"
 
 printf '\n;; source refresh\n' >>"$SOURCE_ROOT/src/App/Cli.ls"
+# source を書き換えたので fingerprint も変わる。ここで検証したいのは
+# 「source 変更で再コンパイルが走る」ことであり、stage0 再利用ゲートではない。
+# manifest 側を追随させて strict lane を通したまま、その挙動だけを見る。
+FIXTURE_FINGERPRINT="$(lsharp_source_fingerprint "$SOURCE_ROOT/src")"
+write_manifest_fields "selfhost_src_fingerprint=$FIXTURE_FINGERPRINT"
 run_runner changed
 assert_eq "3" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|changed"
@@ -538,6 +567,130 @@ manifest = json.loads(path.read_text())
 manifest["source_commit"] = sys.argv[2]
 path.write_text(json.dumps(manifest) + "\n")
 PY
+
+# --- DEVLOOP-T1-2 RED-1..8: strict lane / dev lane 分離 ------------------------
+# stage0 の再利用可否は source_commit だけでなく selfhost source fingerprint で決める。
+# strict lane は commit と fingerprint の両方を要求し (dirty worktree の穴を塞ぐ)、
+# dev lane は fingerprint 一致のみで commit 不一致を許す。どちらも fail-closed。
+
+run_runner_dev_reuse() {
+  (
+    cd "$TEST_ROOT"
+    NATIVE_TEST_LOG="$LOG_FILE" \
+      NATIVE_TEST_PROJECT_DIR="$PROJECT_DIR" \
+      NATIVE_TEST_DOC_SOURCE="$DOC_INPUT" \
+      LSHARP_PATH="$HOST_BIN/lsharp" \
+      LSHARP_DISABLE_EMBEDDED_COMPONENT=1 \
+      PATH="$HOST_BIN:$PATH" \
+      "$TEST_ROOT/scripts/native-selfhost-dev.sh" \
+        --stage0-dir "$STAGE0_DIR" \
+        --source-root "$SOURCE_ROOT" \
+        --stage-dir "$STAGE_DIR" \
+        --dev-reuse \
+        "$@"
+  )
+}
+
+STALE_COMMIT="$(printf '0%.0s' {1..40})"
+WRONG_FINGERPRINT_A="$(printf 'a%.0s' {1..64})"
+WRONG_FINGERPRINT_B="$(printf 'b%.0s' {1..64})"
+
+# RED-1: dev lane は commit 不一致 + fingerprint 一致を通し、stderr に marker を出す。
+write_manifest_fields \
+  "source_commit=$STALE_COMMIT" \
+  "selfhost_src_fingerprint=$FIXTURE_FINGERPRINT"
+rm -rf "$STAGE_DIR"
+if ! run_runner_dev_reuse dev-lane-ok \
+  >"$TMP_ROOT/dev-lane-ok.stdout" 2>"$TMP_ROOT/dev-lane-ok.stderr"; then
+  fail "dev lane rejected a stage0 whose source fingerprint matches the checkout"
+fi
+assert_file_contains "$TMP_ROOT/dev-lane-ok.stderr" "dev-reuse lane"
+assert_file_contains "$TMP_ROOT/dev-lane-ok.stderr" "source_commit mismatch tolerated"
+assert_file_contains "$LOG_FILE" "program|dev-lane-ok"
+
+# RED-5: dev lane は stage directory に lane を記録する (証跡採用の可否判定に使う)。
+[[ -f "$STAGE_DIR/.lane" ]] || fail "dev lane did not record .lane in the stage directory"
+assert_eq "dev-reuse" "$(<"$STAGE_DIR/.lane")"
+
+# RED-8: dev lane でも Rust toolchain / host lsharp を成功経路に呼ばない。
+assert_file_not_contains "$LOG_FILE" "host-cargo"
+assert_file_not_contains "$LOG_FILE" "host-lsharp"
+
+# RED-2: dev lane でも fingerprint 不一致は die する (dev lane が緩めるのは commit だけ)。
+write_manifest_fields \
+  "source_commit=$STALE_COMMIT" \
+  "selfhost_src_fingerprint=$WRONG_FINGERPRINT_A"
+rm -rf "$STAGE_DIR"
+if run_runner_dev_reuse dev-lane-stale \
+  >"$TMP_ROOT/dev-lane-stale.stdout" 2>"$TMP_ROOT/dev-lane-stale.stderr"; then
+  fail "dev lane accepted a stage0 whose source fingerprint does not match the checkout"
+fi
+assert_file_contains "$TMP_ROOT/dev-lane-stale.stderr" "selfhost_src_fingerprint does not match"
+
+# RED-3: dev flag なしの commit 不一致は従来どおり die する (既存挙動の回帰防止)。
+write_manifest_fields \
+  "source_commit=$STALE_COMMIT" \
+  "selfhost_src_fingerprint=$FIXTURE_FINGERPRINT"
+rm -rf "$STAGE_DIR"
+if run_runner strict-lane-stale-commit \
+  >"$TMP_ROOT/strict-stale-commit.stdout" 2>"$TMP_ROOT/strict-stale-commit.stderr"; then
+  fail "strict lane accepted a stage0 from a different checkout commit"
+fi
+assert_file_contains "$TMP_ROOT/strict-stale-commit.stderr" "does not match current checkout"
+
+# RED-4: dev flag なし + commit 一致 + fingerprint 不一致 = dirty worktree。
+# 従来は素通りしていた穴であり、strict lane はここで die する。
+write_manifest_fields \
+  "source_commit=$CURRENT_SOURCE_COMMIT" \
+  "selfhost_src_fingerprint=$WRONG_FINGERPRINT_B"
+rm -rf "$STAGE_DIR"
+if run_runner strict-lane-dirty-source \
+  >"$TMP_ROOT/strict-dirty.stdout" 2>"$TMP_ROOT/strict-dirty.stderr"; then
+  fail "strict lane accepted a stage0 whose source fingerprint does not match the checkout"
+fi
+assert_file_contains "$TMP_ROOT/strict-dirty.stderr" "selfhost_src_fingerprint does not match"
+
+# RED-6: strict lane は .lane を残さない。
+write_manifest_fields \
+  "source_commit=$CURRENT_SOURCE_COMMIT" \
+  "selfhost_src_fingerprint=$FIXTURE_FINGERPRINT"
+rm -rf "$STAGE_DIR"
+if ! run_runner strict-lane-ok \
+  >"$TMP_ROOT/strict-ok.stdout" 2>"$TMP_ROOT/strict-ok.stderr"; then
+  fail "strict lane rejected a stage0 that matches both commit and source fingerprint"
+fi
+assert_file_contains "$LOG_FILE" "program|strict-lane-ok"
+[[ ! -e "$STAGE_DIR/.lane" ]] || fail "strict lane recorded a .lane marker"
+assert_file_not_contains "$TMP_ROOT/strict-ok.stderr" "dev-reuse"
+
+# RED-7: selfhost_src_fingerprint を持たない旧 stage0 は両レーンとも die する。
+# 欠落を「検証省略」に読み替えると旧 stage0 が暗黙に採用されてしまう。
+write_manifest_fields \
+  "source_commit=$CURRENT_SOURCE_COMMIT" \
+  "selfhost_src_fingerprint=__DELETE__"
+rm -rf "$STAGE_DIR"
+if run_runner legacy-manifest-strict \
+  >"$TMP_ROOT/legacy-strict.stdout" 2>"$TMP_ROOT/legacy-strict.stderr"; then
+  fail "strict lane accepted a stage0 manifest without selfhost_src_fingerprint"
+fi
+assert_file_contains "$TMP_ROOT/legacy-strict.stderr" "selfhost_src_fingerprint"
+rm -rf "$STAGE_DIR"
+if run_runner_dev_reuse legacy-manifest-dev \
+  >"$TMP_ROOT/legacy-dev.stdout" 2>"$TMP_ROOT/legacy-dev.stderr"; then
+  fail "dev lane accepted a stage0 manifest without selfhost_src_fingerprint"
+fi
+assert_file_contains "$TMP_ROOT/legacy-dev.stderr" "selfhost_src_fingerprint"
+
+# fingerprint 計算の実装は共有ライブラリひとつだけに置く (producer/consumer のずれ防止)。
+assert_file_contains "$RUNNER" "scripts/lib/source-fingerprint.sh"
+assert_file_contains "$ROOT/scripts/ci/package-native-stage0.sh" "scripts/lib/source-fingerprint.sh"
+
+# 後続テストのために manifest を有効な状態へ戻す。
+write_manifest_fields \
+  "source_commit=$CURRENT_SOURCE_COMMIT" \
+  "selfhost_src_fingerprint=$FIXTURE_FINGERPRINT"
+rm -rf "$STAGE_DIR"
+# --- DEVLOOP-T1-2 RED ここまで -------------------------------------------------
 
 # unsupported compile/build は stage0 bootstrap や output mutation より前に拒否する。
 assert_unsupported_without_bootstrap() {

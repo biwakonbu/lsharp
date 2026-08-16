@@ -5254,3 +5254,82 @@ content-addressed cache、T0-2 の `scripts/dev-loop.sh` のいずれも、works
 副次的な計測: `default_path_delegation` は baseline (T0-1 適用前) で 803.99s だったのが
 **304.92s〜389.00s** になった。この target は nested `cargo build -q -p lsharp-driver --bin lsharp`
 を spawn するので、T0-1 の incremental が nested build にも効いている。
+
+---
+
+## Track 1: Rust-free daily loop の立ち上げ (2026-08-16)
+
+判断の正本は [`decisions-dev-loop-rust-free-daily-lane.md`](../../adr/decisions-dev-loop-rust-free-daily-lane.md)。
+ここには運用者が再現・参照するための実測値と手順だけを残す。
+
+### stage0 生成 (T1-1) の実測
+
+Mac Apple Silicon の単一 producer `scripts/ci/native-macos-aarch64-stage0-release.sh` を
+clean worktree (`d87cd5d1`) で 1 回実行した。
+
+| 指標 | 値 |
+|---|---|
+| stage0 e2e 全体 | **927.92s** |
+| 既存 ADR の記録レンジ | 484.89〜542.31s |
+
+記録レンジの約 1.7〜1.9 倍かかった。producer の所要時間は同一 target でもこの幅で振れる、という
+データ点として残す (原因未特定)。
+
+出力は `ci-artifacts/native-stage0/aarch64-apple-darwin/current`。
+
+### manifest field 追加だけなら full 再生成は不要
+
+`selfhost_src_fingerprint` の追加のように manifest だけを更新したい場合、既存 binary に対して
+packager を再実行すれば足りる (約 900s が数秒になる)。
+
+```bash
+bash scripts/ci/package-native-stage0.sh \
+  --target aarch64-apple-darwin \
+  --source-commit <manifest に載せる commit> \
+  --compiler   ci-artifacts/native-stage0/aarch64-apple-darwin/current/bin/compiler \
+  --transport-driver ci-artifacts/native-stage0/aarch64-apple-darwin/current/bin/transport-driver \
+  --materializer     ci-artifacts/native-stage0/aarch64-apple-darwin/current/bin/materializer.py \
+  --output-dir ci-artifacts/native-stage0/aarch64-apple-darwin/current-repack
+
+cd ci-artifacts/native-stage0/aarch64-apple-darwin
+mv current current.pre-fingerprint   # rollback 用に残す
+mv current-repack current
+```
+
+`--output-dir` は既存 path を拒否するので、必ず新規 path へ出してから `mv` で差し替える。
+
+### producer の既定出力を必ず gitignore する
+
+`scripts/ci/native-macos-aarch64-stage0-release.sh` は **clean worktree を要求する**。したがって
+producer 自身や runner の既定出力が untracked のまま残ると、1 度実行した時点で次回の gate に
+引っかかり producer を二度と実行できなくなる。以下を `.gitignore` に入れてある。
+
+- `/ci-artifacts/native-stage0/` — producer の既定出力
+- `/.native-selfhost-dev/` — `scripts/native-selfhost-dev.sh` の既定 stage directory
+- `/ci-artifacts/native-release/` — App.Cli native release の既定出力
+
+### 日常の lane 選択
+
+| 直前にした変更 | strict lane (既定) | dev lane (`--dev-reuse`) |
+|---|---|---|
+| 何もしていない (stage0 生成時の HEAD のまま) | 通る | 通る |
+| docs / scripts / Rust / ADR を commit した | `die` (commit 不一致) | **通る** |
+| `selfhost/src` を編集した (commit の有無を問わない) | `die` (fingerprint 不一致) | `die` (fingerprint 不一致) |
+| stage0 manifest に `selfhost_src_fingerprint` が無い | `die` | `die` |
+
+最下段から 2 行目が重要で、**source 編集ループは本 slice では速くなっていない**。
+それを解決するのは `LEGACY-MODULE-01` (selfhost module cache) である。
+
+dev lane で起動した stage directory には `$STAGE_DIR/.lane` に `dev-reuse` が書かれる。
+証跡を取るときは `.lane` が存在しないこと (= strict lane) を確認する。
+
+### strict lane smoke の期待挙動
+
+`scripts/ci/native-selfhost-dev-source-file-smoke.sh` は strict lane を使うため、stage0 を生成した
+commit から HEAD が進むと**設計どおり失敗する**。regression ではない。証跡を取り直すときは、
+その HEAD で stage0 を再生成してから実行する。
+
+### 既知の不具合
+
+`check selfhost/src/App/Cli.ls` は segfault する (`I-12`)。stage0 自体は有効で、小さい fixture を
+使う documented smoke は通る。lane の動作確認には小さい fixture を使うこと。

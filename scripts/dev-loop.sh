@@ -39,39 +39,13 @@ die() {
 [[ -x "$COMPILER" ]] || die "compiler binary がありません。先に cargo build してください: $COMPILER"
 
 # selfhost/src 配下全ファイルの内容 fingerprint。
-# scripts/native-selfhost-dev.sh の source_fingerprint() と同一のアルゴリズム・同一の出力形式。
-# 両者がずれると「同じ source なのに別 fingerprint」になるので、必ず揃える。
-hash_stream() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 | awk '{print $1}'
-  else
-    die "sha256sum or shasum is required for source freshness"
-  fi
-}
+# 実装は scripts/lib/source-fingerprint.sh に一本化してある。
+# native stage0 の manifest や scripts/native-selfhost-dev.sh と同じ値でなければ、
+# 「同じ source なのに別 fingerprint」になって dev lane が壊れる。
+# shellcheck source=lib/source-fingerprint.sh
+source "$ROOT/scripts/lib/source-fingerprint.sh"
 
-hash_file() {
-  local path="$1"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$path" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$path" | awk '{print $1}'
-  else
-    die "sha256sum or shasum is required for source freshness"
-  fi
-}
-
-source_fingerprint() {
-  (
-    cd "$SOURCE_DIR"
-    while IFS= read -r source_path; do
-      printf '%s  %s\n' "$(hash_file "$source_path")" "$source_path"
-    done < <(find . -type f -print | LC_ALL=C sort)
-  ) | hash_stream
-}
-
-CURRENT_FINGERPRINT="$(source_fingerprint)"
+CURRENT_FINGERPRINT="$(lsharp_source_fingerprint "$SOURCE_DIR")"
 STORED_FINGERPRINT=""
 if [[ -f "$FINGERPRINT_FILE" ]]; then
   STORED_FINGERPRINT="$(cat "$FINGERPRINT_FILE")"
@@ -125,7 +99,7 @@ rm -f "$ENTRY_BACKUP"
 
 # entry 以外まで書き換えられていた場合は復元手段が無い。fingerprint を記録せず fail-closed
 # にして、source tree が黙って変わったまま先へ進むことを防ぐ。
-RESTORED_FINGERPRINT="$(source_fingerprint)"
+RESTORED_FINGERPRINT="$(lsharp_source_fingerprint "$SOURCE_DIR")"
 if [[ "$RESTORED_FINGERPRINT" != "$CURRENT_FINGERPRINT" ]]; then
   die "selfhost/src が予期せず変更されました (compile 前: $CURRENT_FINGERPRINT / compile 後: $RESTORED_FINGERPRINT)。git status で差分を確認してください"
 fi

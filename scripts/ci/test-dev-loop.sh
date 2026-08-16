@@ -44,7 +44,9 @@ TEST_ROOT="$TMP_ROOT/repo"
 LOG_FILE="$TMP_ROOT/invocations.log"
 FAKE_COMPILER="$TMP_ROOT/fake-lsharp"
 
-mkdir -p "$TEST_ROOT/scripts" "$TEST_ROOT/selfhost/src/App" "$TEST_ROOT/target/debug"
+mkdir -p "$TEST_ROOT/scripts/lib" "$TEST_ROOT/selfhost/src/App" "$TEST_ROOT/target/debug"
+# dev-loop.sh は自身の位置から ROOT を解決するので、fixture 側にも共有ライブラリが要る。
+cp "$ROOT/scripts/lib/source-fingerprint.sh" "$TEST_ROOT/scripts/lib/source-fingerprint.sh"
 cp "$RUNNER" "$TEST_ROOT/scripts/dev-loop.sh"
 chmod +x "$TEST_ROOT/scripts/dev-loop.sh"
 

@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PACKAGE="$ROOT/scripts/ci/package-native-stage0.sh"
 
+# manifest の selfhost_src_fingerprint は producer / consumer / このテストの三者が
+# 同一実装を共有していることが前提。期待値も同じ関数で算出して差異を検出する。
+# shellcheck source=../lib/source-fingerprint.sh
+source "$ROOT/scripts/lib/source-fingerprint.sh"
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -51,8 +56,11 @@ NON_EXECUTABLE_COMPILER="$INPUT_DIR/non-executable-compiler"
 EMPTY_MATERIALIZER="$INPUT_DIR/empty-materializer.py"
 TARGET="x86_64-unknown-linux-gnu"
 SOURCE_COMMIT="0000000000000000000000000000000000000000"
+# fingerprint 対象は実 selfhost/src ではなく固定 fixture にする。
+# 実ソースを使うと期待値がリポジトリの変更のたびに動き、テストが不安定になる。
+FIXTURE_SRC="$TMP_ROOT/selfhost-src"
 
-mkdir -p "$INPUT_DIR" "$HOST_BIN"
+mkdir -p "$INPUT_DIR" "$HOST_BIN" "$FIXTURE_SRC/App"
 : >"$HOST_TOOL_LOG"
 : >"$BUNDLE_LOG"
 
@@ -97,9 +105,30 @@ SH
   chmod +x "$HOST_BIN/$host_tool"
 done
 
+printf '(module App.Cli)\n' >"$FIXTURE_SRC/App/Cli.ls"
+printf '(module Prelude)\n' >"$FIXTURE_SRC/Prelude.ls"
+export NATIVE_STAGE0_SELFHOST_SRC="$FIXTURE_SRC"
+
+FIXTURE_FINGERPRINT="$(lsharp_source_fingerprint "$FIXTURE_SRC")"
+[[ "$FIXTURE_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] \
+  || fail "fixture source fingerprint is not a sha256: $FIXTURE_FINGERPRINT"
+
 run_package() {
   PATH="$HOST_BIN:$PATH" "$PACKAGE" "$@"
 }
+
+run_package_without_source_tree() {
+  NATIVE_STAGE0_SELFHOST_SRC="$TMP_ROOT/absent-selfhost-src" run_package "$@"
+}
+
+# source tree が存在しなければ fingerprint を確定できない。黙って省略せず die する。
+expect_reject "missing selfhost source tree" run_package_without_source_tree \
+  --target "$TARGET" \
+  --source-commit "$SOURCE_COMMIT" \
+  --compiler "$COMPILER" \
+  --transport-driver "$TRANSPORT_DRIVER" \
+  --materializer "$MATERIALIZER" \
+  --output-dir "$TMP_ROOT/absent-source-tree"
 
 expect_reject "missing target" run_package \
   --compiler "$COMPILER" \
@@ -146,13 +175,14 @@ run_package \
 
 assert_eq "" "$(cat "$HOST_TOOL_LOG")"
 
-python3 - "$OUTPUT_DIR/manifest.json" "$TARGET" <<'PY'
+python3 - "$OUTPUT_DIR/manifest.json" "$TARGET" "$FIXTURE_FINGERPRINT" <<'PY'
 import json
 import os
 import sys
 
 manifest_path = sys.argv[1]
 target = sys.argv[2]
+fingerprint = sys.argv[3]
 with open(manifest_path, encoding="utf-8") as source:
     manifest = json.load(source)
 
@@ -160,6 +190,7 @@ expected = {
     "kind": "lsharp-native-selfhost-stage0",
     "target": target,
     "source_commit": "0000000000000000000000000000000000000000",
+    "selfhost_src_fingerprint": fingerprint,
     "compiler": "bin/compiler",
     "transport_driver": "bin/transport-driver",
     "materializer": "bin/materializer",

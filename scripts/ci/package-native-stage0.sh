@@ -14,6 +14,10 @@ TRANSPORT_DRIVER_PATH="bin/transport-driver"
 MATERIALIZER_SCRIPT_PATH="bin/materializer.py"
 MATERIALIZER_WRAPPER_PATH="bin/materializer"
 
+# fingerprint の計算実装は consumer (scripts/native-selfhost-dev.sh) と共有する。
+# shellcheck source=../lib/source-fingerprint.sh
+source "$ROOT/scripts/lib/source-fingerprint.sh"
+
 usage() {
   cat <<'EOF'
 usage: scripts/ci/package-native-stage0.sh --target TARGET --source-commit COMMIT --compiler PATH --transport-driver PATH --materializer PATH --output-dir DIR
@@ -120,6 +124,13 @@ fi
 [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
   || die "source commit must be a 40-character lowercase hexadecimal commit: $SOURCE_COMMIT"
 
+# stage0 の再利用可否は consumer 側で source fingerprint と突き合わせる。
+SELFHOST_SRC_DIR="${NATIVE_STAGE0_SELFHOST_SRC:-$ROOT/selfhost/src}"
+SOURCE_FINGERPRINT="$(lsharp_source_fingerprint "$SELFHOST_SRC_DIR")" \
+  || die "failed to compute selfhost source fingerprint: $SELFHOST_SRC_DIR"
+[[ "$SOURCE_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] \
+  || die "selfhost source fingerprint must be a 64-character lowercase sha256: $SOURCE_FINGERPRINT"
+
 case "$TARGET" in
   x86_64-unknown-linux-gnu|aarch64-apple-darwin) ;;
   *) die "unsupported native target: $TARGET" ;;
@@ -164,6 +175,7 @@ cat >"$PACKAGE_DIR/manifest.json" <<EOF
   "kind": "lsharp-native-selfhost-stage0",
   "target": "$TARGET",
   "source_commit": "$SOURCE_COMMIT",
+  "selfhost_src_fingerprint": "$SOURCE_FINGERPRINT",
   "compiler": "$COMPILER_PATH",
   "transport_driver": "$TRANSPORT_DRIVER_PATH",
   "materializer": "$MATERIALIZER_WRAPPER_PATH"

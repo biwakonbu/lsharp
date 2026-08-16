@@ -624,38 +624,30 @@ release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2
 
 ## Rust lane dev loop と Rust-free 日常化 (2026-08-16 追加)
 
-Track 0 (Rust 側 dev loop の即効高速化) は完了し、判断と代表 evidence は
-[`decisions-dev-loop-rust-lane-speedup.md`](docs/adr/decisions-dev-loop-rust-lane-speedup.md) と
+Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` は完了し、
+判断と代表 evidence は
+[`decisions-dev-loop-rust-lane-speedup.md`](docs/adr/decisions-dev-loop-rust-lane-speedup.md)、
+[`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)、
 [`rust-boundary-reduction.md`](docs/development/operations/rust-boundary-reduction.md) へ移したので
-ここには残さない。以下は Track 0 が**開けたまま**にした残件である。
+ここには残さない。以下は Track 0 / Track 1 が**開けたまま**にした残件である。
 
 待ち時間は A (不要な Rust 再コンパイル) / B (L# コンパイラのスループット) / C (selfhost の差分ビルド)
 に分解される。Track 0 が閉じたのは A だけであり、**C が閉じるまで「Rust 脱却で待ち時間が減る」は
 成立しない**。順序は A → C → Rust 脱却 → B を継続改善とする。
 
-- [ ] `DEVLOOP-T1-1` current HEAD で有効な native stage0 の一度きり生成 — 唯一の Release
-  `v0.1.0-native-rc1` (2026-05-11) から `selfhost/src` は 43 files / +39,931 / -4,106 乖離しており
-  `scripts/fetch-stage0.sh` では入手できない。手順は
-  [`decisions-v0.3-native-macos-stage0-producer.md`](docs/adr/decisions-v0.3-native-macos-stage0-producer.md)
-  が定めた単一 producer `scripts/ci/native-macos-aarch64-stage0-release.sh` を使う
-  (App.Cli native release 生成 → stage0 compiler → `package-native-stage0.sh` までを内包する。
-  実測 484.89〜542.31s)。生成後に `scripts/native-selfhost-dev.sh --bootstrap` で
-  `.native-selfhost-dev/` を初期化する。ブートストラップの定義上避けられない一度きりのコストであり、
-  `DEVLOOP-T1-2` 適用後は再取得不要になる。
-- [ ] `DEVLOOP-T1-2` stage0 再利用ゲートの是正 (strict lane / dev lane 分離) — Rust-free 日常化の
-  必須条件。`scripts/native-selfhost-dev.sh` の現行ゲートは `manifest.source_commit != HEAD` で `die`
-  するため、`selfhost/src` がバイト単位で不変でも commit のたびに stage0 が無効化される
-  (実測: `selfhost/src` の最終変更 `d6e0eab3` から HEAD まで 117 commit、`git diff --stat` は空)。
-  同時にこのゲートは**緩すぎる** — `selfhost/src` を編集して未コミットなら HEAD が変わらないため
-  dirty worktree が素通りする。`AGENTS.md` が要求しているのは producer commit **と** source
-  fingerprint の 2 条件であり、fingerprint 検証は契約が本来要求しているのに未実装、が正確な現状。
-  fingerprint 導入は契約を緩めるのではなく満たす変更である。実装前に RED-1〜8 (dev flag ×
-  fingerprint 一致/不一致 × commit 一致/不一致、`.lane` 記録、旧 manifest の拒否、
-  `host-cargo`/`host-lsharp` 非呼び出しの維持) を追加する。fingerprint アルゴリズムの二重実装ずれを
-  避けるため `scripts/lib/source-fingerprint.sh` へ切り出す。dev lane の結果は evidence に採用しない。
-  `AGENTS.md` の stage0 条件節の更新を伴う。
+- [~] `DEVLOOP-T1-2` strict lane / dev lane 分離の実 lane 検証 — 実装と RED-1〜8 は GREEN で、
+  判断と evidence は
+  [`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)
+  に移した。残るのは harness ではなく**実 stage0 での dev lane 通し確認**である。stage0 は
+  `d87cd5d1` 時点で生成されているため、HEAD がそこから進んだ状態で
+  (a) strict lane が `source_commit does not match current checkout` で `die` すること、
+  (b) `--dev-reuse` が成功し stderr に `dev-reuse lane` marker が出て `$STAGE_DIR/.lane` に
+  `dev-reuse` が書かれること、を確認する。検証入力には小さい fixture を使う
+  (`selfhost/src/App/Cli.ls` は `I-12` の segfault を踏むため結果が混ざる)。
 - [~] `LEGACY-MODULE-01` selfhost/native module cache — 上記 `C`。既存項目 (本ファイル後段) を参照。
-  `DEVLOOP-T1-2` を入れても `selfhost/src` を実際に編集した瞬間に 10 分強が戻ってくる。ここが本命。
+  `DEVLOOP-T1-2` を入れても **`selfhost/src` を編集した瞬間に両 lane とも fingerprint 不一致で `die`
+  する**ため、source 編集ループの待ち時間は変わっていない。dev lane が救うのは
+  「commit は進んだが `selfhost/src` は同一」のケースだけである。ここが本命。
 - [ ] `I-10` workspace pre-existing 97 FAIL の triage — `cargo test --workspace` は常時 97 件 FAIL し、
   その事実自体が台帳未記載だった。pristine `a3ae4551` で同一に再現することは確認済み (test 名の集合
   `diff` は空)。クラスタごとに「どの未完項目の帰結か」を確定し、期待される FAIL の baseline を固定
