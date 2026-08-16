@@ -1,0 +1,30 @@
+# cargo-nextest の設定。用途は 1 つ — `cargo test --workspace` の
+# 恒常 FAIL 集合を「test 名の集合」として機械抽出し、baseline と差分を取ること。
+#
+# なぜ nextest か (ISSUES.md I-11):
+#   - process-per-test なので 1 件の crash が binary 全体を巻き込まない。
+#     `cargo test` では runtime_allocator_closures の panic が同じ binary の
+#     後続テストを道連れにして、FAIL 集合が実行順に依存していた。
+#   - JUnit XML を吐けるので test 名を機械抽出できる。表による記録では
+#     regression 検出に使えない。
+#   - doctest は nextest が扱わないので `cargo test --doc` は別途必要。
+
+[profile.baseline]
+# baseline は「今この worktree で何が落ちるか」の観測が目的なので、
+# 1 件でも落ちたら止まる挙動では困る。全 target を完走させる。
+fail-fast = false
+
+# retry は絶対に入れない。flaky を成功として吸収すると baseline が
+# 「安定して落ちるもの」ではなく「たまたま通ったもの」の集合になる。
+retries = 0
+
+# 既定の並列度 (= 論理コア数 10) では wasmtime を起こす e2e が
+# 資源競合で偽 FAIL を出しうる。baseline の正確さを優先して絞る。
+test-threads = 4
+
+# e2e には分単位のものがあるため、既定の slow-timeout では
+# terminate されて偽 FAIL になる。打ち切らず報告だけさせる。
+slow-timeout = { period = "120s", terminate-after = 30 }
+
+[profile.baseline.junit]
+path = "junit.xml"
