@@ -66,6 +66,40 @@ run_checker() {
   echo "$rc"
 }
 
+# --junit を複数渡す版 (最後の引数が expected)。
+run_checker_multi() {
+  local args=()
+  local expected="${!#}"
+  local n=$(($# - 1))
+  local i
+  for ((i = 1; i <= n; i++)); do
+    args+=(--junit "${!i}")
+  done
+  set +e
+  "$RUNNER" "${args[@]}" --expected "$expected" >"$OUT" 2>"$ERR"
+  local rc=$?
+  set -e
+  echo "$rc"
+}
+
+# SIGTERM で中断された run を模した JUnit を作る。
+make_aborted_junit() {
+  local path="$1"
+  cat >"$path" <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nextest-run" tests="2">
+  <testsuite name="lsharp-wasm::e2e" tests="2">
+    <testcase name="test_alpha" classname="lsharp-wasm::e2e" time="0.1">
+      <failure type="test failure with exit code 101">assertion failed</failure>
+    </testcase>
+    <testcase name="test_interrupted" classname="lsharp-wasm::e2e" time="0.1">
+      <failure type="test abort" message="process aborted with signal 15 (SIGTERM)">signal</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
+XML
+}
+
 # --- RED-1: 実測 FAIL 集合と expected が一致すれば exit 0 ---
 make_junit "$TMP_ROOT/base.xml" \
   'lsharp-driver::default_path_delegation|test_alpha|fail' \
@@ -158,5 +192,47 @@ TRACKED="$ROOT/docs/development/validation/workspace-expected-failures.txt"
 RC="$(run_checker "$TMP_ROOT/base.xml" "$TRACKED")"
 # 中身は合致しないので non-zero で良いが、書式エラーで死んではいけない
 assert_file_contains "$ERR" "実測"
+
+# --- RED-9: --junit を複数渡すと FAIL 集合が合併される ---
+# 実運用の理由: workspace 全体を 1 プロセスで回すと数時間かかり、途中で
+# 中断されると全部やり直しになる。binary で分割して複数回に分けて測り、
+# その結果を合併して判定できなければならない。
+make_junit "$TMP_ROOT/part-a.xml" \
+  'lsharp-driver::default_path_delegation|test_alpha|fail' \
+  'lsharp-driver::default_path_delegation|test_beta|pass'
+make_junit "$TMP_ROOT/part-b.xml" \
+  'lsharp-wasm::e2e|test_gamma|fail' \
+  'lsharp-wasm::e2e|test_delta|pass'
+
+RC="$(run_checker_multi "$TMP_ROOT/part-a.xml" "$TMP_ROOT/part-b.xml" "$TMP_ROOT/expected-ok.txt")"
+[[ "$RC" == "0" ]] || fail "分割した JUnit の合併が効いていない (rc=$RC): $(cat "$ERR")"
+assert_file_contains "$OUT" "baseline と一致"
+
+# 片方だけでは足りない (合併しないと test_gamma が消失扱いになる)
+RC="$(run_checker "$TMP_ROOT/part-a.xml" "$TMP_ROOT/expected-ok.txt")"
+[[ "$RC" != "0" ]] || fail "片方の JUnit だけで exit 0 になった"
+
+# --- RED-10: 分割した JUnit が重複していたら黙って通さない ---
+# 分割の切り方を間違えて同じ test を 2 回測ると、集合演算は通っても
+# 「全部測った」ことの根拠にならない。重複は設定ミスとして落とす。
+RC="$(run_checker_multi "$TMP_ROOT/part-a.xml" "$TMP_ROOT/part-a.xml" "$TMP_ROOT/expected-ok.txt")"
+[[ "$RC" != "0" ]] || fail "同じ JUnit を 2 回渡しても exit 0 になった"
+assert_file_contains "$ERR" "重複"
+
+# --- RED-11: SIGTERM で中断された run を baseline にしてはならない ---
+# 中断された nextest は残りの test を実行せず、走行中だった test を
+# `<failure type="test abort" message="... signal 15 (SIGTERM)">` として記録する。
+# これを黙って FAIL 集合に混ぜると、実行されなかった test が「pass」扱いになり、
+# baseline が静かに壊れる。
+make_aborted_junit "$TMP_ROOT/aborted.xml"
+cat >"$TMP_ROOT/expected-aborted.txt" <<'TXT'
+lsharp-wasm::e2e test_alpha
+lsharp-wasm::e2e test_interrupted
+TXT
+
+RC="$(run_checker "$TMP_ROOT/aborted.xml" "$TMP_ROOT/expected-aborted.txt")"
+[[ "$RC" != "0" ]] || fail "SIGTERM で中断された run を受け入れてしまった"
+assert_file_contains "$ERR" "中断"
+assert_file_contains "$ERR" "SIGTERM"
 
 echo "PASS: scripts/ci/test-check-workspace-baseline.sh"

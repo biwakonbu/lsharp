@@ -29,7 +29,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 EXPECTED="$ROOT/docs/development/validation/workspace-expected-failures.txt"
-JUNIT=""
+JUNITS=()
 PROFILE="baseline"
 
 die() {
@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --junit)
       [[ $# -ge 2 ]] || die "--junit requires a path"
-      JUNIT="$2"
+      JUNITS+=("$2")
       shift 2
       ;;
     --expected)
@@ -78,28 +78,29 @@ done
 
 [[ -f "$EXPECTED" ]] || die "expected-failures file not found: $EXPECTED"
 
-if [[ -z "$JUNIT" ]]; then
+if [[ ${#JUNITS[@]} -eq 0 ]]; then
   command -v cargo-nextest >/dev/null 2>&1 || command -v cargo >/dev/null 2>&1 \
     || die "cargo-nextest not found; install it or pass --junit <path>"
   echo "cargo nextest run --workspace --profile $PROFILE を実行する (数時間かかる)" >&2
   # FAIL があっても続行する。判定は下の差分で行う。
   (cd "$ROOT" && cargo nextest run --workspace --profile "$PROFILE") || true
-  JUNIT="$ROOT/target/nextest/$PROFILE/junit.xml"
+  JUNITS=("$ROOT/target/nextest/$PROFILE/junit.xml")
 fi
 
-[[ -f "$JUNIT" ]] || die "JUnit XML not found: $JUNIT"
+for junit in "${JUNITS[@]}"; do
+  [[ -f "$junit" ]] || die "JUnit XML not found: $junit"
+done
 
-python3 - "$JUNIT" "$EXPECTED" <<'PY'
+python3 - "$EXPECTED" "${JUNITS[@]}" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 
-junit_path, expected_path = sys.argv[1], sys.argv[2]
+expected_path = sys.argv[1]
+junit_paths = sys.argv[2:]
 
-try:
-    root = ET.parse(junit_path).getroot()
-except ET.ParseError as exc:
-    print(f"ERROR: JUnit XML を解析できない: {junit_path}: {exc}", file=sys.stderr)
-    raise SystemExit(2)
+# 外部から中断された run を表す signal。これらが混ざった JUnit は「全部測った」
+# 根拠にならない (残りの test は実行されず、集合上は pass と区別できない)。
+INTERRUPT_SIGNALS = ("SIGTERM", "SIGINT", "signal 15", "signal 2 ")
 
 # test の同一性は必ず binary で修飾する。
 # 実例: `support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached` は
@@ -107,15 +108,39 @@ except ET.ParseError as exc:
 # test 名だけを鍵にすると 5 件が 1 件へ潰れて差分が壊れる。
 actual_fail = set()
 actual_all = set()
-for case in root.iter("testcase"):
-    binary = case.get("classname") or ""
-    name = case.get("name") or ""
-    ident = f"{binary} {name}".strip()
-    if not ident:
-        continue
-    actual_all.add(ident)
-    if case.find("failure") is not None or case.find("error") is not None:
-        actual_fail.add(ident)
+seen_in = {}
+duplicates = []
+interrupted = []
+
+for junit_path in junit_paths:
+    try:
+        root = ET.parse(junit_path).getroot()
+    except ET.ParseError as exc:
+        print(f"ERROR: JUnit XML を解析できない: {junit_path}: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+
+    for case in root.iter("testcase"):
+        binary = case.get("classname") or ""
+        name = case.get("name") or ""
+        ident = f"{binary} {name}".strip()
+        if not ident:
+            continue
+        # 分割測定は「重ならないように切る」ことが前提。重なっていたら
+        # 集合演算は通ってしまうので、ここで明示的に落とす。
+        if ident in seen_in and seen_in[ident] != junit_path:
+            duplicates.append((ident, seen_in[ident], junit_path))
+        elif ident in seen_in:
+            duplicates.append((ident, junit_path, junit_path))
+        seen_in[ident] = junit_path
+        actual_all.add(ident)
+        failure = case.find("failure")
+        if failure is None:
+            failure = case.find("error")
+        if failure is not None:
+            message = f"{failure.get('type') or ''} {failure.get('message') or ''}"
+            if any(sig in message for sig in INTERRUPT_SIGNALS):
+                interrupted.append((ident, junit_path, (failure.get("message") or "").strip()))
+            actual_fail.add(ident)
 
 expected = set()
 malformed = []
@@ -135,10 +160,29 @@ new_failures = sorted(actual_fail - expected)
 now_passing = sorted(t for t in expected - actual_fail if t in actual_all)
 vanished = sorted(t for t in expected - actual_fail if t not in actual_all)
 
-print(f"実測: test {len(actual_all)} 件 / FAIL {len(actual_fail)} 件 (JUnit: {junit_path})")
+print(f"実測: test {len(actual_all)} 件 / FAIL {len(actual_fail)} 件")
+for junit_path in junit_paths:
+    print(f"  JUnit: {junit_path}")
 print(f"expected-failures: {len(expected)} 件 ({expected_path})")
 
 problems = 0
+
+if interrupted:
+    problems += 1
+    print("", file=sys.stderr)
+    print(f"外部シグナルで中断された run が混ざっている ({len(interrupted)} 件)。", file=sys.stderr)
+    print("中断された run は残りの test を実行していないので baseline の根拠にならない。", file=sys.stderr)
+    print("測り直すこと (分割して回すなら --junit を複数渡す):", file=sys.stderr)
+    for ident, path, message in interrupted[:10]:
+        print(f"  ! {ident} ({path}): {message}", file=sys.stderr)
+
+if duplicates:
+    problems += 1
+    print("", file=sys.stderr)
+    print(f"複数の JUnit に同じ test が重複している ({len(duplicates)} 件)。", file=sys.stderr)
+    print("分割測定は重ならないように切ること。重なっていると「全部測った」根拠にならない:", file=sys.stderr)
+    for ident, first, second in duplicates[:10]:
+        print(f"  = {ident} ({first} / {second})", file=sys.stderr)
 
 if malformed:
     problems += 1

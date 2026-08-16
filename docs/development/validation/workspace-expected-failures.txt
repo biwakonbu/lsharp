@@ -13,6 +13,12 @@
 #   - リポジトリ root に `./stage0` が **無い** こと。fresh clone と CI の既定状態。
 #     `./stage0` があると selfhost_native_stage_chain / selfhost_native_stage23_gap の
 #     成否が変わる。
+#     なお `ci-artifacts/native-stage0/aarch64-apple-darwin/current` の有無はこの集合に
+#     影響しない。stage-chain test が stage0 を掴むのは env
+#     (`LSHARP_NATIVE_LINUX_X86_STAGE0_DIR` /
+#     `LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR`) 経由であり、
+#     ci-artifacts のパスを直接読む test は無い (2026-08-16 実測)。
+#     test 内の `"./stage0"` は doc 内容の assertion で、path の存在確認ではない。
 #   - 測定は `cargo nextest run --workspace --profile baseline` (.config/nextest.toml)。
 #   - doctest は nextest の対象外。`cargo test --doc` は別途 1 回回して結果を注記する。
 #   - `scripts/ci/test-*.sh` の shell 契約テストはこのリストの対象外 (別枠で管理)。
