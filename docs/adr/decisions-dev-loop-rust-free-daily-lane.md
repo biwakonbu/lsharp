@@ -135,6 +135,39 @@ FAIL: dev lane rejected a stage0 whose source fingerprint matches the checkout
 producer と consumer が同一値を出すことを実測で確認した (`selfhost/src` に対して両者とも
 `c3da0653841242b431bfb123a61332d36f966a542692f6b2c08a81f7703ccdc1`)。
 
+### 実 stage0 での lane 検証 (harness ではなく実物)
+
+commit `ccfe4efc` (stage0 の `source_commit` は `d87cd5d1`、`selfhost/src` は不変) の状態で、
+実 stage0 に対して両 lane を通した。入力は小さい fixture
+`tests/fixtures/validation/ec-m3-canonical-source.ls` を使う (`selfhost/src/App/Cli.ls` は `I-12` の
+segfault を踏むため結果が混ざる)。
+
+strict lane — 設計どおり `die` する:
+
+```
+$ bash scripts/native-selfhost-dev.sh --stage0-dir <current> \
+    check tests/fixtures/validation/ec-m3-canonical-source.ls
+error: stage0 manifest source_commit does not match current checkout: manifest=d87cd5d1... checkout=ccfe4efc...
+[exit 1]
+```
+
+dev lane — 成功し、marker と `.lane` が記録される:
+
+```
+$ bash scripts/native-selfhost-dev.sh --dev-reuse --stage0-dir <current> \
+    check tests/fixtures/validation/ec-m3-canonical-source.ls
+native-selfhost-dev: dev-reuse lane (source_commit mismatch tolerated: manifest=d87cd5d1... checkout=ccfe4efc...)
+Bool
+diagnostics:0
+[exit 0]   6.62s
+
+$ cat <stage-dir>/.lane
+dev-reuse
+```
+
+**927.92s の stage0 再生成が 6.62s の stage bootstrap に置き換わった**のが、本 slice が実際に短縮した
+待ち時間である。ただし短縮の対象は「`selfhost/src` を触らない commit のあと」に限られる (下記 Consequences)。
+
 ### fixture 側の追随が必要だった箇所
 
 manifest field を必須にしたため、stage0 manifest を偽造して runner を起動する harness が壊れた。

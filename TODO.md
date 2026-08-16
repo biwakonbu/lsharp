@@ -624,7 +624,7 @@ release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2
 
 ## Rust lane dev loop と Rust-free 日常化 (2026-08-16 追加)
 
-Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` は完了し、
+Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / `DEVLOOP-T1-2` は完了し、
 判断と代表 evidence は
 [`decisions-dev-loop-rust-lane-speedup.md`](docs/adr/decisions-dev-loop-rust-lane-speedup.md)、
 [`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)、
@@ -635,15 +635,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` �
 に分解される。Track 0 が閉じたのは A だけであり、**C が閉じるまで「Rust 脱却で待ち時間が減る」は
 成立しない**。順序は A → C → Rust 脱却 → B を継続改善とする。
 
-- [~] `DEVLOOP-T1-2` strict lane / dev lane 分離の実 lane 検証 — 実装と RED-1〜8 は GREEN で、
-  判断と evidence は
-  [`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)
-  に移した。残るのは harness ではなく**実 stage0 での dev lane 通し確認**である。stage0 は
-  `d87cd5d1` 時点で生成されているため、HEAD がそこから進んだ状態で
-  (a) strict lane が `source_commit does not match current checkout` で `die` すること、
-  (b) `--dev-reuse` が成功し stderr に `dev-reuse lane` marker が出て `$STAGE_DIR/.lane` に
-  `dev-reuse` が書かれること、を確認する。検証入力には小さい fixture を使う
-  (`selfhost/src/App/Cli.ls` は `I-12` の segfault を踏むため結果が混ざる)。
 - [~] `LEGACY-MODULE-01` selfhost/native module cache — 上記 `C`。既存項目 (本ファイル後段) を参照。
   `DEVLOOP-T1-2` を入れても **`selfhost/src` を編集した瞬間に両 lane とも fingerprint 不一致で `die`
   する**ため、source 編集ループの待ち時間は変わっていない。dev lane が救うのは
