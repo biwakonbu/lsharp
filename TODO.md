@@ -658,6 +658,48 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (4 GiB → 8 GiB へ倍増しても拡大分をちょうど使い切って落ちることを実測済み)。
   `NATIVE-HEAP-01` は症状を可視化するだけで、「115 KB の入力に 8 GiB 超」という増幅は解消しない。
   GC ないし arena reset の設計から始める。`LEGACY-ROOT-01` / `LEGACY-IO-01` と関連。
+- [ ] `TESTGATE-01` `#[ignore]` ゲート検査が mod 分割に追随していない — Issue `I-11`。
+  `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` の
+  `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` は heavy test の `#[ignore]` 付与を
+  親ファイルの `read_to_string` + `fn <name>(` 行頭検索で確かめるが、対象の親は
+  `include!("<name>/part_NNN.rs")` だけになっており実体が無い。壊れ方が 2 種類ある:
+  厳密名モード (`:3761-3769`) は `panic!` するので気付けるが、**prefix モード (`:3791-3794`) は
+  一致 0 件でも何もせず pass する** — 検査が無言で消えており baseline にも載らない。
+  `include!` のみの親は `tests/e2e/` に 5 件 (`selfhost_bootstrap_acceptance` /
+  `selfhost_bootstrap_four_layer` / `selfhost_native_differential` /
+  `selfhost_native_stage23_gap` / `selfhost_lexer_parser`)。
+  **無言で無効化されている規模は実測 6 ルール / 215 関数**:
+  `four_layer` の `test_e2e_boot04_` 71 / `test_e2e_bootstrap_` 45 /
+  `test_v2_12_self_hosted_` 9 / `test_v2_11_` 1、`native_differential` の
+  `test_native_codegen_emits_` 86 / `test_native_emit_object_` 3。
+  **現時点では 215 件とも `#[ignore]` を持っており live な regression は無い**が、
+  ゲートは空回りしているので今後の追加漏れを一切検出しない。
+  厳密名モード側も同じ 4 親を 36 エントリ参照しており、最初の 1 件で panic して止まる。
+  **修正方式は既にリポジトリ内にある**: `selfhost_bootstrap_acceptance_file_size.rs:23-53` が
+  fragment ディレクトリを `read_dir` し、親の `include!` マニフェストの網羅と順序を検証したうえで
+  各 fragment を再帰的に見る。ops03b / ops03c をこの方式へ寄せる。新規設計は不要。
+- [ ] `TESTGATE-02` selfhost bundle の verbatim 包含 assertion が正規化と食い違う — Issue `I-11`。
+  `crates/lsharp-wasm/tests/e2e/support.rs` の `cached_selfhost_bundle` (`:1418-1431`) は
+  `.replace("(import Types.TypeInfer)\n", "")` で正規化するのに、
+  `test_support_selfhost_typeinfer_runtime_bundle_cached` (`:1865`) は
+  `selfhost_module()` (`:913-924`) が返す **生ソース**の verbatim 包含を要求する。
+  assert 対象 9 モジュールのうち当該 import 行を持つ 4 件 (`TypeInferApply` / `TypeInferBlock` /
+  `TypeInferPattern` / `TypeInferRecord`) は原理的に一致しない。
+  (`selfhost/src/Types/` で当該行を持つファイル自体は 6 件あるが、`TypeInferAssertions` と
+  `TypeInferSmoke` は assert 対象に入っていないので寄与しない。)
+  assert は 2026-03-27 `7f9bdbb4`、`replace()` と
+  import 行は 2026-07-20 `2b0c54b1` (origin/main 側) が同時に入れたもので、
+  **上流変更に検査が追随しなかった陳腐化**。production バグではない。
+  `mod support` の共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる。
+  検査側を正規化後の bundle と突き合わせる形へ直す。
+- [ ] `DIAG-DEDUP-01` diagnostics dedup の test と実装の仕様不一致 — Issue `I-11`。
+  `test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json` は「同一 start span なら 1 件」を
+  要求するが、実装 `selfhost/src/Tools/Lsp/LspServerNav.ls:1225-1245` の
+  `dedup-diag-same-lint-identity` は lint 同士に **rule 一致 + end span 一致**まで求めており、
+  同一位置で rule 201 / 202 の 2 件を意図的に残す。しかも `:1231` のコメントは
+  「lint の異なる rule を落とさない」と AC-209 の設計判断として明記している。
+  **単なる未実装 RED ではなく仕様の衝突**であり、どちらが陳腐化しているかは AC-209 の
+  受入基準に当たって決める。
 - [~] `DOC-07` ドキュメント同期ハーネス — `.claude/rules/doc-sync.md`、`.claude/hooks/doc-guard.sh`、
   `.claude/skills/doc-sync/` を追加した。残るのは実運用での有効性確認と、hook が「正しい正本へ
   正しい粒度で書かれたか」までは判定できない点の運用での補完。
