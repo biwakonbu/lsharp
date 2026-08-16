@@ -4929,3 +4929,328 @@ available `7.2GiB` / required `4GiB`で、検証後にworkdirとlockを回収し
 public App.Cli runtime evidenceに限定した verified partialである。native public `infer-program-analysis`単独観測、全rule code/message/span
 parity、component/packaged parity、release asset acquisition/rollback、Rust-free aggregateは未完了であり、`V2-16b` / `V2-16c` / `V2-16e` は
 `[~]`のまま維持する。Evidence commit: `88a1704a`。
+### Rust lane dev loop の待ち時間短縮 (2026-08-16)
+
+Rust 依存境界の縮小とは別軸の、Rust lane 自身の待ち時間を実測して短縮した記録である。これは
+Rust-free boundary の進捗ではなく、stage0 生成・oracle/differential・bootstrap のために恒久保持する
+Rust lane の作業効率の記録として残す。
+
+判断とその根拠 (何を採り、何を却下したか) は
+[`decisions-dev-loop-rust-lane-speedup.md`](../../adr/decisions-dev-loop-rust-lane-speedup.md) にある。
+本節は計測値と観測事実の記録であり、残件は `TODO.md` の
+「Rust lane dev loop と Rust-free 日常化」節、workspace の pre-existing FAIL は `ISSUES.md` の
+`I-10` を正本とする。
+
+#### 計測プロトコル
+
+worktree `/Users/biwakonbu/github/tmp/lsharp-dev-loop-speedup` (base `a3ae4551`) で、
+`crates/lsharp-wasm/src/wasi.rs` にコメント 1 行を追記して
+`cargo test -p lsharp-wasm --test e2e --no-run` を実行する時間を warm rebuild とした。
+`crates/lsharp-wasm/tests/e2e.rs` は `#[path = "e2e/mod.rs"] mod e2e;` の 2 行だけで 94 ファイル /
+190,742 行が単一 compilation unit になっており、profile 変更の影響が最大化される経路である。
+
+初回の計測は存在しない `crates/lsharp-wasm/src/wasi/mod.rs` を touch target にしていたため
+`warm_seconds=1` という無意味な値を出した (実体は `crates/lsharp-wasm/src/wasi.rs`。同名の
+`wasi/` submodule ディレクトリが隣接するため取り違えた)。以下は touch target を修正した後の値である。
+
+#### before / after
+
+| 計測 | before (`debug = 1`, `incremental = false`) | after (`debug = "line-tables-only"`, `incremental = true`, deps `debug = false`) |
+|---|---|---|
+| no-op rebuild | 0s | 0s |
+| warm rebuild (`wasi.rs` 1 行変更) | **42s** | **7s** |
+| restore rebuild (変更を戻す) | 40s | 6s |
+| cold `--no-run` build | 161s | 未取得 |
+
+warm rebuild で 6 倍の短縮である。`incremental = false` は `Cargo.toml:19-25` で Cargo の
+default を明示的に上書きしていたものであり、導入 commit `d8cd6376`
+("chore: cap local build and VM replay storage", 2026-07-17) の動機は disk 圧迫のみで、
+determinism や snapshot に関する根拠は無い (検証項目は `cargo metadata` / `limactl validate` /
+`bash -n` / `git diff --check` の 4 つ)。insta snapshot は実行時出力の比較なので incremental の
+有無に影響されない。disk 削減の意図は `[profile.dev.package."*"] debug = false` による依存 crate
+(wasmtime / cranelift 系) の debuginfo 削除で肩代わりする。
+
+VM replay script の `CARGO_INCREMENTAL=0` は使い捨て VM の disk 上限対策で意図が異なるため変更しない。
+
+#### 計測上の未取得値 (honest reporting)
+
+- after の cold build 時間は取得できていない。計測 script が cold 値を書いた出力ファイルを
+  後続の warm 計測が truncate したため失われた。
+- before の `target` サイズは取得していない (計測前に target を削除済み)。after の 4.0G は
+  before の `debug = 1` artifact が残った状態での測定であり、profile 変更単独の disk 効果を示す値ではない。
+- したがって disk 面の主張はしない。主張するのは warm rebuild 42s → 7s のみである。
+
+#### 併せて入れた変更
+
+- `scripts/dev-loop.sh` — `selfhost/src` 編集時に cargo を起動せず component sidecar だけ差し替える
+  local dev loop。契約テストは `scripts/ci/test-dev-loop.sh`。AGENTS.md の
+  「selfhost/src 編集の local dev loop (Rust lane、evidence 非対象)」節に運用手順を明記した。
+  この loop は cargo-built driver を成功経路に使うため native gate の evidence には数えない。
+- `.cargo/config.toml` — alias のみ。`[env]` / `[build] rustflags` / `[target.*] linker` は
+  意図的に置かない (理由は同ファイルのコメント)。
+
+これは Rust lane の local build 待ち時間に関する verified slice であり、L# compiler 自身の
+throughput、selfhost lane の差分ビルド (`LEGACY-MODULE-01`)、current-source stage0 の常時生成、
+Mac / Linux の native gate、Rust-free 完了のいずれも意味しない。Rust oracle / bootstrap /
+host integration 境界と TODO の `[~]` は維持する。
+
+#### 実測で判明した副作用: `lsharp compile` は entry file を書き戻す
+
+`scripts/dev-loop.sh` を実 driver で動かしたところ、`selfhost/src/App/EmbeddedCli.ls` が
+253 行の indentation 差分で書き換わった。原因は bug ではなく仕様である:
+
+`crates/lsharp-tooling/src/compile.rs:221-235` の `prepare_source_for_compile` が
+「コンパイル前にフォーマットを適用し、必要ならソースを書き戻す」。format 後の文字列が元と異なれば
+`std::fs::write(file, &formatted)` で入力 file を上書きする。この挙動は
+`test_prepare_source_for_compile_rewrites_file_when_format_diff_exists`
+(`crates/lsharp-tooling/src/compile_tests_outputs.rs:172`) が契約として固定している。
+呼び出しは `compile.rs:365` の 1 箇所で、対象は entry file のみ (import 先の module は通らない)。
+
+- 適用範囲: guest/sidecar path と Rust path (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) の**両方**
+- dev loop への影響: 何もしないと毎回 `selfhost/src` が dirty になる。すると build.rs の
+  `rerun-if-changed=selfhost/src` が発火し、**待ち時間を減らすための script が次の `cargo build` に
+  フル再コンパイルを予約してしまう**
+- 対処: `scripts/dev-loop.sh` が compile 前に entry を退避し、変わっていたら復元する。
+  さらに復元後の tree fingerprint が compile 前と一致しなければ fingerprint を記録せず `die` する
+  (entry 以外まで書き換えられた場合に fail-closed にする)。
+  契約テストは `scripts/ci/test-dev-loop.sh` の RED-7 / RED-8
+
+この節は local dev loop の運用注意であり、`prepare_source_for_compile` の仕様変更は提案していない。
+
+##### 失敗経路の穴 (RED-9 で塞いだ)
+
+書き戻しは compile の**前**に起きる。つまり「整形差分あり + 型エラー」という編集中に最も起きやすい
+組み合わせでは、entry が書き換わった直後に compile が落ちる。当初の実装は
+`|| die "component の再生成に失敗しました"` で即終了していたため、この経路だけ復元が走らず、
+書き戻しが残り `.entry-backup` も置き去りになっていた。RED-7 は「書き換えるが成功する」fake compiler、
+RED-6 は「書き換えないが失敗する」fake compiler だったので、どちらもこの組み合わせを踏んでいない。
+
+対処は rc を持ち回して復元を先に済ませる形にした。契約テストは `scripts/ci/test-dev-loop.sh` の RED-9
+(fake compiler が entry を書き換えてから `exit 7`。entry の sha256 不変 / `.entry-backup` 不残置 /
+fingerprint 未記録の 3 点を assert)。
+
+#### `default_path_delegation` の 12 件 FAIL は profile 変更と無関係 (2026-08-16)
+
+T0-1 適用後の `cargo test --workspace` で `crates/lsharp-driver/tests/default_path_delegation.rs` が
+12 件 FAIL した。profile 変更が原因かを切り分けるため、pristine worktree
+(`a3cb0dbe` 直前の `a3ae4551` を detached で checkout、profile 未変更) で同じ test binary を実行した。
+
+```
+test result: FAILED. 34 passed; 12 failed; 0 ignored; 0 measured; 0 filtered out; finished in 803.99s
+```
+
+failure の集合・件数・診断内容が dev worktree と完全に一致した (例:
+`[E0001] 未定義の変数 (undefined): build-wasm-bytes-wasi`、
+`left: "14\n44737\n"` / `right: "41\n2\n"`)。したがってこの 12 件は **T0-1 以前から存在する selfhost
+source 側の失敗**であり、`incremental = true` / `debug = "line-tables-only"` とは無関係である。
+
+副次的に確認した事実:
+
+- この test 群は自身の中で入れ子の `cargo build -q -p lsharp-driver --bin lsharp --target-dir <temp>` を
+  起動する。803s という所要時間はこれで説明がつく
+- 入れ子 compile は temp dir 経由なので `selfhost/src` を書き戻さない。実行後の pristine worktree は
+  `git status --short` が空だった (前節の書き戻し問題はこの経路には出ない)
+
+この 12 件の修正は本 slice のスコープ外であり、`[~]` のまま据え置く。
+
+### T0-3 build.rs embedded component の content-addressed cache (2026-08-16)
+
+`crates/lsharp-driver/build.rs` の `rerun-if-changed=selfhost/src` は directory 再帰監視なので、
+branch 切替 / `git stash` / mtime だけの変化でも 79,440 行の selfhost tree をフル再コンパイルする。
+
+`crates/lsharp-wasm/src/embedded_component_cache.rs` を新設し、`(selfhost/src 全 file の内容
+fingerprint, emitter fingerprint)` を key として component bytes を
+`<target>/lsharp-embed-cache/lsharp-embed-component-v1/<key>.component.wasm` に content-addressed で
+保存する。build.rs は hit なら bytes をそのまま埋め込む。
+
+設計上の判断:
+
+- **`lsharp-tooling::ArtifactCache` を再利用しない。** envelope の形はほぼ同じだが `lsharp-tooling` は
+  `lsharp-lsp` 経由で tower-lsp / tokio に依存する。build script の依存に足すと build script 自身の
+  コンパイルが重くなり、この cache の目的と正面から衝突する。`lsharp-wasm` は既に driver の
+  `[build-dependencies]` にあり、atomic writer (`component_adapter::write_wasm_artifact`) も持っている
+- **key に emitter identity を含める。** source だけを key にすると `emit_wasm_wasi_p2` を書き換えても
+  key が変わらず、古い emitter の bytes を新しい emitter の成果物として黙って埋め込む。workspace の
+  `CARGO_PKG_VERSION` は全 crate 共通で固定なので識別子に使えない。build script 実行ファイル自身の
+  fingerprint を使う (`lsharp-ir` / `lsharp-wasm` が変われば再リンクされて値が変わる)
+- **key は絶対 path を含まない。** worktree ごとに path が違っても同じ source なら同じ key になる
+- **cache の失敗はすべて fresh compile への fallback。** cache が壊れていることで build が落ちない。
+  envelope の prefix 不一致 / digest 不一致 / 破損はすべて `Ok(None)` (miss) であって `Err` でも
+  stale hit でもない
+- `LSHARP_EMBED_COMPONENT_PATH` の分岐は変更していない
+- **cache root の逆算も `lsharp-wasm` 側に置く。** build.rs は直接テストできないので、
+  `cache_root_from_out_dir()` のような非自明なロジックを build.rs に残さない。build.rs は
+  「呼ぶだけ」の薄い層にする
+- **`write_embedded_component` は内容が同じなら書かない。** `include_bytes!` の dep-info は mtime を
+  見るので、OUT_DIR の artifact を mtime だけでも動かさないほうが安全である。
+  ただし**この skip が再コンパイルを防いだ実測はまだ無い** — build script が走った時点で cargo は
+  crate fingerprint を無効化するため、後述の計測では HIT でも `Compiling lsharp-driver` が出ている。
+  害が無く、他の経路 (build script が再実行されない場合) では効くので残すが、効果は未検証と扱う
+- **entry 数の上限は 8。** 1 entry が 1.2MB 前後あるので、source を編集するたび target 配下が
+  膨らむのを防ぐ。mtime の新しい順に残す (直前に store した entry を捨てるとその build が即 miss)
+
+検証: `cargo test -p lsharp-wasm --lib embedded_component_cache` 16 tests GREEN
+(key 導出 5 / envelope 4 / eviction 4 / cache root 3)。
+
+安全性の主張 2 つは mutation testing で識別力を確認済み:
+
+| mutation | 結果 |
+|---|---|
+| key の manifest から emitter 行を除去 | `test_embedded_component_key_changes_when_emitter_fingerprint_changes` ほか計 3 件が FAIL |
+| `load` の digest 比較を無効化 | `test_embedded_component_cache_rejects_corrupt_envelope_and_leaves_no_temp_file` が FAIL |
+
+どちらも復元後に GREEN へ戻ることを確認した。
+
+#### 計測 (Mac Apple Silicon, dev profile = T0-1 適用後)
+
+`selfhost/src/App/EmbeddedCli.ls` を `touch` して `cargo build -p lsharp-driver` を計測した。
+`touch` は mtime だけを変えるので `rerun-if-changed=selfhost/src` は必ず発火するが、cache key は
+内容から導出するので hit する。これは branch 切替 / `git stash` 往復と同じ状況である。
+
+| 段階 | 条件 | real |
+|---|---|---|
+| A warm-up (計測対象外) | 全 crate をコンパイルして定常状態にする | 1m54.5s |
+| B cache **MISS** | cache directory を退避してから touch | **1m46.5s** |
+| C cache **HIT** (`-vv`) | 同じ内容のまま touch | 4.4s |
+| C2 cache **HIT** | 同じ内容のまま touch | **4.2s** |
+
+**1m46.5s → 4.2s (約 25 倍)。** B の後に cache entry が 1 個生成されたこと、C の `-vv` 出力に
+`[lsharp-driver 0.1.0] embedded component cache hit (5d495393...)` が出たことを確認済み。
+
+計測上の注意 (honest reporting):
+
+- この 1m46.5s は **T0-1 適用後**の値である。T0-1 以前 (`incremental = false` / `debug = 1`) の
+  同条件の値は取得していないので、「7 分」といった旧来の体感値との比較はしない
+- **B / C2 のどちらにも `Compiling lsharp-driver` が出ている。** build script が再実行された時点で
+  cargo は crate の fingerprint を無効化するので、OUT_DIR の bytes が同一でも driver 本体は再コンパイル
+  + 再リンクされる。つまり B と C2 は**同じ再コンパイル費用を含んでいる**ので、両者の差分は selfhost tree
+  の L# コンパイル時間そのものである (この事実は 25 倍という主張を弱めるのではなく、むしろ強める)
+- 上記の裏返しとして、`write_embedded_component` の skip がこの計測で再コンパイルを防いだ証拠は無い。
+  HIT が 4.2s で済むのは T0-1 の incremental compile のおかげであり、その 4.2s には再リンクが含まれる
+- B / C いずれの実行後も `git status --short` に `selfhost/src` は現れなかった (touch は内容不変)
+
+### T0-5 cargo-nextest (2026-08-16)
+
+cargo-nextest 0.9.143 を prebuilt tarball で導入し、`.cargo/config.toml` に `nt` alias を追加した
+(source からのビルドは CPU を食うので避けた)。動作確認:
+
+```
+$ cargo nextest run -p lsharp-ir --lib
+Summary [ 107.871s] 291 tests run: 291 passed (1 slow), 0 skipped
+```
+
+**nextest はコンパイルを速くしない。** 主因はビルドなので T0-1 / T0-3 の後に位置づける。
+doctest を扱わないため `cargo test --doc` は別途必要である (alias のコメントに明記済み)。
+
+副次的な発見: nextest の `SLOW [> 60.000s]` レポートにより、`lsharp-ir --lib` の壁時計時間
+107.8s のほぼ全量を単一の test が占めていることが判明した。
+
+```
+SLOW [> 60.000s] lsharp-ir incremental_analysis_tests::test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds
+PASS [ 107.840s] (291/291)
+```
+
+残り 290 tests は合計 1 秒未満である。この 1 本は `LEGACY-MODULE-01` (selfhost/native compiler cache)
+の対象領域そのものなので、Track 1 の T1-3 に着手するときの計測起点として記録しておく。
+本 slice では最適化しない。
+
+### Track 0 全体の workspace 検証 (2026-08-16)
+
+最終ツリーに対して `cargo test --workspace --no-fail-fast` を実行した。**`--no-fail-fast` が必須**である —
+既定の fail-fast では `lsharp-driver --test default_path_delegation` で打ち切られ、その後ろの target
+(`lsharp-lsp` / `lsharp-tooling` / `lsharp-wasm`) が 1 つも走らない。最初の実行はこれを踏んで
+「12 件だけ FAIL」に見えていた。
+
+**さらに、この `--workspace` ラン自体も `lsharp-wasm --test e2e` の途中で打ち切られている** (e2e は
+3,021 件あり、この一本だけで数時間かかる)。したがって `--workspace` が実際に完走したのは
+`doctools_parity` までであり、**アルファベット順で `e2e` より後ろの `lsharp-wasm` 統合 target 19 本
+(`e2e_parser_comparison` 〜 `wasmgc_probe`) と doctest は、この時点で 1 件も走っていなかった**。
+これらは後述のとおり別途実行した。「workspace 検証」を名乗る以上、この取りこぼしは明示しておく。
+
+`doctools_parity` までの結果は **18 件 FAIL / 全 18 件が pre-existing**:
+
+| target | FAIL | 内容 |
+|---|---|---|
+| `lsharp-driver --test default_path_delegation` | 12 | embedded component の default path 委譲 |
+| `lsharp-driver --test validate_source_review_edges` | 1 | review/change edge の manifest 投影が `Some(2)` vs `Some(0)` |
+| `lsharp-lsp --lib` | 1 | incremental parse 診断の stable code が `LS0102` vs `LS0101` |
+| `lsharp-tooling --lib` | 1 | api_doc の parse error stable code (同じく `LS0102` 系) |
+| `lsharp-wasm --lib` | 1 | `RootSetWithoutActiveSlot` — trap 前の failure ledger 記録 |
+| `lsharp-wasm --test doctools_parity` | 2 | typed metadata が 6 vs 5 / typeinfer bundle に `TypeInferApply.ls` が無い |
+
+pre-existing であることの根拠は**推測ではなく実測**である。pristine worktree
+`/Users/biwakonbu/github/tmp/lsharp-baseline-a3ae4551` (detached `a3ae4551`、profile も未変更) で
+同じ 6 件を個別に実行し、**同一の test 名・同一の panic 位置・同一の期待値差分**で FAIL することを確認した。
+12 件のほうは以前の baseline 実行で確認済み (`34 passed; 12 failed`)。
+
+これら 18 件の修正は本 slice のスコープ外である。ISSUES.md / TODO.md に既知として記載が無いため、
+別途 triage が要る (`LS0102` 系が 2 crate にまたがっている点は同一原因の可能性がある)。
+
+#### `e2e` より後ろの target と doctest (取りこぼし分の回収)
+
+上記で未実行だった 19 target を dev worktree で個別に実行した。結果は **19 件 FAIL**:
+
+| target | FAIL | 内容 |
+|---|---|---|
+| `snapshot` | **14 (= 全件)** | `insta` snapshot の wasm バイナリサイズが全件不一致 (例: `wasm_arithmetic` が old 4454 → new 6500 bytes) |
+| `e2e_selfhost_syntax` | 1 | `test_e2e_selfhost_parser_nested_module_decl` |
+| `lsp_diagnostic_parity` / `lsp_edge_case_parity` / `lsp_stateful_parity` / `property_probe_diagnostic` | 各 1 | いずれも `support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached` — `tests/e2e/support.rs` を共有しているため同一 test が 4 binary に重複コンパイルされている。`doctools_parity` の 2 件のうち 1 件と同一原因 |
+
+残る 15 target は全 GREEN、`cargo test --workspace --doc` も全 7 crate が GREEN (doctest は 0 件)。
+workspace は 8 crate だが `lsharp-driver` は `[[bin]]` のみで lib target を持たないため cargo が
+Doc-tests を生成しない。7 crate なのは正常挙動である。
+
+**`snapshot` の全件 FAIL は T0-1 の incremental 化を最も疑うべき箇所だった**ので、優先的に検証した。
+pristine `a3ae4551` で **FAIL した 6 target すべて**を実行し、**19 件が同一の test 名で FAIL し、
+pass/fail の件数まで一致**することを確認した。snapshot は diff の数値まで一致する
+(`4454 → 6500`、`4461 → 6507`、…)。`lsp_*_parity` / `property_probe_diagnostic` も
+dev と同一の `13 passed; 1 failed` / `8 passed; 1 failed` を返した (推論ではなく実測)。
+補強として、snapshot ファイルの最終更新は `5073b779` (2026-05-31) で、codegen 側 `crates/lsharp-wasm/src/wasi/`
+の最終更新は `77a3f547` (2026-07-27) である。約 2 ヶ月分の codegen 変更が snapshot に反映されていない、
+という素直な説明が付く。**incremental compilation は無関係**であり、計画時の想定どおりであった。
+
+#### `lsharp-wasm --test e2e` (単独で 3,021 件)
+
+dev worktree で完走させた結果は **`1702 passed; 60 failed; 1259 ignored` / 20,275.13s (5 時間 38 分)**。
+この 1 target だけで workspace 全体の実行時間を支配するので、`--workspace` に混ぜず単独で回すこと。
+
+FAIL 60 件の内訳:
+
+| 領域 | FAIL |
+|---|---|
+| `selfhost_native_stage_chain` | 19 |
+| `runtime_allocator_closures` | 17 |
+| `selfhost_native_stage23_gap` | 9 |
+| `strings_patterns_compiler_integration` | 4 |
+| `selfhost_cli_core` | 4 |
+| `selfhost_lsp_docs_ops` | 2 |
+| `bootstrap_selfhost_lsp_integration` | 2 |
+| `support` / `selfhost_type_parser_parity` / `selfhost_main_module_determinism` | 各 1 |
+
+**60 件すべてが pre-existing**。baseline 側で 3,021 件を再度フルランするのは無駄なので、dev の FAIL 名 60 個を
+`--exact` の複数 filter として 1 プロセスに渡し、pristine `a3ae4551` の e2e binary に投げた:
+
+```
+test result: FAILED. 0 passed; 60 failed; 0 ignored; 0 measured; 2961 filtered out; finished in 704.97s
+```
+
+**60 件中 60 件が FAIL、pass は 0**。名前集合の diff も空 (完全一致) である。
+
+`runtime_allocator_closures` の 17 件は `lsharp-wasm --lib` の `RootSetWithoutActiveSlot` と同じクラスタ
+(`LEGACY-ROOT-01` の rooting discipline)。`selfhost_native_stage_chain` 19 件 + `selfhost_native_stage23_gap`
+9 件は native stage chain 系で、この環境に `stage0/` が未セットアップであることが背景にある
+(`LEGACY-BOOT-01`)。いずれも Track 0 とは独立した既知領域である。
+
+#### 結論
+
+`e2e` 内 60 件、`e2e` 以外 37 件、**合計 97 件の FAIL はすべて pristine `a3ae4551` で同一に再現する**。
+推論で埋めた項目は無く、全件が実測である。
+
+したがって T0-1 の profile 変更 (`incremental = true` / `debug = "line-tables-only"`)、T0-3 の
+content-addressed cache、T0-2 の `scripts/dev-loop.sh` のいずれも、workspace の挙動を変えていない。
+
+なお 97 件は ISSUES.md / TODO.md に既知として記載が無い。本 slice のスコープ外だが、別途 triage が要る。
+
+副次的な計測: `default_path_delegation` は baseline (T0-1 適用前) で 803.99s だったのが
+**304.92s〜389.00s** になった。この target は nested `cargo build -q -p lsharp-driver --bin lsharp`
+を spawn するので、T0-1 の incremental が nested build にも効いている。

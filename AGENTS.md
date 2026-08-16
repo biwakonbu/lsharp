@@ -136,6 +136,43 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 - batch の検証済み境界に到達したら、task-relevant codeとtestを commit/pushし、native evidence取得後に docs/TODOを更新して再度 commit/pushする。各 push 後に `HEAD == origin/main`、worktree、VM、artifact、TODO残件を確認する。
 - 停止・中断時は、次の RED、failure value、対象 target、再現 command、blocker、残る evidence、artifact/VMの所有とcleanup状態を current docs または TODO に残す。未検証のまま「完了」と書かず、再開時は必ず status refresh から始める。
 
+### selfhost/src 編集の local dev loop (Rust lane、evidence 非対象)
+
+`selfhost/src` を編集して挙動を見るだけなら `cargo build` を待つ必要はない。lsharp driver は
+実行ファイルの隣に `<stem>.component.wasm` があればそれを `include_bytes!` した embedded component
+より優先して読む (`crates/lsharp-driver/src/main.rs` の `resolve_default_component_bytes` /
+`adjacent_component_sidecar_path_for_executable`)。この sidecar を差し替える loop を
+`scripts/dev-loop.sh` として用意してある。
+
+```bash
+cargo build                          # driver binary が無い初回だけ
+scripts/dev-loop.sh                  # selfhost/src に変更があれば component を再生成
+.lsharp-dev/bin/lsharp check foo.ls  # 以後はこの binary を使う
+```
+
+- `scripts/dev-loop.sh` は `selfhost/src` 配下の source fingerprint (`scripts/native-selfhost-dev.sh` の
+  `source_fingerprint()` と同一アルゴリズム) を `.lsharp-dev/.component-fingerprint.sha256` と比較し、
+  一致していれば何もしない。不一致のときだけ `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` を付けて
+  Rust パイプラインで component を再生成する。この env を外すと古い component 自身が新しい source を
+  コンパイルすることになるので必須である。
+- 生成先は `.lsharp-dev/bin/` であり `target/debug/` ではない。`target/debug/lsharp` の隣に sidecar を
+  置くと、その binary を exec する driver 系 integration test の挙動が黙って変わる。
+- `target/debug/lsharp` のほうが新しい場合は driver binary も再コピーする。fingerprint とは独立に
+  判定するので、Rust 側だけ変更したときも古い binary を使い続けない。
+- `.cargo/config.toml` に `[env] LSHARP_EMBED_COMPONENT_PATH` は置かない。repo 全体へ stale component が
+  静かに効き、build.rs の `rerun-if-changed=selfhost/src` と競合する。
+- **`lsharp compile` は entry file を canonical 整形して書き戻す** (`prepare_source_for_compile`、
+  `crates/lsharp-tooling/src/compile.rs:221-235`。契約テストで固定された仕様)。素通しすると毎回
+  `selfhost/src` が dirty になり、build.rs の `rerun-if-changed=selfhost/src` が発火して次の
+  `cargo build` がフル再コンパイルになる。`scripts/dev-loop.sh` は compile 前に entry を退避して
+  復元する。復元後の tree fingerprint が compile 前と一致しなければ fingerprint を記録せず `die` する
+  (entry 以外まで書き換えられた場合の fail-closed)。書き戻しは compile の**前**に起きるので、
+  compile が失敗しても復元は必ず走る (「整形差分あり + 型エラー」が編集中の最頻ケース)。
+- **これは Rust lane の作業効率化であって Rust-free lane ではない。** 成功経路に cargo-built driver を
+  使うため、この loop の結果は native gate の pass/evidence に数えない。evidence は従来どおり
+  検証済み native stage0 + `scripts/native-selfhost-dev.sh` から取る。
+- 契約テストは `scripts/ci/test-dev-loop.sh`。
+
 ### Git worktree の配置と片付け
 
 - 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。

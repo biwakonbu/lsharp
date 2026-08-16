@@ -2,6 +2,7 @@
 
 pub mod codegen;
 pub mod component_adapter;
+pub mod embedded_component_cache;
 pub mod emit;
 pub mod host_bridge;
 pub mod incremental_bench;

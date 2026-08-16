@@ -43,7 +43,25 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"crates/lsharp-types/src/inf
 
 # test-result-tracker.sh の検証
 printf '{"tool_name":"Bash","tool_input":{"command":"cargo test"},"tool_output":{"stdout":"test result: ok. 10 passed; 0 failed"}}' | .claude/hooks/test-result-tracker.sh 2>&1
+
+# doc-guard.sh の検証
+# 注意: doc-guard は「対象 repo の working tree に docs 差分があるか」で判定するため、
+# 差分がある worktree で叩くと必ず無音になる。警告経路を見たいときは差分の無い
+# 一時 repo (git init + 実装ファイル 1 個) を作ってそのパスを渡すこと。
+printf '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/fixture/crates/foo/src/lib.rs","new_string":"fn b(){}"}}' | .claude/hooks/doc-guard.sh 2>&1
 ```
+
+doc-guard の検証済み期待挙動 (2026-08-16):
+
+| 入力 | 期待 |
+|---|---|
+| 実装ファイル + 正本 docs 未変更 | `[Doc Guard]` 警告 |
+| 実装ファイル + `TODO.md` 変更済 | 無音 |
+| 未追跡の新規 `docs/adr/*.md` あり | 無音 (untracked も差分として数える) |
+| `*_tests.rs` / `tests/` 配下 / `scripts/ci/test-*` | 無音 |
+| 対象外ファイル (README 等) | 無音 |
+
+いずれも `exit 0`。doc-guard はブロックしない。
 
 ### 3. よくある問題と対処
 

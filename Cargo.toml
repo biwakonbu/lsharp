@@ -16,13 +16,20 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
+# local dev loop の待ち時間を優先する。incremental を切ると 1 ファイル変更でも
+# 巨大な e2e compilation unit を丸ごと再ビルドするため、incremental は有効にする。
+# 導入時 (d8cd6376) の目的だった disk 圧迫は debuginfo の縮小で肩代わりする。
 [profile.dev]
-debug = 1
-incremental = false
+debug = "line-tables-only"
+incremental = true
 
 [profile.test]
-debug = 1
-incremental = false
+debug = "line-tables-only"
+incremental = true
+
+# 依存 crate (wasmtime / cranelift 等) の debuginfo が target 肥大の主因なので落とす。
+[profile.dev.package."*"]
+debug = false
 
 [workspace.dependencies]
 miette = { version = "7", features = ["fancy"] }

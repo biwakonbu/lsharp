@@ -8,6 +8,11 @@
             "type": "command",
             "command": ".claude/hooks/tdd-guard.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/doc-guard.sh",
+            "timeout": 5
           }
         ]
       }

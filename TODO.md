@@ -622,6 +622,54 @@ release parity、Rust-free aggregateは未完了である。V2-16b / V2-16c / V2
 - current-source V2-16b の Mac/Linux native gateは検証済みだが、installer / registry / provider/auth / packaged parity、
   全公開 surface、他の未対応言語機能は引き続き別タスクとして未完了である。
 
+## Rust lane dev loop と Rust-free 日常化 (2026-08-16 追加)
+
+Track 0 (Rust 側 dev loop の即効高速化) は完了し、判断と代表 evidence は
+[`decisions-dev-loop-rust-lane-speedup.md`](docs/adr/decisions-dev-loop-rust-lane-speedup.md) と
+[`rust-boundary-reduction.md`](docs/development/operations/rust-boundary-reduction.md) へ移したので
+ここには残さない。以下は Track 0 が**開けたまま**にした残件である。
+
+待ち時間は A (不要な Rust 再コンパイル) / B (L# コンパイラのスループット) / C (selfhost の差分ビルド)
+に分解される。Track 0 が閉じたのは A だけであり、**C が閉じるまで「Rust 脱却で待ち時間が減る」は
+成立しない**。順序は A → C → Rust 脱却 → B を継続改善とする。
+
+- [ ] `DEVLOOP-T1-1` current HEAD で有効な native stage0 の一度きり生成 — 唯一の Release
+  `v0.1.0-native-rc1` (2026-05-11) から `selfhost/src` は 43 files / +39,931 / -4,106 乖離しており
+  `scripts/fetch-stage0.sh` では入手できない。`--ignored`
+  `test_e2e_native_macos_aarch64_actual_app_cli_release_program` で native program を生成し、
+  `scripts/ci/package-native-stage0.sh` で `stage0/` を作り、`scripts/native-selfhost-dev.sh --bootstrap`
+  で初期化する。ブートストラップの定義上避けられない一度きりのコストであり、`DEVLOOP-T1-2` 適用後は
+  再取得不要になる。
+- [ ] `DEVLOOP-T1-2` stage0 再利用ゲートの是正 (strict lane / dev lane 分離) — Rust-free 日常化の
+  必須条件。`scripts/native-selfhost-dev.sh` の現行ゲートは `manifest.source_commit != HEAD` で `die`
+  するため、`selfhost/src` がバイト単位で不変でも commit のたびに stage0 が無効化される
+  (実測: `selfhost/src` の最終変更 `d6e0eab3` から HEAD まで 117 commit、`git diff --stat` は空)。
+  同時にこのゲートは**緩すぎる** — `selfhost/src` を編集して未コミットなら HEAD が変わらないため
+  dirty worktree が素通りする。`AGENTS.md` が要求しているのは producer commit **と** source
+  fingerprint の 2 条件であり、fingerprint 検証は契約が本来要求しているのに未実装、が正確な現状。
+  fingerprint 導入は契約を緩めるのではなく満たす変更である。実装前に RED-1〜8 (dev flag ×
+  fingerprint 一致/不一致 × commit 一致/不一致、`.lane` 記録、旧 manifest の拒否、
+  `host-cargo`/`host-lsharp` 非呼び出しの維持) を追加する。fingerprint アルゴリズムの二重実装ずれを
+  避けるため `scripts/lib/source-fingerprint.sh` へ切り出す。dev lane の結果は evidence に採用しない。
+  `AGENTS.md` の stage0 条件節の更新を伴う。
+- [~] `LEGACY-MODULE-01` selfhost/native module cache — 上記 `C`。既存項目 (本ファイル後段) を参照。
+  `DEVLOOP-T1-2` を入れても `selfhost/src` を実際に編集した瞬間に 10 分強が戻ってくる。ここが本命。
+- [ ] `I-10` workspace pre-existing 97 FAIL の triage — `cargo test --workspace` は常時 97 件 FAIL し、
+  その事実自体が台帳未記載だった。pristine `a3ae4551` で同一に再現することは確認済み (test 名の集合
+  `diff` は空)。クラスタごとに「どの未完項目の帰結か」を確定し、期待される FAIL の baseline を固定
+  する。全 FAIL を既知扱いすると新規 regression が埋もれ、全 GREEN を要求するとどの slice も
+  受入できないため、baseline の固定が先。
+- [ ] `I-11` ビルド再現性の綻び — `Cargo.lock` が `.gitignore` で除外されている
+  (fresh clone / CI ごとに依存解決が変わる)。root の `tests/meta_validation.rs` はルート
+  `Cargo.toml` に `[package]` が無く dead file。
+- [~] `DOC-07` ドキュメント同期ハーネス — `.claude/rules/doc-sync.md`、`.claude/hooks/doc-guard.sh`、
+  `.claude/skills/doc-sync/` を追加した。残るのは実運用での有効性確認と、hook が「正しい正本へ
+  正しい粒度で書かれたか」までは判定できない点の運用での補完。
+- [ ] `DOC-08` 陳腐化記述の是正 — `legacy-rust-bootstrap/README.md` が `adr-rust-removal.md` の
+  withdrawn 判断と矛盾。`TODO.md` の v0.3 milestone 節が 2 箇所ある
+  (`## Next milestone — v0.3 review provenance / lifecycle` と
+  `## Next milestone — v0.3 Review provenance lifecycle`)。
+
 ## Next milestone — v0.3 review provenance / lifecycle
 
 正本: [`v0.3-review-provenance-lifecycle.md`](docs/development/planning/v0.3-review-provenance-lifecycle.md)
@@ -2425,6 +2473,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   validation/runtime と明示 maintenance は verified。Formatter 固有 dirty-set、canonical runtime、
   source override の segment/disk persistence、自動 eviction、selfhost/native compiler、
   public command と両 supported target の evidence を閉じる。
+  計測起点: `docs/development/operations/rust-boundary-reduction.md` の T0-5 節に、
+  `lsharp-ir --lib` の壁時計 107.8s のほぼ全量を単一 test (`incremental_analysis_tests::
+  test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds`) が占めることを記録済み。
 - [~] `LEGACY-MAINT-01` large-file decomposition — Issues `I-01` / `I-08`。多数の test/
   production split と `lsharp-ir/src/lib.rs` の `Instruction` / `IrType` および
   `Module` / `Function` / GC model、linker seam、compile surface seam、compile/incremental orchestration seam、`validation_source` node/evidence/typed edge seam、validation source adapter test seam、selfhost evidence registry runtime/validation test seam、selfhost evidence parser duplicate-field seam、selfhost native differential test seam、selfhost bootstrap four-layer test seam、selfhost bootstrap acceptance test seam、selfhost typeinfer E2E test seam、selfhost lexer/parser parity E2E test seam、WasmGC probe test seam、selfhost native stage23 gap test seam、validation input manifest/reference seam、native emitter memory seam、atomic/durable writer cleanup test seam、validation output manifest wire seam、native selfhost transport strict payload-length seam、WASI runner Preview1/Preview2 mode seam は verified。`wasi.rs`、`lsharp-ir/src/lib.rs`、`lsharp-tooling/src/compile.rs`、

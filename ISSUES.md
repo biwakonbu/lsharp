@@ -143,6 +143,8 @@
 | [I-08](#i-08) | テスト配置が巨大 E2E に集中 | 中 | in-design | imp-07 |
 | [I-09](#i-09) | installed package の nested source ownership が未完 | 中 | in-design | v0.3 MCP package ownership ADR |
 | [I-10](#i-10) | `validate --source` project aggregate の selfhost/native parity が未完 | 中-高 | in-design | v0.2 validation model |
+| [I-10](#i-10) | `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載 | 高 | open | -- |
+| [I-11](#i-11) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -154,6 +156,8 @@
 | [DOC-04](#doc-04) | examples/ とドキュメントの連携不足 | 低-中 | resolved | imp-05 |
 | [DOC-05](#doc-05) | language-guide テンプレートと docs/ の二重管理リスク | 低 | resolved | imp-05 |
 | [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | resolved | imp-02 |
+| [DOC-07](#doc-07) | ドキュメント更新が実装の後追いになり、依頼駆動でしか走らない | 中 | in-design | [doc-sync rule](.claude/rules/doc-sync.md) |
+| [DOC-08](#doc-08) | 陳腐化した記述と重複節 (legacy-rust-bootstrap README / TODO の v0.3 節) | 低-中 | open | -- |
 
 ---
 
@@ -470,6 +474,47 @@
   fixed point、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`EC-M2-01` / `EC-M2-03` と
   `V2-16b` / `V2-16c` / `V2-16e` は `[~]` を維持する。
 
+### I-10: `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載
+
+- **影響度**: 高 / **状態**: open
+- **内容**: workspace 全体のテストは常時 97 件 FAIL する。この状態が台帳にも TODO にも記録されて
+  いなかったため、「workspace GREEN」を受入条件に置いた作業がそのままでは受入判定できない。
+  個々の失敗はおそらく既知の未完項目 (`LEGACY-ROOT-01` / `LEGACY-BOOT-01` 等) の帰結だが、
+  test 名から未完項目への対応付けが誰も持っていないのが問題である。
+- **根拠**: 2026-08-16 実測。pristine な `a3ae4551` と Track 0 適用後の worktree で、test 名の集合
+  `diff` が空、pass/fail 件数と snapshot の byte diff も一致する。内訳は
+  `e2e` 以外 37 件 + `lsharp-wasm --test e2e` 内 60 件。
+  baseline の e2e evidence 行: `test result: FAILED. 0 passed; 60 failed; 0 ignored; 0 measured;
+  2961 filtered out; finished in 704.97s`。
+- **既知のクラスタ (未確定、triage で確定させる)**:
+  - `runtime_allocator_closures` 17 件 + lib `RootSetWithoutActiveSlot` -- `LEGACY-ROOT-01` 系と推定
+  - `selfhost_native_stage_chain` 19 件 + `selfhost_native_stage23_gap` 9 件 -- ローカルに `stage0/` が
+    無いことに起因 (`LEGACY-BOOT-01` 系)
+  - `test_support_selfhost_typeinfer_runtime_bundle_cached` -- `tests/e2e/support.rs` の共有により
+    5 binary へ重複計上される
+  - `default_path_delegation` 12 件 -- embedded guest default path の selfhost 出力不一致
+  - `LS0102` ペア -- `lsharp-lsp` と `lsharp-tooling` に跨る
+  - insta snapshot 陳腐化 14 件 (`snapshot__wasm_*`)
+- **なぜ問題か**: 全 FAIL を既知として扱うと新規の regression が埋もれる。逆に全 GREEN を要求すると
+  どの slice も受入できない。クラスタごとに「どの未完項目の帰結か」を確定し、期待される FAIL の
+  baseline を固定する必要がある。
+- **関連**: TODO.md の triage 項目。`LEGACY-ROOT-01` / `LEGACY-BOOT-01` / I-08。
+  計測記録は [`rust-boundary-reduction.md`](docs/development/operations/rust-boundary-reduction.md) の
+  「Track 0 全体の workspace 検証 (2026-08-16)」節。
+
+<a id="i-11"></a>
+### I-11: ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file)
+
+- **影響度**: 低-中 / **状態**: open
+- **内容**: 二つの独立した綻び。
+  - `Cargo.lock` が `.gitignore:4` で除外されている。fresh clone / CI のたびに依存解決がやり直され、
+    解決結果が日によって変わるため cold build のキャッシュヒット率が下がり、bootstrap/oracle lane の
+    再現性も担保できない。application workspace として追跡対象にするのが Cargo の推奨である。
+  - root の `tests/meta_validation.rs` はルート `Cargo.toml` に `[package]` が無いためコンパイル
+    されていない dead file である。
+- **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。
+- **関連**: I-10 (どちらも「テストが本当に何を検証しているか」の可視性を下げる)。
+
 ---
 
 ## ドキュメント上の問題
@@ -593,6 +638,49 @@
   - `test_doc_site_manifest_exposes_user_guide_expansion`
   - `git diff --check`
 - **関連**: I-02 (診断統一と `LS####` 貫通)。改善設計は [imp-02](docs/development/planning/improvement-designs/imp-02-error-handling-unification.md)。
+
+<a id="doc-07"></a>
+### DOC-07: ドキュメント更新が実装の後追いになり、依頼駆動でしか走らない
+
+- **影響度**: 中 / **状態**: in-design
+- **内容**: 実装を先に書き、ドキュメント (ISSUES / TODO / ADR / 運用記録) はユーザーからの明示的な
+  依頼があったときだけ後追いで更新される、という運用になっていた。結果として、
+  (a) 決定の根拠がコミットメッセージにしか残らない、(b) 台帳に無い既知問題が生まれる (I-10 が実例)、
+  (c) 依頼のたびに同じ指示を繰り返す手間が発生する、という三つの損失が出ている。
+- **根拠**: 2026-08-16 のユーザー指摘 --「今後毎回ドキュメント更新を依頼するのは面倒」。
+  同日時点のハーネス実測では、TDD (実装前にテスト) は `.claude/hooks/tdd-guard.sh` で機械的に
+  警告されるのに対し、ドキュメントには同等の仕組みが一切無かった。
+- **設計**: TDD と同じ「先に書く」規律をドキュメントへ適用する。
+  - `.claude/rules/doc-sync.md` -- 変更種別 → 更新すべき正本の対応表と、doc-RED → 実装 → doc-GREEN の順序
+  - `.claude/hooks/doc-guard.sh` -- PreToolUse (Edit|Write)。実装ファイル編集時に台帳/docs が
+    未変更なら stderr へ警告する。`tdd-guard.sh` と同じく **非ブロック (`exit 0`)**。
+    正当なリファクタや調査を止めないため、ブロック型は採らない
+  - `.claude/skills/doc-sync/SKILL.md` -- slice を閉じる時の同期チェックリスト
+- **残る問題**: 二点。
+  - hook は「何かを書いたか」しか見ない。書いた内容が正しい正本に、正しい粒度で
+    入っているかは判定できない。そこは skill のチェックリストと人のレビューに委ねる。
+  - 判定が working tree の dirty 状態に依存するため、**commit が事実上のリセット境界**になる。
+    未コミットのまま複数 slice を跨ぐと 2 番目以降の slice では警告が出ない。
+    slice を閉じたら commit する運用が前提となる。
+- **関連**: DOC-05 (二重管理リスク)、`.claude/rules/docs-organization.md` (配置規則の正本)。
+
+<a id="doc-08"></a>
+### DOC-08: 陳腐化した記述と重複節
+
+- **影響度**: 低-中 / **状態**: open
+- **内容**: 二件。
+  - `legacy-rust-bootstrap/README.md` は「移行完了時に `crates/` を配置予定」と書くが、
+    `docs/development/operations/adr-rust-removal.md` は Rust workspace の物理削除を **withdrawn**
+    としている。README が現行 ADR と矛盾しており、ディレクトリの実体は README のみで空である。
+  - `TODO.md` に v0.3 milestone 節が 2 箇所ある。二重計上の温床になる。
+    行番号は編集のたびにずれるため見出しで指す:
+    `## Next milestone — v0.3 review provenance / lifecycle` と
+    `## Next milestone — v0.3 Review provenance lifecycle` (`grep -n '^## Next milestone — v0.3' TODO.md`)。
+- **是正済み (2026-08-16)**: `CLAUDE.md` の TDD 節が「TODO.md の項目を `[x]` に更新」と書いており、
+  `TODO.md` 冒頭の凡例および `AGENTS.md` の「`[x]` は使わない」と正面から矛盾していた。
+  DOC-07 のハーネス整備の一環で `[ ]` / `[~]` / `[BLOCKED:]` の 3 状態へ修正した。
+- **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。
+- **関連**: DOC-05 (正本の二重管理リスク)。
 
 ---
 

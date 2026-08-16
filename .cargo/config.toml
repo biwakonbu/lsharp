@@ -1,0 +1,20 @@
+# local dev の打鍵短縮のための alias のみを置く。
+#
+# 意図的に入れないもの:
+#   [env]              LSHARP_EMBED_COMPONENT_PATH を repo 全体に効かせると、
+#                      build.rs の rerun-if-changed=selfhost/src と競合して
+#                      stale component が黙ってテスト結果を変える。
+#                      L# 編集ループは scripts/dev-loop.sh (sidecar 方式) を使う。
+#   [build] rustflags  CI 側の flag と食い違うと全 crate の再コンパイルを誘発する。
+#   [target.*] linker  macOS arm64 では Xcode の ld-prime が既に最速帯にあり、
+#                      mold は Mach-O 非対応、zld は開発終了、lld にも明確な優位がない。
+
+[alias]
+t = "test --workspace"
+# nextest は process-per-test で実行を並列化するが、コンパイルは速くしない。
+# doctest を扱わないので `cargo test --doc` は別途必要。
+nt = "nextest run --workspace"
+tw = "test -p lsharp-wasm"
+ti = "test -p lsharp-ir"
+tt = "test -p lsharp-types"
+sweep = "clean --profile dev"

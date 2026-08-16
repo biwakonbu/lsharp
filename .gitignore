@@ -1,4 +1,6 @@
 /target/
+# scripts/dev-loop.sh が作る local dev sidecar (driver binary のコピーと component)
+/.lsharp-dev/
 *.wasm
 !/tests/fixtures/selfhost-debug/test_i64_if.wasm
 Cargo.lock
