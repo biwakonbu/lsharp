@@ -38,11 +38,11 @@ ci-artifacts/native-plan/
 ci-artifacts/native-proxy/
 ci-artifacts/native-linux-x86-hostgen-vm/
 ci-artifacts/native-linux-x86-native-stage0-dev/
+# native-macos-aarch64-stage0-release.sh の既定出力。追跡すると自身の
+# clean worktree gate (native-macos-aarch64-selfhost-release.sh:69-73) に
+# 引っかかり producer を二度と実行できなくなる。
 ci-artifacts/native-stage0/
 /ci-artifacts/native-release/
-# native-macos-aarch64-stage0-release.sh の既定出力。追跡すると自身の
-# clean worktree gate に引っかかり producer を二度と実行できなくなる。
-/ci-artifacts/native-stage0/
 crates/lsharp-wasm/ci-artifacts/
 selfhost/src/Backend/Native/NativeCodegen.prefix*.ls
 selfhost/src/Backend/Native/NativeCodegen.mini*.ls

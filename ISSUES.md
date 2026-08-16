@@ -143,9 +143,9 @@
 | [I-08](#i-08) | テスト配置が巨大 E2E に集中 | 中 | in-design | imp-07 |
 | [I-09](#i-09) | installed package の nested source ownership が未完 | 中 | in-design | v0.3 MCP package ownership ADR |
 | [I-10](#i-10) | `validate --source` project aggregate の selfhost/native parity が未完 | 中-高 | in-design | v0.2 validation model |
-| [I-10](#i-10) | `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載 | 高 | open | -- |
-| [I-11](#i-11) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | open | -- |
-| [I-12](#i-12) | native stage0 の `check selfhost/src/App/Cli.ls` が segfault する | 中 | open | -- |
+| [I-11](#i-11) | `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載 | 高 | open | -- |
+| [I-12](#i-12) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | open | -- |
+| [I-13](#i-13) | native aarch64 の linear heap に回収機構と bounds check が無い | 高 | documented-limitation | -- |
 
 ### ドキュメント (DOC)
 
@@ -475,7 +475,8 @@
   fixed point、Mac/Linux packaged provenance parity、Rust-free aggregateは未完了であり、`EC-M2-01` / `EC-M2-03` と
   `V2-16b` / `V2-16c` / `V2-16e` は `[~]` を維持する。
 
-### I-10: `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載
+<a id="i-11"></a>
+### I-11: `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載
 
 - **影響度**: 高 / **状態**: open
 - **内容**: workspace 全体のテストは常時 97 件 FAIL する。この状態が台帳にも TODO にも記録されて
@@ -503,26 +504,27 @@
   計測記録は [`rust-boundary-reduction.md`](docs/development/operations/rust-boundary-reduction.md) の
   「Track 0 全体の workspace 検証 (2026-08-16)」節。
 
-<a id="i-11"></a>
-### I-11: ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file)
+<a id="i-12"></a>
+### I-12: ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file)
 
 - **影響度**: 低-中 / **状態**: open
 - **内容**: 二つの独立した綻び。
-  - `Cargo.lock` が `.gitignore:4` で除外されている。fresh clone / CI のたびに依存解決がやり直され、
+  - `Cargo.lock` が `.gitignore:9` で除外されている。fresh clone / CI のたびに依存解決がやり直され、
     解決結果が日によって変わるため cold build のキャッシュヒット率が下がり、bootstrap/oracle lane の
     再現性も担保できない。application workspace として追跡対象にするのが Cargo の推奨である。
   - root の `tests/meta_validation.rs` はルート `Cargo.toml` に `[package]` が無いためコンパイル
     されていない dead file である。
 - **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。
-- **関連**: I-10 (どちらも「テストが本当に何を検証しているか」の可視性を下げる)。
+- **関連**: I-11 (どちらも「テストが本当に何を検証しているか」の可視性を下げる)。
 
 ---
 
-<a id="i-12"></a>
-### I-12: native stage0 の `check selfhost/src/App/Cli.ls` が segfault する
+<a id="i-13"></a>
+### I-13: native aarch64 の linear heap に回収機構と bounds check が無く、実務サイズの入力で segfault する
 
-- **影響度**: 中 / **状態**: open
-- **内容**: `d87cd5d1` の stage0 (`ci-artifacts/native-stage0/aarch64-apple-darwin/current`) に対して
+- **影響度**: 高 / **状態**: documented-limitation
+- **内容**: native stage0 に実務サイズの入力 (`selfhost/src/App/Cli.ls`, 2,288 行 / 115 KB) を食わせると、
+  stage bootstrap (約 49s) が成功したあと materialize 済み program が exit 139 で落ちる。
 
   ```
   bash scripts/native-selfhost-dev.sh \
@@ -530,20 +532,52 @@
     check selfhost/src/App/Cli.ls
   ```
 
-  を実行すると、stage bootstrap (約 49s) が成功したあと materialize 済み program が落ちる。
-
   ```
   scripts/native-selfhost-dev.sh: line 449: 65772 Segmentation fault: 11  "$STAGE_DIR/program.native" "$@"
   [exited with code 139]
   ```
 
-- **切り分け済みの事実**:
+  (`line 449` は当時の実測ログの引用。現在の該当行は `scripts/native-selfhost-dev.sh:492`。)
+
+- **原因 (確定)**: **linear heap (bump allocator) の枯渇**。当初の 3 仮説のうち 2 つは実測で棄却した。
+
+  | 仮説 | 判定 | 根拠 |
+  |---|---|---|
+  | root stack overflow (8 MiB) | 棄却 | `x27-x28` = 1,249,744 / 8,388,608 = **14.9%** しか使っていない |
+  | native thread stack overflow (128 MiB) | 棄却 | fault は SP から約 20 GB 離れた位置への **byte read** (`esr 0x92000007`) |
+  | linear heap (4 GiB) の枯渇 | **確定** | fault address が heap 終端の **+1 byte**。`vmRegionInfo` も `MALLOC_LARGE` 直後の未マップ域 |
+
+  既定 4 GiB での crash: `KERN_INVALID_ADDRESS at 0xc48010001`、heap base `x21 = 0xb48000000`、
+  `alloc_size = 0x1_0001_0000` (= 4 GiB + 64 KiB) より heap 終端 `0xc48010000` — 差は **+1 byte**。
+  `alloc_size` は `scripts/ci/materialize-native-macos-aarch64-bundle.py:44-47` の式と
+  `stage-data.bin` の実測 29,052 bytes から正確に再現できる。
+
+- **heap 拡大では解決しない (実測)**: stage0 同梱 materializer の `0x1_0000_0000` を `0x2_0000_0000` (8 GiB) に
+  patch し、生成された `program.s` の `_lsharp_alloc_size: .quad 8590000128` で反映を確認したうえで再実行しても、
+  **拡大した heap をちょうど使い切って同じ様態で落ちた** (fault address − heap 終端 = **0**)。
+  構造的な理由がある。
+  - materializer に `free` / `munmap` / frontier の reset が**一切無い**。`calloc` 1 回 + bump のみの
+    純粋な bump allocator で**回収機構が存在しない**。消費量は生存データ量ではなく
+    **累積確保回数**に比例するため、heap 拡大は先送りにしかならない。
+- **bounds check も無い**: `selfhost/src/Backend/Native/NativeCodegen.ls:14512-14548`
+  `emit-aarch64-selfhost-alloc-helper` は 18 word / 72 bytes ちょうど (`:20361` の
+  `append-native-bytes-rooted ... 72` と一致)。全 word を decode しても **limit 比較も条件分岐も無い**。
+  唯一の分岐は heap base の非ゼロ判定 `CBNZ x21` のみ。対照的に x86 側の
+  `emit-x86-selfhost-vector-new-helper:9635` / `emit-x86-selfhost-string-concat-helper:9861` は
+  「先頭 16 bytes は cursor/limit」「cursor/limit の範囲へ bump allocate」とコメントで limit を明示しており、
+  **aarch64 側だけ非対称**である。よって heap 終端を越えた確保が検出されず、未マップページへ触れて SIGSEGV になる。
+- **切り分け済みの周辺事実**:
   - stage bootstrap 自体は成功する。stage0 package は壊れていない。
   - 小さい fixture (`tests/fixtures/validation/*.ls`) を使う
     `scripts/ci/native-selfhost-dev-source-file-smoke.sh` は exit 0 で通る。
-  - したがって入力サイズまたは内容に依存する問題であり、stage0 の有効性とは別問題である。
-- **未実施**: 最小再現入力の特定、crash 位置の特定 (linear memory 境界 / stack 深度のいずれか)。
-- **根拠**: 2026-08-16 実測 (T1-1 の副産物)。
+  - `materialize-native-macos-aarch64-bundle.py` には heap / root stack / native stack の
+    env override が無い。Linux x86 側は `materialize-native-linux-x86-bundle.py:9` に
+    `LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES` を持つ。ただし上記実測より、
+    **env knob は本ワークロードの緩和策にならない**。
+- **根拠**: 2026-08-16 実測 (T1-1 の副産物 + 2 回の crash report 解析)。
+- **帰結する未完項目**: TODO.md の `NATIVE-HEAP-01` (aarch64 alloc helper の bounds check) と
+  `NATIVE-HEAP-02` (回収機構の設計)。前者は症状を診断メッセージへ変えるだけで、
+  「115 KB の入力に 8 GiB 超」という増幅そのものは解消しない。
 - **関連**: `LEGACY-IO-01` (dynamic root/data/heap layout)、`LEGACY-ROOT-01` (rooting discipline)、
   [`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)。
 
@@ -677,7 +711,7 @@
 - **影響度**: 中 / **状態**: in-design
 - **内容**: 実装を先に書き、ドキュメント (ISSUES / TODO / ADR / 運用記録) はユーザーからの明示的な
   依頼があったときだけ後追いで更新される、という運用になっていた。結果として、
-  (a) 決定の根拠がコミットメッセージにしか残らない、(b) 台帳に無い既知問題が生まれる (I-10 が実例)、
+  (a) 決定の根拠がコミットメッセージにしか残らない、(b) 台帳に無い既知問題が生まれる (I-11 が実例)、
   (c) 依頼のたびに同じ指示を繰り返す手間が発生する、という三つの損失が出ている。
 - **根拠**: 2026-08-16 のユーザー指摘 --「今後毎回ドキュメント更新を依頼するのは面倒」。
   同日時点のハーネス実測では、TDD (実装前にテスト) は `.claude/hooks/tdd-guard.sh` で機械的に

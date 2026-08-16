@@ -4939,7 +4939,7 @@ Rust lane の作業効率の記録として残す。
 [`decisions-dev-loop-rust-lane-speedup.md`](../../adr/decisions-dev-loop-rust-lane-speedup.md) にある。
 本節は計測値と観測事実の記録であり、残件は `TODO.md` の
 「Rust lane dev loop と Rust-free 日常化」節、workspace の pre-existing FAIL は `ISSUES.md` の
-`I-10` を正本とする。
+`I-11` を正本とする。
 
 #### 計測プロトコル
 
@@ -5331,5 +5331,5 @@ commit から HEAD が進むと**設計どおり失敗する**。regression で�
 
 ### 既知の不具合
 
-`check selfhost/src/App/Cli.ls` は segfault する (`I-12`)。stage0 自体は有効で、小さい fixture を
+`check selfhost/src/App/Cli.ls` は segfault する (`I-13`)。stage0 自体は有効で、小さい fixture を
 使う documented smoke は通る。lane の動作確認には小さい fixture を使うこと。

@@ -118,7 +118,7 @@ lld の Mach-O backend は Apple ld-prime に対し明確な優位が無い。`[
 であり、test 名の集合 `diff` は空、pass/fail 件数と snapshot の byte diff も一致する。したがって
 受入条件の意図 (T0 の変更が挙動を変えないこと) は満たしている。T0-1 / T0-2 / T0-3 は免責される。
 
-この 97 件は台帳未記載だったため、本 slice で `I-10` として ISSUES.md へ登録した。
+この 97 件は台帳未記載だったため、本 slice で `I-11` として ISSUES.md へ登録した。
 
 なお `cargo test --workspace --doc` が 8 crate ではなく 7 crate を報告するのは、`lsharp-driver` が
 `[[bin]]` のみで lib target を持たず cargo が Doc-tests を生成しないためであり、正常挙動である。

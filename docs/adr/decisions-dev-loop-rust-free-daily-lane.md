@@ -7,7 +7,7 @@
   および fixture 側の追随 (`scripts/ci/test-native-selfhost-dev.sh`、
   `scripts/ci/test-native-stage0-package.sh`、`scripts/ci/test-native-selfhost-install-runner.sh`、
   `scripts/ci/test-dev-loop.sh`、`scripts/ci/test-package-native-linux-x86-actual-stage1-vm.sh`)
-- Related: `AGENTS.md` の「Rust-free selfhost の進め方」、`LEGACY-MODULE-01`、`I-12`、
+- Related: `AGENTS.md` の「Rust-free selfhost の進め方」、`LEGACY-MODULE-01`、`I-13`、
   [`decisions-v0.3-native-macos-stage0-producer.md`](decisions-v0.3-native-macos-stage0-producer.md)、
   [`decisions-dev-loop-rust-lane-speedup.md`](decisions-dev-loop-rust-lane-speedup.md)、
   [`rust-boundary-reduction.md`](../development/operations/rust-boundary-reduction.md)
@@ -139,7 +139,7 @@ producer と consumer が同一値を出すことを実測で確認した (`self
 
 commit `ccfe4efc` (stage0 の `source_commit` は `d87cd5d1`、`selfhost/src` は不変) の状態で、
 実 stage0 に対して両 lane を通した。入力は小さい fixture
-`tests/fixtures/validation/ec-m3-canonical-source.ls` を使う (`selfhost/src/App/Cli.ls` は `I-12` の
+`tests/fixtures/validation/ec-m3-canonical-source.ls` を使う (`selfhost/src/App/Cli.ls` は `I-13` の
 segfault を踏むため結果が混ざる)。
 
 strict lane — 設計どおり `die` する:
@@ -216,4 +216,4 @@ stage0 を再生成してから実行する。`AGENTS.md` にも明記した。
   (約 900s の再生成が不要になる)。旧 package は `current.pre-fingerprint` として rollback 用に残した。
 - **`check selfhost/src/App/Cli.ls` が segfault する** (exit 139)。stage0 の bootstrap 自体は成功し、
   小さい fixture を使う documented smoke も通るため、stage0 は有効である。入力サイズ/内容に依存する
-  別問題として `I-12` に登録した。本 slice のスコープ外。
+  別問題として `I-13` に登録した。本 slice のスコープ外。
