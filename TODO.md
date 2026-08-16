@@ -635,11 +635,13 @@ Track 0 (Rust 側 dev loop の即効高速化) は完了し、判断と代表 ev
 
 - [ ] `DEVLOOP-T1-1` current HEAD で有効な native stage0 の一度きり生成 — 唯一の Release
   `v0.1.0-native-rc1` (2026-05-11) から `selfhost/src` は 43 files / +39,931 / -4,106 乖離しており
-  `scripts/fetch-stage0.sh` では入手できない。`--ignored`
-  `test_e2e_native_macos_aarch64_actual_app_cli_release_program` で native program を生成し、
-  `scripts/ci/package-native-stage0.sh` で `stage0/` を作り、`scripts/native-selfhost-dev.sh --bootstrap`
-  で初期化する。ブートストラップの定義上避けられない一度きりのコストであり、`DEVLOOP-T1-2` 適用後は
-  再取得不要になる。
+  `scripts/fetch-stage0.sh` では入手できない。手順は
+  [`decisions-v0.3-native-macos-stage0-producer.md`](docs/adr/decisions-v0.3-native-macos-stage0-producer.md)
+  が定めた単一 producer `scripts/ci/native-macos-aarch64-stage0-release.sh` を使う
+  (App.Cli native release 生成 → stage0 compiler → `package-native-stage0.sh` までを内包する。
+  実測 484.89〜542.31s)。生成後に `scripts/native-selfhost-dev.sh --bootstrap` で
+  `.native-selfhost-dev/` を初期化する。ブートストラップの定義上避けられない一度きりのコストであり、
+  `DEVLOOP-T1-2` 適用後は再取得不要になる。
 - [ ] `DEVLOOP-T1-2` stage0 再利用ゲートの是正 (strict lane / dev lane 分離) — Rust-free 日常化の
   必須条件。`scripts/native-selfhost-dev.sh` の現行ゲートは `manifest.source_commit != HEAD` で `die`
   するため、`selfhost/src` がバイト単位で不変でも commit のたびに stage0 が無効化される
