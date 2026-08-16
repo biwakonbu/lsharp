@@ -23,4 +23,60 @@
 #   - doctest は nextest の対象外。`cargo test --doc` は別途 1 回回して結果を注記する。
 #   - `scripts/ci/test-*.sh` の shell 契約テストはこのリストの対象外 (別枠で管理)。
 #
-# TODO: 測定完了後にここへ実測値を書き込む。現在は測定中のため空。
+# e2e (binary_id(lsharp-wasm::e2e)) は 6 分割で測定中。完了後に追記する。
+
+# ---- 非 e2e (binary_id(lsharp-wasm::e2e) 以外) : 2067 件中 38 FAIL / 1398.826s ----
+# 測定: 2026-08-16 20:11 JST, cargo nextest run --workspace --profile baseline \
+#       -E 'not binary_id(lsharp-wasm::e2e)'
+
+# [lsharp-driver::default_path_delegation] embedded component の default path 委譲
+lsharp-driver::default_path_delegation test_build_without_lsharp_path_uses_embedded_component_default_path
+lsharp-driver::default_path_delegation test_check_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path
+lsharp-driver::default_path_delegation test_check_without_lsharp_path_uses_embedded_component_default_path
+lsharp-driver::default_path_delegation test_compile_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path
+lsharp-driver::default_path_delegation test_compile_with_preview1_target_without_lsharp_path_writes_runnable_wasm_artifact
+lsharp-driver::default_path_delegation test_compile_without_lsharp_path_uses_embedded_component_default_path
+lsharp-driver::default_path_delegation test_driver_component_lsharp_path_build_writes_runnable_component_artifact
+lsharp-driver::default_path_delegation test_driver_component_lsharp_path_compile_writes_runnable_component_artifact
+lsharp-driver::default_path_delegation test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path
+lsharp-driver::default_path_delegation test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_driver
+lsharp-driver::default_path_delegation test_test_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path
+lsharp-driver::default_path_delegation test_test_without_lsharp_path_uses_embedded_component_default_path
+# [lsharp-driver::validate_source_review_edges] review/change edge の manifest 投影 Some(2) vs Some(0)
+lsharp-driver::validate_source_review_edges validate_source_projects_review_and_change_edges_into_manifest
+# [lsharp-lsp] LS0102 クラスタ (parse 診断の stable code が LS0102 vs LS0101)
+lsharp-lsp util::tests::incremental_module_parse_diagnostics_forward_stable_code
+# [lsharp-syntax::selfhost_cli_validation_contract] upstream 由来の新規。selfhost/src/Tools/Validation/Evidence.ls に validation-source-manifest-json-state が無い
+lsharp-syntax::selfhost_cli_validation_contract selfhost_cli_validation_surface_is_registered
+# [lsharp-tooling] LS0102 クラスタ (api_doc の parse error stable code)
+lsharp-tooling api_doc::tests::test_build_api_doc_for_file_preserves_parse_error_code
+# [lsharp-wasm] LEGACY-ROOT-01 (RootSetWithoutActiveSlot)
+lsharp-wasm wasi::tests::test_root_set_invalid_slot_records_failure_ledger_before_trap
+# [lsharp-wasm::doctools_parity] typed metadata 6 vs 5 / support 共有
+lsharp-wasm::doctools_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
+lsharp-wasm::doctools_parity test_e2e_doctools_extracts_typed_defn_metadata
+# [lsharp-wasm::e2e_selfhost_syntax] nested module decl の parser
+lsharp-wasm::e2e_selfhost_syntax test_e2e_selfhost_parser_nested_module_decl
+# [lsharp-wasm::lsp_diagnostic_parity] support 共有 (tests/e2e/support.rs の mod 共有で 5 binary へ重複計上)
+lsharp-wasm::lsp_diagnostic_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
+# [lsharp-wasm::lsp_edge_case_parity] support 共有
+lsharp-wasm::lsp_edge_case_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
+# [lsharp-wasm::lsp_stateful_parity] support 共有
+lsharp-wasm::lsp_stateful_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
+# [lsharp-wasm::property_probe_diagnostic] support 共有
+lsharp-wasm::property_probe_diagnostic support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
+# [lsharp-wasm::snapshot] insta snapshot 停滞 (最終更新 2026-05-31、codegen は 2026-07-27 まで進行)。cargo insta accept は 2 ヶ月分の未レビュー codegen 出力の追認になるので行わない
+lsharp-wasm::snapshot test_snapshot_wasm_adt_construct
+lsharp-wasm::snapshot test_snapshot_wasm_adt_match
+lsharp-wasm::snapshot test_snapshot_wasm_arithmetic
+lsharp-wasm::snapshot test_snapshot_wasm_closure
+lsharp-wasm::snapshot test_snapshot_wasm_do_block
+lsharp-wasm::snapshot test_snapshot_wasm_if_expr
+lsharp-wasm::snapshot test_snapshot_wasm_let_binding
+lsharp-wasm::snapshot test_snapshot_wasm_match_literal
+lsharp-wasm::snapshot test_snapshot_wasm_multiple_functions
+lsharp-wasm::snapshot test_snapshot_wasm_print_output
+lsharp-wasm::snapshot test_snapshot_wasm_recursive_function
+lsharp-wasm::snapshot test_snapshot_wasm_simple_return
+lsharp-wasm::snapshot test_snapshot_wasm_string_operations
+lsharp-wasm::snapshot test_snapshot_wasm_trait_dispatch
