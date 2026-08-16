@@ -5277,6 +5277,22 @@ clean worktree (`d87cd5d1`) で 1 回実行した。
 
 出力は `ci-artifacts/native-stage0/aarch64-apple-darwin/current`。
 
+その後 `origin/main` へ rebase し、`d55159b6` の clean worktree で同じ producer を再実行した
+(`origin/main` が `selfhost/src` を 18 ファイル動かしており、旧 stage0 は fingerprint 不一致で
+使用不能になったため)。
+
+| 指標 | 値 |
+|---|---|
+| stage0 e2e 全体 | **1179.16s** |
+| `source_commit` | `d55159b6bf850beb2552fae6fe2b9fce9677662b` |
+| `selfhost_src_fingerprint` | `8f9a9117be572f317ef69fb4a7ec4736f4b7c672fe6044e0a26cb8b394396019` |
+| App.Cli artifact | 4804 KiB |
+
+記録レンジの約 2.2 倍。**振れ幅の観測が 2 点になった** (927.92s / 1179.16s)。
+運用上は「この producer は 500s では終わらないものとして予定を組む」のが現実的である。
+`d87cd5d1` 時点の値と fingerprint `c3da0653…` は rebase で orphan になったが、
+振れ幅の記録として上の表に残してある。
+
 ### manifest field 追加だけなら full 再生成は不要
 
 `selfhost_src_fingerprint` の追加のように manifest だけを更新したい場合、既存 binary に対して
@@ -5328,6 +5344,20 @@ dev lane で起動した stage directory には `$STAGE_DIR/.lane` に `dev-reus
 `scripts/ci/native-selfhost-dev-source-file-smoke.sh` は strict lane を使うため、stage0 を生成した
 commit から HEAD が進むと**設計どおり失敗する**。regression ではない。証跡を取り直すときは、
 その HEAD で stage0 を再生成してから実行する。
+
+この smoke は env で入力を受け取る (`:61-63`)。引数無しで叩くと
+`ERROR: NATIVE_STAGE0_DIR is required` で落ちるので、両方を渡すこと。
+
+```bash
+NATIVE_STAGE0_DIR="$PWD/ci-artifacts/native-stage0/aarch64-apple-darwin/current" \
+NATIVE_SELFHOST_SOURCE_ROOT="$PWD/selfhost" \
+  bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
+```
+
+なお `--dev-reuse` は「commit 不一致を許す」フラグであって「dev lane を強制する」フラグではない。
+stage0 を作った直後は `source_commit` が一致するので、`--dev-reuse` を渡しても strict lane で走り
+`.lane` は作られない (`native-selfhost-dev.sh:419-423` が strict lane で `rm -f` する)。
+dev lane を実際に踏んだことを確認したいなら、`selfhost/src` を触らない commit を 1 つ積んでから叩く。
 
 ### 既知の不具合
 

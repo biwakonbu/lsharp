@@ -158,7 +158,7 @@
 | [DOC-05](#doc-05) | language-guide テンプレートと docs/ の二重管理リスク | 低 | resolved | imp-05 |
 | [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | resolved | imp-02 |
 | [DOC-07](#doc-07) | ドキュメント更新が実装の後追いになり、依頼駆動でしか走らない | 中 | in-design | [doc-sync rule](.claude/rules/doc-sync.md) |
-| [DOC-08](#doc-08) | 陳腐化した記述と重複節 (legacy-rust-bootstrap README / TODO の v0.3 節) | 低-中 | open | -- |
+| [DOC-08](#doc-08) | 陳腐化した記述と重複節 (legacy-rust-bootstrap README / TODO の v0.3 節) | 低-中 | resolved | -- |
 
 ---
 
@@ -532,8 +532,11 @@
 ### I-13: native aarch64 の linear heap に回収機構と bounds check が無く、実務サイズの入力で segfault する
 
 - **影響度**: 高 / **状態**: documented-limitation
-- **内容**: native stage0 に実務サイズの入力 (`selfhost/src/App/Cli.ls`, 2,288 行 / 115 KB) を食わせると、
+- **内容**: native stage0 に実務サイズの入力 (`selfhost/src/App/Cli.ls`) を食わせると、
   stage bootstrap (約 49s) が成功したあと materialize 済み program が exit 139 で落ちる。
+  初回の切り分けは `App/Cli.ls` が 2,288 行 / 115 KB、stage0 が `d87cd5d1` の時点で行った。
+  その後 `origin/main` へ rebase して `App/Cli.ls` は **2,556 行** (+268) になり、stage0 も
+  `d55159b6` で作り直したが、**再現性は変わらず exit 139 のまま**である (2026-08-16 再確認)。
 
   ```
   bash scripts/native-selfhost-dev.sh \
@@ -742,7 +745,7 @@
 <a id="doc-08"></a>
 ### DOC-08: 陳腐化した記述と重複節
 
-- **影響度**: 低-中 / **状態**: open
+- **影響度**: 低-中 / **状態**: resolved
 - **内容**: 二件。
   - `legacy-rust-bootstrap/README.md` は「移行完了時に `crates/` を配置予定」と書くが、
     `docs/development/operations/adr-rust-removal.md` は Rust workspace の物理削除を **withdrawn**
@@ -754,7 +757,34 @@
 - **是正済み (2026-08-16)**: `CLAUDE.md` の TDD 節が「TODO.md の項目を `[x]` に更新」と書いており、
   `TODO.md` 冒頭の凡例および `AGENTS.md` の「`[x]` は使わない」と正面から矛盾していた。
   DOC-07 のハーネス整備の一環で `[ ]` / `[~]` / `[BLOCKED:]` の 3 状態へ修正した。
-- **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。
+- **解決** (2026-08-16): 二件とも是正した。
+
+  1. **`legacy-rust-bootstrap/README.md` を全面書き換え**。「`crates/` / `Cargo.toml` / `Cargo.lock` を
+     配置予定」(旧 L13-17) と「ロールバックが必要な場合にのみ参照する」(旧 L23) を撤回し、
+     ADR (`docs/development/operations/adr-rust-removal.md:41` の withdrawn / `:55` の維持スコープ表 /
+     `:104` の primary rollback path 否定) と整合する内容へ差し替えた。
+     現在は「比較・監査用のスナップショット置き場であり、いまは空。Rust workspace は `crates/` に残る。
+     rollback の正本は `docs/development/operations/rollback-procedure.md` と `scripts/rollback.sh`」と明記する。
+
+  2. **`TODO.md` の v0.3 milestone 節 2 つを 1 つへ統合**。`## Next milestone — v0.3 Review provenance lifecycle`
+     (小文字表記でない側) を、`## Next milestone — v0.3 review provenance / lifecycle` へ merge した。
+     **どちらを残すか / どちらを捨てるかの編集判断はしていない**。統合スクリプトが旧節の
+     `EC-M3-01`〜`05` の本文を、統合先の対応する `- [~]` bullet 直下へ字下げ継続として verbatim で移し、
+     旧節は「上記へ統合した」旨のポインタへ縮めてある (旧節末尾の地の文も保存)。
+     - 検証: `EC-M3-0N` ごとに `^- \[~\] \`EC-M3-0N\`` が 1 回ずつであること、旧節の全行が統合先に
+       残存すること、文字多重集合の差分が「剥がした 5 つの `EC-M3-0N` ラベルと重複していた正本行 1 行」で
+       過不足なく説明できること (net 34 文字) を機械的に確認した。
+     - 統合を選んだ理由: `git log -L` で両節を追うと **どちらも upstream で更新が続いており**、
+       「片方が陳腐化しているので消す」という選択肢は最初から無かった。
+
+- **`LEGACY-MODULE-01` の二重は誤読であり、是正対象ではない** (2026-08-16 判定):
+  `TODO.md` に `LEGACY-MODULE-01` は 2 回現れるが、前者は
+  「`- [~] \`LEGACY-MODULE-01\` selfhost/native module cache — 上記 \`C\`。既存項目 (本ファイル後段) を参照。」
+  と自ら後段を指す **意図的な前方参照**であり、後者 (`SCC inference and cache generalization`) が本体である。
+  v0.3 節のような二重計上ではないので統合しない。
+  **同じ誤読の再発を防ぐためここに記録する** — `grep 'LEGACY-MODULE-01' TODO.md` の 2 hit を見て
+  「重複だ」と判断してはならない。
+- **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。是正の実施も同日。
 - **関連**: DOC-05 (正本の二重管理リスク)。
 
 ---

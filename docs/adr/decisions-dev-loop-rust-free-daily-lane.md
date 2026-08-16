@@ -168,6 +168,55 @@ dev-reuse
 **927.92s の stage0 再生成が 6.62s の stage bootstrap に置き換わった**のが、本 slice が実際に短縮した
 待ち時間である。ただし短縮の対象は「`selfhost/src` を触らない commit のあと」に限られる (下記 Consequences)。
 
+### `origin/main` へ rebase したあとの再検証 (2026-08-16)
+
+上記までの実測はいずれも rebase **前**の worktree で取ったもので、引用している SHA
+(`d87cd5d1` / `ccfe4efc`) と fingerprint `c3da0653…` は rebase によって orphan になっている。
+**歴史的な記録としてそのまま残す**。以下は同じ検証を rebase 後の HEAD で取り直した結果である。
+
+`origin/main` は `selfhost/src` を 18 ファイル (+1682/-466) 動かしていたため、旧 stage0 は
+fingerprint 不一致で両 lane とも使用不能になった。`scripts/ci/native-macos-aarch64-stage0-release.sh` を
+`d55159b6` の clean worktree で 1 回実行して作り直した。
+
+| 指標 | rebase 前 | rebase 後 |
+|---|---|---|
+| stage0 producer の e2e | 927.92s | **1179.16s** |
+| `source_commit` | `d87cd5d1…` | `d55159b6…` |
+| `selfhost_src_fingerprint` | `c3da0653…` | `8f9a9117be572f317ef69fb4a7ec4736f4b7c672fe6044e0a26cb8b394396019` |
+| App.Cli artifact | -- | 4804 KiB |
+
+producer の所要は既存 ADR の記録値 (484.89〜542.31s) の約 2.2 倍まで伸びた。
+927.92s の観測と合わせて、**このレンジは Mac Apple Silicon でも安定しない**という
+データ点が 2 つになった。原因は依然として未特定である。
+
+strict lane smoke は新 stage0 で exit 0:
+
+```
+$ NATIVE_STAGE0_DIR=<abs>/current NATIVE_SELFHOST_SOURCE_ROOT=<abs>/selfhost \
+    bash scripts/ci/native-selfhost-dev-source-file-smoke.sh
+aarch64-apple-darwin native selfhost source-file smoke passed
+[exit 0]
+```
+
+2 lane の分岐も新 HEAD で再現した。stage0 を作った直後は `source_commit` が一致するため
+`--dev-reuse` を渡しても strict lane に落ちる (`.lane` は `:419-423` で削除される)。
+`selfhost/src` を触らない commit `2b5db1eb` を積んで commit だけをずらすと、設計どおり分岐する:
+
+```
+$ bash scripts/native-selfhost-dev.sh --stage0-dir <current> check examples/fib.ls
+error: stage0 manifest source_commit does not match current checkout: manifest=d55159b6... checkout=2b5db1eb...
+[exit 1]
+
+$ bash scripts/native-selfhost-dev.sh --stage0-dir <current> --dev-reuse check examples/fib.ls
+native-selfhost-dev: dev-reuse lane (source_commit mismatch tolerated: manifest=d55159b6... checkout=2b5db1eb...)
+Fn
+diagnostics:0
+[exit 0]
+
+$ cat <stage-dir>/.lane
+dev-reuse
+```
+
 ### fixture 側の追随が必要だった箇所
 
 manifest field を必須にしたため、stage0 manifest を偽造して runner を起動する harness が壊れた。

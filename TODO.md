@@ -812,16 +812,50 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   `docs/adr/decisions-v0.3-review-wire-schema-base64url.md`、
   `docs/adr/decisions-v0.3-review-wire-sequence-overflow.md`、
   `docs/adr/decisions-v0.3-review-wire-schema-nonblank.md`。
+
+  (以下は旧 "## Next milestone — v0.3 Review provenance lifecycle" 節が持っていた
+  同じ項目の記録。節が 2 つに分かれ `[~]` が二重計上されていたため、散文を落とさずここへ統合した。)
+  attestation の canonical bytes、strict UTC timestamp、Ed25519 signature、
+  canonical base64url schema/parser parity、`sequence` の `1..=u64::MAX` schema/parser boundary、
+  required string と optional `reason_digest` の non-blank schema/parser parity、
+  `trust_store` exact duplicate の `uniqueItems`/Rust parser parity、
+  `trust_store` の retired/active key rotation と provider/algorithm ごとの active key 一意選択を
+  Rust wire/native preflight で fail-closed にする parity、Rust の verified signature から
+  attestation/trust-store digest と verification clock を束ねる receipt の Rust/native canonical
+  handoff、明示 receipt を native `lsharp_validate` へ渡して
+  `review_verifications[].receipt` へ exact projection する handoffも verified partial とした。
+  current subject/source/provenance binding と explicit report、および
+  `reviews[].verification_state` manifest projection を Rust canonical model で検証する。
+  attestation input wiring、selfhost/native parity、両 supported target の artifact/runtime evidence
+  を閉じる。
 - [~] `EC-M3-02` lifecycle transition — append-only registry と stale/revoked 境界の Rust verified
   slice。selfhost reducerにも deterministic ordering、transition、sequence rollback、`effective_at`
   rollback（code `8` と前後 timestamp payload）、explicit clock 以下の最新 `event_at` 選択を接続し、
   Rust `review_lifecycle` 6件・clock gate 1件と selfhost lifecycle E2E 2件で parityを確認した。
   source/native report parity、provider snapshot、release evidence は残る。
+
+  (以下は旧 "## Next milestone — v0.3 Review provenance lifecycle" 節が持っていた
+  同じ項目の記録。節が 2 つに分かれ `[~]` が二重計上されていたため、散文を落とさずここへ統合した。)
+  append-only lifecycle を deterministic に reduce し、active sequence、superseded、
+  revoked、stale を report の事実へ接続する。Rust/selfhost reducerの sequence/transition/
+  `effective_at` rollback（selfhost code `8`）と explicit clock `event_at` 選択は verified partial
+  sliceだが、provider snapshot の取得、report projection、native parity は残る。
 - [~] `EC-M3-03` CLI/MCP explicit inputs — explicit context、clock、trust/lifecycle input の Rust
   CLI/MCP boundary は verified partial slice。MCP input schema の subject/source/now/artifact all-or-none
   も `dependentRequired` で runtime boundaryへ接続した。native MCP subset の `review_now` canonical UTC
   lexical schema と実行前 reject も verified partial として追加した。selfhost/native MCP と target artifact
   parity は残る。ADR: `docs/adr/decisions-v0.3-native-mcp-review-clock-schema.md`。
+
+  (以下は旧 "## Next milestone — v0.3 Review provenance lifecycle" 節が持っていた
+  同じ項目の記録。節が 2 つに分かれ `[~]` が二重計上されていたため、散文を落とさずここへ統合した。)
+  CLI/MCP の trust store/lifecycle explicit input と project-root boundary を維持し、
+  attestation verification state と no-report/no-manifest の失敗境界を CLI/MCP の共通 projectionへ接続した。
+  `--review-subject-digest` / `--review-source-commit` / `--review-now` の all-or-none context、
+  expiry/binding の Rust CLI/MCP fixture、malformed clock の no-report contract も verified partial
+  とした。Rust verified receipt の明示 file input、native command handoff、欠落/不一致 report
+  projection の fail-closed も native MCP focused suiteで verified partial とした。selfhost/native
+  full parity は残る。ADR:
+  `docs/adr/decisions-v0.3-review-explicit-context.md`。
 - [~] `EC-M3-04` source / selfhost / native producer parity — `:review` 互換を維持した named-field
   `:review-attestation` の Rust parser/source adapter、selfhost kind 20、`unverified` state、span、
   canonical bytes parity、invalid algorithm/signature/timestamp/time-window の fail-closed contract を verified。native
@@ -845,6 +879,23 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   同じ writer は work directory 内の symlink も staging 前に拒否し、外部 path を参照する証跡を保存しない
   contract test を追加した。これは task-owned evidence の安全境界に限る verified partial sliceであり、Linux
   current-source runtime、packaged provenance、両 target matrixは残る。
+
+  (以下は旧 "## Next milestone — v0.3 Review provenance lifecycle" 節が持っていた
+  同じ項目の記録。節が 2 つに分かれ `[~]` が二重計上されていたため、散文を落とさずここへ統合した。)
+  source と selfhost/native producer の attestation named-field、canonical bytes、
+  state、span、exit code の Rust/selfhost 同一 fixture parity は verified partial。JSON report の
+  field order、nullable `expires_at`、canonical bytes、span と native source-file smoke の
+  report/manifest fixture contract を追加検証した。Mac current-source stage0 producer/package/source-file
+  smoke は実行済みで、native MCP receipt の report→manifest review projectionも verified partial とした。
+  native source-file evidence writer が explicit `validation-attestation-json.stdout` の
+  `review_attestations` projectionを evidence manifestへ保存し、report欠落時に証跡を作らない
+  handoffも verified partial とした。
+  official two-target orchestrator の explicit `review-attestation-report` を Mac/Lima の各 source-file
+  smokeへ一度だけ伝播し、target別 evidence manifestの `review_attestations` と exact compareする
+  postflight、report-free routeの no-implicit projection、report欠落・片側不一致の pre/postflight
+  fail-closed を fake two-target harnessで verified partial とした。
+  Linux current-source stage0、packaged artifact provenance、Mac/Linux runtime parityを
+  `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
 - [~] `EC-M3-05` release / evidence gate — Rust CLI/MCP と manifest の入出力 roundtrip が、明示した
   subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
   として deterministic JSON/text/MCP/manifest へ投影し、競合を fail-closed に拒否する verified partial
@@ -1066,6 +1117,51 @@ aggregate は未接続のため `[~]` を維持する。ADR:
   の packaged provenance/rollback bytes parity は未検証のため、M3-05-N2 / M3-05-N7 は `[~]` のまま残る。current-source
   blocker の再現 command は `git rev-parse --verify HEAD` と `find /tmp /Users/biwakonbu/github/tmp -maxdepth 5 -type f
   -name manifest.json -path '*lsharp*'`。ADR: `docs/adr/decisions-v0.3-rollback-checksum-coverage.md`。
+
+  (以下は旧 "## Next milestone — v0.3 Review provenance lifecycle" 節が持っていた
+  同じ項目の記録。節が 2 つに分かれ `[~]` が二重計上されていたため、散文を落とさずここへ統合した。)
+  keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity
+  projection、nullable field order、conflict rejection は verified partial。offline release identity
+  verifier、native-only archive / packaged stage0 の optional projection、artifact/source mismatch の
+  release smoke rejectionを追加した。native text/JSON/MCP と release gate の
+  `verified/unverified/stale/revoked/invalid` ordering、provider adapter、両 target runtimeを
+  M3-05-N1/N2 で閉じる。native MCPの明示 receipt report→manifest exact projectionと
+  欠落/不一致 postflight rejectも verified partial とした。official gate の task-owned cleanup path traversal (`.` / `..`) 拒否は
+  verified partial として追加したが、actual provider/auth、current-source/packaged runtime、
+  rollback/Wasm parity は残る。ADR:
+  `docs/adr/decisions-v0.3-native-official-cleanup-path.md`。
+  さらに offline release identity verifier の明示 `--artifact` 入力を regular fileかつ非symlinkに限定し、
+  期待 digestと同じ bytesを持つ外部 artifact symlinkを `artifact must be a regular non-symlink file` で
+  fail-closedにする RED→GREENを `test-native-release-identity.py` で確認した。これは artifact path provenance
+  の verified partial sliceであり、provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux
+  両 targetの packaged provenance/rollback bytes parityは未検証であるため、EC-M3-05と関連 milestoneは
+  `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-release-identity-artifact-regular-file.md`。
+  さらに非native packaged archiveの `lsharp-lsp --version` 出力を caller-provided `VERSION` と比較し、
+  checksum-valid な version mismatch fixtureを `packaged LSP version mismatch` で fail-closed にする
+  RED→GREENを `test-release-smoke-provider-snapshots.sh` で確認した。これは packaged LSP version output parity
+  の verified partial sliceであり、live provider/auth取得・意味検証、current-source Linux runtime、Mac/Linux両
+  targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
+  ADR: `docs/adr/decisions-v0.3-packaged-lsp-version-output-parity.md`。
+  さらに offline release identity verifier に caller-provided `--verification-now` UTC clock を追加し、identity の
+  `now` が検証時計より未来の場合を `identity now is after verification now` で fail-closed にする
+  RED→GREENを `test-native-release-identity.py` で確認した。これは provider identity caller-clock freshness の
+  verified partial sliceであり、live provider/auth取得・署名意味検証、current-source Linux runtime、Mac/Linux両 targetの
+  packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
+  ADR: `docs/adr/decisions-v0.3-provider-identity-verification-clock.md`。
+  さらに native-only packaged App.Cli の `--help` を stdout/stderr 別々に収集し、成功・`Usage: lsharp` の stdout・空の
+  stderr を要求する boundaryを追加した。checksum-valid な fake packageが help warning を stderrへ漏らしても受理する
+  REDを、`native-only App.Cli help must keep stderr empty` で fail-closed にする GREENへ更新し、valid native/rollback fixture
+  の継続成功を `test-release-smoke-provider-snapshots.sh` で確認した。これは packaged help output の verified partial sliceであり、
+  native/LSP version、archive/rollback manifest・checksum、provider snapshot、live provider/auth取得・意味検証、current-source
+  Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは
+  `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-packaged-native-help-output.md`。
+  さらに official release gate の provider input preflight に明示 `NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW` を接続し、4つの
+  target/stage0 identityへ caller clockを渡すようにした。App.Cli artifact identityには sibling `program.native` の bytesも渡し、
+  future identity `now` または artifact digest mismatch を release/package/fetch/smoke/Lima開始前に fail-closed とする
+  RED→GREENを `test-native-official-release-snapshots.sh` で確認した。これは provider snapshot input→identity freshness→source/artifact
+  binding を一つの official gate boundaryへ集約する verified partial sliceであり、live provider/auth取得・署名意味検証、current-source
+  Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
+  ADR: `docs/adr/decisions-v0.3-native-official-provider-freshness-binding.md`。
 
 2026-08-01 の current `origin/main` `1cdbe555f63c909fbfb3940c8462cf4b08ba442d` では、Mac/Linux
 App.Cli producer、Linux hostgen fixed point、protocol stage0 compiler、provider snapshot identity、
@@ -1681,89 +1777,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 
 ## Next milestone — v0.3 Review provenance lifecycle
 
-正本: [`v0.3-review-provenance-lifecycle.md`](docs/development/planning/v0.3-review-provenance-lifecycle.md)
-
-- [~] `EC-M3-01` attestation の canonical bytes、strict UTC timestamp、Ed25519 signature、
-  canonical base64url schema/parser parity、`sequence` の `1..=u64::MAX` schema/parser boundary、
-  required string と optional `reason_digest` の non-blank schema/parser parity、
-  `trust_store` exact duplicate の `uniqueItems`/Rust parser parity、
-  `trust_store` の retired/active key rotation と provider/algorithm ごとの active key 一意選択を
-  Rust wire/native preflight で fail-closed にする parity、Rust の verified signature から
-  attestation/trust-store digest と verification clock を束ねる receipt の Rust/native canonical
-  handoff、明示 receipt を native `lsharp_validate` へ渡して
-  `review_verifications[].receipt` へ exact projection する handoffも verified partial とした。
-  current subject/source/provenance binding と explicit report、および
-  `reviews[].verification_state` manifest projection を Rust canonical model で検証する。
-  attestation input wiring、selfhost/native parity、両 supported target の artifact/runtime evidence
-  を閉じる。
-- [~] `EC-M3-02` append-only lifecycle を deterministic に reduce し、active sequence、superseded、
-  revoked、stale を report の事実へ接続する。Rust/selfhost reducerの sequence/transition/
-  `effective_at` rollback（selfhost code `8`）と explicit clock `event_at` 選択は verified partial
-  sliceだが、provider snapshot の取得、report projection、native parity は残る。
-- [~] `EC-M3-03` CLI/MCP の trust store/lifecycle explicit input と project-root boundary を維持し、
-  attestation verification state と no-report/no-manifest の失敗境界を CLI/MCP の共通 projectionへ接続した。
-  `--review-subject-digest` / `--review-source-commit` / `--review-now` の all-or-none context、
-  expiry/binding の Rust CLI/MCP fixture、malformed clock の no-report contract も verified partial
-  とした。Rust verified receipt の明示 file input、native command handoff、欠落/不一致 report
-  projection の fail-closed も native MCP focused suiteで verified partial とした。selfhost/native
-  full parity は残る。ADR:
-  `docs/adr/decisions-v0.3-review-explicit-context.md`。
-- [~] `EC-M3-04` source と selfhost/native producer の attestation named-field、canonical bytes、
-  state、span、exit code の Rust/selfhost 同一 fixture parity は verified partial。JSON report の
-  field order、nullable `expires_at`、canonical bytes、span と native source-file smoke の
-  report/manifest fixture contract を追加検証した。Mac current-source stage0 producer/package/source-file
-  smoke は実行済みで、native MCP receipt の report→manifest review projectionも verified partial とした。
-  native source-file evidence writer が explicit `validation-attestation-json.stdout` の
-  `review_attestations` projectionを evidence manifestへ保存し、report欠落時に証跡を作らない
-  handoffも verified partial とした。
-  official two-target orchestrator の explicit `review-attestation-report` を Mac/Lima の各 source-file
-  smokeへ一度だけ伝播し、target別 evidence manifestの `review_attestations` と exact compareする
-  postflight、report-free routeの no-implicit projection、report欠落・片側不一致の pre/postflight
-  fail-closed を fake two-target harnessで verified partial とした。
-  Linux current-source stage0、packaged artifact provenance、Mac/Linux runtime parityを
-  `v0.3-milestone-01.md` の M3-04-N1 で閉じる。
-- [~] `EC-M3-05` keyset/lifecycle/source/artifact digest の Rust CLI/MCP/manifest と selfhost identity
-  projection、nullable field order、conflict rejection は verified partial。offline release identity
-  verifier、native-only archive / packaged stage0 の optional projection、artifact/source mismatch の
-  release smoke rejectionを追加した。native text/JSON/MCP と release gate の
-  `verified/unverified/stale/revoked/invalid` ordering、provider adapter、両 target runtimeを
-  M3-05-N1/N2 で閉じる。native MCPの明示 receipt report→manifest exact projectionと
-  欠落/不一致 postflight rejectも verified partial とした。official gate の task-owned cleanup path traversal (`.` / `..`) 拒否は
-  verified partial として追加したが、actual provider/auth、current-source/packaged runtime、
-  rollback/Wasm parity は残る。ADR:
-  `docs/adr/decisions-v0.3-native-official-cleanup-path.md`。
-  さらに offline release identity verifier の明示 `--artifact` 入力を regular fileかつ非symlinkに限定し、
-  期待 digestと同じ bytesを持つ外部 artifact symlinkを `artifact must be a regular non-symlink file` で
-  fail-closedにする RED→GREENを `test-native-release-identity.py` で確認した。これは artifact path provenance
-  の verified partial sliceであり、provider API/auth取得・意味検証、current-source Linux runtime、Mac/Linux
-  両 targetの packaged provenance/rollback bytes parityは未検証であるため、EC-M3-05と関連 milestoneは
-  `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-release-identity-artifact-regular-file.md`。
-  さらに非native packaged archiveの `lsharp-lsp --version` 出力を caller-provided `VERSION` と比較し、
-  checksum-valid な version mismatch fixtureを `packaged LSP version mismatch` で fail-closed にする
-  RED→GREENを `test-release-smoke-provider-snapshots.sh` で確認した。これは packaged LSP version output parity
-  の verified partial sliceであり、live provider/auth取得・意味検証、current-source Linux runtime、Mac/Linux両
-  targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
-  ADR: `docs/adr/decisions-v0.3-packaged-lsp-version-output-parity.md`。
-  さらに offline release identity verifier に caller-provided `--verification-now` UTC clock を追加し、identity の
-  `now` が検証時計より未来の場合を `identity now is after verification now` で fail-closed にする
-  RED→GREENを `test-native-release-identity.py` で確認した。これは provider identity caller-clock freshness の
-  verified partial sliceであり、live provider/auth取得・署名意味検証、current-source Linux runtime、Mac/Linux両 targetの
-  packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
-  ADR: `docs/adr/decisions-v0.3-provider-identity-verification-clock.md`。
-  さらに native-only packaged App.Cli の `--help` を stdout/stderr 別々に収集し、成功・`Usage: lsharp` の stdout・空の
-  stderr を要求する boundaryを追加した。checksum-valid な fake packageが help warning を stderrへ漏らしても受理する
-  REDを、`native-only App.Cli help must keep stderr empty` で fail-closed にする GREENへ更新し、valid native/rollback fixture
-  の継続成功を `test-release-smoke-provider-snapshots.sh` で確認した。これは packaged help output の verified partial sliceであり、
-  native/LSP version、archive/rollback manifest・checksum、provider snapshot、live provider/auth取得・意味検証、current-source
-  Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは
-  `[~]` のまま残す。ADR: `docs/adr/decisions-v0.3-packaged-native-help-output.md`。
-  さらに official release gate の provider input preflight に明示 `NATIVE_OFFICIAL_REVIEW_VERIFICATION_NOW` を接続し、4つの
-  target/stage0 identityへ caller clockを渡すようにした。App.Cli artifact identityには sibling `program.native` の bytesも渡し、
-  future identity `now` または artifact digest mismatch を release/package/fetch/smoke/Lima開始前に fail-closed とする
-  RED→GREENを `test-native-official-release-snapshots.sh` で確認した。これは provider snapshot input→identity freshness→source/artifact
-  binding を一つの official gate boundaryへ集約する verified partial sliceであり、live provider/auth取得・署名意味検証、current-source
-  Linux runtime、Mac/Linux両 targetの packaged provenance/rollback bytes parityは未検証のため、EC-M3-05と関連 milestoneは `[~]` のまま残す。
-  ADR: `docs/adr/decisions-v0.3-native-official-provider-freshness-binding.md`。
+この節は上記 `## Next milestone — v0.3 review provenance / lifecycle` へ統合した。
+同じ `EC-M3-01`〜`05` を両方の節が `[~]` で抱えており、二重計上になっていたため。
+旧節が持っていた verified partial 記録は一つも捨てず、統合先の対応する項目の直下へ
+そのまま移してある。v0.3 の未完項目は上記節を正本とする。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
 `[~]` を維持する。次の RED と validation gate は

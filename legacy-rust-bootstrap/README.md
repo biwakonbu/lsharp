@@ -1,23 +1,32 @@
 # legacy-rust-bootstrap
 
-Rust で書かれた L# コンパイラのレガシーブートストラップコード。
+Rust 実装との比較・監査を行うためのスナップショット置き場。**現在は空**。
 
-## 目的
+## 位置づけ
 
-selfhost コンパイラへの完全移行後、Rust 実装は参照用として本ディレクトリに隔離される。
-現在の `crates/` ディレクトリにある Rust 実装が active であり、
-本ディレクトリは将来の移行完了時にコードを退避する先として予約されている。
+Rust ワークスペースは `crates/` に**現役として存在し続ける**。
+`docs/development/operations/adr-rust-removal.md:55` の維持スコープ表が
+`Cargo.toml` / `Cargo.lock` / `rust-toolchain.toml` / `.cargo/` を
+「物理削除しない」と明記しているとおり、本ディレクトリへ Rust 実装を
+「退避」する計画は存在しない。
 
-## 構造
+同 ADR は、かつての前提
 
-移行完了時に以下を配置予定:
+- Phase 11 の完了が Rust workspace の物理削除を含む
+- Rust workspace の撤去が stable native-only archive の前提条件である
 
-- `crates/` -- Rust クレート群のスナップショット
-- `Cargo.toml` -- ワークスペース設定
-- `Cargo.lock` -- 依存関係ロック
+を **withdrawn** として列挙している。
+
+## rollback との関係
+
+本ディレクトリは rollback の正路では**ない**。
+`adr-rust-removal.md:104` のとおり、ここにスナップショットが置かれていたとしても
+それは比較・監査用であり、必要時に差分を確認するために使う。
+
+rollback の手順は `docs/development/operations/rollback-procedure.md` と
+`scripts/rollback.sh` を正本とする。
 
 ## 注意事項
 
-- 本ディレクトリのコードは保守対象外
-- バグ修正は selfhost コンパイラ側で行う
-- ロールバックが必要な場合にのみ参照する
+- 本ディレクトリに置かれたコードは保守対象外
+- バグ修正は selfhost コンパイラ側、ないし現役の `crates/` 側で行う
