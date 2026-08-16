@@ -144,7 +144,7 @@
 | [I-09](#i-09) | installed package の nested source ownership が未完 | 中 | in-design | v0.3 MCP package ownership ADR |
 | [I-10](#i-10) | `validate --source` project aggregate の selfhost/native parity が未完 | 中-高 | in-design | v0.2 validation model |
 | [I-11](#i-11) | `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載 | 高 | open | -- |
-| [I-12](#i-12) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | open | -- |
+| [I-12](#i-12) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | resolved | -- |
 | [I-13](#i-13) | native aarch64 の linear heap に回収機構と bounds check が無い | 高 | documented-limitation | -- |
 
 ### ドキュメント (DOC)
@@ -507,7 +507,7 @@
 <a id="i-12"></a>
 ### I-12: ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file)
 
-- **影響度**: 低-中 / **状態**: open
+- **影響度**: 低-中 / **状態**: resolved
 - **内容**: 二つの独立した綻び。
   - `Cargo.lock` が `.gitignore:9` で除外されている。fresh clone / CI のたびに依存解決がやり直され、
     解決結果が日によって変わるため cold build のキャッシュヒット率が下がり、bootstrap/oracle lane の
@@ -515,6 +515,15 @@
   - root の `tests/meta_validation.rs` はルート `Cargo.toml` に `[package]` が無いためコンパイル
     されていない dead file である。
 - **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。
+- **解決** (2026-08-16):
+  - `.gitignore` から `Cargo.lock` の行を除去し追跡対象にした。`adr-rust-removal.md:55` の維持スコープ表が
+    `Cargo.lock` を「物理削除しない」と宣言していることとも整合する。
+  - dead file は**削除ではなく移設**した。root の `tests/meta_validation.rs` が持っていた
+    `TEST-META-02` (completion marker の 3状態管理) は、生きている
+    `crates/lsharp-wasm/tests/meta_validation.rs` (TEST-META-01/03/04/05/06 を保持) に**存在しなかった**。
+    削除すれば検証が 1 つ失われるため、`CARGO_MANIFEST_DIR` 起点の path 解決へ書き換えたうえで
+    live 側へ移し、root の dead file を落とした。移設後に実行して 6 件全て pass することを確認済み
+    (移設前は 5 件。`TEST-META-02` はこれまで一度も実行されていなかった)。
 - **関連**: I-11 (どちらも「テストが本当に何を検証しているか」の可視性を下げる)。
 
 ---

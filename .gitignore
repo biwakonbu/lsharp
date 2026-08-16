@@ -6,7 +6,10 @@
 /.native-selfhost-dev/
 *.wasm
 !/tests/fixtures/selfhost-debug/test_i64_if.wasm
-Cargo.lock
+# Cargo.lock は追跡する (ISSUES.md I-12)。ここは application workspace であり、
+# adr-rust-removal.md:55 の維持スコープ表も Cargo.lock を「物理削除しない」と
+# 宣言している。ignore したままだと fresh clone ごとに依存解決が動いて
+# ビルドが再現しない。
 *.pdf
 .claude/plans/
 .claude/settings.local.json

@@ -644,9 +644,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `diff` は空)。クラスタごとに「どの未完項目の帰結か」を確定し、期待される FAIL の baseline を固定
   する。全 FAIL を既知扱いすると新規 regression が埋もれ、全 GREEN を要求するとどの slice も
   受入できないため、baseline の固定が先。
-- [ ] `I-12` ビルド再現性の綻び — `Cargo.lock` が `.gitignore` で除外されている
-  (fresh clone / CI ごとに依存解決が変わる)。root の `tests/meta_validation.rs` はルート
-  `Cargo.toml` に `[package]` が無く dead file。
 - [ ] `NATIVE-HEAP-01` aarch64 alloc helper の bounds check — `I-13` の帰結。
   `selfhost/src/Backend/Native/NativeCodegen.ls:14512-14548` の
   `emit-aarch64-selfhost-alloc-helper` は 18 word / 72 bytes ちょうどで、decode しても
