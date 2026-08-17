@@ -27,7 +27,94 @@
 #   - doctest は nextest の対象外。`cargo test --doc` は別途 1 回回して結果を注記する。
 #   - `scripts/ci/test-*.sh` の shell 契約テストはこのリストの対象外 (別枠で管理)。
 #
-# e2e (binary_id(lsharp-wasm::e2e)) は 6 分割で測定中。完了後に追記する。
+# ---- e2e (binary_id(lsharp-wasm::e2e)) : 1799 件中 70 FAIL ----
+# 測定: 2026-08-16〜17, cargo nextest run --workspace --profile baseline \
+#       -E 'binary_id(lsharp-wasm::e2e)' --partition hash:i/6 を i=1..6 で 6 回
+#       (1 プロセスで回すと 5〜6 時間かかり途中で中断されるため分割した)
+#       cargo nextest list の run 集合 1799 と過不足 0 / 重複 0 で一致することを確認済み
+#       (残り 1260 は #[ignore]。1799 + 1260 = #[test] 総数 3059)
+
+# [bootstrap_selfhost_lsp_integration] selfhost formatter の compile が UndefinedVar { name: "ast-defn-signature" } で失敗する。2 件とも同一 span (24644..24662) なので単一の未定義シンボル。未実装への RED
+lsharp-wasm::e2e e2e::bootstrap_selfhost_lsp_integration::test_e2e_selfhost_formatter
+lsharp-wasm::e2e e2e::bootstrap_selfhost_lsp_integration::test_e2e_selfhost_formatter_lsp_integration
+# [runtime_allocator_closures] LEGACY-ROOT-01。RootLifetime { RootPopUnderflow } / { ImbalancedExit } / { BranchDepthMismatch }
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_command_line_arg_heap_handle_is_tagged
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_read_file_heap_handle_is_tagged
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_read_stdin_heap_handle_is_tagged
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_root_runtime_api_preserves_argument_evaluation
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_root_runtime_api_tracks_slots_and_values
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_ignores_legacy_zero_root_slot_sentinel
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_direct_rooted_string_across_trigger
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_string_reachable_through_rooted_closure_capture
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_string_reachable_through_rooted_map_value
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_string_reachable_through_rooted_ref_cell
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_skips_tombstoned_map_value_when_tracing
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_object_table_grows_past_initial_capacity
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_root_stack_grows_past_initial_capacity
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_root_stack_growth_preserves_root_api
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_telemetry_tracks_root_stack_depth
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_string_heap_handles_are_tagged_for_runtime_discrimination
+lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_substring_heap_handle_is_tagged
+# [selfhost_cli_core] selfhost CLI の未実装挙動への RED。4 要因 -- parser-owned contract suite の canonical/legacy 分離で件数不一致 / canonical case の unsupported type を実行前に報告しない / validate-source-json が contradicting evidence を報告しない / import 先 helper を含む check が診断 0 件にならない (first-body:undefined symbol)
+lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_file_resolves_imported_definition
+lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_reports_invalid_canonical_case
+lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence
+lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms
+# [selfhost_lsp_docs_ops] 4 要因。(1) TESTGATE-01: heavy test の #[ignore] 検査が mod 分割に追随できていない (親は include! のみ、実体は part_NNN.rs) (2) DIAG-DEDUP-01: diagnostics dedup は test と実装 (AC-209) で仕様が食い違う (2 件) (3) type diagnostics の標準 LSP Diagnostic 配列投影が未実装 (4) release-smoke.sh が native-only artifact の --version / --help boundary を検証していない
+lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted
+lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_ops06_release_smoke_contract
+lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json
+lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json_snapshot
+lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_type_diagnostics_use_standard_projection
+# [selfhost_main_module_determinism] selfhost の module graph topological sort が全モジュールを覆えていない (循環依存は無い)。未実装への RED
+lsharp-wasm::e2e e2e::selfhost_main_module_determinism::test_e2e_selfhost_module_graph_topological_sort
+# [selfhost_native_stage23_gap] selfhost codegen の未達。3 系統 -- 式深度上限 (opcode-pushes-stack が 8 > 既存上限 7) / harness fixture 不在 (target/e2e-selfhost-fixtures/ 配下 3 件) / native helper emitter の offset・trailer・prologue 不一致 (aarch64 CLI runtime + write-file、x86_64 map/file + vector/ref + write-file)
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_native_cli_runtime_extension_keeps_large_dispatch_nesting_bounded
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_native_codegen_aarch64_cli_runtime_helpers_preserve_offsets_and_branch_targets
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_native_codegen_aarch64_write_file_helpers_use_binary_file_abi
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_native_codegen_x86_map_and_file_helper_emitters_return_executable_byte_vectors
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_native_codegen_x86_vector_and_ref_helper_call_sites_resolve_offsets
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_native_codegen_x86_vector_new_call_targets_executable_entry_after_prefix
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_native_codegen_x86_write_file_helpers_use_binary_file_abi
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_selfhost_compiler_maps_native_cli_runtime_builtins_to_dedicated_opcodes
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_selfhost_compiler_maps_not_equal_to_native_compare_opcode
+lsharp-wasm::e2e e2e::selfhost_native_stage23_gap::test_selfhost_ftable_uses_flat_vector_storage_for_large_tables
+# [selfhost_native_stage_chain] 3 系統。(1) 16 件は selfhost/src のソース本文 assertion (未実装挙動への RED)。stage0 不在とは無関係 (2) 6 件は x86_64 native codegen の byte 実測 -- command-line-args helper の rel32 解決 (entry=30 call_offset=51 target=1784 vs helper_start=2511) と function segment metadata marker の未知値 (marker=0 idx=27) (3) 1 件は release gate contract の文面 (checksum.sh 呼び出しが scripts に無い)
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_e2e_selfhost_x86_command_line_args_depth_one_targets_runtime_helper
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_linux_x86_function_metadata_derives_entry_ir_call_trace_rows
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_linux_x86_function_segment_metadata_detects_bad_map_new_runtime_call_target
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_linux_x86_function_segment_metadata_detects_map_new_target_inside_function_body
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_linux_x86_function_segment_metadata_detects_zeroed_map_insert_runtime_call
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_native_codegen_x86_command_line_args_direct_append_avoids_rel_argument_helper
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_native_official_release_local_gate_packages_both_supported_targets
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_compile_file_mode_roots_payload_and_wasm_before_printing
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_compile_file_payload_roots_inputs_before_data_ref_alloc
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_compiler_mode_has_normal_payload_production_functions_diagnostic
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_compiler_mode_has_normal_setup_payload_diagnostic
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_normal_payload_roots_payload2_before_root_set
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_parse_defn_body_branch_roots_body_before_finalize
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_parser_parse_if_reads_final_result_from_ref_after_expect
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_selfhost_test_runner_evaluates_all_invariant_samples
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_hot_path_avoids_logical_builtin_ops
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_map_new_fallback_uses_literal_opcode
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_source_apply_roots_results_before_returning_to_expr
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_source_defn_public_step_uses_marker_free_stable_entry
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_source_program_base_helper_avoids_prefix_collision
+lsharp-wasm::e2e e2e::selfhost_native_stage_chain::test_wasm_compiler_user_call_resolves_function_index_before_arg_compilation
+# [selfhost_standalone_io] wasi_snapshot_preview1 import の後段で user call を出すと不正な Wasm になる (offset 2456: type mismatch: expected i64 but nothing on stack)。未実装への RED
+lsharp-wasm::e2e e2e::selfhost_standalone_io::test_e2e_selfhost_standalone_user_call_after_preview1_import
+# [selfhost_type_parser_parity] selfhost parser が nested module decl の outer module body-count を 1 にできない。未実装への RED
+lsharp-wasm::e2e e2e::selfhost_type_parser_parity::test_e2e_selfhost_parser_nested_module_decl
+# [strings_patterns_compiler_integration] 2 要因。(1) 4 件は selfhost codegen が host alloc へ負の size を渡す (six-import alloc: end address が不正)。RootLifetime とも I-13 の heap 枯渇とも別 (2) 1 件は WasmEmit が native 専用 opcode 88 を黙って破棄する (拒否すべき)
+lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_compiler_mode_imported_record_constructor_and_static_accessor_run
+lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_compiler_mode_record_constructor_and_static_accessor_run
+lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_compiler_mode_record_update_runs
+lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_ftable_compiler_record_update_and_static_accessor_run
+lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_wasmemit_rejects_native_only_opcodes
+# [support] TESTGATE-02。cached_selfhost_bundle が (import Types.TypeInfer) を除去する (support.rs:1426) のに test は生ソースの verbatim 包含を要求する。2026-07-20 の 2b0c54b1 で検査が陳腐化した。mod 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる
+lsharp-wasm::e2e e2e::support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
 
 # ---- 非 e2e (binary_id(lsharp-wasm::e2e) 以外) : 2067 件中 38 FAIL / 1398.826s ----
 # 測定: 2026-08-16 20:11 JST, cargo nextest run --workspace --profile baseline \
@@ -56,18 +143,28 @@ lsharp-syntax::selfhost_cli_validation_contract selfhost_cli_validation_surface_
 lsharp-tooling api_doc::tests::test_build_api_doc_for_file_preserves_parse_error_code
 # [lsharp-wasm] LEGACY-ROOT-01 (RootSetWithoutActiveSlot)
 lsharp-wasm wasi::tests::test_root_set_invalid_slot_records_failure_ledger_before_trap
-# [lsharp-wasm::doctools_parity] typed metadata 6 vs 5 / support 共有
+# support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached は以下 5 binary +
+# lsharp-wasm::e2e の計 6 binary に現れる。tests/e2e/support.rs を `mod` で共有しているため
+# 同一 test が各 binary へ重複計上される。**重複計上そのものは正しく、6 件はいずれも本物の
+# 陳腐化 assertion。** 原因は TESTGATE-02 -- cached_selfhost_bundle (support.rs:1426) が
+# `(import Types.TypeInfer)\n` を除去して bundle を組むのに、assert は selfhost_module() が
+# 返す生ソースの verbatim 包含を要求する。当該 import 行を持つモジュールは原理的に一致しない。
+# assert は 2026-03-27 7f9bdbb4 由来、`replace()` と import 行は 2026-07-20 2b0c54b1 が
+# 同時に入れた。「計上の仕方の問題だから実害なし」ではない。
+# [lsharp-wasm::doctools_parity] typed metadata 6 vs 5 / support 共有 (TESTGATE-02)
 lsharp-wasm::doctools_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
 lsharp-wasm::doctools_parity test_e2e_doctools_extracts_typed_defn_metadata
-# [lsharp-wasm::e2e_selfhost_syntax] nested module decl の parser
+# [lsharp-wasm::e2e_selfhost_syntax] nested module decl の parser (outer module body-count が
+# 1 にならない)。同名 test は lsharp-wasm::e2e 側の selfhost_type_parser_parity にもあり、
+# こちらも同じ理由で落ちる。binary-id が違うので別行として扱う
 lsharp-wasm::e2e_selfhost_syntax test_e2e_selfhost_parser_nested_module_decl
-# [lsharp-wasm::lsp_diagnostic_parity] support 共有 (tests/e2e/support.rs の mod 共有で 5 binary へ重複計上)
+# [lsharp-wasm::lsp_diagnostic_parity] support 共有 (TESTGATE-02)
 lsharp-wasm::lsp_diagnostic_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
-# [lsharp-wasm::lsp_edge_case_parity] support 共有
+# [lsharp-wasm::lsp_edge_case_parity] support 共有 (TESTGATE-02)
 lsharp-wasm::lsp_edge_case_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
-# [lsharp-wasm::lsp_stateful_parity] support 共有
+# [lsharp-wasm::lsp_stateful_parity] support 共有 (TESTGATE-02)
 lsharp-wasm::lsp_stateful_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
-# [lsharp-wasm::property_probe_diagnostic] support 共有
+# [lsharp-wasm::property_probe_diagnostic] support 共有 (TESTGATE-02)
 lsharp-wasm::property_probe_diagnostic support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
 # [lsharp-wasm::snapshot] insta snapshot 停滞 (最終更新 2026-05-31、codegen は 2026-07-27 まで進行)。cargo insta accept は 2 ヶ月分の未レビュー codegen 出力の追認になるので行わない
 lsharp-wasm::snapshot test_snapshot_wasm_adt_construct
