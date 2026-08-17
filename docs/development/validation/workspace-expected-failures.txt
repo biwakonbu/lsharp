@@ -24,8 +24,15 @@
 #     selfhost_native_stage_chain.rs:2406 の 1 箇所だけで、これは markdown の中身に
 #     `"./stage0"` という文字列が載っていることを要求する doc assertion であり path 参照ではない。
 #   - 測定は `cargo nextest run --workspace --profile baseline` (.config/nextest.toml)。
-#   - doctest は nextest の対象外。`cargo test --doc` は別途 1 回回して結果を注記する。
+#   - doctest は nextest の対象外。`cargo test --doc --workspace` を別途 1 回回した (2026-08-17)。
+#     結果は **7 crate すべてが `0 passed; 0 failed`** — この workspace に doctest は 1 件も無い。
+#     所要 3s。FAIL は無いのでこのリストに載る行も無いが、「未計測」と「0 件」の区別のため記す。
 #   - `scripts/ci/test-*.sh` の shell 契約テストはこのリストの対象外 (別枠で管理)。
+#     ただし 2 本はこのリストの FAIL を直接叩くので、必ず非 0 になる (2026-08-17 実測):
+#       test-gc-rooting.sh    -> runtime_allocator_closures::..._collector_preserves_direct_rooted_string_across_trigger
+#       test-runtime-limits.sh -> runtime_allocator_closures::..._object_table_grows_past_initial_capacity
+#     どちらも LEGACY-ROOT-01。gate script 側が expected-failure を pass 前提で叩いている
+#     状態なので、LEGACY-ROOT-01 の解消と同時に見直す (SMOKE-GATE-02)。
 #
 # ---- e2e (binary_id(lsharp-wasm::e2e)) : 1799 件中 70 FAIL ----
 # 測定: 2026-08-16〜17, cargo nextest run --workspace --profile baseline \

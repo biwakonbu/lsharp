@@ -695,6 +695,37 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   「lint の異なる rule を落とさない」と AC-209 の設計判断として明記している。
   **単なる未実装 RED ではなく仕様の衝突**であり、どちらが陳腐化しているかは AC-209 の
   受入基準に当たって決める。
+- [ ] `SMOKE-GATE-01` `default-path-smoke` が dev build では通らない — 2026-08-17 実測。
+  `scripts/ci/default-path-smoke.sh:38-43` は `lsharp compile examples/fib.ls -o *.component.wasm` の
+  stdout に `wasm-size:` (= selfhost guest 側の出力) を要求するが、
+  build.rs が `selfhost/src/App/EmbeddedCli.ls` から自前で作る既定の embedded component は
+  **`error: wasi-component output requires external component packaging` で exit 1** になる。
+  driver は `main.rs:908-929` の設計どおり host compile へ fallback し、
+  Rust 側の `コンパイル成功: ... (18506 bytes)` を出すので assertion が落ちる。
+  `-o` を素の `.wasm` にしても同じメッセージで、**この guest は compile を一切遂行できない**。
+  結果として `scripts/ci/test-fresh-clone.sh` の clean-checkout 経路 (`:132-134`) も
+  必ず rc=1 になる。CI が緑なのは `LSHARP_EMBED_COMPONENT_PATH` 由来の
+  **packaged component を積んだバイナリ**で回しているからだと考えられる。
+  ゲートを「packaged 前提」と明示するか、dev build でも通る形に直すかを決める。
+  **本ブランチ起因ではないことは確認済み** — `crates/lsharp-driver/src` / `selfhost` /
+  `stdlib` / `wit` / 当該 2 script は `origin/main` と無差分で、
+  embedded component も cache を退避した fresh build とバイト一致する。
+- [ ] `SMOKE-GATE-02` rooting 系 gate script が expected-failure を pass 前提で叩いている —
+  2026-08-17 実測。`scripts/ci/test-gc-rooting.sh` と `scripts/ci/test-runtime-limits.sh` は
+  `runtime_allocator_closures` の `..._collector_preserves_direct_rooted_string_across_trigger` /
+  `..._object_table_grows_past_initial_capacity` を単体実行するが、この 2 件は
+  `LEGACY-ROOT-01` として `docs/development/validation/workspace-expected-failures.txt` に
+  載っている既知 FAIL なので、script は構造的に rc=101 になる。
+  `LEGACY-ROOT-01` の解消と同時に見直す。それまでは「回すと必ず落ちる gate」であることを
+  baseline 側に注記してある。
+- [ ] `EMBEDCACHE-01` embedded component cache の key が入力を覆いきっていない —
+  `crates/lsharp-driver/build.rs` の `cached_default_embedded_component` は
+  `selfhost/src` 全ファイル + build script binary の fingerprint を key にするが、
+  `build_default_embedded_component` が呼ぶ `compile_multi_file` は **`stdlib/` も読む**。
+  build.rs は `wit/` にも `rerun-if-changed` を張っているのに、こちらも key に入っていない。
+  `stdlib/` や `wit/` だけが変わり lsharp-ir / lsharp-wasm が変わらない upstream 変更が来ると、
+  **stale な component を hit させうる**。現時点で実害は観測していない
+  (cache 退避後の fresh build とバイト一致を確認済み) が、key に両者を含めるべき。
 - [~] `DOC-07` ドキュメント同期ハーネス — `.claude/rules/doc-sync.md`、`.claude/hooks/doc-guard.sh`、
   `.claude/skills/doc-sync/` を追加した。残るのは実運用での有効性確認と、hook が「正しい正本へ
   正しい粒度で書かれたか」までは判定できない点の運用での補完。
