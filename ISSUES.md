@@ -143,7 +143,7 @@
 | [I-08](#i-08) | テスト配置が巨大 E2E に集中 | 中 | in-design | imp-07 |
 | [I-09](#i-09) | installed package の nested source ownership が未完 | 中 | in-design | v0.3 MCP package ownership ADR |
 | [I-10](#i-10) | `validate --source` project aggregate の selfhost/native parity が未完 | 中-高 | in-design | v0.2 validation model |
-| [I-11](#i-11) | `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載 | 高 | open | -- |
+| [I-11](#i-11) | `cargo test --workspace` の恒常 FAIL が台帳未記載 | 高 | resolved | -- |
 | [I-12](#i-12) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | resolved | -- |
 | [I-13](#i-13) | native aarch64 の linear heap に回収機構と bounds check が無い | 高 | documented-limitation | -- |
 
@@ -476,33 +476,164 @@
   `V2-16b` / `V2-16c` / `V2-16e` は `[~]` を維持する。
 
 <a id="i-11"></a>
-### I-11: `cargo test --workspace` の pre-existing 97 FAIL が台帳未記載
+### I-11: `cargo test --workspace` の恒常 FAIL が台帳未記載
 
-- **影響度**: 高 / **状態**: open
-- **内容**: workspace 全体のテストは常時 97 件 FAIL する。この状態が台帳にも TODO にも記録されて
-  いなかったため、「workspace GREEN」を受入条件に置いた作業がそのままでは受入判定できない。
-  個々の失敗はおそらく既知の未完項目 (`LEGACY-ROOT-01` / `LEGACY-BOOT-01` 等) の帰結だが、
-  test 名から未完項目への対応付けが誰も持っていないのが問題である。
-- **根拠**: 2026-08-16 実測。pristine な `a3ae4551` と Track 0 適用後の worktree で、test 名の集合
-  `diff` が空、pass/fail 件数と snapshot の byte diff も一致する。内訳は
-  `e2e` 以外 37 件 + `lsharp-wasm --test e2e` 内 60 件。
-  baseline の e2e evidence 行: `test result: FAILED. 0 passed; 60 failed; 0 ignored; 0 measured;
-  2961 filtered out; finished in 704.97s`。
-- **既知のクラスタ (未確定、triage で確定させる)**:
-  - `runtime_allocator_closures` 17 件 + lib `RootSetWithoutActiveSlot` -- `LEGACY-ROOT-01` 系と推定
-  - `selfhost_native_stage_chain` 19 件 + `selfhost_native_stage23_gap` 9 件 -- ローカルに `stage0/` が
-    無いことに起因 (`LEGACY-BOOT-01` 系)
-  - `test_support_selfhost_typeinfer_runtime_bundle_cached` -- `tests/e2e/support.rs` の共有により
-    5 binary へ重複計上される
-  - `default_path_delegation` 12 件 -- embedded guest default path の selfhost 出力不一致
-  - `LS0102` ペア -- `lsharp-lsp` と `lsharp-tooling` に跨る
-  - insta snapshot 陳腐化 14 件 (`snapshot__wasm_*`)
-- **なぜ問題か**: 全 FAIL を既知として扱うと新規の regression が埋もれる。逆に全 GREEN を要求すると
-  どの slice も受入できない。クラスタごとに「どの未完項目の帰結か」を確定し、期待される FAIL の
-  baseline を固定する必要がある。
-- **関連**: TODO.md の triage 項目。`LEGACY-ROOT-01` / `LEGACY-BOOT-01` / I-08。
-  計測記録は [`rust-boundary-reduction.md`](docs/development/operations/rust-boundary-reduction.md) の
-  「Track 0 全体の workspace 検証 (2026-08-16)」節。
+- **影響度**: 高 / **状態**: resolved
+- **内容**: workspace 全体のテストは恒常的に FAIL を出す。この集合が台帳にも TODO にも
+  記録されていなかったため、「workspace GREEN」を受入条件に置いた作業が受入判定できず、
+  新規 regression が既知 FAIL に埋もれる状態だった。
+  **test 名の完全リストを `docs/development/validation/workspace-expected-failures.txt` に
+  正本として固定し、`scripts/ci/check-workspace-baseline.sh` で機械照合できるようにした。**
+- **測定方法**: `cargo nextest run --workspace --profile baseline` (`.config/nextest.toml`)。
+  nextest を選んだ理由は 3 つ -- process-per-test なので 1 件の crash が binary 全体を
+  巻き込まない (`cargo test` では `runtime_allocator_closures` の panic が同一 binary の
+  後続を道連れにし、FAIL 集合が実行順に依存していた) / JUnit XML から test 名を機械抽出できる /
+  `fail-fast = false` で全 target を完走する。`retries = 0` は必須 -- flaky を成功として
+  吸収すると baseline が「安定して落ちるもの」ではなく「たまたま通ったもの」になる。
+  doctest は nextest の対象外なので `cargo test --doc` を別途回す。
+- **実測 (2026-08-16〜17)**:
+
+  | 区分 | 実行 | FAIL | 所要 |
+  |---|---|---|---|
+  | 非 e2e (`not binary_id(lsharp-wasm::e2e)`) | 2067 | 38 | 1398.826s |
+  | e2e partition 1/6 | 289 | 12 | 3762.748s |
+  | e2e partition 2/6 | 316 | 14 | 6945.190s |
+  | e2e partition 3/6 | 290 | 12 | 5459.507s |
+  | e2e partition 4/6 | 287 | 7 | 3977.506s |
+  | e2e partition 5/6 | 302 | 11 | 2609.981s |
+  | e2e partition 6/6 | 315 | 14 | 3080.154s |
+  | e2e 小計 | **1799** | **70** | 25835.086s (7 時間 11 分) |
+  | **合計** | **3866** | **108** | -- |
+
+  e2e を 6 分割したのは、1 プロセスで回すと途中で中断されるため (`cargo test` 実測で
+  20,275.13s = 5 時間 38 分)。`--partition hash:i/6` を i=1..6 で回し、JUnit を結合した。
+  分割しても総所要は縮まない (むしろ増える) -- 利点は「途中で殺されても部分成果が残る」点だけ。
+
+- **完走判定 (checker では代替できない)**: `check-workspace-baseline.sh` は
+  「どの partition にも入らなかった test」を検出できない。実行されなかった test は
+  集合上 pass と区別が付かず、baseline が静かに壊れる。そのため別途、
+  `cargo nextest list --workspace --profile baseline -E 'binary_id(lsharp-wasm::e2e)'` の
+  run 集合と 6 partition の JUnit 実行集合を**名前の集合として**突き合わせた。
+
+  結果は **expected 1799 / actual 1799 / 取りこぼし 0 / 余剰 0 / 重複 0**。
+  各 partition の Summary 行の `run + skipped` も全 6 本で 3059 に一致する。
+
+  内訳の算術: e2e binary の `#[test]` 総数 **3059** = run **1799** + `#[ignore]` **1260**
+  (`--run-ignored ignored-only` の実数)。
+
+  なお `grep -rc '#\[ignore'` は **1265** を返し、5 件過大である。差の 5 件はすべて
+  `selfhost_lsp_docs_ops.rs` 自身が持つ**文字列リテラル**
+  (`prev.starts_with("#[ignore")` 3 箇所 + 検査メッセージ 1 箇所 + それに巻き込まれた 1 件) で、
+  属性ではない。**`#[ignore]` ゲートを検査する test 自身が `#[ignore]` の grep を汚す**という
+  構図なので、件数の権威は常に `cargo nextest list` 側に置くこと。
+
+  中断された run の成果物は混ぜてはならない。
+  `<failure type="test abort" message="... signal 15 (SIGTERM)">` を検出して弾いており、
+  今回の 6 本には**中断 0 件**。
+
+- **旧記述 (60 FAIL) との橋渡し**: 本 issue は当初 `cargo test` 実測の **97 FAIL**
+  (非 e2e 37 + e2e 60) として起票された。nextest の **108 FAIL** (非 e2e 38 + e2e 70) は
+  regression ではない。e2e 側 60 → 70 の +10 の帰属は次のとおり:
+
+  - **2 件**は pristine `a3ae4551` に**定義自体が存在しない**。rebase で upstream から
+    入った test である (`test_e2e_selfhost_lsp_type_diagnostics_use_standard_projection` /
+    `test_e2e_selfhost_standalone_user_call_after_preview1_import`)。
+    e2e binary の `#[test]` 総数も rebase で 3021 → 3059 に増えている。
+  - **8 件**は pristine にも定義があるが、旧 60 件には数えられていなかった
+    (クラスタ別に `selfhost_native_stage_chain` +4 / `selfhost_lsp_docs_ops` +2 /
+    `selfhost_native_stage23_gap` +1 / `strings_patterns_compiler_integration` +1)。
+    **この 8 件を個別に特定することはできない** -- 旧計測はクラスタ表しか残しておらず、
+    60 件の test 名を記録していないためである。**名前を正本に固定した理由がこれ**。
+
+  候補となる機構は 2 つあり、どちらも実測していない: (a) rebase で入った upstream 変更が
+  既存 test を落とした (b) `cargo test` は 1 binary 1 プロセスなので先行 panic が後続を
+  道連れにし FAIL として計上されなかった分が、process-per-test の nextest で表面化した
+  (`.config/nextest.toml` 冒頭に記録のある既知の挙動)。
+  **本ブランチ起因ではないことは構成的に言える** -- `git diff origin/main..HEAD -- crates/ selfhost/`
+  は新規ファイル追加 (`embedded_component_cache*` / 移設した `meta_validation.rs`) と
+  `lsharp-driver/build.rs` / `lsharp-wasm/src/lib.rs` のみで、
+  **既存の e2e test も `selfhost/` も 1 行も変更していない**。
+  旧 60 件のクラスタで**件数が減ったものは 1 つも無い**ことも確認済み。
+
+- **旧記述のうち実測で否定された 1 件、および含意だけが誤っていた 1 件**:
+
+  1. **「`selfhost_native_stage_chain` 19 + `selfhost_native_stage23_gap` 9 はローカルに
+     `stage0/` が無いことに起因」は誤り。** 実際に落ちているのは `selfhost/src/**.ls` を
+     `read_to_string` してソース本文へ文字列 assertion する test で、stage0 も実行も関与しない
+     (`selfhost_source_path()` は `tests/e2e/support.rs:717-` で `selfhost/src/...` 固定)。
+     `tests/` 内で `./stage0` を参照するのは `selfhost_native_stage_chain.rs:2406` の 1 箇所のみで、
+     これは markdown の中身に `"./stage0"` という文字列が載っていることを要求する doc assertion。
+     stage0 を実際に食う test は `LSHARP_NATIVE_*` env 経由でのみ artifact を受け取る。
+     **正しい環境前提は「`./stage0` 不在」ではなく「`LSHARP_NATIVE_*` が全て未設定」。**
+  2. **「`test_support_selfhost_typeinfer_runtime_bundle_cached` は `tests/e2e/support.rs` の
+     `mod` 共有で 5 binary へ重複計上される」-- 重複計上そのものは正しい。**
+     非 e2e ブロックに実際 5 行あり (`doctools_parity` / `lsp_diagnostic_parity` /
+     `lsp_edge_case_parity` / `lsp_stateful_parity` / `property_probe_diagnostic`)、
+     `mod support` を持つ binary 数と一致する。e2e を足して**計 6 binary**。
+     **誤っていたのは「計上の仕方の問題 = 実害なし」という含意の方**で、6 件はいずれも
+     本物の assertion 失敗 (`bundle.contains(selfhost_module("TypeInferApply.ls").trim())`)。
+     原因が決定的なソース不一致である以上、`support` mod を取り込む全 binary で
+     落ちるのは必然である。原因は `support.rs:1426` の
+     `.replace("(import Types.TypeInfer)\n", "")` -- bundle 側は正規化するのに test は生ソースの
+     verbatim 包含を要求する。assert は 2026-03-27 `7f9bdbb4` 由来、`replace()` と当該 import 行は
+     2026-07-20 `2b0c54b1` が同時に入れたもので、**上流変更に検査が追随しなかった陳腐化**。
+
+- **確定したクラスタ帰属** (件数は今回の実測。注記の全文は
+  `workspace-expected-failures.txt` の各 `# [<cluster>]` 行にある):
+
+  | クラスタ | 件数 | 性質 |
+  |---|---|---|
+  | `selfhost_native_stage_chain` | 23 | 3 系統。`selfhost/src` ソース本文 assertion 16 / x86_64 native codegen の byte 実測 (rel32 解決・function segment metadata marker) 6 / release gate contract の文面 1 |
+  | `runtime_allocator_closures` | 17 | `RootLifetime { RootPopUnderflow / ImbalancedExit / BranchDepthMismatch }` -- `LEGACY-ROOT-01`。旧記述と完全に一致した唯一のクラスタ |
+  | `default_path_delegation` | 12 | embedded guest default path の selfhost 出力不一致 |
+  | `selfhost_native_stage23_gap` | 10 | selfhost codegen の未達。式深度上限 (8 > 7) / harness fixture 不在 / native helper emitter の offset・trailer・prologue 不一致 |
+  | insta snapshot | 14 | insta が 2026-05-31 で停止、codegen は 2026-07-27 まで進行 |
+  | `selfhost_lsp_docs_ops` | 5 | 4 要因。`TESTGATE-01` / `DIAG-DEDUP-01` (2 件) / 標準 LSP Diagnostic 配列投影の未実装 / release-smoke.sh の boundary 未検証 |
+  | `strings_patterns_compiler_integration` | 5 | codegen が host `alloc` へ**負の size** を渡す 4 件 (`RootLifetime` とも I-13 の heap 枯渇とも別) + WasmEmit が native 専用 opcode 88 を黙って破棄する 1 件 |
+  | `selfhost_cli_core` | 4 | selfhost CLI の未実装挙動への RED。contract suite の canonical/legacy 分離 / unsupported type の実行前報告 / contradicting evidence / import 先 helper の診断 |
+  | `bootstrap_selfhost_lsp_integration` | 2 | selfhost formatter の compile が `UndefinedVar { name: "ast-defn-signature" }`。2 件とも同一 span |
+  | `LS0102` | 2 | `lsharp-lsp` と `lsharp-tooling` に跨る |
+  | `support` | 6 | 上記の陳腐化 -- `TESTGATE-02`。`mod` 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる |
+  | その他 e2e 単発 | 3 | module graph の topological sort 未達 / preview1 import 後の user call が不正な Wasm / nested module decl の body-count |
+  | 非 e2e 単発 | 5 | `lsharp-wasm --lib` の `RootSetWithoutActiveSlot` (`LEGACY-ROOT-01`) / `doctools_parity` の typed metadata 6 vs 5 / `e2e_selfhost_syntax` の nested module decl (e2e 側と同因、binary-id 違い) / `validate_source_review_edges` / `selfhost_cli_validation_contract` (upstream 由来) |
+  | **合計** | **108** | e2e 70 + 非 e2e 38 |
+
+  **`#[ignore]` 検査の陳腐化と `support` の陳腐化は production バグではない。**
+  CLAUDE.md の 500-800 行制限に沿った mod 分割 (`include!("<name>/part_NNN.rs")`) を
+  親ファイルの `read_to_string` で検査する形が壊れたもので、修正は安価。
+  **follow-up は `TODO.md` に ID 付きで登録済み** -- `TESTGATE-01` / `TESTGATE-02` /
+  `DIAG-DEDUP-01`。それ以外はすべて未実装挙動への RED であり、新規 ID は切っていない。
+
+  `TESTGATE-01` については**落ちている 1 件よりも、落ちない側の方が重い**。
+  `selfhost_lsp_docs_ops.rs` の検査は 2 モードあり、厳密名モード (`:3761-3769`) は
+  一致 0 件で `panic!` するので気付ける (今回の FAIL がこれ) が、**prefix モード
+  (`:3791-3794`) は一致 0 件でも何もせず pass する**。実測で、prefix ルール 6 本
+  (`selfhost_bootstrap_four_layer` の `test_e2e_boot04_` 71 / `test_e2e_bootstrap_` 45 /
+  `test_v2_12_self_hosted_` 9 / `test_v2_11_` 1、`selfhost_native_differential` の
+  `test_native_codegen_emits_` 86 / `test_native_emit_object_` 3) が親では 0 件一致、
+  fragment 側では**計 215 関数**に当たる。
+  **`cargo nextest list` の run 集合 1799 にこの 6 prefix は 1 件も現れない**ことを確認済みで、
+  215 件は全て `#[ignore]` 側にある。**live な regression は無い**が、ゲートは空回りしており
+  今後の追加漏れを一切検出しない。`include!` のみになっている親は `tests/e2e/` に 5 件あり、
+  今後の分割で同じ壊れ方が増える。直し方は既にリポジトリ内にある --
+  `selfhost_bootstrap_acceptance_file_size.rs:23-53` が fragment ディレクトリを `read_dir` で
+  列挙し、親の `include!` マニフェストとの整合を検証したうえで各 fragment を見る正しい形を
+  実装している。
+
+- **個々の FAIL の修正はスコープ外。** 特に snapshot 14 件は `cargo insta accept` 一発で
+  消えるが、2 ヶ月分の未レビューな codegen 出力を追認することになるので**やらない**。
+  expected-failure として理由付きで記録するに留める。
+
+- **測定中の HEAD 跨ぎについて**: partition 2 は走行中に HEAD が `9b35413f` → `b69d9b0d` へ動いた
+  (レビュー由来の doc 修正 2 件)。この repo には markdown の literal を assert する test が
+  実在する (`selfhost_native_stage_chain.rs:2406`) ため確認が必要だったが、
+  `git grep -ln 'AGENTS\.md\|\.config/nextest\.toml\|workspace-expected-failures' -- 'crates/*/tests' 'crates/*/src'`
+  は **0 件**で、変更した 2 ファイルを読む test は存在しない。測定値に対して無害。
+
+- **関連**: `LEGACY-ROOT-01` / `LEGACY-BOOT-01` / I-08 / `TESTGATE-01` / `TESTGATE-02` /
+  `DIAG-DEDUP-01`。
+  正本は [`workspace-expected-failures.txt`](docs/development/validation/workspace-expected-failures.txt)、
+  照合は `scripts/ci/check-workspace-baseline.sh`。
 
 <a id="i-12"></a>
 ### I-12: ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file)

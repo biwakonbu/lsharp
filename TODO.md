@@ -639,11 +639,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `DEVLOOP-T1-2` を入れても **`selfhost/src` を編集した瞬間に両 lane とも fingerprint 不一致で `die`
   する**ため、source 編集ループの待ち時間は変わっていない。dev lane が救うのは
   「commit は進んだが `selfhost/src` は同一」のケースだけである。ここが本命。
-- [ ] `I-11` workspace pre-existing 97 FAIL の triage — `cargo test --workspace` は常時 97 件 FAIL し、
-  その事実自体が台帳未記載だった。pristine `a3ae4551` で同一に再現することは確認済み (test 名の集合
-  `diff` は空)。クラスタごとに「どの未完項目の帰結か」を確定し、期待される FAIL の baseline を固定
-  する。全 FAIL を既知扱いすると新規 regression が埋もれ、全 GREEN を要求するとどの slice も
-  受入できないため、baseline の固定が先。
 - [ ] `NATIVE-HEAP-01` aarch64 alloc helper の bounds check — `I-13` の帰結。
   `selfhost/src/Backend/Native/NativeCodegen.ls:14512-14548` の
   `emit-aarch64-selfhost-alloc-helper` は 18 word / 72 bytes ちょうどで、decode しても
