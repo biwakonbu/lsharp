@@ -703,10 +703,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
 - [~] `DOC-07` ドキュメント同期ハーネス — `.claude/rules/doc-sync.md`、`.claude/hooks/doc-guard.sh`、
   `.claude/skills/doc-sync/` を追加した。残るのは実運用での有効性確認と、hook が「正しい正本へ
   正しい粒度で書かれたか」までは判定できない点の運用での補完。
-- [ ] `DOC-08` 陳腐化記述の是正 — `legacy-rust-bootstrap/README.md` が `adr-rust-removal.md` の
-  withdrawn 判断と矛盾。`TODO.md` の v0.3 milestone 節が 2 箇所ある
-  (`## Next milestone — v0.3 review provenance / lifecycle` と
-  `## Next milestone — v0.3 Review provenance lifecycle`)。
 
 ## Next milestone — v0.3 review provenance / lifecycle
 
