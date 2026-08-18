@@ -141,6 +141,10 @@ literal 構築点 107 / 83 箇所の全書き換えを要求する。`Default` �
 
 ## 含めない範囲
 
+- **selfhost parser (`selfhost/src/Syntax/Parser.ls` の `directive-symbol-v3`) への directive 追加。**
+  同じ理由 (selfhost source の編集は embedded component の再ビルドと cache key 再計算を巻き込む)。
+  結果として directive allowlist が Rust / selfhost で食い違った状態が始まる。
+  一致を検査する test がそもそも無いことも含めて `I-18` に登録した。
 - **既存の lease helper 2 件 (`typeinfer-builtin-root-value` / `typeinfer-builtin-release-roots`) を
   本注釈へ移行すること。** これらは selfhost source に居るため、編集すると embedded component の
   再ビルドと cache key の再計算 (`I-16` で安定化させたばかり) を巻き込む。将来作業として残す。

@@ -150,6 +150,7 @@
 | [I-15](#i-15) | `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない | 中 | resolved | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-16](#i-16) | embedded component cache の key が build 入力 (`wit/` / `stdlib/`) を覆いきっていない | 中 | resolved | [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) |
 | [I-17](#i-17) | runtime spec が root 管理 API の戻り値と境界挙動を定義していない | 中 | open | [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
+| [I-18](#i-18) | metadata directive の allowlist が Rust parser と selfhost parser で二重管理されている | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -952,6 +953,32 @@
   [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)。
   **残る 3 項目は未着手**で、本項がその正本である。
 - **関連**: I-14 (verifier と公開 API の食い違い)、I-07 (rooting guard の未完)。
+
+---
+
+<a id="i-18"></a>
+### I-18: metadata directive の allowlist が Rust parser と selfhost parser で二重管理されている
+
+- **影響度**: 中 / **状態**: open
+- **内容**: `:` で始まる metadata directive を受理するかの判定表が **2 箇所**に手書きで存在する。
+
+  | 実装 | 場所 |
+  |---|---|
+  | Rust parser | `crates/lsharp-syntax/src/parser/decl.rs` の `is_colon_directive` の `matches!` |
+  | selfhost parser | `selfhost/src/Syntax/Parser.ls` の `directive-symbol-v3` / `source-directive-symbol-v3` |
+
+  **両者が一致しているかを検査する test は無い** (`directive-symbol-v3` を参照する Rust 側の
+  parity test を探したが 0 件)。片方だけに directive を足すと、同じソースが front end によって
+  通ったり落ちたりする。directive でない `:` は戻り値型注釈として読まれるため、
+  食い違いは「未知の directive」ではなく**型注釈の parse error**として現れる。
+- **顕在化した実例**: 2026-08-18 に追加した `:roots-unbalanced` は Rust parser にだけ入れた
+  (selfhost source を編集すると embedded component の再ビルドと cache key の再計算を巻き込むため、
+  [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)
+  の「含めない範囲」に置いた)。現時点で本 directive を使うのは Rust 側の e2e fixture だけなので
+  実害は出ていないが、**divergence が 1 件ある状態が既に始まっている**。
+- **直し方の方向**: 一覧を単一の正本 (data file か、片方から生成) に寄せるのが筋。
+  最小の手当てとしては「両者の一覧が一致すること」を検査する parity test を先に置く方法もある。
+- **関連**: I-14 (`:roots-unbalanced` の導入経緯)、`LEGACY-MODULE-01` (selfhost 側の変更コスト)。
 
 ---
 
