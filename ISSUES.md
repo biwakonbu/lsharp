@@ -1332,7 +1332,10 @@
   呼び出し元は `LspServer.ls:144` の検証用 `main` と parity test 3 本だけで、
   **実運用の publish 経路 (`Cli.ls:1440` / `:1687` / `:1702`) には入っていない**。
   同じ概念の実装が 2 つあり片方だけが正しい状態なので、単一正本化の対象として
-  `TODO.md` の `LSP-DEDUP-MERGE-01` に登録した。
+  `TODO.md` の `LSP-DEDUP-MERGE-01` に登録した。2026-08-18 に呼び出し元を実測で全数確認し、
+  さらに `merge-duplicate-diagnostics` が `len == 2` の入力しか扱わない (3 件以上は素通し) ことが
+  判明したため、削除する方向で決着させた。判断と却下理由は
+  [dedup 単一正本化 ADR](docs/adr/decisions-lsp-dedup-single-source.md)。
 - **関連**: I-11 (baseline)、`ISSUES.md` の I-22 (同じ「規約 vs 実態」の形。
   `:1201` が本件の裁定に倣うと書いている)。
 

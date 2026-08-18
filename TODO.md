@@ -694,8 +694,10 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **rule を問わず**潰す、`dedup-diagnostics` と逆の意味論を持つ。しかも `len == 2` しか扱わない。
   呼び出し元は `LspServer.ls:144` の検証用 `main` と parity test 3 本だけで、実運用の publish 経路
   (`Cli.ls:1440` / `:1687` / `:1702`) には入っていない。
-  **受入条件**: `dedup-diagnostics` へ寄せて `merge-duplicate-diagnostics` を削除するか、
-  意味論の違いが意図的である根拠を ADR に書くか、どちらかに決着させる。
+  **決着済み (2026-08-18)**: `merge-duplicate-diagnostics` を削除し `dedup-diagnostics` を単一正本にする。
+  判断と却下理由は [ADR](docs/adr/decisions-lsp-dedup-single-source.md)。残るのは実装のみ。
+  **受入条件**: `grep -rn 'merge-duplicate-diagnostics'` の hit が 0 (docs の履歴記述を除く)、
+  parity test 3 本が**期待値を変えずに** pass、`test_e2e_selfhost_cli_lsp_stdio_didopen_*` 7 件が引き続き pass。
   **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
   `SMOKE-GATE-03` `default-path-smoke` job が緑になることの 1 run 観測 — Issue `I-15` / `I-19`。
