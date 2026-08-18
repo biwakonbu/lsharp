@@ -702,14 +702,15 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   残るのは (b)「実際に 1 run 走って緑になる」だけで、これは CI 停止中は push で確認できない。
   **解除条件**: CI 自動実行が再開されるか、`workflow_dispatch` の手動起動を行うか。
   **含めない範囲**: script の assertion 内容 (決着済み)、CI 停止方針そのものの是非 (`I-19`)。
-- [ ] `RUNTIME-SPEC-01` root 管理 API の契約が実装より薄い — Issue `I-17`。
-  `root_push` / `root_set` の戻り値、root stack の容量上限と grow、`root_set` 失敗時の
-  観測可能性 (failure ledger → trap) が [runtime spec](docs/language/runtime-spec.md) に無い。
-  空 stack への `root_pop` の 1 項目だけは
-  [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)
-  の一環で spec へ引き上げ済み。
-  受入条件は残り 3 項目を spec へ書き、wasm emitter の実装と対照した test で pin すること。
-  **含めない範囲**: native backend の `lsharp_root_*` 実装そのもの (未着手)。
+- [ ] `NATIVE-ROOT-01` native backend の root API を runtime spec の tier 1 へ適合させる —
+  Issue `I-21`。aarch64 の `emit-root-pop-aarch64` が空 stack ガードを持たず、
+  空のときに stack pointer を base より下げて bss の手前を読む
+  (tier 1 項目 3 への直接の違反)。x86-64 は `root_push` が常に 0 を返す stub で、
+  `root_pop` は emitter が無く、`root_set` は store を出さない。
+  契約側は [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) で確定済み。
+  受入条件は aarch64 に空 stack ガードを入れ、backend を跨いで同じ挙動になることを
+  検査する test を置くこと。
+  **含めない範囲**: x86-64 lane の root API 実装そのもの (native x86 は別途 stub 解消が要る)。
 - [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
   parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
   片側だけの directive 追加は検出できる状態になった。判断と実測は

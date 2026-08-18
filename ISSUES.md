@@ -149,10 +149,11 @@
 | [I-14](#i-14) | root lifetime verifier が公開 runtime API の合法な使用を拒否する | 中-高 | resolved (17/17 解消) | [main exit 免除 ADR](docs/adr/decisions-root-lifetime-main-exit-exemption.md) / [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
 | [I-15](#i-15) | `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない | 中 | resolved | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-16](#i-16) | embedded component cache の key が build 入力 (`wit/` / `stdlib/`) を覆いきっていない | 中 | resolved | [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) |
-| [I-17](#i-17) | runtime spec が root 管理 API の戻り値と境界挙動を定義していない | 中 | open | [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
+| [I-17](#i-17) | runtime spec が root 管理 API の戻り値と境界挙動を定義していない | 中 | resolved | [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) |
 | [I-18](#i-18) | metadata directive の allowlist が 3 系統で二重管理されている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 | [I-19](#i-19) | CI 自動実行の停止で `ci.yml` の 17 job が 1 ヶ月以上まったく観測されていない | 中 | documented-limitation | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-20](#i-20) | selfhost parser が受理した 6 directive の payload を黙って捨てている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
+| [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない | 高 | open | [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) |
 
 ### ドキュメント (DOC)
 
@@ -803,7 +804,7 @@
   helper の名前ハードコードを注釈へ寄せる動機になる (未着手)。
 - **派生**: `RootPopUnderflow` の位置づけを決める過程で、runtime spec が root API の
   境界挙動を定義していないことが判明した (I-17)。空 stack への `root_pop` の 1 項目だけ
-  本スライスで spec へ引き上げ、残りは I-17 に残る。
+  本スライスで spec へ引き上げた。残る 3 項目は 2026-08-18 に I-17 で解決済み。
 - **関連**: `LEGACY-ROOT-01` (TODO.md)、I-07 (rooting guard の未完)、I-11 (baseline の由来)。
 
 ---
@@ -941,29 +942,42 @@
 <a id="i-17"></a>
 ### I-17: runtime spec が root 管理 API の戻り値と境界挙動を定義していない
 
-- **影響度**: 中 / **状態**: open
-- **内容**: [`docs/language/runtime-spec.md:74-84`](docs/language/runtime-spec.md) の
-  root 管理 API は一行の役割表 (「root stack にポインタを追加する」等) と
-  「GC 未導入段階では no-op 互換実装を許容する」だけで、**戻り値も境界挙動も定義していない**。
-  一方 `crates/lsharp-wasm/src/wasi/root.rs` の emitter はどちらも具体的に決めている。
+- **影響度**: 中 / **状態**: resolved (2026-08-18)
+- **内容**: [runtime spec](docs/language/runtime-spec.md) の root 管理 API は
+  一行の役割表と「GC 未導入段階では no-op 互換実装を許容する」だけで、
+  **戻り値も境界挙動も定義していなかった**。一方
+  `crates/lsharp-wasm/src/wasi/root.rs` の emitter はどちらも具体的に決めている。
 
-  | 事項 | 実装 (`wasi/root.rs`) | spec |
+  | 事項 | 実装 (`wasi/root.rs`) | 2026-08-18 時点の spec |
   |---|---|---|
-  | 空 stack への `root_pop` | `top == 0` を分岐し top を動かさず `0` を返す (`:145-152`) | 未定義 |
-  | `root_push` の戻り値 | push 前の top を i64 で返す (`:126-128`) | 未定義 |
-  | `root_set` の失敗 | failure ledger へ記録してから trap する | 未定義 |
-  | root stack の容量上限と grow | grow あり (専用 e2e が存在する) | 未定義 |
+  | 空 stack への `root_pop` | `top == 0` を分岐し top を動かさず `0` を返す | tier 1 項目 3 |
+  | `root_push` の戻り値 | push 前の top を i64 で返す | tier 1 項目 1 |
+  | `root_set` の戻り値 | 書き込んだ slot を i64 で返す | tier 1 項目 2 |
+  | root stack の容量上限と grow | 初期 32768 slot / 倍々拡張 / 確保失敗で trap | tier 1 項目 4 (数値は契約外) |
+  | `root_set` 失敗の観測 | failure ledger + trap | tier 2 項目 5/6 |
 
-- **なぜ問題か**: 契約が実装より薄いので、**test が spec の無い挙動を pin している**状態になる。
-  実例が `test_e2e_root_runtime_api_tracks_slots_and_values` で、空 stack への `root_pop` が
-  `0` を返すことを assertion に含む。native backend は現時点で `lsharp_root_pop` を
-  実装していないため、この食い違いは backend 間の非互換として顕在化していないだけである。
-- **本スライスで埋めた分**: 空 stack への `root_pop` の 1 項目だけを spec へ引き上げた
-  (`root_lifetime` verifier の `RootPopUnderflow` を「spec 上は合法だが既定では拒否する検査」
-  として位置づけるために必要だったため)。判断は
-  [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)。
-  **残る 3 項目は未着手**で、本項がその正本である。
-- **関連**: I-14 (verifier と公開 API の食い違い)、I-07 (rooting guard の未完)。
+- **なぜ問題だったか**: 契約が実装より薄いので、**test が spec の無い挙動を pin している**
+  状態になっていた。実例が `test_e2e_root_runtime_api_tracks_slots_and_values` で、
+  空 stack への `root_pop` が `0` を返すことを assertion に含む。
+- **解決 (2026-08-18)**: 残っていた 3 項目を spec へ書いた。契約は
+  **tier 1 (全 backend 必須) / tier 2 (観測可能性、backend 任意)** の二段に分けてある。
+  判断と却下案は [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) が正本。
+- **本項の記述のうち、実測で不正確だと分かったもの (訂正済み)**:
+
+  1. 「`root_set` の失敗 → **failure ledger へ記録してから trap する**」は不正確だった。
+     `failure_slot` / `failure_top` は bounds check の**前に、成功・失敗を問わず毎回**
+     `GlobalSet` される scratch であり、失敗時にのみ増えるのは `failure_count` だけである
+     (`crates/lsharp-wasm/src/wasi/root.rs:190-224`)。
+     このため spec は「`failure_count > 0` のときにのみ意味を持つ」という形で契約化し、
+     無条件書き込みは契約へ昇格させなかった (ADR の却下案 C)。
+  2. 「**native backend は現時点で `lsharp_root_pop` を実装していない**ため、
+     この食い違いは backend 間の非互換として顕在化していない」は
+     **シンボルとしては真だが、挙動としては偽**だった。aarch64 lane は IR opcode 74/75/76 を
+     インライン展開し、8 MiB の bss root stack を実際に持っている。しかも
+     その `root_pop` は空 stack ガードを持たない。**非互換は既に顕在化している。**
+     詳細は I-21 が正本。
+- **関連**: I-14 (verifier と公開 API の食い違い)、I-07 (rooting guard の未完)、
+  I-21 (native backend の非適合)。
 
 ---
 
@@ -1069,6 +1083,42 @@
 - **検出できていない理由**: `metadata_directive_parity.rs` は allowlist だけを比較する。
   「受理したものをどう読むか」は比較対象外だと ADR に明記してある。
 - **関連**: I-18 (allowlist の二重管理)、`LEGACY-MODULE-01` (selfhost 側の変更コスト)。
+
+---
+
+<a id="i-21"></a>
+### I-21: native backend の root API が runtime spec の tier 1 契約に適合していない
+
+- **影響度**: 高 / **状態**: open
+- **内容**: [runtime spec](docs/language/runtime-spec.md) の root 管理 API tier 1 は
+  全 backend 必須の契約だが、native backend はこれを満たしていない。
+  wasm backend と挙動が食い違っており、**同じプログラムが backend によって異なる結果を出す**。
+
+  | lane | 実装 | tier 1 適合 |
+  |---|---|---|
+  | wasm (WASI) | `crates/lsharp-wasm/src/wasi/root.rs` | 満たす |
+  | native aarch64 | `selfhost/src/Backend/Native/NativeCodegen.ls` で IR opcode 74/75/76 をインライン展開 | **項目 3 に違反** |
+  | native x86-64 | 同上だが stub | **未実装** |
+
+- **aarch64 の違反 (最も重い)**: `emit-root-pop-aarch64` は空 stack のガードを持たず、
+  無条件に `sub x27, x27, #8` してから `ldr` する。root stack が空のときに呼ぶと
+  stack pointer が base を下回り、**bss 領域の手前を読む**。
+  spec の tier 1 項目 3 (「空の root stack に対する `root_pop` は trap せず、
+  root stack を変更せずに `0` を返す」) に対する直接の違反である。
+- **x86-64 の stub**: `emit-root-push-x86` は `xor eax, eax` を出すだけで (引数を捨てて常に 0 を返す)、tier 1 項目 1 (push した slot の index を返す) を満たさない。
+  `root_pop` には emitter そのものが無く定数 0 を返す。`root_set` は store 命令を出さない。
+- **シンボルは存在しない**: `lsharp_root_push` / `lsharp_root_pop` / `lsharp_root_set` という
+  シンボルは実装のどこにも無い。root 操作は呼び出し側へ直接展開される。
+  [native backend spec](docs/language/native-backend-spec.md) の
+  「v1 で想定する代表的な公開シンボル」がこれらを挙げているのは**想定であって実態ではない**。
+  spec 側は 2026-08-18 に「ABI シンボルの有無は問わない」と明記して食い違いを解いたが、
+  **挙動の非適合は残る**。
+- **なぜ顕在化していないか**: native lane は GC を導入しておらず、root stack を実際に
+  使い切る経路がまだ無い。`I-17` が「native は実装していないので非互換は顕在化していない」と
+  書いていたのは**シンボルの有無を見た誤読**で、挙動としては既に食い違っている。
+- **着手の追跡**: `TODO.md` の `NATIVE-ROOT-01` が持つ。契約を書いた `RUNTIME-SPEC-01` は
+  native 実装を「含めない範囲」に明記していたため、非適合の記録である本項が先に立った。
+- **関連**: I-17 (契約側)、I-13 (native heap の回収機構と bounds check の欠如)。
 
 ---
 

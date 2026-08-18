@@ -1,6 +1,13 @@
 #[test]
 fn test_root_set_invalid_slot_records_failure_ledger_before_trap() {
-    let wasm = compile_wasi("(defn main [] (root_set 0 42))");
+    // root_set の失敗を観測するのが目的なので、root を積まずに root_set する。
+    // root lifetime verifier はこれを RootSetWithoutActiveSlot として lowering 段で
+    // 止めるため、意図的な不均衡であることを注釈して免除する (I-14 / I-17)。
+    let wasm = compile_wasi(
+        r#"(defn main []
+             :roots-unbalanced "root を積まずに root_set した場合の trap と failure ledger を観測するため"
+             (root_set 0 42))"#,
+    );
 
     let (error, failure_slot, failure_top, failure_count) =
         run_wasi_with_root_slot_failure_ledger(&wasm);

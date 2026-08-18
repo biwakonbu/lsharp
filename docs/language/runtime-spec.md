@@ -79,19 +79,54 @@ GC を導入する runtime は、少なくとも次の root 管理 API を備え
 | `root_pop` | root stack の末尾を除去する |
 | `root_set` | 既存 root slot を更新する |
 
-境界挙動として、次の 1 点を定める。
-
-- **空の root stack に対する `root_pop` は trap せず、root stack を変更せずに `0` を返す。**
-  backend は均衡した push/pop を前提にしてよいが、不均衡を未定義動作として扱ってはならない。
-
-これは wasm backend の emitter (`crates/lsharp-wasm/src/wasi/root.rs` の `emit_root_pop_func`)
-が既に実装している挙動を契約へ引き上げたものである。`root_push` / `root_set` の戻り値、
-root stack の容量上限、失敗時の観測可能性は**まだ未定義**であり、その追跡は
-[`ISSUES.md` の `I-17`](../../ISSUES.md#i-17) が正本。
-
 これらは主に compiler が生成するコードや runtime 内部から利用されるものであり、ユーザー向け API ではない。
 
-native backend では内部管理 API も必要に応じて `lsharp_root_push`, `lsharp_root_pop`, `lsharp_root_set` のような symbol へ写像してよい。GC 未導入段階では no-op 互換実装を許容する。
+契約は**二段**に分かれる。tier 1 は言語レベルの契約で全 backend が満たす。
+tier 2 は失敗の観測可能性についての契約で、**backend 任意**である。
+この分け方の理由と却下した案は
+[root API 契約 ADR](../adr/decisions-runtime-spec-root-api-contract.md) が正本。
+
+#### tier 1 — 全 backend 必須
+
+1. **`root_push` は追加した slot の index を返す。** 返る値は push 前の root stack の高さに等しく、
+   同じ関数の中で `root_set` の slot 引数としてそのまま渡せる。
+2. **`root_set` は書き込んだ slot の index を返す。**
+3. **空の root stack に対する `root_pop` は trap せず、root stack を変更せずに `0` を返す。**
+   backend は均衡した push/pop を前提にしてよいが、不均衡を未定義動作として扱ってはならない。
+4. **root stack の容量は動的で、固定上限を定めない。** 実装は必要に応じて拡張してよい。
+   拡張のために領域を確保できなくなった時点で **trap する**。この失敗は tier 2 の
+   failure ledger には記録されない。
+
+初期容量・拡張の倍率・拡張時の配置は**契約に含めない**。いずれも backend の実装事実であり、
+backend を跨いで観測できる性質ではない。
+
+#### tier 2 — 失敗の観測可能性 (backend 任意)
+
+5. **有効でない slot への `root_set` は trap する。** 有効な slot とは、
+   その時点の root stack の高さより小さい index である。
+6. **失敗の記録 (failure ledger) を提供する backend は、`root_set` の失敗ごとに
+   `failure_count` を 1 増やす。** 付随する `failure_slot` / `failure_top` は
+   **`failure_count > 0` のときにのみ意味を持ち**、その値は失敗した呼び出しの
+   slot 引数と当時の root stack の高さである。
+
+`failure_count` が 0 のときの `failure_slot` / `failure_top` の値は**未規定**とする。
+wasm backend の実装はこれらを毎回の呼び出しで上書きするが、それは診断のための実装都合であって
+契約ではない。
+
+#### 準拠状況
+
+| backend | tier 1 | tier 2 |
+|---|---|---|
+| wasm (WASI) | 満たす | 満たす |
+| native (aarch64) | **項目 3 に違反** | 提供しない |
+| native (x86-64) | **未実装 (stub)** | 提供しない |
+
+native backend の非適合は [`ISSUES.md` の `I-21`](../../ISSUES.md#i-21) が正本。
+
+native backend では内部管理 API を `lsharp_root_push`, `lsharp_root_pop`, `lsharp_root_set` のような
+symbol へ写像してもよいし、呼び出し側へ直接展開してもよい。**契約は観測可能な挙動に対するもので、
+ABI シンボルの有無は問わない。** 現行の aarch64 lane は後者 (シンボルを持たず命令列を展開する) である。
+GC 未導入段階では no-op 互換実装を許容する。
 
 ## 値表現
 
