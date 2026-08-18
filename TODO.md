@@ -653,26 +653,33 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (4 GiB → 8 GiB へ倍増しても拡大分をちょうど使い切って落ちることを実測済み)。
   `NATIVE-HEAP-01` は症状を可視化するだけで、「115 KB の入力に 8 GiB 超」という増幅は解消しない。
   GC ないし arena reset の設計から始める。`LEGACY-ROOT-01` / `LEGACY-IO-01` と関連。
-- [ ] `TESTGATE-01` `#[ignore]` ゲート検査が mod 分割に追随していない — Issue `I-11`。
-  `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` の
-  `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` は heavy test の `#[ignore]` 付与を
-  親ファイルの `read_to_string` + `fn <name>(` 行頭検索で確かめるが、対象の親は
-  `include!("<name>/part_NNN.rs")` だけになっており実体が無い。壊れ方が 2 種類ある:
-  厳密名モード (`:3761-3769`) は `panic!` するので気付けるが、**prefix モード (`:3791-3794`) は
-  一致 0 件でも何もせず pass する** — 検査が無言で消えており baseline にも載らない。
-  `include!` のみの親は `tests/e2e/` に 5 件 (`selfhost_bootstrap_acceptance` /
-  `selfhost_bootstrap_four_layer` / `selfhost_native_differential` /
-  `selfhost_native_stage23_gap` / `selfhost_lexer_parser`)。
-  **無言で無効化されている規模は実測 6 ルール / 215 関数**:
-  `four_layer` の `test_e2e_boot04_` 71 / `test_e2e_bootstrap_` 45 /
-  `test_v2_12_self_hosted_` 9 / `test_v2_11_` 1、`native_differential` の
-  `test_native_codegen_emits_` 86 / `test_native_emit_object_` 3。
-  **現時点では 215 件とも `#[ignore]` を持っており live な regression は無い**が、
-  ゲートは空回りしているので今後の追加漏れを一切検出しない。
-  厳密名モード側も同じ 4 親を 36 エントリ参照しており、最初の 1 件で panic して止まる。
-  **修正方式は既にリポジトリ内にある**: `selfhost_bootstrap_acceptance_file_size.rs:23-53` が
-  fragment ディレクトリを `read_dir` し、親の `include!` マニフェストの網羅と順序を検証したうえで
-  各 fragment を再帰的に見る。ops03b / ops03c をこの方式へ寄せる。新規設計は不要。
+- [~] `TESTGATE-01` `#[ignore]` ゲート検査が mod 分割に追随していない — Issue `I-11` / `I-22`。
+  ADR: [test gate 是正](docs/adr/decisions-test-gate-staleness-repair.md)。
+  **構造的破損の是正は完了 (2026-08-18)**: `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` の
+  ops03b / ops03c を `selfhost_bootstrap_acceptance_file_size.rs` と同じ方式へ寄せた。
+  fragment ディレクトリを `read_dir` で列挙し、親の `include!` マニフェストが全 fragment を
+  順序どおり含むことを検証したうえで親と全 fragment を走査する。
+  加えて (1) 一致 0 件の prefix ルールを `dead_prefix_rules` として明示的に落とす、
+  (2) dead rule と offenders を 1 本の assert にまとめ、前者が後者を隠さないようにした。
+  **未達の受入条件**: ops03c 自体は GREEN になっていない。検査が復活した結果、
+  **本物の違反 164 件**が現れたため (`selfhost_cli_core.rs` 158 / `selfhost_cli_actual_main_args.rs` 5 /
+  `selfhost_native_stage_chain.rs` 1)。この 164 件を「規約違反として `#[ignore]` を付ける」のか
+  「prefix ルールが広すぎるので絞る」のかは規約側の判断であり、`I-22` / `TESTGATE-03` が持つ。
+  そのため `ops03c` は expected FAIL のまま残る (baseline の FAIL 集合は本作業の前後で不変)。
+  **この項目の記述の訂正**: 旧記述の「現時点では 215 件とも `#[ignore]` を持っており live な
+  regression は無い」は、分割済み 4 親だけを見た測定だった。非分割の `selfhost_cli_core.rs` 等は
+  厳密名モードの panic に隠れていて数えられていない。
+- [ ] `TESTGATE-03` heavy e2e 164 件の `#[ignore]` 契約 — 規約と実態のどちらを直すか — Issue `I-22`。
+  `TESTGATE-01` で検査を復活させたところ 164 件の違反が現れた。増加は 2026-07-17 以降で、
+  CI 自動実行が止まった 2026-07-12 (`I-19`) の 5 日後から 1 commit あたり 1〜3 件ずつ積み上がっている。
+  **受入条件**: 案 A (164 件に `#[ignore]` を付ける) / 案 B (prefix ルールを絞る) のどちらを採るかを
+  ADR に却下理由つきで記録し、そのとおりに直したうえで `ops03c` を GREEN にし、
+  `workspace-expected-failures.txt` から当該行を外す。
+  **含めない範囲**: 案 A を採る場合でも CI の再開 (`I-19` / `SMOKE-GATE-03`) は本項目に含めない。
+  164 件の中身の修正 (test 自体の高速化・統合) も含めない。
+  **判断材料**: 案 A は現在 run されて pass している 158 件を「どこでも走らない」状態にする
+  (CI は停止中)。案 B は run set を 1,799 のまま保つので `I-11` の測定 anchor が全て有効に残る。
+
 - [ ] `DIAG-DEDUP-01` diagnostics dedup の test と実装の仕様不一致 — Issue `I-11`。
   `test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json` は「同一 start span なら 1 件」を
   要求するが、実装 `selfhost/src/Tools/Lsp/LspServerNav.ls:1225-1245` の

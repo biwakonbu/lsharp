@@ -3336,6 +3336,96 @@ fn test_e2e_native_ops05_macos_x86_rosetta_smoke_script_runs_when_supported() {
     let _ = std::fs::remove_dir_all(&artifact_dir);
 }
 
+/// `fn` 行の直前の属性列に `#[ignore]` があるか
+fn has_ignore_attribute(lines: &[&str], fn_idx: usize) -> bool {
+    let mut cursor = fn_idx;
+    while cursor > 0 {
+        cursor -= 1;
+        let prev = lines[cursor].trim();
+        if prev.is_empty() {
+            continue;
+        }
+        return prev.starts_with("#[ignore");
+    }
+    false
+}
+
+/// `#[ignore]` ゲートの検査対象ソース単位 (表示パス, 本文) を列挙する。
+///
+/// CLAUDE.md の 500-800 行制限に沿った mod 分割で、親ファイルが
+/// `include!("<stem>/part_NNN.rs")` だけになっているものがある。親だけを `read_to_string`
+/// すると検査は実体を見失う (`TESTGATE-01`)。fragment ディレクトリを `read_dir` で列挙し、
+/// **親の `include!` マニフェストが全 fragment を順序どおり含むこと**を検証したうえで、
+/// 親と全 fragment を返す。方式は `selfhost_bootstrap_acceptance_file_size.rs` に合わせている。
+///
+/// マニフェストと実ファイルがずれていたら panic する。ずれを黙って許すと、
+/// 検査対象が知らないうちに減る。
+fn gate_source_units(project_root: &std::path::Path, rel_path: &str) -> Vec<(String, String)> {
+    let path = project_root.join(rel_path);
+    let content =
+        std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{rel_path} 読み込み失敗"));
+    let mut units = vec![(rel_path.to_string(), content.clone())];
+
+    let stem = rel_path
+        .strip_suffix(".rs")
+        .unwrap_or_else(|| panic!("{rel_path} は .rs で終わること"));
+    let leaf = std::path::Path::new(stem)
+        .file_name()
+        .expect("file stem が必要")
+        .to_string_lossy()
+        .to_string();
+    let fragment_dir = project_root.join(stem);
+    if !fragment_dir.is_dir() {
+        return units;
+    }
+
+    let mut fragments = std::fs::read_dir(&fragment_dir)
+        .unwrap_or_else(|error| panic!("{} 読み込み失敗: {error}", fragment_dir.display()))
+        .map(|entry| entry.expect("fragment entry の読み込みに失敗").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        .collect::<Vec<_>>();
+    fragments.sort();
+    assert!(
+        !fragments.is_empty(),
+        "{rel_path} の fragment directory が空になっている"
+    );
+
+    let include_prefix = format!("include!(\"{leaf}/");
+    let expected_includes = fragments
+        .iter()
+        .map(|path| {
+            format!(
+                "include!(\"{leaf}/{}\");",
+                path.file_name()
+                    .expect("fragment filename が必要")
+                    .to_string_lossy()
+            )
+        })
+        .collect::<Vec<_>>();
+    let actual_includes = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with(&include_prefix))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual_includes, expected_includes,
+        "{rel_path} は全 fragment を順序通り include すること"
+    );
+
+    for fragment in fragments {
+        let body = std::fs::read_to_string(&fragment)
+            .unwrap_or_else(|error| panic!("{} 読み込み失敗: {error}", fragment.display()));
+        let name = fragment
+            .file_name()
+            .expect("fragment filename が必要")
+            .to_string_lossy()
+            .to_string();
+        units.push((format!("{stem}/{name}"), body));
+    }
+    units
+}
+
 /// TEST-OPS-03b: 手動診断用 `test_debug_*` は full `cargo test` の通常 gate に入れないこと
 #[test]
 fn test_e2e_ops03b_debug_tests_are_ignored() {
@@ -3346,33 +3436,15 @@ fn test_e2e_ops03b_debug_tests_are_ignored() {
     ];
     let mut offenders = Vec::new();
     for rel_path in test_files {
-        let path = project_root.join(rel_path);
-        let content =
-            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{rel_path} 読み込み失敗"));
-        let lines: Vec<&str> = content.lines().collect();
-        for (idx, line) in lines.iter().enumerate() {
-            if !line.trim_start().starts_with("fn test_debug_") {
-                continue;
-            }
-            let mut has_ignore = false;
-            let mut cursor = idx;
-            while cursor > 0 {
-                cursor -= 1;
-                let prev = lines[cursor].trim();
-                if prev.is_empty() {
+        for (unit_path, content) in gate_source_units(&project_root, rel_path) {
+            let lines: Vec<&str> = content.lines().collect();
+            for (idx, line) in lines.iter().enumerate() {
+                if !line.trim_start().starts_with("fn test_debug_") {
                     continue;
                 }
-                if prev.starts_with("#[ignore") {
-                    has_ignore = true;
-                    continue;
+                if !has_ignore_attribute(&lines, idx) {
+                    offenders.push(format!("{}:{}", unit_path, idx + 1));
                 }
-                if prev == "#[test]" {
-                    break;
-                }
-                break;
-            }
-            if !has_ignore {
-                offenders.push(format!("{}:{}", rel_path, idx + 1));
             }
         }
     }
@@ -3759,72 +3831,64 @@ fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
 
     let mut offenders = Vec::new();
     for (rel_path, test_name) in heavy_tests {
-        let path = project_root.join(rel_path);
-        let content =
-            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{rel_path} 読み込み失敗"));
-        let lines: Vec<&str> = content.lines().collect();
-        let fn_idx = lines
-            .iter()
-            .position(|line| line.trim_start().starts_with(&format!("fn {test_name}(")))
-            .unwrap_or_else(|| panic!("{rel_path} に {test_name} が見つからない"));
-        let mut has_ignore = false;
-        let mut cursor = fn_idx;
-        while cursor > 0 {
-            cursor -= 1;
-            let prev = lines[cursor].trim();
-            if prev.is_empty() {
+        let needle = format!("fn {test_name}(");
+        let mut found = false;
+        for (unit_path, content) in gate_source_units(&project_root, rel_path) {
+            let lines: Vec<&str> = content.lines().collect();
+            let Some(fn_idx) = lines
+                .iter()
+                .position(|line| line.trim_start().starts_with(&needle))
+            else {
                 continue;
+            };
+            found = true;
+            if !has_ignore_attribute(&lines, fn_idx) {
+                offenders.push(format!("{unit_path}:{test_name}"));
             }
-            if prev.starts_with("#[ignore") {
-                has_ignore = true;
-                continue;
-            }
-            if prev == "#[test]" {
-                break;
-            }
-            break;
         }
-        if !has_ignore {
-            offenders.push(format!("{rel_path}:{test_name}"));
-        }
+        assert!(
+            found,
+            "{rel_path} (fragment を含む) に {test_name} が見つからない"
+        );
     }
+    // prefix モードは一致 0 件でも何も起きない。ルールが死んでも気付けないので、
+    // 「1 件も当たらなかった prefix」を明示的に落とす (`TESTGATE-01`)。
+    let mut dead_prefix_rules = Vec::new();
     for (rel_path, fn_prefix) in heavy_prefix_tests {
-        let path = project_root.join(rel_path);
-        let content =
-            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{rel_path} 読み込み失敗"));
-        let lines: Vec<&str> = content.lines().collect();
-        for (idx, line) in lines.iter().enumerate() {
-            if !line.trim_start().starts_with(fn_prefix) {
-                continue;
-            }
-            let mut has_ignore = false;
-            let mut cursor = idx;
-            while cursor > 0 {
-                cursor -= 1;
-                let prev = lines[cursor].trim();
-                if prev.is_empty() {
+        let mut matched = 0usize;
+        for (unit_path, content) in gate_source_units(&project_root, rel_path) {
+            let lines: Vec<&str> = content.lines().collect();
+            for (idx, line) in lines.iter().enumerate() {
+                if !line.trim_start().starts_with(fn_prefix) {
                     continue;
                 }
-                if prev.starts_with("#[ignore") {
-                    has_ignore = true;
-                    continue;
+                matched += 1;
+                if !has_ignore_attribute(&lines, idx) {
+                    offenders.push(format!("{}:{}", unit_path, idx + 1));
                 }
-                if prev == "#[test]" {
-                    break;
-                }
-                break;
             }
-            if !has_ignore {
-                offenders.push(format!("{}:{}", rel_path, idx + 1));
-            }
+        }
+        if matched == 0 {
+            dead_prefix_rules.push(format!("{rel_path}:{fn_prefix}"));
         }
     }
 
-    assert!(
-        offenders.is_empty(),
-        "heavy artifact/acceptance tests must be #[ignore] and run by explicit CI scripts:\n{}",
-        offenders.join("\n")
-    );
+    // 死んだルールを先に assert すると offenders 一覧が隠れる。両方を 1 本にまとめて
+    // 「何が見えていないか」と「何が違反しているか」を同時に出す (`TESTGATE-01`)。
+    let mut report = Vec::new();
+    if !dead_prefix_rules.is_empty() {
+        report.push(format!(
+            "prefix ルールが 1 件も一致していない。検査が無言で無効化されている:\n{}",
+            dead_prefix_rules.join("\n")
+        ));
+    }
+    if !offenders.is_empty() {
+        report.push(format!(
+            "heavy artifact/acceptance tests must be #[ignore] and run by explicit CI scripts:\n{}",
+            offenders.join("\n")
+        ));
+    }
+    assert!(report.is_empty(), "{}", report.join("\n\n"));
 
     let phase11_script =
         std::fs::read_to_string(project_root.join("scripts/ci/compile-phase11-inputs.sh"))

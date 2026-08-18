@@ -154,6 +154,7 @@
 | [I-19](#i-19) | CI 自動実行の停止で `ci.yml` の 17 job が 1 ヶ月以上まったく観測されていない | 中 | documented-limitation | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-20](#i-20) | selfhost parser が受理した 6 directive の payload を黙って捨てている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 | [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない | 高 | open | [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) |
+| [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしておらず、どちらが陳腐化しているか未決 | 中 | open | [test gate 是正 ADR](docs/adr/decisions-test-gate-staleness-repair.md) |
 
 ### ドキュメント (DOC)
 
@@ -636,6 +637,16 @@
   `selfhost_bootstrap_acceptance_file_size.rs:23-53` が fragment ディレクトリを `read_dir` で
   列挙し、親の `include!` マニフェストとの整合を検証したうえで各 fragment を見る正しい形を
   実装している。
+
+  **2026-08-18 の追記**: `TESTGATE-01` で上記の構造的破損を是正した (厳密名 / prefix の
+  両モードを `file_size` 方式へ寄せ、一致 0 件の prefix を `dead_prefix_rules` として落とす)。
+  是正後 `dead_prefix_rules` は 0 件で、215 関数の無言無効化は解消した。
+  ただし**「live な regression は無い」は分割済み 4 親だけを見た測定だった**。
+  検査が復活すると、非分割ファイルに隠れていた**本物の違反 164 件**が現れた
+  (`selfhost_cli_core.rs` 158 / `selfhost_cli_actual_main_args.rs` 5 /
+  `selfhost_native_stage_chain.rs` 1)。この 164 件をどう扱うかは規約側の判断なので
+  `I-22` / `TESTGATE-03` へ切り出した。`ops03c` は expected FAIL のまま残り、
+  **本作業の前後で baseline の FAIL 集合は変わらない**。
 
 - **個々の FAIL の修正はスコープ外。** 特に snapshot 14 件は `cargo insta accept` 一発で
   消えるが、2 ヶ月分の未レビューな codegen 出力を追認することになるので**やらない**。
@@ -1126,6 +1137,59 @@
 - **着手の追跡**: `TODO.md` の `NATIVE-ROOT-01` が持つ。契約を書いた `RUNTIME-SPEC-01` は
   native 実装を「含めない範囲」に明記していたため、非適合の記録である本項が先に立った。
 - **関連**: I-17 (契約側)、I-13 (native heap の回収機構と bounds check の欠如)。
+
+---
+
+<a id="i-22"></a>
+### I-22: heavy e2e 164 件が `#[ignore]` 契約を満たしておらず、規約と実態のどちらが陳腐化しているか未決
+
+- **影響度**: 中 / **状態**: open
+- **内容**: `TESTGATE-01` で `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` の
+  構造的破損 (fragment 未追随 / prefix モードの無言無効化) を直したところ、
+  検査が**本物の違反 164 件**を報告した。従来はこれらが見えていなかった。
+
+  | ファイル | 違反数 |
+  |---|---|
+  | `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs` | 158 |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs` | 5 |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` | 1 |
+
+- **いつ・なぜ増えたか (git 履歴からの実測)**: 「ルールが一度も効いていなかった」ではない。
+  ルールは効いていた時期があり、**enforcement が止まった後に積み上がった**。
+
+  | 日付 | 事象 | `selfhost_cli_core.rs` の違反数 |
+  |---|---|---|
+  | 2026-05-07 `e9bb354e` | prefix ルール導入 (`Move heavyweight e2e gates behind scripts`) | 0 |
+  | 2026-05-15 〜 2026-07-12 | -- | 0 のまま |
+  | 2026-07-12 | CI 自動実行が停止 (`I-19`) | 0 |
+  | 2026-07-17 `60f4ef8f` | 増加の開始 | 0 → 2 |
+  | 2026-07-17 〜 2026-07-27 | selfhost contract/diagnostics の TDD 連打が 1 commit あたり 1〜3 件ずつ追加 | 141 |
+  | 2026-07-27 `a7edffe1` | `split bootstrap acceptance tests` で親が `include!` のみになり検査が panic 停止 | 141 |
+  | 2026-08-18 (現在) | -- | 158 |
+
+  つまり破壊は **2 段**である。(1) 2026-07-12 の CI 停止で誰も検査を回さなくなり、
+  5 日後から違反が積み上がった。(2) 2026-07-27 の fragment 分割で、たとえ手元で回しても
+  厳密名モードが先に panic して違反一覧に到達しなくなった。
+
+- **偽陽性ではない根拠**: `crates/lsharp-wasm/tests/` に `#[cfg_attr(..., ignore)]` 形は
+  **0 件**であり、行スキャン方式が `#[ignore]` を取りこぼす経路は無い。
+- **決めるべきこと (本 issue の本体)**: 規約と実態のどちらが陳腐化しているか。
+
+  - **案 A: 164 件に `#[ignore]` を付ける** — 既に `#[ignore]` を持つ 218 件の兄弟と
+    整合し、`scripts/ci/compile-phase11-inputs.sh` が `--ignored` で回す設計にも合う。
+    ただし **CI は 2026-07-12 から止まったままなので (`I-19`)、今日 `#[ignore]` を付けることは
+    「現在 run されて pass している 158 件が、どこでも走らなくなる」ことを意味する**。
+    さらに `I-11` が正本として記録した run set (run 1,799 / ignored 1,260 / 全 3,059) の
+    算術がずれる。
+  - **案 B: prefix ルールを絞る** — 違反の中身は 2026-07-17 以降の selfhost CLI check 系の
+    細粒度 test であり (例: `selfhost_cli_core.rs:973` `test_e2e_selfhost_cli_check_file_resolves_imported_definition`)、
+    heavy artifact gate という当初の対象像から外れている可能性が高い。
+    採ると run set は 1,799 のまま動かず、`I-11` の測定 anchor が全て有効なまま残る。
+
+  どちらを採るかは**規約側の意図の判断**であり、gate を green にするために片方へ寄せない。
+  `DIAG-DEDUP-01` と同じ形 (規約 vs 蓄積した実態) なので、同様に裁定してから直す。
+- **現在の扱い**: `ops03c` は `workspace-expected-failures.txt` の expected FAIL として残る
+  (`TESTGATE-01` 前後で baseline の FAIL 集合は不変)。着手の追跡は `TODO.md` の `TESTGATE-03`。
 
 ---
 

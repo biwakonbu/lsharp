@@ -55,7 +55,7 @@ lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_file_resolv
 lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_reports_invalid_canonical_case
 lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence
 lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms
-# [selfhost_lsp_docs_ops] 4 要因。(1) TESTGATE-01: heavy test の #[ignore] 検査が mod 分割に追随できていない (親は include! のみ、実体は part_NNN.rs) (2) DIAG-DEDUP-01: diagnostics dedup は test と実装 (AC-209) で仕様が食い違う (2 件) (3) type diagnostics の標準 LSP Diagnostic 配列投影が未実装 (4) release-smoke.sh が native-only artifact の --version / --help boundary を検証していない
+# [selfhost_lsp_docs_ops] 4 要因。(1) I-22 / TESTGATE-03: heavy test 164 件が #[ignore] 契約を満たしていない (selfhost_cli_core 158 / selfhost_cli_actual_main_args 5 / selfhost_native_stage_chain 1)。2026-08-18 に TESTGATE-01 で検査側の構造的破損 (親が include! のみで fragment を見ていない / prefix モードが一致 0 件でも無言 pass) を是正した結果、隠れていた本物の違反が現れたもの。規約と実態のどちらを直すかは未決なので本行は残る (2) DIAG-DEDUP-01: diagnostics dedup は test と実装 (AC-209) で仕様が食い違う (2 件) (3) type diagnostics の標準 LSP Diagnostic 配列投影が未実装 (4) release-smoke.sh が native-only artifact の --version / --help boundary を検証していない
 lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted
 lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_ops06_release_smoke_contract
 lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json

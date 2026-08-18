@@ -1,6 +1,7 @@
 # ADR: 陳腐化した検査 test の是正 (TESTGATE-01 / TESTGATE-02)
 
-- Status: Accepted (TESTGATE-02 は verified / TESTGATE-01 は未着手)
+- Status: Accepted (TESTGATE-02 は verified / TESTGATE-01 は構造的破損の是正のみ verified、
+  露出した 164 件の違反は `I-22` / `TESTGATE-03` へ切り出し)
 - Date: 2026-08-18
 - Scope: `TESTGATE-01` / `TESTGATE-02` / `I-11` /
   `crates/lsharp-wasm/tests/e2e/support.rs` /
@@ -127,7 +128,63 @@ baseline 反映: `workspace-expected-failures.txt` から 6 エントリを削�
 
 ### TESTGATE-01
 
-(実装後に埋める)
+RED (是正前):
+
+```
+panicked at crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs:3769:32:
+crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs に
+test_e2e_bootstrap_fixed_point_stage2_stage3 が見つからない
+```
+
+是正内容 (`crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs`):
+
+1. `gate_source_units()` を追加し、`selfhost_bootstrap_acceptance_file_size.rs` と同じ方式で
+   fragment ディレクトリを `read_dir` 列挙 → 親の `include!` マニフェストが全 fragment を
+   順序どおり含むことを `assert_eq!` で検証 → 親と全 fragment を `(表示パス, 本文)` で返す。
+   ops03b / ops03c の 3 ループ (ops03b / ops03c 厳密名 / ops03c prefix) を全てこれに寄せた。
+2. `has_ignore_attribute()` を抽出。`fn` 行の直前の非空行が `#[ignore` で始まるかを見る。
+   元のループ (`#[ignore` なら `continue`、`#[test]` かそれ以外なら `break`) と結果は同値である
+   — `continue` へ入る条件が「直前の非空行が既に `#[ignore`」だからで、それ以降に
+   `has_ignore` が false へ戻る経路は無い。
+3. prefix モードに `dead_prefix_rules` を追加。一致 0 件の prefix を明示的に落とす。
+   これが無いとルールが死んでも何も起きない (本 issue の「無言で無効化」そのもの)。
+4. dead rule の assert が offenders の assert より前にあると、ルールが 1 本死んだだけで
+   違反一覧が隠れてしまう。両者を 1 本の assert にまとめ、同時に出るようにした。
+
+**変異試験 (決定 4 の要求)**: 旧「無言で死んでいた」prefix の対象である
+`selfhost_bootstrap_four_layer/part_007.rs` から `#[ignore]` を 1 つ剥がすと、
+offenders が **164 → 165** になり、増えた 1 件はちょうど
+`crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/part_007.rs:7` だった。
+backup から復元後、`git diff --numstat -- .../selfhost_bootstrap_four_layer/` は 0 行。
+**gate が GREEN にならない以上「通ったから直った」では証明できない**ので、
+「fragment の中身が見えているか」を直接測るこの形を証拠とする。
+
+`dead_prefix_rules` は是正後 **0 件** (assert メッセージに prefix ルールの節が出ない)。
+`TODO.md` が挙げていた 6 ルール / 215 関数の無言無効化は全て解消した。
+偽陽性の可能性は `crates/lsharp-wasm/tests/` に `#[cfg_attr(..., ignore)]` 形が
+**0 件**であることで排除した (行スキャン方式が取りこぼす形が存在しない)。
+
+**満たせなかった受入条件**: ops03c は GREEN にならない。検査が復活した結果、
+**本物の違反 164 件**が現れたため (`selfhost_cli_core.rs` 158 /
+`selfhost_cli_actual_main_args.rs` 5 / `selfhost_native_stage_chain.rs` 1)。
+これは本 ADR の範囲外の判断 (規約と実態のどちらが陳腐化しているか) なので、
+`I-22` / `TESTGATE-03` へ切り出した。**gate を green にするために prefix ルールを
+黙って絞ることはしない。** baseline の FAIL 集合は本作業の前後で不変
+(`ops03c` は元から expected FAIL であり、新規 FAIL も pass への転換も無い)。
+
+なお当初 `TODO.md` に書かれていた「現時点では 215 件とも `#[ignore]` を持っており
+live な regression は無い」は、分割済み 4 親だけを見た測定だった。非分割ファイルの
+違反は厳密名モードの panic に隠れて数えられていない。
+
+`ops03b` (`test_e2e_ops03b_debug_tests_are_ignored`) は是正後 **1 passed**。
+
+### 副産物: 違反がいつ積み上がったか
+
+`I-22` に表として記録した。要点は破壊が **2 段**だったこと:
+prefix ルール導入 (2026-05-07 `e9bb354e`) 時点の違反は 0 で、
+2026-07-12 の CI 自動実行停止 (`I-19`) の 5 日後から積み上がり始め、
+2026-07-27 の fragment 分割 (`a7edffe1`) が「手元で回しても見えない」状態を上塗りした。
+**ルールが最初から空回りしていたのではなく、enforcement が止まってから実態が離れた**。
 
 ## 受入条件
 
