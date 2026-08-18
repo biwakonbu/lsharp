@@ -711,10 +711,20 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `RootPopUnderflow` / `main` ×1 と `BranchDepthMismatch` (`push-roots` ×2 / `alloc-rooted` ×1)。
   これらの fixture は root を意図的に積み増す・偏らせるので、免除では扱えず、
   「この不均衡は意図である」を IR へ伝える明示的な注釈 (言語表面の追加) が要る。
-  **ADR の起票から始める**。受入条件は (a) 注釈あり / なしを対にした test が GREEN、
+  ADR は 2026-08-18 に起票した:
+  [`decisions-root-lifetime-intentional-imbalance-annotation.md`](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)
+  (`:roots-unbalanced "<理由>"` を metadata directive として足し、免除集合は IR の field ではなく
+  `validate_module` の第 2 引数で渡す)。受入条件は (a) 注釈あり / なしを対にした test が GREEN、
   (b) `scripts/ci/test-runtime-limits.sh` が rc=0 (現在 rc=101)、
-  (c) `workspace-expected-failures.txt` から残り 4 件を削除。
+  (c) `workspace-expected-failures.txt` から残り 4 件を削除 (95 → 91)。
   **含めない範囲**: `crates/lsharp-wasm` lib の `RootSetWithoutActiveSlot` 既知 FAIL は別要因。
+  既存 lease helper 2 件の注釈移行と、root API 契約の全面補完 (`I-17`) も含めない。
+- [ ] `RUNTIME-SPEC-01` root 管理 API の契約が実装より薄い — Issue `I-17`。
+  `root_push` / `root_set` の戻り値、root stack の容量上限と grow、`root_set` 失敗時の
+  観測可能性 (failure ledger → trap) が [runtime spec](docs/language/runtime-spec.md) に無い。
+  空 stack への `root_pop` の 1 項目だけは `SMOKE-GATE-02` の第 2 段で spec へ引き上げ済み。
+  受入条件は残り 3 項目を spec へ書き、wasm emitter の実装と対照した test で pin すること。
+  **含めない範囲**: native backend の `lsharp_root_*` 実装そのもの (未着手)。
 - [~] `DOC-07` ドキュメント同期ハーネス — `.claude/rules/doc-sync.md`、`.claude/hooks/doc-guard.sh`、
   `.claude/skills/doc-sync/` を追加した。残るのは実運用での有効性確認と、hook が「正しい正本へ
   正しい粒度で書かれたか」までは判定できない点の運用での補完。

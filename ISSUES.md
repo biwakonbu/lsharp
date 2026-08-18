@@ -149,6 +149,7 @@
 | [I-14](#i-14) | root lifetime verifier が公開 runtime API の合法な使用を拒否する | 中-高 | in-design (13/17 解消) | [main exit 免除 ADR](docs/adr/decisions-root-lifetime-main-exit-exemption.md) |
 | [I-15](#i-15) | `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない | 中 | resolved | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-16](#i-16) | embedded component cache の key が build 入力 (`wit/` / `stdlib/`) を覆いきっていない | 中 | resolved | [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) |
+| [I-17](#i-17) | runtime spec が root 管理 API の戻り値と境界挙動を定義していない | 中 | open | [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
 
 ### ドキュメント (DOC)
 
@@ -787,9 +788,13 @@
   `scripts/ci/test-gc-rooting.sh` は rc=101 → rc=0。判定・却下理由・実測は
   [`decisions-root-lifetime-main-exit-exemption.md`](docs/adr/decisions-root-lifetime-main-exit-exemption.md)。
 - **残件**: `RootPopUnderflow` / `main` ×1 と `BranchDepthMismatch` ×3 の計 4 件。
-  「意図的な不均衡」を IR へ伝える明示的な注釈 (言語表面の追加) を要するため、
-  別 ADR 起票のうえ次スライスで扱う。`scripts/ci/test-runtime-limits.sh` は
+  「意図的な不均衡」を IR へ伝える明示的な注釈 (言語表面の追加) を要する。
+  第 2 段の判断は 2026-08-18 に起票した
+  [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)
+  が正本 (`:roots-unbalanced "<理由>"`)。`scripts/ci/test-runtime-limits.sh` は
   それまで rc=101 のまま残る。追跡は TODO.md の `SMOKE-GATE-02`。
+  なお `RootPopUnderflow` の位置づけを決める過程で、runtime spec が root API の
+  境界挙動を定義していないことが判明した (I-17)。
 - **関連**: `LEGACY-ROOT-01` (TODO.md)、I-07 (rooting guard の未完)、I-11 (baseline の由来)。
 
 ---
@@ -912,6 +917,35 @@
   **stale hit が実際に起きる様子は再現していない** (旧 build.rs との対照は emitter fingerprint が
   変わるため成立しない)。`packages/` 探索パスは引き続き key の外にある。
 - **関連**: [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md)。
+
+---
+
+<a id="i-17"></a>
+### I-17: runtime spec が root 管理 API の戻り値と境界挙動を定義していない
+
+- **影響度**: 中 / **状態**: open
+- **内容**: [`docs/language/runtime-spec.md:74-84`](docs/language/runtime-spec.md) の
+  root 管理 API は一行の役割表 (「root stack にポインタを追加する」等) と
+  「GC 未導入段階では no-op 互換実装を許容する」だけで、**戻り値も境界挙動も定義していない**。
+  一方 `crates/lsharp-wasm/src/wasi/root.rs` の emitter はどちらも具体的に決めている。
+
+  | 事項 | 実装 (`wasi/root.rs`) | spec |
+  |---|---|---|
+  | 空 stack への `root_pop` | `top == 0` を分岐し top を動かさず `0` を返す (`:145-152`) | 未定義 |
+  | `root_push` の戻り値 | push 前の top を i64 で返す (`:126-128`) | 未定義 |
+  | `root_set` の失敗 | failure ledger へ記録してから trap する | 未定義 |
+  | root stack の容量上限と grow | grow あり (専用 e2e が存在する) | 未定義 |
+
+- **なぜ問題か**: 契約が実装より薄いので、**test が spec の無い挙動を pin している**状態になる。
+  実例が `test_e2e_root_runtime_api_tracks_slots_and_values` で、空 stack への `root_pop` が
+  `0` を返すことを assertion に含む。native backend は現時点で `lsharp_root_pop` を
+  実装していないため、この食い違いは backend 間の非互換として顕在化していないだけである。
+- **本スライスで埋めた分**: 空 stack への `root_pop` の 1 項目だけを spec へ引き上げた
+  (`root_lifetime` verifier の `RootPopUnderflow` を「spec 上は合法だが既定では拒否する検査」
+  として位置づけるために必要だったため)。判断は
+  [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)。
+  **残る 3 項目は未着手**で、本項がその正本である。
+- **関連**: I-14 (verifier と公開 API の食い違い)、I-07 (rooting guard の未完)。
 
 ---
 

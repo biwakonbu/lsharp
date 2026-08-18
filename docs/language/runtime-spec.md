@@ -79,6 +79,16 @@ GC を導入する runtime は、少なくとも次の root 管理 API を備え
 | `root_pop` | root stack の末尾を除去する |
 | `root_set` | 既存 root slot を更新する |
 
+境界挙動として、次の 1 点を定める。
+
+- **空の root stack に対する `root_pop` は trap せず、root stack を変更せずに `0` を返す。**
+  backend は均衡した push/pop を前提にしてよいが、不均衡を未定義動作として扱ってはならない。
+
+これは wasm backend の emitter (`crates/lsharp-wasm/src/wasi/root.rs` の `emit_root_pop_func`)
+が既に実装している挙動を契約へ引き上げたものである。`root_push` / `root_set` の戻り値、
+root stack の容量上限、失敗時の観測可能性は**まだ未定義**であり、その追跡は
+[`ISSUES.md` の `I-17`](../../ISSUES.md#i-17) が正本。
+
 これらは主に compiler が生成するコードや runtime 内部から利用されるものであり、ユーザー向け API ではない。
 
 native backend では内部管理 API も必要に応じて `lsharp_root_push`, `lsharp_root_pop`, `lsharp_root_set` のような symbol へ写像してよい。GC 未導入段階では no-op 互換実装を許容する。
