@@ -1164,28 +1164,6 @@
         initial (push-object-vector-local (vector-new 1) first)]
         (sort-diag-loop diagnostics initial 1 len)))))
 
-;; 診断の重複マージ (AC-209)
-;; 同一 span に対する重複診断は severity の高い方 (数値が小さい方) のみ残す
-(defn merge-duplicate-diagnostics [diagnostics]
-  (let [len (vector-length diagnostics)]
-    (if (= len 2)
-      (let [diag0 (vector-get diagnostics 0)
-        diag1 (vector-get diagnostics 1)
-        line0 (vector-get diag0 2)
-        col0 (vector-get diag0 3)
-        line1 (vector-get diag1 2)
-        col1 (vector-get diag1 3)
-        sev0 (vector-get diag0 0)
-        sev1 (vector-get diag1 0)]
-        (if (= line0 line1)
-          (if (= col0 col1)
-            (if (< sev0 sev1)
-              (push-object-vector-local (vector-new 1) diag0)
-              (push-object-vector-local (vector-new 1) diag1))
-            diagnostics)
-          diagnostics))
-      diagnostics)))
-
 ;; 診断の順序キーを計算 (AC-211: deterministic order)
 ;; source(1=parse,2=type,3=lint) → severity(1=error,2=warning,3=info,4=hint) → line → col
 (defn diagnostic-order-key [diag]

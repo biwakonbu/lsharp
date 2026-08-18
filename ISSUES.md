@@ -1342,6 +1342,8 @@
   さらに `merge-duplicate-diagnostics` が `len == 2` の入力しか扱わない (3 件以上は素通し) ことが
   判明したため、削除する方向で決着させた。判断と却下理由は
   [dedup 単一正本化 ADR](docs/adr/decisions-lsp-dedup-single-source.md)。
+  2026-08-19 に実装まで完了し、受入条件 3 件 (非 docs 参照 0 / parity test 3 本が期待値据え置きで pass /
+  `Cli.ls` 経路の pin 7 件が pass) をすべて実測で満たした。
 - **関連**: I-11 (baseline)、`ISSUES.md` の I-22 (同じ「規約 vs 実態」の形。
   `:1201` が本件の裁定に倣うと書いている)。
 

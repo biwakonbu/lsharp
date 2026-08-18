@@ -696,15 +696,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   span が精密になっても判定規則は変わらない (同一 span に別 rule が正当に並ぶため)。
   **受入条件**: 上記 2 診断が別 range を持つこと、および `I-24` の pin 2 本が引き続き pass すること。
 
-- [ ] `LSP-DEDUP-MERGE-01` 診断 dedup の実装が 2 つあり、片方だけが正しい — Issue `I-24`。
-  `merge-duplicate-diagnostics` (`selfhost/src/Tools/Lsp/LspServerNav.ls:1169`) は同一 start span を
-  **rule を問わず**潰す、`dedup-diagnostics` と逆の意味論を持つ。しかも `len == 2` しか扱わない。
-  呼び出し元は `LspServer.ls:144` の検証用 `main` と parity test 3 本だけで、実運用の publish 経路
-  (`Cli.ls:1440` / `:1687` / `:1702`) には入っていない。
-  **決着済み (2026-08-18)**: `merge-duplicate-diagnostics` を削除し `dedup-diagnostics` を単一正本にする。
-  判断と却下理由は [ADR](docs/adr/decisions-lsp-dedup-single-source.md)。残るのは実装のみ。
-  **受入条件**: `grep -rn 'merge-duplicate-diagnostics'` の hit が 0 (docs の履歴記述を除く)、
-  parity test 3 本が**期待値を変えずに** pass、`test_e2e_selfhost_cli_lsp_stdio_didopen_*` 7 件が引き続き pass。
   **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
   `SMOKE-GATE-03` `default-path-smoke` job が緑になることの 1 run 観測 — Issue `I-15` / `I-19`。

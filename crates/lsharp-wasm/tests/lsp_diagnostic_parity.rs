@@ -95,7 +95,7 @@ fn test_e2e_lsp_diagnostic_sort_three_items() {
 // CP-04: diagnostic dedup (AC-209)
 // ============================================================
 
-/// merge-duplicate-diagnostics: 同一 span の重複は severity 高い方のみ残すこと
+/// dedup-diagnostics: 同一 span の重複は severity 高い方のみ残すこと
 #[test]
 fn test_e2e_lsp_diagnostic_dedup_keeps_higher_severity() {
     // dup-a: severity=2, line=5, col=7  /  dup-b: severity=1, line=5, col=7
@@ -104,7 +104,7 @@ fn test_e2e_lsp_diagnostic_dedup_keeps_higher_severity() {
   (let [dup-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 2) 101) 5) 7) 0) 0)
         dup-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 102) 5) 7) 0) 0)
         diags (vector-push (vector-push (vector-new 2) dup-a) dup-b)
-        merged (merge-duplicate-diagnostics diags)]
+        merged (dedup-diagnostics diags)]
     (do
       (print (vector-length merged))
       (print (vector-get (vector-get merged 0) 0))
@@ -118,7 +118,7 @@ fn test_e2e_lsp_diagnostic_dedup_keeps_higher_severity() {
     );
 }
 
-/// merge-duplicate-diagnostics: 異なる span は両方残ること
+/// dedup-diagnostics: 異なる span は両方残ること
 #[test]
 fn test_e2e_lsp_diagnostic_dedup_keeps_different_spans() {
     // diag-a: line=1, col=1  /  diag-b: line=5, col=3
@@ -127,7 +127,7 @@ fn test_e2e_lsp_diagnostic_dedup_keeps_different_spans() {
   (let [diag-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 100) 1) 1) 0) 0)
         diag-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 101) 5) 3) 0) 0)
         diags (vector-push (vector-push (vector-new 2) diag-a) diag-b)
-        merged (merge-duplicate-diagnostics diags)]
+        merged (dedup-diagnostics diags)]
     (do
       (print (vector-length merged))
       0)))

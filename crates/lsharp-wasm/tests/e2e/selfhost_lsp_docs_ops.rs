@@ -123,7 +123,7 @@ fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
     );
 }
 
-/// TEST-LSP-06: selfhost/src/Tools/Lsp/LspServer.ls の merge-duplicate-diagnostics が同一 span を 1 件へ潰すこと
+/// TEST-LSP-06: selfhost/src/Tools/Lsp/LspServer.ls の dedup-diagnostics が同一 span を 1 件へ潰すこと
 #[test]
 #[ignore]
 fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {

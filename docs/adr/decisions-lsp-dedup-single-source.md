@@ -1,7 +1,7 @@
 # 診断 dedup の単一正本化 — `merge-duplicate-diagnostics` の廃止
 
-- **Status**: doc-RED (判断のみ確定、実装は未着手)
-- **Date**: 2026-08-18
+- **Status**: Accepted (2026-08-19 に実装し、受入条件 3 件すべてを実測で満たした)
+- **Date**: 2026-08-18 (判断) / 2026-08-19 (実装)
 - **Scope**: `selfhost/src/Tools/Lsp/LspServerNav.ls` / `selfhost/src/Tools/Lsp/LspServer.ls` と
   それらを pin する parity test 3 本
 - **Related**: `ISSUES.md` の `I-24`、`TODO.md` の `LSP-DEDUP-MERGE-01`、
@@ -69,4 +69,38 @@ pin されている入力は severity 2/1・同一 line 5 col 7・`source = 0` �
 
 ## Evidence
 
-実装後に埋める。
+実装は 2026-08-19、worktree `/Users/biwakonbu/github/tmp/lsharp-diag-dedup`
+(branch `codex/lsp-dedup-01`) で実施。変更は 4 ファイル 7 hunk。
+
+| 受入条件 | 判定 | 実測 |
+|---|---|---|
+| `merge-duplicate-diagnostics` の hit が 0 (docs 除く) | **満たす** | `grep -rn 'merge-duplicate-diagnostics' selfhost crates scripts` → 0 hit |
+| parity test 3 本が**期待値を変えずに** pass | **満たす** | 下表 |
+| `Cli.ls` 経路の pin 7 件が引き続き pass | **満たす** | `test result: ok. 7 passed; 0 failed` |
+
+parity test の内訳。
+
+| test | 結果 |
+|---|---|
+| `lsp_diagnostic_parity::test_e2e_lsp_diagnostic_dedup_keeps_higher_severity` | `ok` |
+| `lsp_diagnostic_parity::test_e2e_lsp_diagnostic_dedup_keeps_different_spans` | `ok` |
+| `selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_runtime_merge_duplicates` (TEST-LSP-06) | `ok` |
+
+`lsp_diagnostic_parity` は同 binary の 15 件全部が `ok` (144.12s)。TEST-LSP-06 は
+`LspServer.ls` の検証用 `main` の出力行を読む test なので、`selfhost_lsp_runtime_*` 10 件を
+まとめて回して 10/10 `ok` (44.32s)。後続の TEST-LSP-07 / 08 が同じ出力の 13〜16 行目を
+読んでいるため、行数がずれていないことも同時に確認できている。
+
+`Cli.ls` 経路の pin 7 件は `e2e::selfhost_cli_core::test_e2e_selfhost_cli_lsp_stdio_didopen_`
+で一括実行し 7/7 `ok`、wall clock 1182.61s (7 件並列、`NATIVE-ROOT-01` の 614 件 sweep と
+CPU を共有した状態での実測なので、1 件あたりの所要としては読まないこと)。
+
+**期待値は 1 行も変更していない。** ADR で予測したとおり、pin 入力の diag は
+index 5 (`source`) が 0 なので `dedup-diag-same-span` は line/col だけで一致を判定し、
+`dedup-diag-pick-best` が severity 1 を選ぶ。`len == 2` に限定されていた旧実装と同じ結果に落ちる。
+
+### 予測との差
+
+無し。削除した関数は production 経路から呼ばれていなかったため、`Cli.ls` 側の
+publish 経路には一切の挙動変化が無い。変わったのは検証用 `main` と parity test が
+どちらの実装を呼ぶかだけである。

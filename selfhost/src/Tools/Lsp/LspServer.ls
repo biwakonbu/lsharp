@@ -141,7 +141,7 @@
     dup-a (make-lsp-server-test-diag 2 101 5 7 0 0)
     dup-b (make-lsp-server-test-diag 1 102 5 7 0 0)
     dup-diags (make-lsp-server-test-diag-pair dup-a dup-b)
-    merged (merge-duplicate-diagnostics dup-diags)]
+    merged (dedup-diagnostics dup-diags)]
     (do
       ;; capabilities の検証
       (print (vector-length caps)) ;; 7
@@ -158,7 +158,7 @@
       ;; sort-diagnostics の検証 (source=0, sev=1 → key = 0*100M + 1*1M + line*10K + col)
       (print (diagnostic-order-key (vector-get sorted 0))) ;; 1010001
       (print (diagnostic-order-key (vector-get sorted 1))) ;; 1030002
-      ;; merge-duplicate-diagnostics の検証
+      ;; dedup-diagnostics の検証
       (print (vector-length merged)) ;; 1
       (print (vector-get (vector-get merged 0) 0)) ;; 1
       ;; navigation handler shape の検証
