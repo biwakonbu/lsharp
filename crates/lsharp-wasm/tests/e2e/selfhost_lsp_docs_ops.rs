@@ -1171,7 +1171,7 @@ fn test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json() {
     let output = compile_and_run(&combined);
     assert_eq!(
         output.trim(),
-        r#"[{"source":1,"severity":1,"rule":203,"line":2,"col":4,"messageHash":7003},{"source":3,"severity":1,"rule":202,"line":5,"col":9,"messageHash":7002}]"#,
+        r#"[{"source":1,"severity":1,"rule":203,"line":2,"col":4,"messageHash":7003},{"source":3,"severity":1,"rule":202,"line":5,"col":9,"messageHash":7002},{"source":3,"severity":2,"rule":201,"line":5,"col":9,"messageHash":7001}]"#,
         "render-diagnostics-json は sort/dedup 後の diagnostics を固定 JSON array で返すべき"
     );
 }

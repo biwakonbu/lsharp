@@ -680,14 +680,23 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **判断材料**: 案 A は現在 run されて pass している 158 件を「どこでも走らない」状態にする
   (CI は停止中)。案 B は run set を 1,799 のまま保つので `I-11` の測定 anchor が全て有効に残る。
 
-- [ ] `DIAG-DEDUP-01` diagnostics dedup の test と実装の仕様不一致 — Issue `I-11`。
-  `test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json` は「同一 start span なら 1 件」を
-  要求するが、実装 `selfhost/src/Tools/Lsp/LspServerNav.ls:1225-1245` の
-  `dedup-diag-same-lint-identity` は lint 同士に **rule 一致 + end span 一致**まで求めており、
-  同一位置で rule 201 / 202 の 2 件を意図的に残す。しかも `:1231` のコメントは
-  「lint の異なる rule を落とさない」と AC-209 の設計判断として明記している。
-  **単なる未実装 RED ではなく仕様の衝突**であり、どちらが陳腐化しているかは AC-209 の
-  受入基準に当たって決める。
+- [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
+  `L0001` (unused binding) と `L0002` (empty do block) が実ソース
+  `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される
+  (`test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics` が現状として pin)。
+  対象の識別子・式の実 span を lint 診断へ載せる。
+  **この項目に含めない範囲**: 重複判定の意味論。`I-24` で rule identity を含む形に裁定済みで、
+  span が精密になっても判定規則は変わらない (同一 span に別 rule が正当に並ぶため)。
+  **受入条件**: 上記 2 診断が別 range を持つこと、および `I-24` の pin 2 本が引き続き pass すること。
+
+- [ ] `LSP-DEDUP-MERGE-01` 診断 dedup の実装が 2 つあり、片方だけが正しい — Issue `I-24`。
+  `merge-duplicate-diagnostics` (`selfhost/src/Tools/Lsp/LspServerNav.ls:1169`) は同一 start span を
+  **rule を問わず**潰す、`dedup-diagnostics` と逆の意味論を持つ。しかも `len == 2` しか扱わない。
+  呼び出し元は `LspServer.ls:144` の検証用 `main` と parity test 3 本だけで、実運用の publish 経路
+  (`Cli.ls:1440` / `:1687` / `:1702`) には入っていない。
+  **受入条件**: `dedup-diagnostics` へ寄せて `merge-duplicate-diagnostics` を削除するか、
+  意味論の違いが意図的である根拠を ADR に書くか、どちらかに決着させる。
+  **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
   `SMOKE-GATE-03` `default-path-smoke` job が緑になることの 1 run 観測 — Issue `I-15` / `I-19`。
   受入条件 (a) skipped の原因特定は **2026-08-18 に達成**した。原因は job 側の条件ではなく

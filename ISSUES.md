@@ -156,6 +156,7 @@
 | [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない (aarch64 は解決済、x86-64 が残件) | 高 | open | [空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) |
 | [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしておらず、どちらが陳腐化しているか未決 | 中 | open | [test gate 是正 ADR](docs/adr/decisions-test-gate-staleness-repair.md) |
 | [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
+| [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
 
 ### ドキュメント (DOC)
 
@@ -600,7 +601,7 @@
   | `default_path_delegation` | 12 | embedded guest default path の selfhost 出力不一致 |
   | `selfhost_native_stage23_gap` | 10 | selfhost codegen の未達。式深度上限 (8 > 7) / harness fixture 不在 / native helper emitter の offset・trailer・prologue 不一致 |
   | insta snapshot | 14 | insta が 2026-05-31 で停止、codegen は 2026-07-27 まで進行 |
-  | `selfhost_lsp_docs_ops` | 5 | 4 要因。`TESTGATE-01` / `DIAG-DEDUP-01` (2 件) / 標準 LSP Diagnostic 配列投影の未実装 / release-smoke.sh の boundary 未検証 |
+  | `selfhost_lsp_docs_ops` | 5 | 4 要因。`TESTGATE-01` / `DIAG-DEDUP-01` (2 件) / 標準 LSP Diagnostic 配列投影の未実装 / release-smoke.sh の boundary 未検証。うち `DIAG-DEDUP-01` の 2 件は **2026-08-18 に解消** (`I-24`) し、現在は 3 件 / 3 要因 |
   | `strings_patterns_compiler_integration` | 5 | codegen が host `alloc` へ**負の size** を渡す 4 件 (`RootLifetime` とも I-13 の heap 枯渇とも別) + WasmEmit が native 専用 opcode 88 を黙って破棄する 1 件 |
   | `selfhost_cli_core` | 4 | selfhost CLI の未実装挙動への RED。contract suite の canonical/legacy 分離 / unsupported type の実行前報告 / contradicting evidence / import 先 helper の診断 |
   | `bootstrap_selfhost_lsp_integration` | 2 | selfhost formatter の compile が `UndefinedVar { name: "ast-defn-signature" }`。2 件とも同一 span |
@@ -615,6 +616,11 @@
   親ファイルの `read_to_string` で検査する形が壊れたもので、修正は安価。
   **follow-up は `TODO.md` に ID 付きで登録済み** -- `TESTGATE-01` / `TESTGATE-02` /
   `DIAG-DEDUP-01`。それ以外はすべて未実装挙動への RED であり、新規 ID は切っていない。
+
+  **`DIAG-DEDUP-01` は 2026-08-18 に解消した** (`TODO.md` から削除済み)。3 者間の衝突を
+  `I-24` として採番し、spec AC-209 の文言のほうが陳腐化していると裁定した。
+  `workspace-expected-failures.txt` から 2 エントリを削除している (e2e 52 -> 50 /
+  `selfhost_lsp_docs_ops` 5 -> 3)。
 
   **`TESTGATE-02` は 2026-08-18 に解消した** (`TODO.md` から削除済み)。bundle 正規化を
   単一関数へ寄せ、検査側もそれを通す形へ直した。6 binary すべてで pass を実測し、
@@ -660,7 +666,7 @@
   は **0 件**で、変更した 2 ファイルを読む test は存在しない。測定値に対して無害。
 
 - **関連**: `LEGACY-ROOT-01` / `LEGACY-BOOT-01` / I-08 / `TESTGATE-01` / `TESTGATE-02` /
-  `DIAG-DEDUP-01`。
+  `DIAG-DEDUP-01` (= `I-24`)。
   正本は [`workspace-expected-failures.txt`](docs/development/validation/workspace-expected-failures.txt)、
   照合は `scripts/ci/check-workspace-baseline.sh`。
 
@@ -1199,6 +1205,14 @@
 
   どちらを採るかは**規約側の意図の判断**であり、gate を green にするために片方へ寄せない。
   `DIAG-DEDUP-01` と同じ形 (規約 vs 蓄積した実態) なので、同様に裁定してから直す。
+
+  **先例が出た**: `DIAG-DEDUP-01` は 2026-08-18 に `I-24` として裁定し、
+  「**規約の文言のほうが、実運用の要求を取りこぼしていた**」と結論した
+  ([lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md))。
+  ただしこれは「実態が正しい」という一般則ではない。あの件で決め手になったのは
+  「規約どおりに直すと利用者から見える指摘が消える」という**具体的な損失**であって、
+  実態が蓄積していたことそのものではない。本件で同じ問いを立てるなら
+  「案 A を採ると 158 件がどこでも走らなくなる」という損失を同じ天秤に載せる。
 - **現在の扱い**: `ops03c` は `workspace-expected-failures.txt` の expected FAIL として残る
   (`TESTGATE-01` 前後で baseline の FAIL 集合は不変)。着手の追跡は `TODO.md` の `TESTGATE-03`。
 
@@ -1252,6 +1266,46 @@
   加えて実測値 `3492` は算術値と一致しており、算術の前提そのものも裏が取れている。
 - **関連**: I-19 (CI 停止)、I-22 (同じく CI 停止期間に積み上がった `#[ignore]` 契約違反)、
   I-11 (baseline が非 ignored 限定であること)。
+
+---
+
+<a id="i-24"></a>
+### I-24: 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違っている
+
+- **影響度**: 中 / **状態**: resolved
+- **内容**: 診断の重複除去について、3 つの正本が互いに違うことを言っている。
+  2 者間の drift ではなく **3 者間の衝突**である。
+
+  | # | 正本 | 主張 | 状態 |
+  |---|---|---|---|
+  | 1 | spec AC-209 (`docs/development/planning/toolchain-parity-spec.md`) | 同一 span なら severity の高い方のみ残す。rule の例外は書かれていない | 文言のみ |
+  | 2 | `test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json` / `..._snapshot` | AC-209 の文言どおり。同一 start span の lint 2 件を 1 件へ潰すことを要求 | **FAIL** (baseline に 2 件) |
+  | 3 | `LspServerNav.ls:1225-1245` の `dedup-diag-same-lint-identity` と、それを pin する 2 test | lint 同士は rule と start/end が全一致した場合だけ重複 | pass |
+
+- **決め手**: 3 の側の pin は 2026-08-11 `c00368ad` が入れた LSP wire レベルの e2e
+  `test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics`
+  (TEST-CLI-02-AN32j) である。実ソース `(defn main [] (let [unused (do)] 0))` に対し
+  `L0001` と `L0002` が**どちらも** publish されることを要求しており、両者は
+  range `0:0..0:0` / severity 2 で start も end も一致する。
+  **AC-209 の文言をそのまま実装すると、この 2 件のうち片方が利用者から黙って消える。**
+- **どちらが陳腐化しているか**: spec の文言 (1) である。AC-209 は「重複」を span だけで
+  定義しており、rule identity を勘定していなかった。文言を是正し、test (2) の期待値を
+  それに合わせる。判断と却下理由は
+  [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) に記録した。
+  **「実装が正しいから test を直す」ではない。** test が写している文言のほうが実運用の要求を
+  取りこぼしている、という判定である。
+- **span 精密化では解けない**: 現状 `L0001` / `L0002` がともに `0:0..0:0` へ落ちるのは
+  lint span の投影が未実装だからだが、span が精密になっても「同一識別子に別 rule が 2 件」は
+  正当に起こりうる。したがって rule identity による判別は**恒久的に**必要で、
+  本判断は暫定免除ではない。span 精密化は独立の品質課題として `LINT-SPAN-01` に登録した。
+- **派生して見つかった重複実装**: `merge-duplicate-diagnostics` (`LspServerNav.ls:1169`) は
+  同一 start span を rule を問わず潰す、`dedup-diagnostics` と逆の意味論を持つ。
+  呼び出し元は `LspServer.ls:144` の検証用 `main` と parity test 3 本だけで、
+  **実運用の publish 経路 (`Cli.ls:1440` / `:1687` / `:1702`) には入っていない**。
+  同じ概念の実装が 2 つあり片方だけが正しい状態なので、単一正本化の対象として
+  `TODO.md` の `LSP-DEDUP-MERGE-01` に登録した。
+- **関連**: I-11 (baseline)、`ISSUES.md` の I-22 (同じ「規約 vs 実態」の形。
+  `:1201` が本件の裁定に倣うと書いている)。
 
 ---
 

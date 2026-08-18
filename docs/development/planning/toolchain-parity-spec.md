@@ -166,7 +166,9 @@ hover/definition/references/rename/formatting/completion のレスポンス形�
 **受入基準:**
 
 - AC-208: 診断は `source` フィールド (`parse`, `type`, `lint`) でグルーピングされ、各グループ内で行番号昇順に返される
-- AC-209: 同一 span に対する重複診断は severity の高い方のみ残す
+- AC-209: 同一 span に対する重複診断は severity の高い方のみ残す。ただし lint 診断
+  (`source = lint`) は rule ID が異なれば別の指摘であり、span が一致しても重複とはみなさない
+  (判断と却下理由: [lint dedup identity ADR](../../adr/decisions-lint-diagnostic-dedup-identity.md))
 - AC-210: 診断の `code` フィールドが安定した識別子 (例: `E0001`, `L0001`) を持つ
 - AC-211: 同一ファイルに対して再パースしても診断の順序・内容が変化しない
 
