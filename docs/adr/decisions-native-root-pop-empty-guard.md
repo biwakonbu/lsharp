@@ -191,8 +191,34 @@ prefix 表に無い test を取りこぼしていた。**完走後の全件結�
 
 | 分類 | 件数 | 扱い |
 |---|---|---|
-| `test_e2e_linux_x86_actual_*` / Lima VM 依存 | 環境要因 | macOS host では実行できない。本変更と無関係 |
+| `test_e2e_linux_x86_actual_*` / `test_e2e_native_linux_x86_*` / Lima VM 依存 | 環境要因 | 本変更と無関係 (下記) |
+| `LSHARP_NATIVE_*` env 依存 (`test_e2e_saved_native_stage3_*` / `test_e2e_native_macos_aarch64_*`) | 環境要因 | 本変更と無関係 (下記) |
 | `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` | 1 | **2026-08-03 `1ee26eef` から陳腐化した pin**。`I-23` として新規登録 |
+
+環境要因 2 種の内訳を実測で確定させた (2026-08-18)。
+
+- **Lima 依存**: `limactl list` は VM `lsharp-linux-x86` (x86_64 / 4 CPU / 16 GiB) が
+  **`Stopped`** であることを示す。すなわち「macOS host では原理的に実行できない」のではなく
+  「VM を起動していない」が正しい失敗理由である。当初この行に
+  「macOS host では実行できない」と書いたのは不正確だったので訂正した。
+  なお sweep 中に VM を起動すると 4 CPU を奪って計測を歪めるため、本 sweep では起動していない。
+  `test_e2e_native_host_binary_bundle_if_result_preserves_outer_for_add` は名前が
+  `host_binary` だが本体は `link_and_run_linux_x86_native_binary_via_lima` (`:44252`) を呼ぶので
+  この分類に入る。
+- **env 依存**: `test_e2e_saved_native_stage3_*` は
+  `LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER` を `.expect()` で要求し (`:56242-56243`)、
+  `test_e2e_native_macos_aarch64_actual_app_cli_release_program` は
+  `LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR` (`:56136`)、
+  `..._fixedpoint_compiler_exports_linux_x86_*` は
+  `LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_APP_CLI_ARTIFACT_DIR` (`:56367`) を要求する。
+  いずれも未設定なら panic するので、**assertion ではなく前提の欠落**である。
+  これは `I-11` が「正しい環境前提は `./stage0` 不在ではなく `LSHARP_NATIVE_*` が全て未設定」と
+  訂正した内容と同じ構図である。
+
+**分類規則**: 以上により、本 sweep の FAIL は機械的に 3 分類できる。
+(a) Lima VM 依存、(b) `LSHARP_NATIVE_*` env 依存、(c) それ以外。
+回帰の候補になり得るのは (c) だけであり、完走時点で (c) に入るのは
+`bundle_initial_capacity` (`I-23`) のみであることを確認する。
 
 `bundle_initial_capacity` が本変更と無関係であることは**実測と算術の両方**で確定している。
 
