@@ -153,8 +153,7 @@ impl Parser {
                             let form_start = self.peek_span();
                             self.advance(); // :
                             self.advance(); // review-attestation
-                            let (attestation, end_span) =
-                                self.parse_review_attestation_form()?;
+                            let (attestation, end_span) = self.parse_review_attestation_form()?;
                             metadata.forms.push(MetadataForm::new(
                                 form_start.merge(end_span),
                                 MetadataFormKind::ReviewAttestation {

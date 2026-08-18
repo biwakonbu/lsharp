@@ -353,13 +353,13 @@ fn collect_lsp_actual_stdio_repeated_sequence_proxy_workload() -> serde_json::Va
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         open_source.len()
     );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
     let change_response = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         change_source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let formatting_response =
         "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\\n(he)\\n\"]]}";
 
@@ -502,6 +502,7 @@ fn test_e2e_runtime_object_table_grows_past_initial_capacity() {
     let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
         r#"
         (defn alloc-rooted [n]
+          :roots-unbalanced "object table の grow を確認するため、意図的に root を積み増したまま返る"
           (if (<= n 0)
             0
             (let [value (__alloc 8)]
@@ -534,6 +535,7 @@ fn test_e2e_runtime_root_stack_grows_past_initial_capacity() {
     let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
         r#"
         (defn push-roots [n]
+          :roots-unbalanced "root stack の grow を確認するため、意図的に root を積み増したまま返る"
           (if (<= n 0)
             0
             (do
@@ -565,12 +567,14 @@ fn test_e2e_runtime_root_stack_growth_preserves_root_api() {
     let result = compile_and_run(
         r#"
         (defn push-roots [n]
+          :roots-unbalanced "root stack の grow を確認するため、意図的に root を積み増したまま返る"
           (if (<= n 0)
             0
             (do
               (root_push n)
               (push-roots (- n 1)))))
         (defn main []
+          :roots-unbalanced "push-roots が積んだ slot を跨いで root_set / root_pop する関数間 lease"
           (let [top (push-roots 32769)
                 updated (root_set 32768 42)
                 popped (root_pop)]
@@ -1019,6 +1023,7 @@ fn test_e2e_root_runtime_api_tracks_slots_and_values() {
     let result = compile_and_run(
         r#"
         (defn main []
+          :roots-unbalanced "空 root stack への root_pop が 0 を返すことを確認するため、意図的に 1 回多く pop する"
           (let [slot0 (root_push 111)
                 slot1 (root_push 222)
                 set-result (root_set slot0 333)

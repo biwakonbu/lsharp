@@ -1,6 +1,6 @@
 # ADR: 意図的な root 不均衡の明示注釈 (`:roots-unbalanced`)
 
-- Status: Proposed (doc-RED)
+- Status: Accepted (verified slice)
 - Date: 2026-08-18
 - Scope: `SMOKE-GATE-02` / `I-14` / `I-17` / `LEGACY-ROOT-01` /
   `crates/lsharp-ir/src/root_lifetime.rs` / `crates/lsharp-syntax/src/parser/metadata.rs`
@@ -167,4 +167,64 @@ literal 構築点 107 / 83 箇所の全書き換えを要求する。`Default` �
 
 ## Evidence
 
-(実装後に埋める)
+すべて 2026-08-18、worktree `codex/gate-fixes-root-lifetime` (base `e9227f3c`) での実測。
+
+- **RED (parser)**: `cargo test -p lsharp-syntax --lib roots_unbalanced` →
+  `no field 'roots_unbalanced' on type 'ast::Metadata'` の compile error 3 件で失敗。
+- **RED (verifier)**: `cargo test -p lsharp-ir --lib root_lifetime` →
+  `unresolved import 'RootLifetimeExemptions'` と引数個数不一致で失敗。
+- **GREEN**: parser 3 本 + verifier 5 本を追加し、
+  `cargo test -p lsharp-ir --lib root_lifetime` → **14 passed; 0 failed**。
+  crate 全体 `cargo test -p lsharp-ir` → **299 passed; 0 failed** (99.85s)。
+  `cargo test -p lsharp-syntax` は既知 baseline FAIL
+  (`selfhost_cli_validation_surface_is_registered`) の 1 件のみで、これは本変更以前から
+  `workspace-expected-failures.txt:139` に登録済みの upstream 由来 FAIL。
+- **緩和の広がりを pin する 3 本** — 注釈なしの同形は拒否 / 同 module の兄弟関数へ漏れない /
+  空の免除集合では従来どおり拒否。最後の 1 本は「免除が IR に載らない」非対称性の pin でもある。
+- **本丸**: `cargo test -p lsharp-wasm --test e2e runtime_allocator_closures -- --test-threads=1`
+  → **`94 passed; 0 failed`** (第 1 段の直後は `90 passed; 4 failed`、slice 開始前は
+  `77 passed; 17 failed`)。**`I-14` の 17 件が全て解消**した。
+- **注釈を足した箇所は 4 fixture / 5 関数**。assertion は 1 つも変えていない。
+  1 関数多いのは `..._root_stack_growth_preserves_root_api` の `main` で、
+  `push-roots` が積んだ slot を跨いで `root_set` / `root_pop` する関数間 lease だったため
+  (`RootSetWithoutActiveSlot`)。`push-roots` の注釈だけでは通らず、実行して初めて分かった。
+  **既存の lease helper 2 件と同じ形がユーザーコード側にも現れる**という、この設計の裏付けになる。
+- **gate**: `scripts/ci/test-runtime-limits.sh` → **rc=0** (実施前 rc=101。受入条件 (b) 達成)。
+  回帰確認として `test-gc-rooting.sh` / `test-selfhost-rooting-guards.sh` /
+  `test-runtime-recursion-limits.sh` も rc=0。
+- **baseline**: `workspace-expected-failures.txt` の entry 数 **94 → 90** (4 行削除)。
+  e2e クラスタ見出しは `57 FAIL` → `53 FAIL`。
+- **build / lint**: `cargo build --workspace` 成功。
+  `cargo clippy -p lsharp-ir -p lsharp-syntax --all-targets` の警告 2 件は
+  `lsharp-types/review_trust_store.rs:120` の `collapsible_if` と
+  `module_graph/resolve.rs:261` の `redundant_closure` で、どちらも本変更が触っていない既存箇所。
+
+### 受入条件の判定
+
+| 条件 | 判定 |
+|---|---|
+| (a) 注釈あり / なしを対にした test が GREEN | 達成 (parser 3 + verifier 5、うち 3 本が拒否側の pin) |
+| (b) `scripts/ci/test-runtime-limits.sh` rc=0 | 達成 (rc=101 → rc=0) |
+| (c) baseline から残り 4 件を削除 | 達成。ただし**数値は ADR の予告と違う** |
+
+**(c) の数値のずれについて。** doc-RED 時点では「95 → 91」と書いたが、実測は **94 → 90** である。
+第 1 段の直後は確かに 95 件だったが、その後 `127f0d3d` (I-15) が
+`lsharp-driver::default_path_delegation test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path`
+を 1 行削除しており、本スライス開始時点で既に 94 件だった。
+**削除した行数は予告どおり 4 で、起点が 1 少なかっただけ**である。条件を後から緩めてはいない。
+
+### 満たせなかった受入条件
+
+- **`scripts/ci/check-workspace-baseline.sh` は再実行していない。** 入力に workspace 全体の
+  nextest 実測 (5 時間級) を取るため。代わりに削除した 4 件が実際に pass へ転じたことを
+  当該 binary の直接実行で確認した (`94 passed; 0 failed`)。第 1 段と同じ扱いである。
+- **`crates/lsharp-wasm` lib の
+  `wasi::tests::test_root_set_invalid_slot_records_failure_ledger_before_trap` は落ちたまま。**
+  「含めない範囲」に明記した別要因の既知 FAIL で、baseline にも登録済み。
+- **既存の lease helper 2 件は名前ハードコードのまま。** 「含めない範囲」どおり。
+  ただし本スライスで、同じ形がユーザーコード側にも現れることが実証された (上記 5 関数目) ので、
+  移行の動機は doc-RED 時点より強くなっている。
+- **rustfmt**: 触った 10 ファイルにだけ `rustfmt` をかけた。その過程で
+  `runtime_allocator_closures.rs` と `parser/metadata.rs` の**既存の未整形箇所 3 hunk**も
+  同時に整形されている。workspace 全体は依然 rustfmt-clean ではなく、`cargo fmt` は
+  かけていない (約 400 箇所の無関係な差分が出るため)。

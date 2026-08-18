@@ -273,7 +273,9 @@ fn validate_root_lease_release(function: &Function) -> Result<(), RootLifetimeEr
 
 fn count_call(body: &[Instruction], call_index: u32) -> usize {
     body.iter()
-        .filter(|instruction| matches!(instruction, Instruction::Call(index) if *index == call_index))
+        .filter(
+            |instruction| matches!(instruction, Instruction::Call(index) if *index == call_index),
+        )
         .count()
 }
 

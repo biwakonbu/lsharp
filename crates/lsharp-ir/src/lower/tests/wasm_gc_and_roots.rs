@@ -283,7 +283,8 @@ fn test_root_lifetime_ledger_rejects_stale_slot_after_pop() {
         is_export: false,
     };
 
-    let error = validate_function(&function, &RootLifetimeExemptions::default()).expect_err("pop 済み slot の root_set は拒否すべき");
+    let error = validate_function(&function, &RootLifetimeExemptions::default())
+        .expect_err("pop 済み slot の root_set は拒否すべき");
     assert!(
         matches!(error, RootLifetimeError::StaleSlot { .. }),
         "stale slot を専用エラーとして報告すべき: {error:?}"
@@ -311,7 +312,8 @@ fn test_root_lifetime_ledger_accepts_root_set_before_pop() {
         is_export: false,
     };
 
-    validate_function(&function, &RootLifetimeExemptions::default()).expect("active slot への root_set は root_pop 前なら有効");
+    validate_function(&function, &RootLifetimeExemptions::default())
+        .expect("active slot への root_set は root_pop 前なら有効");
 }
 
 #[test]
@@ -332,8 +334,8 @@ fn test_root_lifetime_ledger_rejects_branch_depth_mismatch() {
         is_export: false,
     };
 
-    let error =
-        validate_function(&function, &RootLifetimeExemptions::default()).expect_err("分岐間で root depth がずれる IR は拒否すべき");
+    let error = validate_function(&function, &RootLifetimeExemptions::default())
+        .expect_err("分岐間で root depth がずれる IR は拒否すべき");
     assert!(
         matches!(error, RootLifetimeError::BranchDepthMismatch { .. }),
         "branch depth mismatch を専用エラーとして報告すべき: {error:?}"
@@ -373,8 +375,10 @@ fn test_root_lifetime_ledger_accepts_explicit_cross_function_root_lease_helpers(
         is_export: false,
     };
 
-    validate_function(&acquire, &RootLifetimeExemptions::default()).expect("builtin root acquire helper は lease を返せるべき");
-    validate_function(&release, &RootLifetimeExemptions::default()).expect("builtin root release helper は caller の lease を解放できるべき");
+    validate_function(&acquire, &RootLifetimeExemptions::default())
+        .expect("builtin root acquire helper は lease を返せるべき");
+    validate_function(&release, &RootLifetimeExemptions::default())
+        .expect("builtin root release helper は caller の lease を解放できるべき");
 }
 
 #[test]
@@ -384,11 +388,16 @@ fn test_root_lifetime_ledger_rejects_unannotated_cross_function_root_lease() {
         params: Vec::new(),
         result: IrType::I64,
         locals: Vec::new(),
-        body: vec![Instruction::I64Const(42), Instruction::Call(ROOT_PUSH_IDX), Instruction::Drop],
+        body: vec![
+            Instruction::I64Const(42),
+            Instruction::Call(ROOT_PUSH_IDX),
+            Instruction::Drop,
+        ],
         is_export: false,
     };
 
-    let error = validate_function(&function, &RootLifetimeExemptions::default()).expect_err("未登録 helper の root lease は拒否すべき");
+    let error = validate_function(&function, &RootLifetimeExemptions::default())
+        .expect_err("未登録 helper の root lease は拒否すべき");
     assert!(
         matches!(error, RootLifetimeError::ImbalancedExit { depth: 1, .. }),
         "通常関数の root lease は ImbalancedExit として拒否すべき: {error:?}"
@@ -459,7 +468,11 @@ fn test_root_lifetime_ledger_still_rejects_lowered_non_main_imbalance() {
         ),
         "免除は main だけに閉じているべき: {error:?}"
     );
-    assert_eq!(error.code(), "LS3003", "診断コードは LS3003 のままであるべき");
+    assert_eq!(
+        error.code(),
+        "LS3003",
+        "診断コードは LS3003 のままであるべき"
+    );
 }
 
 #[test]

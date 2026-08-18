@@ -23,6 +23,17 @@ L# の metadata は、関数の近くにドキュメント、実行例、invaria
 - `:example` は検証したい式の列です。複数式を書けます。
 - `:invariant` は関数実行後に成り立つ条件です。戻り値は `result` として参照します。
 - `:transitions` は `(From -> To)` の列で、状態遷移を説明する metadata です。
+- `:roots-unbalanced` は `root_push` / `root_pop` の均衡を意図的に崩す関数へ付ける宣言です。
+  理由文字列が必須で、付けた関数だけ root lifetime 検査 (`LS3003`) を外します。
+  runtime の root 管理 API を直接触るコード以外では使いません
+  (判断は [意図的不均衡の注釈 ADR](../adr/decisions-root-lifetime-intentional-imbalance-annotation.md))。
+
+```lisp
+(defn push-roots
+  [n]
+  :roots-unbalanced "root stack の grow を確認するため、意図的に root を積み増したまま返る"
+  (if (<= n 0) 0 (do (root_push n) (push-roots (- n 1)))))
+```
 
 ## Workflow
 

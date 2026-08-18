@@ -233,12 +233,15 @@ impl Lower {
 /// (判断は `docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md`)。
 /// 現状の対象は `defn` だけで、trait impl の method は含めない。
 fn root_lifetime_exemptions(program: &Program) -> crate::root_lifetime::RootLifetimeExemptions {
-    let names = program.decls.iter().filter_map(|decl| match unwrap_private(decl) {
-        Decl::Defn { name, metadata, .. } => metadata
-            .as_ref()
-            .and_then(|m| m.roots_unbalanced.as_ref())
-            .map(|_| name.clone()),
-        _ => None,
-    });
+    let names = program
+        .decls
+        .iter()
+        .filter_map(|decl| match unwrap_private(decl) {
+            Decl::Defn { name, metadata, .. } => metadata
+                .as_ref()
+                .and_then(|m| m.roots_unbalanced.as_ref())
+                .map(|_| name.clone()),
+            _ => None,
+        });
     crate::root_lifetime::RootLifetimeExemptions::from_names(names)
 }

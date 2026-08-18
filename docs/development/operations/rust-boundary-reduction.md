@@ -5246,7 +5246,10 @@ test result: FAILED. 0 passed; 60 failed; 0 ignored; 0 measured; 2961 filtered o
 (`LEGACY-ROOT-01` の rooting discipline)。**うち 13 件は 2026-08-18 に解消した** --
 判別測定で 17/17 が root lifetime verifier 起因と確定し、
 [`main` exit 免除 ADR](../../adr/decisions-root-lifetime-main-exit-exemption.md) で `main` の
-`ImbalancedExit` を免除したため。残る 4 件は同 ADR の「次スライスへ送るもの (案 B1)」。
+`ImbalancedExit` を免除したため。**残る 4 件も同日に解消し、このクラスタの恒常 FAIL は 0 になった**
+(`94 passed; 0 failed`)。第 2 段は
+[意図的不均衡の注釈 ADR](../../adr/decisions-root-lifetime-intentional-imbalance-annotation.md) —
+`:roots-unbalanced "<理由>"` を fixture 側に足し、assertion は 1 つも変えていない。
 
 `selfhost_native_stage_chain` 19 件 + `selfhost_native_stage23_gap` 9 件について、本節はかつて
 「この環境に `stage0/` が未セットアップであることが背景にある」と書いていた。**この帰属は誤りで、

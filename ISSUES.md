@@ -146,7 +146,7 @@
 | [I-11](#i-11) | `cargo test --workspace` の恒常 FAIL が台帳未記載 | 高 | resolved | -- |
 | [I-12](#i-12) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | resolved | -- |
 | [I-13](#i-13) | native aarch64 の linear heap に回収機構と bounds check が無い | 高 | documented-limitation | -- |
-| [I-14](#i-14) | root lifetime verifier が公開 runtime API の合法な使用を拒否する | 中-高 | in-design (13/17 解消) | [main exit 免除 ADR](docs/adr/decisions-root-lifetime-main-exit-exemption.md) |
+| [I-14](#i-14) | root lifetime verifier が公開 runtime API の合法な使用を拒否する | 中-高 | resolved (17/17 解消) | [main exit 免除 ADR](docs/adr/decisions-root-lifetime-main-exit-exemption.md) / [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
 | [I-15](#i-15) | `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない | 中 | resolved | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-16](#i-16) | embedded component cache の key が build 入力 (`wit/` / `stdlib/`) を覆いきっていない | 中 | resolved | [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) |
 | [I-17](#i-17) | runtime spec が root 管理 API の戻り値と境界挙動を定義していない | 中 | open | [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
@@ -735,7 +735,7 @@
 <a id="i-14"></a>
 ### I-14: root lifetime verifier が公開 runtime API の合法な使用を拒否する
 
-- **影響度**: 中-高 / **状態**: in-design
+- **影響度**: 中-高 / **状態**: resolved
 - **内容**: `crates/lsharp-ir/src/root_lifetime.rs` は「関数の出口で root stack が空であること」を
   無条件に要求する (`ImbalancedExit`)。しかし `root_push` / `root_pop` / `root_set` は
   [`docs/language/runtime-spec.md:78-79,84,142`](docs/language/runtime-spec.md) が定める**公開 runtime API**
@@ -787,14 +787,20 @@
   **17 件中 13 件を解消**した (`90 passed; 4 failed`)。baseline は 108 → 95 entry、
   `scripts/ci/test-gc-rooting.sh` は rc=101 → rc=0。判定・却下理由・実測は
   [`decisions-root-lifetime-main-exit-exemption.md`](docs/adr/decisions-root-lifetime-main-exit-exemption.md)。
-- **残件**: `RootPopUnderflow` / `main` ×1 と `BranchDepthMismatch` ×3 の計 4 件。
-  「意図的な不均衡」を IR へ伝える明示的な注釈 (言語表面の追加) を要する。
-  第 2 段の判断は 2026-08-18 に起票した
+- **第 2 段の結果 (2026-08-18)**: 残る 4 件は `:roots-unbalanced "<理由>"` を
+  `defn` の metadata directive として追加し、fixture 側が意図を宣言する形で解消した。
+  免除集合は IR の struct field ではなく `validate_module` の第 2 引数で渡す。
+  実測 **`94 passed; 0 failed`** で、`scripts/ci/test-runtime-limits.sh` は rc=101 → rc=0。
+  baseline は 94 → 90 entry。判定・却下理由・満たせなかった受入条件は
   [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)
-  が正本 (`:roots-unbalanced "<理由>"`)。`scripts/ci/test-runtime-limits.sh` は
-  それまで rc=101 のまま残る。追跡は TODO.md の `SMOKE-GATE-02`。
-  なお `RootPopUnderflow` の位置づけを決める過程で、runtime spec が root API の
-  境界挙動を定義していないことが判明した (I-17)。
+  が正本。**これで本項の 17 件は全て解消した。**
+- **副産物**: 注釈を要したのは 4 fixture / **5 関数**で、1 つ多いのは
+  `..._root_stack_growth_preserves_root_api` の `main` が関数間 lease を消費していたため。
+  既存の lease helper 2 件と同じ形がユーザーコード側にも現れることの実証で、
+  helper の名前ハードコードを注釈へ寄せる動機になる (未着手)。
+- **派生**: `RootPopUnderflow` の位置づけを決める過程で、runtime spec が root API の
+  境界挙動を定義していないことが判明した (I-17)。空 stack への `root_pop` の 1 項目だけ
+  本スライスで spec へ引き上げ、残りは I-17 に残る。
 - **関連**: `LEGACY-ROOT-01` (TODO.md)、I-07 (rooting guard の未完)、I-11 (baseline の由来)。
 
 ---

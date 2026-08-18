@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use super::*;
 use crate::{
     Function, Instruction, IrType, Module,
-    root_lifetime::{RootLifetimeError, RootLifetimeExemptions, validate_function, validate_module},
+    root_lifetime::{
+        RootLifetimeError, RootLifetimeExemptions, validate_function, validate_module,
+    },
 };
 use lsharp_syntax::span::Span;
 use lsharp_types::{
