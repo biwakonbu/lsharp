@@ -158,34 +158,75 @@ behavioral test: `exit code 7 を期待したが -1 を得た` (56 byte の host
 | 1 | 空 stack で `x27` を動かさず `0` を返す | 満たす (encoding + 実行の両方) |
 | 2 | encoding と実行の両方を検査する test | 満たす (上表 2 件) |
 | 3 | 命令長と size 表の一致を test が pin | 満たす (encoding test が `native-plain-instr-size-aarch64` と実バイト長を比較) |
-| 4 | wasm 側の既存 pin が通り、backend を跨いで同じ観測結果 | **後述のとおり一部未検証** |
+| 4 | wasm 側の既存 pin が通り、backend を跨いで同じ観測結果 | 満たす (下記 3 本を実測) |
 
 条件 3 について補足する。当初 24 byte という数字を ADR のコメントだけで担保しかけたが、
 **5 命令 20 byte と数え違えていた**。size 表に 20 を入れていれば `root_pop` 1 個につき
 4 byte ずつ以降の branch 変位がずれ、モジュール全体が壊れていた。
 test で pin する方針にしたのはこの数え違いが理由である。
 
-条件 4 は wasm 側の `test_e2e_root_runtime_api_tracks_slots_and_values` が
-本変更で触れていない lane にあり (`crates/lsharp-wasm/src/wasi/root.rs` は無変更)、
-別途 workspace 検証で確認する。
+条件 4 は 3 本を実測した (いずれも 2026-08-18、本 worktree)。
+
+| 検査 | 結果 |
+|---|---|
+| `e2e::runtime_allocator_closures::test_e2e_root_runtime_api_tracks_slots_and_values` (wasm backend の pin) | `ok` |
+| `scripts/ci/test-selfhost-rooting-guards.sh` (rooting parity 13 件) | 13/13 `ok`、exit 0 |
+| `e2e::selfhost_lsp_docs_ops::test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` | FAIL。ただし offender は **164 件で本変更前と同数**、うち本変更由来は **0 件** |
+
+ops03c の FAIL は `TESTGATE-03` / `I-22` として既に台帳にある既存の非適合であり、
+本変更が増やしたものではない。判定は offender リストを実測して行った
+(`grep -c 'root_pop\|empty_stack'` が 0)。ここを「pass しないから未検証」と
+書かずに済ませたのは、**新規 offender 0 という条件のほうが検査したい内容だから**である。
+
+wasm backend 側の実装 (`crates/lsharp-wasm/src/wasi/root.rs`) は本変更で無変更。
 
 ### 回帰確認 — 満たせなかった点
 
-`selfhost_native_stage_chain` の `--ignored` lane 全体 (534 test) を実行中。
-本 ADR を書いた時点で 27 test が完走しており、**この lane には本変更と無関係な
-恒常 FAIL が既に存在する**ことが判明した。完走後の全件結果は本節へ追記する。
+`selfhost_native_stage_chain` の `--ignored` lane 全体を実行中。
+**分母は 614 test** (runner の `running 614 tests` 行で実測)。当初 534 と書いたのは
+13 個の test 名 prefix を grep で足し上げた暫定値で、`test_e2e_linux_x86_actual_*` など
+prefix 表に無い test を取りこぼしていた。**完走後の全件結果は本節へ追記する。**
+
+この lane には **本変更と無関係な恒常 FAIL が既に存在する**ことが判明した。
 
 | 分類 | 件数 | 扱い |
 |---|---|---|
 | `test_e2e_linux_x86_actual_*` / Lima VM 依存 | 環境要因 | macOS host では実行できない。本変更と無関係 |
 | `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` | 1 | **2026-08-03 `1ee26eef` から陳腐化した pin**。`I-23` として新規登録 |
 
-`bundle_initial_capacity` が本変更と無関係であることは算術で確定している。
-期待値 `2520` に対し `read-stdin helper offset` が既に `3296`、
-`helper trailer size = base + 3296 + 156` なので、opcode 75 の命令長に関わらず
-`2520` は再現できない。実測は `3492` / `4492`。
+`bundle_initial_capacity` が本変更と無関係であることは**実測と算術の両方**で確定している。
 
-size 表の一致そのものは、既存の
-`test_e2e_native_aarch64_deep_direct_append_matches_static_size`
-(深い depth で `root_pop` を含む IR の静的サイズと実生成長を比較) が pass することで担保された。
-これは direct-append lane と bundle lane の両方を通る。
+- 実測: 単体で走らせると panic は `assert_eq!` 側で、`left: [3492, 4492]` /
+  `right: [2520, 3520]`。`.expect(...)` (= 環境要因) ではない。
+- 算術: 期待値 `2520` に対し `read-stdin helper offset` が既に `3296`、
+  `helper trailer size = base + 3296 + 156` なので、opcode 75 の命令長に関わらず
+  `2520` は再現できない。
+
+**この 2 つを分けて書くのは、`I-23` が「実測していない数字を台帳に残すな」という
+指摘そのものだからである。** 算術だけで済ませると同じ穴を作る。
+
+### lane ごとの witness
+
+サイズ表と実生成長の一致は、lane を跨いで名前のついた test で担保されている。
+
+| lane | witness | 結果 |
+|---|---|---|
+| plain (emitter 単体) | `test_e2e_native_aarch64_root_pop_emits_empty_stack_guard` | `ok` |
+| direct-append (深い depth) | `test_e2e_native_aarch64_deep_direct_append_matches_static_size` | `ok` |
+| bundle (浅い depth・実バイナリ実行) | `test_e2e_native_host_binary_selfhost_root_pop_drop_restores_previous_value` / `test_e2e_native_host_binary_selfhost_root_pop_on_empty_stack_keeps_stack_pointer` / `test_e2e_native_host_binary_selfhost_root_set_drop_restores_bottom_value` | 3/3 `ok` |
+
+当初この節は deep_direct_append が「direct-append lane と bundle lane の両方を通る」と
+書いていたが、**誤り**。depth が閾値を超えた時点で direct-append 側に入るので、
+あの test は bundle lane の witness にならない。bundle lane を通るのは上表 3 件である。
+
+### stage0 の再生成が要らない理由
+
+pin 済みの stage0 バイナリは本変更で触れていない。それでよい理由を残す。
+
+- stage0 (旧・ガード無し) が**新しい**ソースをコンパイルすると、出力される stage1 には
+  ガードが入る。ガードはソース側に書かれており、コンパイラのバージョンではなく
+  入力に従うため。
+- stage2 / stage3 はどちらも「ガード入りコンパイラ」の出力なので、
+  self-regeneration の zero-diff 条件は保たれる。
+
+つまり pin を更新しないことが、ガードが行き渡らない原因にはならない。

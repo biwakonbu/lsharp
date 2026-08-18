@@ -1213,6 +1213,17 @@
   `(aarch64-selfhost-helper-trailer-size 10)` == `2520` と
   `(aarch64-bundle-initial-capacity 1000 10)` == `3520` を pin しているが、
   現在の実測は `3492` / `4492` で、**恒常的に FAIL している**。
+- **実測の取り方 (2026-08-18)**: 当該 test を単体で実行し、panic が
+  `.expect(...)` (環境要因) ではなく `assert_eq!` 側であることまで確認した。
+
+  ```
+  assertion `left == right` failed: AArch64 bundle result capacity は helper trailer 全体を含むべき: [3492, 4492]
+    left: [3492, 4492]
+   right: [2520, 3520]
+  ```
+
+  **この確認を分けて記録するのは、環境要因の FAIL を「陳腐化した pin」と読み違えると
+  本 issue の原因説明そのものが崩れるからである。**
 - **いつずれたか (git 履歴からの実測)**:
 
   | 日付 | commit | 事象 |
@@ -1238,6 +1249,7 @@
   `selfhost_native_stage_chain` の `--ignored` lane を通したときに検出した。
   `NATIVE-ROOT-01` の変更とは無関係であることは上記の算術で確定している
   (`2520 < 3296 + 156` なので、opcode 75 の命令長に関わらず再現不能)。
+  加えて実測値 `3492` は算術値と一致しており、算術の前提そのものも裏が取れている。
 - **関連**: I-19 (CI 停止)、I-22 (同じく CI 停止期間に積み上がった `#[ignore]` 契約違反)、
   I-11 (baseline が非 ignored 限定であること)。
 
