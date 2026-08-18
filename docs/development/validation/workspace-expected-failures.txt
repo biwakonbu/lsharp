@@ -34,7 +34,7 @@
 #     同日 rc=0 を確認済み。主因は gate script ではなく root lifetime verifier 側だった
 #     (旧注記の「script が expected-failure を pass 前提で叩いている」は主因の取り違えで取り下げ)。
 #
-# ---- e2e (binary_id(lsharp-wasm::e2e)) : 1799 件中 53 FAIL ----
+# ---- e2e (binary_id(lsharp-wasm::e2e)) : 1799 件中 52 FAIL ----
 # 測定: 2026-08-16〜17, cargo nextest run --workspace --profile baseline \
 #       -E 'binary_id(lsharp-wasm::e2e)' --partition hash:i/6 を i=1..6 で 6 回
 #       (1 プロセスで回すと 5〜6 時間かかり途中で中断されるため分割した)
@@ -108,10 +108,8 @@ lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_c
 lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_compiler_mode_record_update_runs
 lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_ftable_compiler_record_update_and_static_accessor_run
 lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_wasmemit_rejects_native_only_opcodes
-# [support] TESTGATE-02。cached_selfhost_bundle が (import Types.TypeInfer) を除去する (support.rs:1426) のに test は生ソースの verbatim 包含を要求する。2026-07-20 の 2b0c54b1 で検査が陳腐化した。mod 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる
-lsharp-wasm::e2e e2e::support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
 
-# ---- 非 e2e (binary_id(lsharp-wasm::e2e) 以外) : 2067 件中 36 FAIL / 1398.826s ----
+# ---- 非 e2e (binary_id(lsharp-wasm::e2e) 以外) : 2067 件中 31 FAIL / 1398.826s ----
 #     2026-08-18: lsharp-wasm wasi::tests::test_root_set_invalid_slot_records_failure_ledger_before_trap
 #     (LEGACY-ROOT-01 / RootSetWithoutActiveSlot) を削除し 37 -> 36。fixture へ :roots-unbalanced を
 #     注釈して lowering を通し、assertion 無改変のまま緑になった (I-17 / root API 契約 ADR)。
@@ -138,29 +136,19 @@ lsharp-lsp util::tests::incremental_module_parse_diagnostics_forward_stable_code
 lsharp-syntax::selfhost_cli_validation_contract selfhost_cli_validation_surface_is_registered
 # [lsharp-tooling] LS0102 クラスタ (api_doc の parse error stable code)
 lsharp-tooling api_doc::tests::test_build_api_doc_for_file_preserves_parse_error_code
-# support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached は以下 5 binary +
-# lsharp-wasm::e2e の計 6 binary に現れる。tests/e2e/support.rs を `mod` で共有しているため
-# 同一 test が各 binary へ重複計上される。**重複計上そのものは正しく、6 件はいずれも本物の
-# 陳腐化 assertion。** 原因は TESTGATE-02 -- cached_selfhost_bundle (support.rs:1426) が
-# `(import Types.TypeInfer)\n` を除去して bundle を組むのに、assert は selfhost_module() が
-# 返す生ソースの verbatim 包含を要求する。当該 import 行を持つモジュールは原理的に一致しない。
-# assert は 2026-03-27 7f9bdbb4 由来、`replace()` と import 行は 2026-07-20 2b0c54b1 が
-# 同時に入れた。「計上の仕方の問題だから実害なし」ではない。
-# [lsharp-wasm::doctools_parity] typed metadata 6 vs 5 / support 共有 (TESTGATE-02)
-lsharp-wasm::doctools_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
+# 2026-08-18: TESTGATE-02 を解消した。
+# support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached は tests/e2e/support.rs を
+# `mod` で共有する非 e2e 5 binary + lsharp-wasm::e2e の計 6 binary に現れ、6 件とも同一原因で
+# 落ちていた (cached_selfhost_bundle が `(import Types.TypeInfer)` を除去するのに assert は
+# 生ソースの verbatim 包含を要求する陳腐化 assertion)。正規化を単一関数へ寄せ、検査側も
+# それを通す形へ直したので 6 件すべてがこのリストから外れた。判断は
+# docs/adr/decisions-test-gate-staleness-repair.md が正本。
+# [lsharp-wasm::doctools_parity] typed metadata 6 vs 5
 lsharp-wasm::doctools_parity test_e2e_doctools_extracts_typed_defn_metadata
 # [lsharp-wasm::e2e_selfhost_syntax] nested module decl の parser (outer module body-count が
 # 1 にならない)。同名 test は lsharp-wasm::e2e 側の selfhost_type_parser_parity にもあり、
 # こちらも同じ理由で落ちる。binary-id が違うので別行として扱う
 lsharp-wasm::e2e_selfhost_syntax test_e2e_selfhost_parser_nested_module_decl
-# [lsharp-wasm::lsp_diagnostic_parity] support 共有 (TESTGATE-02)
-lsharp-wasm::lsp_diagnostic_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
-# [lsharp-wasm::lsp_edge_case_parity] support 共有 (TESTGATE-02)
-lsharp-wasm::lsp_edge_case_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
-# [lsharp-wasm::lsp_stateful_parity] support 共有 (TESTGATE-02)
-lsharp-wasm::lsp_stateful_parity support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
-# [lsharp-wasm::property_probe_diagnostic] support 共有 (TESTGATE-02)
-lsharp-wasm::property_probe_diagnostic support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
 # [lsharp-wasm::snapshot] insta snapshot 停滞 (最終更新 2026-05-31、codegen は 2026-07-27 まで進行)。cargo insta accept は 2 ヶ月分の未レビュー codegen 出力の追認になるので行わない
 lsharp-wasm::snapshot test_snapshot_wasm_adt_construct
 lsharp-wasm::snapshot test_snapshot_wasm_adt_match

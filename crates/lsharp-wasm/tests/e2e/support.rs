@@ -1415,15 +1415,25 @@ fn try_compile_and_run_lsp_runtime(source: &str) -> Option<Result<String, String
     }
 }
 
+/// bundle 化に伴うソース正規化。
+///
+/// bundle は複数モジュールを 1 本の束として渡すため、モジュール間の `import` 行は
+/// 残せない。**この関数が正規化の単一正本**であり、bundle 生成側と検査側の両方から
+/// 呼ぶこと。片側だけを直すと検査が黙って陳腐化する (`TESTGATE-02`)。
+pub(crate) fn normalize_selfhost_bundle_source(source: &str) -> String {
+    source.replace("(import Types.TypeInfer)\n", "")
+}
+
 fn cached_selfhost_bundle(cell: &'static OnceLock<String>, modules: &[&str]) -> &'static str {
     cell.get_or_init(|| {
         expand_selfhost_fixture_modules(modules)
             .iter()
             .map(|name| {
                 let path = selfhost_source_path(name);
-                std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                let source = std::fs::read_to_string(&path).unwrap_or_else(|e| {
                     panic!("selfhost bundle 読み込み失敗 {}: {}", path.display(), e)
-                }).replace("(import Types.TypeInfer)\n", "")
+                });
+                normalize_selfhost_bundle_source(&source)
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -1854,21 +1864,52 @@ mod tests {
         assert!(first.contains("(module App.Cli)"));
         assert!(first.contains("(defn main []"));
         assert!(first.contains("(module Tools.Validation.ManifestInput)"));
-        assert!(first.contains(selfhost_module("CompilerSplit.ls").trim()));
+        assert!(first.contains(&bundle_expectation("CompilerSplit.ls")));
+    }
+
+    /// bundle へ入る際の期待テキスト。生ソースではなく、bundle と同じ正規化を通す。
+    /// ここを `selfhost_module()` の生テキストに戻すと `TESTGATE-02` が再発する。
+    fn bundle_expectation(name: &str) -> String {
+        normalize_selfhost_bundle_source(selfhost_module(name))
+            .trim()
+            .to_string()
+    }
+
+    /// 正規化が実際に効いていることを直接固定する。
+    ///
+    /// これが無いと `bundle_expectation()` を生ソースへ戻しても
+    /// 「両側が生ソース」で静かに通り続ける経路が残る (`TESTGATE-02` の再発経路)。
+    #[test]
+    fn test_support_bundle_normalization_drops_shared_import_line() {
+        let raw = selfhost_module("TypeInferApply.ls");
+        assert!(
+            raw.contains("(import Types.TypeInfer)\n"),
+            "前提が崩れている: 生ソースが import 行を持たない"
+        );
+
+        let bundle = selfhost_typeinfer_runtime_bundle();
+        assert!(
+            !bundle.contains("(import Types.TypeInfer)\n"),
+            "bundle 側の正規化が効いていない"
+        );
+        assert!(
+            !bundle.contains(raw.trim()),
+            "生ソースの verbatim 包含が成立してしまっている。正規化の前提が変わったら本 test ごと見直すこと"
+        );
     }
 
     #[test]
     fn test_support_selfhost_typeinfer_runtime_bundle_cached() {
         let bundle = selfhost_typeinfer_runtime_bundle();
-        assert!(bundle.contains(selfhost_module("TypeInferFunctions.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferBuiltins.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferApply.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferBlock.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferPattern.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferRecord.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferRecordDecl.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferAdt.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInfer.ls").trim()));
+        assert!(bundle.contains(&bundle_expectation("TypeInferFunctions.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInferBuiltins.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInferApply.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInferBlock.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInferPattern.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInferRecord.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInferRecordDecl.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInferAdt.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInfer.ls")));
         assert_eq!(
             bundle.as_ptr(),
             selfhost_typeinfer_runtime_bundle().as_ptr()
@@ -1878,8 +1919,8 @@ mod tests {
     #[test]
     fn test_support_selfhost_parser_typeinfer_runtime_bundle_cached() {
         let bundle = selfhost_parser_typeinfer_runtime_bundle();
-        assert!(bundle.contains(selfhost_module("Parser.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInfer.ls").trim()));
+        assert!(bundle.contains(&bundle_expectation("Parser.ls")));
+        assert!(bundle.contains(&bundle_expectation("TypeInfer.ls")));
         assert_eq!(
             bundle.as_ptr(),
             selfhost_parser_typeinfer_runtime_bundle().as_ptr()

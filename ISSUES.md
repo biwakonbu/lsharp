@@ -603,7 +603,7 @@
   | `selfhost_cli_core` | 4 | selfhost CLI の未実装挙動への RED。contract suite の canonical/legacy 分離 / unsupported type の実行前報告 / contradicting evidence / import 先 helper の診断 |
   | `bootstrap_selfhost_lsp_integration` | 2 | selfhost formatter の compile が `UndefinedVar { name: "ast-defn-signature" }`。2 件とも同一 span |
   | `LS0102` | 2 | `lsharp-lsp` と `lsharp-tooling` に跨る |
-  | `support` | 6 | 上記の陳腐化 -- `TESTGATE-02`。`mod` 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる |
+  | `support` | 6 | 上記の陳腐化 -- `TESTGATE-02`。`mod` 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる (**2026-08-18 解消**) |
   | その他 e2e 単発 | 3 | module graph の topological sort 未達 / preview1 import 後の user call が不正な Wasm / nested module decl の body-count |
   | 非 e2e 単発 | 5 | `lsharp-wasm --lib` の `RootSetWithoutActiveSlot` (`LEGACY-ROOT-01`) / `doctools_parity` の typed metadata 6 vs 5 / `e2e_selfhost_syntax` の nested module decl (e2e 側と同因、binary-id 違い) / `validate_source_review_edges` / `selfhost_cli_validation_contract` (upstream 由来) |
   | **合計** | **108** | e2e 70 + 非 e2e 38 |
@@ -613,6 +613,13 @@
   親ファイルの `read_to_string` で検査する形が壊れたもので、修正は安価。
   **follow-up は `TODO.md` に ID 付きで登録済み** -- `TESTGATE-01` / `TESTGATE-02` /
   `DIAG-DEDUP-01`。それ以外はすべて未実装挙動への RED であり、新規 ID は切っていない。
+
+  **`TESTGATE-02` は 2026-08-18 に解消した** (`TODO.md` から削除済み)。bundle 正規化を
+  単一関数へ寄せ、検査側もそれを通す形へ直した。6 binary すべてで pass を実測し、
+  `workspace-expected-failures.txt` から 6 エントリを削除している (e2e 53 -> 52 /
+  非 e2e 36 -> 31)。判断と却下案は
+  [test gate 陳腐化是正 ADR](docs/adr/decisions-test-gate-staleness-repair.md) が正本。
+  なお**上の表は 2026-08-16〜17 時点の実測記録であり、後追いで数値は書き換えない**。
 
   `TESTGATE-01` については**落ちている 1 件よりも、落ちない側の方が重い**。
   `selfhost_lsp_docs_ops.rs` の検査は 2 モードあり、厳密名モード (`:3761-3769`) は

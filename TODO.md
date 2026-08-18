@@ -673,20 +673,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **修正方式は既にリポジトリ内にある**: `selfhost_bootstrap_acceptance_file_size.rs:23-53` が
   fragment ディレクトリを `read_dir` し、親の `include!` マニフェストの網羅と順序を検証したうえで
   各 fragment を再帰的に見る。ops03b / ops03c をこの方式へ寄せる。新規設計は不要。
-- [ ] `TESTGATE-02` selfhost bundle の verbatim 包含 assertion が正規化と食い違う — Issue `I-11`。
-  `crates/lsharp-wasm/tests/e2e/support.rs` の `cached_selfhost_bundle` (`:1418-1431`) は
-  `.replace("(import Types.TypeInfer)\n", "")` で正規化するのに、
-  `test_support_selfhost_typeinfer_runtime_bundle_cached` (`:1865`) は
-  `selfhost_module()` (`:913-924`) が返す **生ソース**の verbatim 包含を要求する。
-  assert 対象 9 モジュールのうち当該 import 行を持つ 4 件 (`TypeInferApply` / `TypeInferBlock` /
-  `TypeInferPattern` / `TypeInferRecord`) は原理的に一致しない。
-  (`selfhost/src/Types/` で当該行を持つファイル自体は 6 件あるが、`TypeInferAssertions` と
-  `TypeInferSmoke` は assert 対象に入っていないので寄与しない。)
-  assert は 2026-03-27 `7f9bdbb4`、`replace()` と
-  import 行は 2026-07-20 `2b0c54b1` (origin/main 側) が同時に入れたもので、
-  **上流変更に検査が追随しなかった陳腐化**。production バグではない。
-  `mod support` の共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる。
-  検査側を正規化後の bundle と突き合わせる形へ直す。
 - [ ] `DIAG-DEDUP-01` diagnostics dedup の test と実装の仕様不一致 — Issue `I-11`。
   `test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json` は「同一 start span なら 1 件」を
   要求するが、実装 `selfhost/src/Tools/Lsp/LspServerNav.ls:1225-1245` の
