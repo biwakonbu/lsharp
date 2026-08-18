@@ -509,7 +509,9 @@
   | **合計** | **3866** | **108** | -- |
 
   e2e を 6 分割したのは、1 プロセスで回すと途中で中断されるため (`cargo test` 実測で
-  20,275.13s = 5 時間 38 分)。`--partition hash:i/6` を i=1..6 で回し、JUnit を結合した。
+  `1702 passed; 60 failed; 1259 ignored` / 20,275.13s = 5 時間 38 分。出典は
+  [`rust-boundary-reduction.md`](docs/development/operations/rust-boundary-reduction.md) の
+  `lsharp-wasm --test e2e` 節で、同節には本項が数値と FAIL 帰属の正本である旨を注記した)。`--partition hash:i/6` を i=1..6 で回し、JUnit を結合した。
   分割しても総所要は縮まない (むしろ増える) -- 利点は「途中で殺されても部分成果が残る」点だけ。
 
 - **完走判定 (checker では代替できない)**: `check-workspace-baseline.sh` は

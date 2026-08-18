@@ -5211,6 +5211,12 @@ dev と同一の `13 passed; 1 failed` / `8 passed; 1 failed` を返した (推�
 
 #### `lsharp-wasm --test e2e` (単独で 3,021 件)
 
+> **本節の数値は Track 0 時点 (1 プロセス完走) のもので、現在の正本ではない。**
+> 恒常 FAIL の確定値は [`ISSUES.md` の `I-11`](../../../ISSUES.md#i-11) が持つ
+> (6 分割実測で run **1799** / FAIL **70** / `#[ignore]` **1260**、e2e 小計 25835.086s)。
+> 下の `1702 / 60 / 1259` は分割前の 1 回の実測値として残す。差は測定条件の違いで、
+> どちらかが誤りというわけではない。
+
 dev worktree で完走させた結果は **`1702 passed; 60 failed; 1259 ignored` / 20,275.13s (5 時間 38 分)**。
 この 1 target だけで workspace 全体の実行時間を支配するので、`--workspace` に混ぜず単独で回すこと。
 
@@ -5237,9 +5243,17 @@ test result: FAILED. 0 passed; 60 failed; 0 ignored; 0 measured; 2961 filtered o
 **60 件中 60 件が FAIL、pass は 0**。名前集合の diff も空 (完全一致) である。
 
 `runtime_allocator_closures` の 17 件は `lsharp-wasm --lib` の `RootSetWithoutActiveSlot` と同じクラスタ
-(`LEGACY-ROOT-01` の rooting discipline)。`selfhost_native_stage_chain` 19 件 + `selfhost_native_stage23_gap`
-9 件は native stage chain 系で、この環境に `stage0/` が未セットアップであることが背景にある
-(`LEGACY-BOOT-01`)。いずれも Track 0 とは独立した既知領域である。
+(`LEGACY-ROOT-01` の rooting discipline)。**うち 13 件は 2026-08-18 に解消した** --
+判別測定で 17/17 が root lifetime verifier 起因と確定し、
+[`main` exit 免除 ADR](../../adr/decisions-root-lifetime-main-exit-exemption.md) で `main` の
+`ImbalancedExit` を免除したため。残る 4 件は同 ADR の「次スライスへ送るもの (案 B1)」。
+
+`selfhost_native_stage_chain` 19 件 + `selfhost_native_stage23_gap` 9 件について、本節はかつて
+「この環境に `stage0/` が未セットアップであることが背景にある」と書いていた。**この帰属は誤りで、
+`I-11` の実測で取り下げた。** 落ちているのは `selfhost/src/**.ls` を `read_to_string` して
+ソース本文へ文字列 assertion する test で、stage0 も native 実行も関与しない。正しい環境前提は
+「`./stage0` 不在」ではなく「`LSHARP_NATIVE_*` が全て未設定」である。いずれも Track 0 とは
+独立した既知領域である点は変わらない (`LEGACY-BOOT-01`)。
 
 #### 結論
 
