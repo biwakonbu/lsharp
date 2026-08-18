@@ -12406,7 +12406,7 @@
                                   (if (= opcode 74)
                                     16
                                     (if (= opcode 75)
-                                      12
+                                      24
                                       (if (= opcode 76)
                                         12
                                       (if (= (is-i64-compare-opcode opcode) 1)
@@ -16404,6 +16404,11 @@
 (defn emit-aarch64-sub-x0-x27-x28 []
   (encode-u32-le 3407610720))
 
+;; AArch64 CMP x27, x28 (= SUBS xzr, x27, x28)
+;; root stack pointer が base と等しい = root stack が空、の判定に使う
+(defn emit-aarch64-cmp-x27-x28 []
+  (encode-u32-le 3944481663))
+
 ;; AArch64 STR x0, [sp, #offset]
 (defn emit-aarch64-str-x0-sp [offset]
   (let [scaled (/ offset 8)]
@@ -17106,12 +17111,28 @@
         (emit-aarch64-lsr-x0-x0-3)))
     (emit-aarch64-add-x27-x27-8)))
 
+;; 空の root stack への root_pop は trap せず、root stack を変更せずに 0 を返す
+;; (runtime spec tier 1 項目 3)。x27 = root stack pointer / x28 = root stack base。
+;;   mov  x9, x0        値窓のシフト
+;;   mov  x0, #0        空だったときの返り値
+;;   cmp  x27, x28      空判定
+;;   b.eq +12           末尾へ (sub / ldr を飛ばす)
+;;   sub  x27, x27, #8
+;;   ldr  x0, [x27]
+;; 全体で 24 byte。native-plain-instr-size-aarch64 /
+;; native-instr-size-aarch64-core の opcode 75 と一致させること。
 (defn emit-root-pop-aarch64 []
   (concat-byte-vectors
     (concat-byte-vectors
-      (emit-aarch64-mov-x9-x0)
-      (emit-aarch64-sub-x27-x27-8))
-    (emit-aarch64-ldr-x0-x27)))
+      (concat-byte-vectors
+        (emit-aarch64-mov-x9-x0)
+        (emit-aarch64-movz-x0-shift 0 0))
+      (concat-byte-vectors
+        (emit-aarch64-cmp-x27-x28)
+        (emit-aarch64-b-eq 12)))
+    (concat-byte-vectors
+      (emit-aarch64-sub-x27-x27-8)
+      (emit-aarch64-ldr-x0-x27))))
 
 (defn emit-store-window-spill-shifts-aarch64-step [frame-base-slot-count result shift-idx last-shift-idx]
   (if (> shift-idx last-shift-idx)
@@ -18041,7 +18062,7 @@
         (if (= opcode 74)
           16
           (if (= opcode 75)
-            (native-produce-one-size-aarch64 12 current-depth)
+            (native-produce-one-size-aarch64 24 current-depth)
             (if (> (native-selfhost-runtime-helper-size-aarch64 opcode current-depth) 0)
             (native-selfhost-runtime-helper-size-aarch64 opcode current-depth)
             (if (= opcode 45)

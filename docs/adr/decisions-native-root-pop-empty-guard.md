@@ -1,0 +1,191 @@
+# ADR: aarch64 の `root_pop` に空 stack ガードを inline で入れる
+
+- Status: Accepted (verified slice)
+- Date: 2026-08-18
+- Scope: `NATIVE-ROOT-01` / `I-21` / `selfhost/src/Backend/Native/NativeCodegen.ls`
+  (対象は aarch64 lane のみ。x86-64 lane の root API 実装そのものは含めない)
+- Related: [`ISSUES.md` I-21](../../ISSUES.md#i-21)、
+  [`decisions-runtime-spec-root-api-contract.md`](decisions-runtime-spec-root-api-contract.md)、
+  [runtime spec](../language/runtime-spec.md)、[native backend spec](../language/native-backend-spec.md)
+
+## Context
+
+[root API 契約 ADR](decisions-runtime-spec-root-api-contract.md) の tier 1 項目 3 は
+「**空の root stack に対する `root_pop` は trap せず、root stack を変更せずに `0` を返す**」を
+全 backend 必須と定めた。wasm backend は `crates/lsharp-wasm/src/wasi/root.rs` の
+`emit_root_pop_func` でこれを満たしており、e2e
+`test_e2e_root_runtime_api_tracks_slots_and_values` が `0` を pin している。
+
+aarch64 native backend は満たしていない。`emit-root-pop-aarch64` は空判定を持たず、
+無条件に以下 3 命令 (12 byte) を出す。
+
+```
+mov x9, x0          ; 値窓のシフト
+sub x27, x27, #8    ; root stack pointer を無条件に下げる
+ldr x0, [x27]
+```
+
+`x27` = root stack pointer、`x28` = root stack base。空 (`x27 == x28`) のときに呼ぶと
+`x27` が base を下回り、**root stack 領域の手前を読む**。さらに `x27` が下がったままになるので、
+以降の `root_push` が返す slot index が負値になり、書き込み先も 1 slot ずれる。
+契約の「trap しない」だけを満たし、「stack を変更しない」「`0` を返す」の 2 つを破っている。
+
+native lane にはまだ GC が無いため実害が顕在化していない (`I-13`)。GC を載せた時点で
+「root stack の手前にある値を live root として辿る」形で顕在化するので、GC より先に閉じる。
+
+## Decision
+
+**`emit-root-pop-aarch64` に空判定の分岐を inline で埋め込む。** 出力は 6 命令 24 byte になる。
+
+```
+mov  x9, x0         ; +0   値窓のシフト (従来どおり)
+mov  x0, #0         ; +4   空だったときの返り値をあらかじめ置く
+cmp  x27, x28       ; +8   x27 == x28 なら空
+b.eq +12            ; +12  分岐命令自身から 12 byte 先 = +24 (末尾) へ
+sub  x27, x27, #8   ; +16
+ldr  x0, [x27]      ; +20
+                    ; +24  末尾
+```
+
+空のときは `x27` に触れず `x0 = 0` のまま抜ける。非空のときは従来と同じ 2 命令を実行する。
+`x9` は両経路で同じ値を持つので、`drop` (opcode 44) による値窓の復元は従来どおり動く。
+
+### サイズ表を同時に更新する
+
+`NativeCodegen.ls` は「バイトを出す前に offset を確定させる」ため、命令長を**独立した 2 つの
+size 関数**が持っている。emitter だけ伸ばすと、以降の全 branch 変位が 12 byte ずれてモジュール全体が壊れる。
+opcode 75 (`root_pop`) の定数を **12 → 24** へ両方同時に直す。
+
+| 関数 | 現在 | 変更後 |
+|---|---|---|
+| `native-plain-instr-size-aarch64` (plain lane、offset 計算 2 箇所から呼ばれる) | `12` | `24` |
+| `native-instr-size-aarch64-core` (bundle lane、`native-produce-one-size-aarch64` 経由) | `(native-produce-one-size-aarch64 12 current-depth)` | `(native-produce-one-size-aarch64 24 current-depth)` |
+
+`direct-append-produce-one-bytes-aarch64` (opcode 75 の fast path) は `emit-root-pop-aarch64` を
+そのまま呼ぶので、emitter を直せば追随する。サイズは上表の 2 関数から取るため専用の更新は要らない。
+
+**この 24 という数字を ADR のコメントで担保しない。** test で
+`(native-plain-instr-size-aarch64 75 0)` と `(vector-length (emit-root-pop-aarch64))` の一致を
+検査し、算術ではなく実測で pin する。
+
+### 新規に足す emitter
+
+`cmp x27, x28` (= `SUBS xzr, x27, x28`) の emitter が無いので追加する。
+エンコードは `0xEB1C037F` = `3944481663`。既存の `emit-aarch64-sub-x0-x27-x28`
+(`SUB x0, x27, x28` = `0xCB1C0360`) と同じ shifted-register 形で、`op`/`S` bit と `Rd = xzr` だけが違う。
+`mov x0, #0` は既存の `emit-aarch64-movz-x0-shift` に `imm=0 hw=0` を渡して得る。
+
+## 却下した選択肢
+
+**案 A — out-of-line の `lsharp_root_pop` helper を呼ぶ。却下。**
+呼び出し 1 箇所あたり 4〜8 byte で済み、ガードの本体は 1 箇所に集まる。
+しかし native backend には `lsharp_root_push` / `lsharp_root_pop` / `lsharp_root_set` の
+シンボルが**存在しない**。opcode 74/75/76 は一貫して呼び出し側へ inline 展開される設計で、
+契約 ADR も ABI シンボルを規定しないと明示している。helper を導入すると
+「root API だけ ABI を持つ」例外を作ることになり、linker / stage0 パッケージング /
+transport の各所に波及する。ガード 3 命令のために払う代償として大きすぎる。
+
+**案 B — `csel` による branchless 版。却下。**
+`sub x10, x27, #8` / `cmp x27, x28` / `csel x27, x10, x27, ne` / `ldr x0, [x27]` /
+`csel x0, x0, xzr, ne` のような形。分岐が無いぶん綺麗に見えるが、
+(1) `csel` の emitter が 2 種類必要で新規エンコードが 3 つ増える、
+(2) **空のときも `[x28]` を読む**ので「読んではいけない領域を読まない」という当初の目的を
+半分しか達成しない (base 自体は有効領域なので安全ではあるが、GC を載せた後に
+「空なのに base slot を触る」経路が残るのは説明しにくい)、
+(3) それでいて長さは同じ 24 byte。利点が無い。
+
+**案 C — 12 byte を維持したまま既存 3 命令を組み替える。却下。**
+比較と分岐で最低 2 命令、空経路の返り値 `0` で 1 命令が要る。`mov x9, x0` を落とせば
+辻褄は合うが、`x9` は `drop` が値窓を復元するために読む。落とすと opcode 44 の意味が壊れる。
+12 byte 維持は不可能である。
+
+**案 D — x86-64 lane も同時に直す。却下 (今回のスコープ外)。**
+x86-64 の `root_push` は常に `0` を返す stub、`root_pop` は emitter が無く、
+`root_set` は store を出さない。3 つとも未実装であり、ガード 1 個を足す話ではなく
+lane 全体の実装になる。`I-21` の本文と `TODO.md` の `NATIVE-ROOT-01` で
+「含めない範囲」として明示済み。なお現状の x86-64 `root_pop` は空でも `0` を返すので、
+tier 1 項目 3 に限れば偶然満たしている。
+
+## 受入条件
+
+1. aarch64 の `root_pop` が空 stack で `x27` を動かさず `0` を返すこと。
+2. 上を **encoding** と **実行** の両方で検査する test を置くこと。
+3. 命令長とサイズ表の一致を test が pin すること (算術での担保にしない)。
+4. wasm backend の既存 pin (`test_e2e_root_runtime_api_tracks_slots_and_values`) が
+   引き続き通り、backend を跨いで同じ観測結果になること。
+
+## Evidence
+
+計測日 2026-08-18、`macOS 25.5.0 / aarch64` (`host_native_exec_supported()` が true の環境)。
+worktree `codex/native-root-01`、`main` `8475b00a` から分岐。
+
+### 置いた test
+
+| test | lane | 検査対象 |
+|---|---|---|
+| `e2e::selfhost_native_stage_chain::test_e2e_native_aarch64_root_pop_emits_empty_stack_guard` | wasm 上の selfhost harness | 実バイト列 (encoding) と size 表の一致 |
+| `e2e::selfhost_native_stage_chain::test_e2e_native_host_binary_selfhost_root_pop_on_empty_stack_keeps_stack_pointer` | host aarch64 binary をリンクして実行 | 空 pop 後の `root_push` が slot index `0` を返すこと |
+
+どちらも `#[ignore]` で、既存の prefix `test_e2e_native_aarch64_` /
+`test_e2e_native_host_binary_` に属するため
+`scripts/ci/compile-phase11-inputs.sh` の `--ignored` lane から自動的に走る。
+`test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` の prefix ルールも新規登録なしで満たす。
+
+### RED (実装前)
+
+encoding test:
+
+```
+left:  [233, 3, 0, 170, 123, 35, 0, 209, 96, 3, 64, 249]                       (12 byte)
+right: [233, 3, 0, 170, 0, 0, 128, 210, 127, 3, 28, 235, 96, 0, 0, 84,
+        123, 35, 0, 209, 96, 3, 64, 249]                                       (24 byte)
+```
+
+behavioral test: `exit code 7 を期待したが -1 を得た` (56 byte の host binary が異常終了)。
+**`I-21` が机上の非適合ではなく実際にプロセスを落とすことを、ここで初めて実測で示した。**
+`ISSUES.md` の `I-21` は「bss 領域の手前を読む」までしか書いておらず、
+落ちるところまでは確認されていなかった。
+
+### GREEN (実装後)
+
+両 test とも `ok`。behavioral test は exit code `7` を返す
+(= 空 pop が `x27` を動かさず、続く `root_push` の slot index が `0`)。
+
+### 受入条件の判定
+
+| # | 条件 | 判定 |
+|---|---|---|
+| 1 | 空 stack で `x27` を動かさず `0` を返す | 満たす (encoding + 実行の両方) |
+| 2 | encoding と実行の両方を検査する test | 満たす (上表 2 件) |
+| 3 | 命令長と size 表の一致を test が pin | 満たす (encoding test が `native-plain-instr-size-aarch64` と実バイト長を比較) |
+| 4 | wasm 側の既存 pin が通り、backend を跨いで同じ観測結果 | **後述のとおり一部未検証** |
+
+条件 3 について補足する。当初 24 byte という数字を ADR のコメントだけで担保しかけたが、
+**5 命令 20 byte と数え違えていた**。size 表に 20 を入れていれば `root_pop` 1 個につき
+4 byte ずつ以降の branch 変位がずれ、モジュール全体が壊れていた。
+test で pin する方針にしたのはこの数え違いが理由である。
+
+条件 4 は wasm 側の `test_e2e_root_runtime_api_tracks_slots_and_values` が
+本変更で触れていない lane にあり (`crates/lsharp-wasm/src/wasi/root.rs` は無変更)、
+別途 workspace 検証で確認する。
+
+### 回帰確認 — 満たせなかった点
+
+`selfhost_native_stage_chain` の `--ignored` lane 全体 (534 test) を実行中。
+本 ADR を書いた時点で 27 test が完走しており、**この lane には本変更と無関係な
+恒常 FAIL が既に存在する**ことが判明した。完走後の全件結果は本節へ追記する。
+
+| 分類 | 件数 | 扱い |
+|---|---|---|
+| `test_e2e_linux_x86_actual_*` / Lima VM 依存 | 環境要因 | macOS host では実行できない。本変更と無関係 |
+| `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` | 1 | **2026-08-03 `1ee26eef` から陳腐化した pin**。`I-23` として新規登録 |
+
+`bundle_initial_capacity` が本変更と無関係であることは算術で確定している。
+期待値 `2520` に対し `read-stdin helper offset` が既に `3296`、
+`helper trailer size = base + 3296 + 156` なので、opcode 75 の命令長に関わらず
+`2520` は再現できない。実測は `3492` / `4492`。
+
+size 表の一致そのものは、既存の
+`test_e2e_native_aarch64_deep_direct_append_matches_static_size`
+(深い depth で `root_pop` を含む IR の静的サイズと実生成長を比較) が pass することで担保された。
+これは direct-append lane と bundle lane の両方を通る。

@@ -16629,6 +16629,70 @@ fn test_e2e_native_aarch64_deep_direct_append_matches_static_size() {
     );
 }
 
+/// NATIVE-ROOT-01: aarch64 の `root_pop` (opcode 75) が空 root stack ガードを出すこと。
+///
+/// runtime spec tier 1 項目 3「空の root stack に対する `root_pop` は trap せず、
+/// root stack を変更せずに `0` を返す」の aarch64 側 pin。
+/// 併せて、emitter の実バイト長と size 表 (`native-plain-instr-size-aarch64`) の
+/// 一致も検査する。両者がずれると以降の branch 変位が全て壊れるため、
+/// 数値をコメントで担保せず test で pin する。
+#[test]
+#[ignore]
+fn test_e2e_native_aarch64_root_pop_emits_empty_stack_guard() {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import IR.IR)
+(import Backend.Native.NativeCodegen)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [bytes (emit-root-pop-aarch64)
+        len (vector-length bytes)]
+    (do
+      (print len)
+      (print (native-plain-instr-size-aarch64 75 0))
+      (print-bytes bytes 0 len)
+      0)))"#,
+    );
+    let values = parse_numeric_lines(&output);
+    assert!(
+        values.len() >= 2,
+        "root_pop guard harness 出力が不足: {values:?}"
+    );
+    let emitted_len = values[0];
+    let table_size = values[1];
+    assert_eq!(
+        emitted_len, table_size,
+        "emit-root-pop-aarch64 の実バイト長と native-plain-instr-size-aarch64 が不一致: {values:?}"
+    );
+    let bytes: Vec<i64> = values[2..].to_vec();
+    assert_eq!(
+        bytes.len() as i64,
+        emitted_len,
+        "print-bytes の出力数が len と一致しない: {values:?}"
+    );
+
+    // mov x9, x0 / mov x0, #0 / cmp x27, x28 / b.eq +12 / sub x27, x27, #8 / ldr x0, [x27]
+    let expected: Vec<i64> = vec![
+        233, 3, 0, 170, // 0xAA0003E9 MOV x9, x0
+        0, 0, 128, 210, // 0xD2800000 MOVZ x0, #0
+        127, 3, 28, 235, // 0xEB1C037F CMP x27, x28
+        96, 0, 0, 84, // 0x54000060 B.EQ +12
+        123, 35, 0, 209, // 0xD100237B SUB x27, x27, #8
+        96, 3, 64, 249, // 0xF9400360 LDR x0, [x27]
+    ];
+    assert_eq!(
+        bytes, expected,
+        "emit-root-pop-aarch64 が空 stack ガード付きの列を出していない"
+    );
+}
+
 #[test]
 #[ignore]
 fn test_e2e_native_x86_deep_direct_append_matches_static_size() {
@@ -28165,6 +28229,42 @@ fn host_target_selfhost_root_pop_drop_restore_code_bytes() -> Vec<u8> {
                (vector-push (vector-new 3) instr1)
                instr2)
              instr3)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_root_pop_empty_stack_slot_index_code_bytes() -> Vec<u8> {
+    // i32.const 5 / root_pop (空 stack) / drop / root_push / i32.const 7 / add
+    //
+    // 空 stack への root_pop が x27 (root stack pointer) を動かさなければ、
+    // 続く root_push が返す slot index は 0 になり、+7 して exit 7。
+    // ガードが無いと x27 が base を 1 slot 下回ったままになり、
+    // slot index が (-8 >> 3) = 0x1FFF_FFFF_FFFF_FFFF になるので exit は 6 になる。
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [ir0 (vector-new 6)
+        ir1 (vector-push ir0 (make-instr 3 5))
+        ir2 (vector-push ir1 (make-instr 75 0))
+        ir3 (vector-push ir2 (make-instr 44 0))
+        ir4 (vector-push ir3 (make-instr 74 0))
+        ir5 (vector-push ir4 (make-instr 3 7))
+        ir (vector-push ir5 (make-instr 20 0))
         target (host-target)
         code (emit-native ir target)]
     (do
@@ -44410,6 +44510,22 @@ fn test_e2e_native_host_binary_selfhost_root_pop_drop_restores_previous_value() 
         "selfhost root_pop",
         host_target_selfhost_root_pop_drop_restore_code_bytes(),
         42,
+    );
+}
+
+/// NATIVE-ROOT-01: 空 root stack への `root_pop` が root stack pointer を動かさないこと。
+///
+/// runtime spec tier 1 項目 3 の aarch64 側 behavioral pin。
+/// wasm 側の対応する pin は
+/// `e2e::runtime_allocator_closures::test_e2e_root_runtime_api_tracks_slots_and_values`
+/// で、そちらは空 pop が `0` を返し以降の slot index が壊れないことを確認している。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_selfhost_root_pop_on_empty_stack_keeps_stack_pointer() {
+    assert_host_target_exit_code(
+        "selfhost root_pop empty stack",
+        host_target_selfhost_root_pop_empty_stack_slot_index_code_bytes(),
+        7,
     );
 }
 

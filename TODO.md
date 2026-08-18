@@ -695,15 +695,25 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   残るのは (b)「実際に 1 run 走って緑になる」だけで、これは CI 停止中は push で確認できない。
   **解除条件**: CI 自動実行が再開されるか、`workflow_dispatch` の手動起動を行うか。
   **含めない範囲**: script の assertion 内容 (決着済み)、CI 停止方針そのものの是非 (`I-19`)。
-- [ ] `NATIVE-ROOT-01` native backend の root API を runtime spec の tier 1 へ適合させる —
-  Issue `I-21`。aarch64 の `emit-root-pop-aarch64` が空 stack ガードを持たず、
-  空のときに stack pointer を base より下げて bss の手前を読む
-  (tier 1 項目 3 への直接の違反)。x86-64 は `root_push` が常に 0 を返す stub で、
-  `root_pop` は emitter が無く、`root_set` は store を出さない。
-  契約側は [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) で確定済み。
-  受入条件は aarch64 に空 stack ガードを入れ、backend を跨いで同じ挙動になることを
-  検査する test を置くこと。
-  **含めない範囲**: x86-64 lane の root API 実装そのもの (native x86 は別途 stub 解消が要る)。
+- [ ] `NATIVE-ROOT-02` native x86-64 lane の root API を実装する — Issue `I-21` の残件。
+  `emit-root-push-x86` は `xor eax, eax` を出すだけで引数を捨てて常に 0 を返し
+  (tier 1 項目 1 違反)、`root_pop` には emitter そのものが無く、`root_set` は store を出さない。
+  aarch64 側は `NATIVE-ROOT-01` で tier 1 適合済み
+  ([空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md))。
+  契約は [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) が正本。
+  受入条件は tier 1 の 4 項目を x86-64 で満たし、aarch64 と同じ observable な結果になることを
+  検査する test を置くこと (`test_e2e_native_host_binary_selfhost_root_pop_on_empty_stack_keeps_stack_pointer`
+  の x86-64 対応版が最小形)。
+  **含めない範囲**: native lane への GC 導入 (`NATIVE-HEAP-01/02` が持つ)。
+- [ ] `STALE-PIN-01` `#[ignore]` lane に眠る陳腐化した数値 pin を洗い出す — Issue `I-23`。
+  `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` が
+  2026-08-03 (`1ee26eef`) から恒常 FAIL しているのに、CI 停止 (`I-19`) と
+  baseline が非 ignored 限定 (`I-11`) の二重の穴でどの台帳にも載っていなかった。
+  受入条件は (a) `selfhost_native_stage_chain` の `--ignored` lane を一度完走させて
+  FAIL 集合を確定させ、(b) 環境要因 (Lima VM 不在等) と真の陳腐化 pin を分離し、
+  (c) 真の陳腐化 pin を `workspace-expected-failures.txt` と同等の粒度で台帳化すること。
+  **含めない範囲**: 個々の pin の期待値更新 (洗い出しの後に別項目で扱う)、
+  `#[ignore]` 契約そのものの是非 (`TESTGATE-03` / `I-22`)、CI 再開 (`I-19`)。
 - [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
   parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
   片側だけの directive 追加は検出できる状態になった。判断と実測は

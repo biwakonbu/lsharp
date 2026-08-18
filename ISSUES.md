@@ -153,8 +153,9 @@
 | [I-18](#i-18) | metadata directive の allowlist が 3 系統で二重管理されている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 | [I-19](#i-19) | CI 自動実行の停止で `ci.yml` の 17 job が 1 ヶ月以上まったく観測されていない | 中 | documented-limitation | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-20](#i-20) | selfhost parser が受理した 6 directive の payload を黙って捨てている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
-| [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない | 高 | open | [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) |
+| [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない (aarch64 は解決済、x86-64 が残件) | 高 | open | [空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) |
 | [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしておらず、どちらが陳腐化しているか未決 | 中 | open | [test gate 是正 ADR](docs/adr/decisions-test-gate-staleness-repair.md) |
+| [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -1115,7 +1116,7 @@
   | lane | 実装 | tier 1 適合 |
   |---|---|---|
   | wasm (WASI) | `crates/lsharp-wasm/src/wasi/root.rs` | 満たす |
-  | native aarch64 | `selfhost/src/Backend/Native/NativeCodegen.ls` で IR opcode 74/75/76 をインライン展開 | **項目 3 に違反** |
+  | native aarch64 | `selfhost/src/Backend/Native/NativeCodegen.ls` で IR opcode 74/75/76 をインライン展開 | 満たす (2026-08-18 に是正。当初は**項目 3 に違反**) |
   | native x86-64 | 同上だが stub | **未実装** |
 
 - **aarch64 の違反 (最も重い)**: `emit-root-pop-aarch64` は空 stack のガードを持たず、
@@ -1123,6 +1124,12 @@
   stack pointer が base を下回り、**bss 領域の手前を読む**。
   spec の tier 1 項目 3 (「空の root stack に対する `root_pop` は trap せず、
   root stack を変更せずに `0` を返す」) に対する直接の違反である。
+  **2026-08-18 に是正した** (`NATIVE-ROOT-01`)。`emit-root-pop-aarch64` に
+  `cmp x27, x28` / `b.eq` の空判定を inline で入れ、空のときは `x27` を動かさず `0` を返す。
+  判断と却下した選択肢は
+  [空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) が正本。
+  **是正前の実害は実測で確認済み**: 空 pop を含む host binary は exit code `-1`
+  (異常終了) を返していた。是正後は期待どおり `7` を返す。
 - **x86-64 の stub**: `emit-root-push-x86` は `xor eax, eax` を出すだけで (引数を捨てて常に 0 を返す)、tier 1 項目 1 (push した slot の index を返す) を満たさない。
   `root_pop` には emitter そのものが無く定数 0 を返す。`root_set` は store 命令を出さない。
 - **シンボルは存在しない**: `lsharp_root_push` / `lsharp_root_pop` / `lsharp_root_set` という
@@ -1134,8 +1141,12 @@
 - **なぜ顕在化していないか**: native lane は GC を導入しておらず、root stack を実際に
   使い切る経路がまだ無い。`I-17` が「native は実装していないので非互換は顕在化していない」と
   書いていたのは**シンボルの有無を見た誤読**で、挙動としては既に食い違っている。
-- **着手の追跡**: `TODO.md` の `NATIVE-ROOT-01` が持つ。契約を書いた `RUNTIME-SPEC-01` は
+- **着手の追跡**: aarch64 は `NATIVE-ROOT-01` で閉じた。残る x86-64 lane は
+  `TODO.md` の `NATIVE-ROOT-02` が持つ。契約を書いた `RUNTIME-SPEC-01` は
   native 実装を「含めない範囲」に明記していたため、非適合の記録である本項が先に立った。
+- **状態を open のままにしている理由**: tier 1 は全 backend 必須の契約であり、
+  x86-64 が未実装である以上「native backend が適合した」とは言えない。
+  aarch64 だけを見て resolved にすると、残った非適合がどの台帳にも載らなくなる。
 - **関連**: I-17 (契約側)、I-13 (native heap の回収機構と bounds check の欠如)。
 
 ---
@@ -1190,6 +1201,45 @@
   `DIAG-DEDUP-01` と同じ形 (規約 vs 蓄積した実態) なので、同様に裁定してから直す。
 - **現在の扱い**: `ops03c` は `workspace-expected-failures.txt` の expected FAIL として残る
   (`TESTGATE-01` 前後で baseline の FAIL 集合は不変)。着手の追跡は `TODO.md` の `TESTGATE-03`。
+
+---
+
+<a id="i-23"></a>
+### I-23: `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない
+
+- **影響度**: 中 / **状態**: open
+- **内容**: `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer`
+  (`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs`) は
+  `(aarch64-selfhost-helper-trailer-size 10)` == `2520` と
+  `(aarch64-bundle-initial-capacity 1000 10)` == `3520` を pin しているが、
+  現在の実測は `3492` / `4492` で、**恒常的に FAIL している**。
+- **いつずれたか (git 履歴からの実測)**:
+
+  | 日付 | commit | 事象 |
+  |---|---|---|
+  | 2026-05-04 | `cf41069e` | 期待値 `vec![2520, 3520]` を pin |
+  | 2026-08-03 | `1ee26eef` | `aarch64-selfhost-read-stdin-helper-offset` の定数を `2324` → `3296` へ拡大 |
+
+  helper trailer size は `read-stdin helper offset + 156`、`base(0,10)` は
+  `import-stub-count(10) * 4 = 40` なので、現在の値は `40 + 3296 + 156 = 3492` である。
+  期待値 `2520` は `read-stdin` helper が増える前の世界を pin しており、
+  **どの import-stub-count を与えても現在のコードでは再現できない**。
+- **なぜ気付かれなかったか**: 本 test は `#[ignore]` であり、
+  `scripts/ci/compile-phase11-inputs.sh` の `--ignored` lane からのみ走る。
+  CI 自動実行は 2026-07-12 から停止している (`I-19`) ため、
+  定数を拡大した 2026-08-03 以降、誰もこの lane を回していない。
+  `#[ignore]` test は `docs/development/validation/workspace-expected-failures.txt` の
+  baseline (非 ignored が対象) にも載らないので、**どの台帳にも残らなかった**。
+- **どちらが陳腐化しているか**: pin 側である。`1ee26eef` は read-stdin runtime opcode の
+  追加という機能変更で、helper trailer が伸びること自体は正しい。
+  ただし**期待値を実装に合わせて書き換えるだけで済ませない** — 同じ形の pin が
+  他にも眠っている可能性が高く、そちらを先に洗い出す。
+- **発見の経緯**: `NATIVE-ROOT-01` (aarch64 root_pop の空 stack ガード) の回帰確認で
+  `selfhost_native_stage_chain` の `--ignored` lane を通したときに検出した。
+  `NATIVE-ROOT-01` の変更とは無関係であることは上記の算術で確定している
+  (`2520 < 3296 + 156` なので、opcode 75 の命令長に関わらず再現不能)。
+- **関連**: I-19 (CI 停止)、I-22 (同じく CI 停止期間に積み上がった `#[ignore]` 契約違反)、
+  I-11 (baseline が非 ignored 限定であること)。
 
 ---
 
