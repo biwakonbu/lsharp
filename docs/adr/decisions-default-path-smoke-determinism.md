@@ -89,7 +89,8 @@ host fallback が意図せず既定経路になった退行を、このゲート
   実測で無改変のまま通ったのは `parse` / `review` / `review --json` / `review --format json` /
   `doc-ack` / `doc-ack --trailer` / `doc-check` / `doc-check --strict` と `LSHARP_PATH` 委譲側で、
   こちらは触っていない。
-- `EMBEDCACHE-01` (build.rs の cache key) は独立のスライス。
+- `EMBEDCACHE-01` (build.rs の cache key) は独立のスライス。2026-08-18 に
+  [cache key 被覆 ADR](decisions-embedded-component-cache-key-coverage.md) で決着した。
 
 ## 実装順序 (doc-RED 時点の計画)
 

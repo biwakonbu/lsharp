@@ -88,6 +88,44 @@ impl std::fmt::Display for EmbeddedComponentKey {
     }
 }
 
+/// cache key の入力になる root。project root からの相対 path で並べる。
+///
+/// この配列は 2 つの用途の**単一の正本**である。
+///
+/// 1. `embedded_component_key_sources` が走査する root
+/// 2. `crates/lsharp-driver/build.rs` が出す `cargo:rerun-if-changed`
+///
+/// 両者を別々に書くと、片方にだけ root が足された状態が生まれる。実際 `wit/` は
+/// 2 にだけ載っていて 1 に無く、`stdlib/` はどちらにも無かった (`I-16`)。
+/// 前者は「build script は再実行されるのに古い bytes を hit する」、後者は
+/// 「build script がそもそも再実行されない」という別々の壊れ方をする。
+///
+/// 各 root は丸ごと走査し、拡張子で絞らない。絞り込みルールは module resolver の実装と
+/// 二重管理になり、drift したときに**静かに under-invalidate する**方向へ壊れる。
+/// over-invalidate は遅いだけなので、非対称な損失に対して保守側へ倒している。
+pub const EMBEDDED_COMPONENT_KEY_ROOTS: [&str; 3] = ["selfhost/src", "stdlib", "wit"];
+
+/// `EMBEDDED_COMPONENT_KEY_ROOTS` をすべて走査し、cache key の入力列を作る。
+///
+/// label には root の相対 path をそのまま使うので、entry 名は `stdlib/List.ls` のように
+/// project root 相対になる。存在しない root は空として扱う (checkout の形に依存させない)。
+pub fn embedded_component_key_sources(
+    project_root: &Path,
+) -> Result<Vec<(String, SourceFingerprint)>> {
+    let mut sources = Vec::new();
+    for root in EMBEDDED_COMPONENT_KEY_ROOTS {
+        // root は `/` 区切りの相対 path なので、component ごとに join して platform 差を吸収する。
+        let mut absolute = project_root.to_path_buf();
+        for segment in root.split('/') {
+            absolute.push(segment);
+        }
+        sources.extend(collect_source_entries(root, &absolute)?);
+    }
+    // `from_parts` 側でも整列するが、この関数単体の返り値も安定させておく。
+    sources.sort_by(|left, right| left.0.as_bytes().cmp(right.0.as_bytes()));
+    Ok(sources)
+}
+
 /// `root` 配下の全 regular file を `(label/相対 path, 内容 fingerprint)` として集める。
 ///
 /// 絶対 path は key に含めない。worktree ごとに path が違っても同じ source なら同じ key に

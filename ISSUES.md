@@ -148,6 +148,7 @@
 | [I-13](#i-13) | native aarch64 の linear heap に回収機構と bounds check が無い | 高 | documented-limitation | -- |
 | [I-14](#i-14) | root lifetime verifier が公開 runtime API の合法な使用を拒否する | 中-高 | in-design (13/17 解消) | [main exit 免除 ADR](docs/adr/decisions-root-lifetime-main-exit-exemption.md) |
 | [I-15](#i-15) | `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない | 中 | resolved | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
+| [I-16](#i-16) | embedded component cache の key が build 入力 (`wit/` / `stdlib/`) を覆いきっていない | 中 | resolved | [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) |
 
 ### ドキュメント (DOC)
 
@@ -854,6 +855,61 @@
   **CI job が実際に緑になるかは push 後の 1 run を見るまで未確定**であり、
   job が skipped だったトリガ条件そのものは未解明のまま残る。
 - **関連**: `SMOKE-GATE-03` (TODO.md、残件の skipped 原因調査)、`OPS-05` (job の由来)、I-11 (baseline の由来)。
+
+---
+
+<a id="i-16"></a>
+### I-16: embedded component cache の key が build 入力を覆いきっていない
+
+- **影響度**: 中 / **状態**: resolved
+- **内容**: `crates/lsharp-driver/build.rs:43-59` の `cached_default_embedded_component` は
+  cache key を `collect_source_entries("selfhost/src", ...)` と
+  `current_executable_fingerprint()` の 2 つだけから導く。しかし埋め込む component の
+  生成には他の入力がある。
+- **`wit/` — 実入力なのに key に無い**: `build_default_embedded_component` が呼ぶ
+  `emit_wasm_wasi_p2` (`crates/lsharp-wasm/src/wasi.rs:239-243`) は
+  `wit/lsharp-compiler.wit` を読み、`component_adapter::resolve_world`
+  (`crates/lsharp-wasm/src/component_adapter.rs:50-70`) がその WIT workspace
+  (`wit/deps` を含む) を解決する。build.rs は `:120-123` で `wit/` に
+  `rerun-if-changed` を張っているので、**wit だけを編集すると build script は再実行され、
+  しかし key が変わらないので古い bytes を hit させる**。これが最も現実的な stale 経路である。
+- **`stdlib/` — 潜在入力で、しかも `rerun-if-changed` すら無い**:
+  `ModuleGraph::resolve_module_file_with_search_paths`
+  (`crates/lsharp-ir/src/module_graph/resolve.rs:138-161`) の探索順は
+  source_root -> packages -> stdlib で、`default_stdlib_root()` (`:486-497`) が
+  bundled `stdlib/` を既定で載せる。key に入っていないうえ、build.rs は `stdlib/` に
+  `rerun-if-changed` を**張っていない**。したがって key に足すだけでは不十分で、
+  build script が再実行される保証も同時に要る (再実行されなければ OUT_DIR の
+  古い artifact がそのまま使われる)。
+- **実測 (2026-08-18) — 旧記述の訂正**: `TODO.md` の `EMBEDCACHE-01` は
+  「`compile_multi_file` は `stdlib/` も読む」と書いていたが、**この tree では成立しない**。
+  `selfhost/src` 配下の `(import ...)` / `(open ...)` は 254 箇所・異なるモジュール 56 件で、
+  **56 件すべてが `selfhost/src/` 配下で解決する** (`stdlib/` にしか無いものは 0 件、
+  どちらにも無いものも 0 件)。現時点で stdlib は 1 ファイルも読まれていない。
+  ただし探索パスには載っているので、selfhost 側の module が 1 つ消える、あるいは
+  stdlib にしか無い module を import した瞬間に実入力へ変わる。
+- **共通の原因**: 「build script を再実行させる集合 (`rerun-if-changed`)」と
+  「key に入る集合」が**別々に書かれており、一致を保つ仕組みが無い**。
+  `wit/` は前者にだけ、`selfhost/src` は両方に、`stdlib/` はどちらにも無い、
+  という食い違いが現に起きている。
+- **実害**: 未観測。cache を退避した fresh build と cache hit build のバイト一致は確認済み。
+  観測されていないのは、これまで `wit/` を触る変更と selfhost を触る変更が
+  たまたま同時に入っていたためと見る。
+- **解消 (2026-08-18)**: 入力 root の一覧を
+  `lsharp_wasm::embedded_component_cache::EMBEDDED_COMPONENT_KEY_ROOTS`
+  (`["selfhost/src", "stdlib", "wit"]`) に集約し、key 導出 (`embedded_component_key_sources`) と
+  `build.rs` の `rerun-if-changed` の**両方をそこから導く**ようにした。
+  これで「片方にだけ root が載っている」状態が構造的に作れなくなる。
+  実測: `stdlib/List.ls` の mtime だけを触ると build script が再実行され (新設の
+  `rerun-if-changed` が効いている証拠) 内容不変なので cache hit (3.3s)。
+  `wit/lsharp-compiler.wit` を 1 行変えると key が `b3c50215...` から `e2326cd3...` へ分岐し、
+  復元すると元の key へ戻る。`stdlib/List.ls` の内容変更では miss (1m27s の再コンパイル)。
+  unit test 6 本を追加 (`cargo test -p lsharp-wasm --lib embedded_component_cache` →
+  22 passed)。判断・却下理由・満たせなかった受入条件は
+  [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) が正本。
+  **stale hit が実際に起きる様子は再現していない** (旧 build.rs との対照は emitter fingerprint が
+  変わるため成立しない)。`packages/` 探索パスは引き続き key の外にある。
+- **関連**: [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md)。
 
 ---
 

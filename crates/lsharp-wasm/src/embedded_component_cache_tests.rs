@@ -127,6 +127,176 @@ fn test_collect_source_entries_is_sorted_and_label_relative() {
 }
 
 // ---------------------------------------------------------------------------
+// key の入力被覆 (I-16 / EMBEDCACHE-01)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_embedded_component_key_roots_cover_selfhost_stdlib_and_wit() {
+    // root の一覧は build.rs の `rerun-if-changed` と key 導出の両方の正本になる。
+    // 片方だけに root が足された状態を作らないよう、ここで一覧そのものを固定する。
+    assert_eq!(
+        EMBEDDED_COMPONENT_KEY_ROOTS,
+        ["selfhost/src", "stdlib", "wit"],
+        "key の入力 root は selfhost/src / stdlib / wit の 3 つであること"
+    );
+}
+
+#[test]
+fn test_embedded_component_key_sources_collect_every_root_with_labels() {
+    let project_root = unique_temp_dir("key-sources");
+    write_source(
+        &project_root,
+        "selfhost/src/App/EmbeddedCli.ls",
+        "(module App.EmbeddedCli)\n",
+    );
+    write_source(&project_root, "stdlib/List.ls", "(module List)\n");
+    write_source(
+        &project_root,
+        "wit/lsharp-compiler.wit",
+        "package lsharp:compiler;\n",
+    );
+
+    let names = embedded_component_key_sources(&project_root)
+        .unwrap()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        names,
+        vec![
+            "selfhost/src/App/EmbeddedCli.ls".to_string(),
+            "stdlib/List.ls".to_string(),
+            "wit/lsharp-compiler.wit".to_string(),
+        ],
+        "3 root すべてが label 付きで key の入力に載ること"
+    );
+
+    std::fs::remove_dir_all(&project_root).unwrap();
+}
+
+#[test]
+fn test_embedded_component_key_changes_when_only_stdlib_changes() {
+    // stdlib は module 解決の探索パス上にあり、selfhost 側の module が消えた瞬間に実入力へ変わる。
+    let project_root = unique_temp_dir("stdlib-change");
+    write_source(
+        &project_root,
+        "selfhost/src/App/EmbeddedCli.ls",
+        "(module App.EmbeddedCli)\n",
+    );
+    write_source(&project_root, "stdlib/List.ls", "(module List)\n");
+    write_source(
+        &project_root,
+        "wit/lsharp-compiler.wit",
+        "package lsharp:compiler;\n",
+    );
+
+    let emitter = SourceFingerprint::from_bytes(b"emitter-v1");
+    let before = EmbeddedComponentKey::from_parts(
+        &embedded_component_key_sources(&project_root).unwrap(),
+        &emitter,
+    );
+
+    write_source(&project_root, "stdlib/List.ls", "(module List)\n\n");
+    let after = EmbeddedComponentKey::from_parts(
+        &embedded_component_key_sources(&project_root).unwrap(),
+        &emitter,
+    );
+
+    assert_ne!(
+        before, after,
+        "stdlib だけが変わっても embedded component key は変わるべき"
+    );
+
+    std::fs::remove_dir_all(&project_root).unwrap();
+}
+
+#[test]
+fn test_embedded_component_key_changes_when_only_wit_changes() {
+    // wit は `emit_wasm_wasi_p2` が実際に読む入力なので、ここが変われば生成物も変わり得る。
+    let project_root = unique_temp_dir("wit-change");
+    write_source(
+        &project_root,
+        "selfhost/src/App/EmbeddedCli.ls",
+        "(module App.EmbeddedCli)\n",
+    );
+    write_source(&project_root, "stdlib/List.ls", "(module List)\n");
+    write_source(
+        &project_root,
+        "wit/lsharp-compiler.wit",
+        "package lsharp:compiler;\n",
+    );
+
+    let emitter = SourceFingerprint::from_bytes(b"emitter-v1");
+    let before = EmbeddedComponentKey::from_parts(
+        &embedded_component_key_sources(&project_root).unwrap(),
+        &emitter,
+    );
+
+    write_source(
+        &project_root,
+        "wit/deps/io/streams.wit",
+        "package wasi:io;\n",
+    );
+    let after = EmbeddedComponentKey::from_parts(
+        &embedded_component_key_sources(&project_root).unwrap(),
+        &emitter,
+    );
+
+    assert_ne!(
+        before, after,
+        "wit workspace が変わったら embedded component key も変わるべき"
+    );
+
+    std::fs::remove_dir_all(&project_root).unwrap();
+}
+
+#[test]
+fn test_embedded_component_key_sources_tolerate_a_missing_root() {
+    // stdlib や wit が無い checkout でも key 導出は落ちないこと (cache は最適化でしかない)。
+    let project_root = unique_temp_dir("missing-root");
+    write_source(
+        &project_root,
+        "selfhost/src/App/EmbeddedCli.ls",
+        "(module App.EmbeddedCli)\n",
+    );
+
+    let names = embedded_component_key_sources(&project_root)
+        .unwrap()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        names,
+        vec!["selfhost/src/App/EmbeddedCli.ls".to_string()],
+        "存在しない root は空として扱い、error にしないこと"
+    );
+
+    std::fs::remove_dir_all(&project_root).unwrap();
+}
+
+#[test]
+fn test_embedded_component_key_sources_cover_the_real_project_tree() {
+    // fixture ではなく実 tree に対する pin。root 名が変わった (`wit/` の rename 等) 場合、
+    // fixture 側の test は通り続けてしまうのでここで捕まえる。
+    let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let names = embedded_component_key_sources(&project_root)
+        .unwrap()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect::<Vec<_>>();
+
+    for root in EMBEDDED_COMPONENT_KEY_ROOTS {
+        let prefix = format!("{root}/");
+        assert!(
+            names.iter().any(|name| name.starts_with(&prefix)),
+            "実 tree の `{root}` 配下が key の入力に 1 件も載っていない"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // envelope
 // ---------------------------------------------------------------------------
 

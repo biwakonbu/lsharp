@@ -42,14 +42,15 @@ const EMBEDDED_COMPONENT_CACHE_ENTRIES: usize = 8;
 /// key 導出と cache root の逆算は `lsharp-wasm` 側に置いてある (build.rs は直接テストできない)。
 fn cached_default_embedded_component(project_root: &Path, out_dir: &Path) -> Vec<u8> {
     use lsharp_wasm::embedded_component_cache::{
-        cache_root_from_out_dir, collect_source_entries, current_executable_fingerprint,
+        cache_root_from_out_dir, current_executable_fingerprint, embedded_component_key_sources,
         EmbeddedComponentCache, EmbeddedComponentKey,
     };
 
-    let selfhost_src = project_root.join("selfhost").join("src");
+    // 走査する root は `EMBEDDED_COMPONENT_KEY_ROOTS` が正本で、下の `rerun-if-changed` と
+    // 同じ一覧から導かれる (I-16)。ここに root を直接書かないこと。
     let key = match (
         cache_root_from_out_dir(out_dir),
-        collect_source_entries("selfhost/src", &selfhost_src),
+        embedded_component_key_sources(project_root),
         current_executable_fingerprint(),
     ) {
         (Some(root), Ok(sources), Ok(emitter)) => {
@@ -113,14 +114,15 @@ fn main() {
     let manifest_dir =
         PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should exist"));
     let project_root = manifest_dir.join("../..");
-    println!(
-        "cargo:rerun-if-changed={}",
-        project_root.join("selfhost").join("src").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        project_root.join("wit").display()
-    );
+    // cache key の入力と build script の再実行条件を同じ一覧から出す。片方にだけ root が
+    // 載っている状態を作らないための措置である (I-16)。
+    for root in lsharp_wasm::embedded_component_cache::EMBEDDED_COMPONENT_KEY_ROOTS {
+        let mut path = project_root.clone();
+        for segment in root.split('/') {
+            path.push(segment);
+        }
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR should exist"));
     let embedded_output = out_dir.join("embedded-lsharp.component.wasm");

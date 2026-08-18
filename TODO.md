@@ -715,14 +715,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (b) `scripts/ci/test-runtime-limits.sh` が rc=0 (現在 rc=101)、
   (c) `workspace-expected-failures.txt` から残り 4 件を削除。
   **含めない範囲**: `crates/lsharp-wasm` lib の `RootSetWithoutActiveSlot` 既知 FAIL は別要因。
-- [ ] `EMBEDCACHE-01` embedded component cache の key が入力を覆いきっていない —
-  `crates/lsharp-driver/build.rs` の `cached_default_embedded_component` は
-  `selfhost/src` 全ファイル + build script binary の fingerprint を key にするが、
-  `build_default_embedded_component` が呼ぶ `compile_multi_file` は **`stdlib/` も読む**。
-  build.rs は `wit/` にも `rerun-if-changed` を張っているのに、こちらも key に入っていない。
-  `stdlib/` や `wit/` だけが変わり lsharp-ir / lsharp-wasm が変わらない upstream 変更が来ると、
-  **stale な component を hit させうる**。現時点で実害は観測していない
-  (cache 退避後の fresh build とバイト一致を確認済み) が、key に両者を含めるべき。
 - [~] `DOC-07` ドキュメント同期ハーネス — `.claude/rules/doc-sync.md`、`.claude/hooks/doc-guard.sh`、
   `.claude/skills/doc-sync/` を追加した。残るのは実運用での有効性確認と、hook が「正しい正本へ
   正しい粒度で書かれたか」までは判定できない点の運用での補完。
