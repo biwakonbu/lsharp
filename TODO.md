@@ -713,7 +713,26 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   受入条件は tier 1 の 4 項目を x86-64 で満たし、aarch64 と同じ observable な結果になることを
   検査する test を置くこと (`test_e2e_native_host_binary_selfhost_root_pop_on_empty_stack_keeps_stack_pointer`
   の x86-64 対応版が最小形)。
+  **codegen だけでは閉じない**: root stack の確保と base/pointer レジスタの初期化は
+  `NativeCodegen.ls` ではなく link 時の entry stub が持つ (`I-21` の 2026-08-18 追記)。
+  aarch64 は e2e harness (`selfhost_native_stage_chain.rs:37368-37377`) と製品 materializer
+  (`scripts/ci/materialize-native-macos-aarch64-bundle.py:131-133,170`) の両方に stub があるが、
+  **Linux x86 materializer には root stack が無い**。受入条件には
+  `scripts/ci/materialize-native-linux-x86-bundle.py` への追加も含める。
   **含めない範囲**: native lane への GC 導入 (`NATIVE-HEAP-01/02` が持つ)。
+  容量を動的にすること (`NATIVE-ROOT-03` が持つ。x86-64 も aarch64 と同じ固定上限で揃えてよい)。
+
+- [ ] `NATIVE-ROOT-03` native lane の root stack を tier 1 項目 4 (動的容量) に適合させる —
+  Issue `I-21`。現状は固定 8 MiB の BSS ブロックで、`emit-root-push-aarch64` は容量検査を持たず、
+  上限超過は trap せず隣接 bss を壊す。契約は
+  [root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md) の tier 1 項目 4
+  (「容量は動的で固定上限を定めない。確保できなくなった時点で trap する」) が正本。
+  **受入条件**: 初期容量を超える root_push が (a) 拡張に成功するか (b) trap するかのどちらかであり、
+  隣接メモリを壊さないことを検査する test を置くこと。wasm 側の
+  `test_e2e_runtime_root_stack_grows_past_initial_capacity` が同趣旨の pin なので形を揃える。
+  **含めない範囲**: x86-64 の root API 実装そのもの (`NATIVE-ROOT-02`)、
+  GC 導入 (`NATIVE-HEAP-01/02`)。拡張方式 (mmap 再確保か倍々か) は実装時に決めてよい
+  (契約は「動的であること」までしか定めていない)。
 - [ ] `STALE-PIN-01` `#[ignore]` lane に眠る陳腐化した数値 pin を洗い出す — Issue `I-23`。
   `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` が
   2026-08-03 (`1ee26eef`) から恒常 FAIL しているのに、CI 停止 (`I-19`) と

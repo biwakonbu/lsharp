@@ -1122,7 +1122,7 @@
   | lane | 実装 | tier 1 適合 |
   |---|---|---|
   | wasm (WASI) | `crates/lsharp-wasm/src/wasi/root.rs` | 満たす |
-  | native aarch64 | `selfhost/src/Backend/Native/NativeCodegen.ls` で IR opcode 74/75/76 をインライン展開 | 満たす (2026-08-18 に是正。当初は**項目 3 に違反**) |
+  | native aarch64 | `selfhost/src/Backend/Native/NativeCodegen.ls` で IR opcode 74/75/76 をインライン展開 | 項目 1/2/3 は満たす (2026-08-18 に是正。当初は**項目 3 に違反**)。**項目 4 に違反** (下記) |
   | native x86-64 | 同上だが stub | **未実装** |
 
 - **aarch64 の違反 (最も重い)**: `emit-root-pop-aarch64` は空 stack のガードを持たず、
@@ -1136,6 +1136,35 @@
   [空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) が正本。
   **是正前の実害は実測で確認済み**: 空 pop を含む host binary は exit code `-1`
   (異常終了) を返していた。是正後は期待どおり `7` を返す。
+- **項目 4 (容量が動的) の違反 — 2026-08-18 追記**: native lane の root stack は
+  **固定 8 MiB の BSS ブロック**であり、拡張しない。`emit-root-push-aarch64`
+  (`NativeCodegen.ls:17105-17112`) は `str x0, [x27]` / `add x27, x27, #8` を無条件に出すだけで
+  **容量検査を持たない**。上限を超えた `root_push` は trap せず、隣接する `__DATA,__bss` を
+  黙って壊す。tier 1 項目 4 は「容量は動的で固定上限を定めない。確保できなくなった時点で trap する」
+  と定めており ([root API 契約 ADR](docs/adr/decisions-runtime-spec-root-api-contract.md))、
+  これに正面から反する。wasm 側は `ROOT_STACK_SLOT_CAPACITY = 32768` から倍々に拡張し
+  `memory.grow` 失敗で `Unreachable` するので、**同じプログラムが backend で異なる結果を出す**
+  という本 issue の主題がここにも当てはまる。
+  `NATIVE-ROOT-01` の是正時にこの行を「満たす」と書いたのは項目 3 だけを見た誤りで、
+  2026-08-18 に上表を訂正した。
+
+- **root stack の実体は codegen ではなく link 時の entry stub にある — 2026-08-18 追記**:
+  `NativeCodegen.ls` は x27 (root stack pointer) / x28 (root stack base) を
+  **一度も初期化しない**。`grep 'x27\|x28'` で当たるのは root_push/pop/set 自身の
+  `add` / `sub` / `cmp` だけで、base を設定する `emit-aarch64-mov-x28-x27` (`:16145`) と
+  `emit-aarch64-mov-x0-x27` (`:16141`) は **定義だけあって呼び出しが 0 件**である。
+  実際の確保と初期化は link 時に足される entry stub が行う。
+
+  | 経路 | 場所 | root stack |
+  |---|---|---|
+  | e2e host binary (aarch64) | `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:37368-37377` / `:37867-37906` | `adrp x27, _lsharp_root_stack@PAGE` / `mov x28, x27` + `.zerofill __DATA,__bss,_lsharp_root_stack,0x800000,3` |
+  | 製品 (macOS aarch64) | `scripts/ci/materialize-native-macos-aarch64-bundle.py:131-133,170` | 同上 |
+  | 製品 (Linux x86-64) | `scripts/ci/materialize-native-linux-x86-bundle.py` | **無い** (`root_stack` / `.comm` / `.zerofill` が 0 hit) |
+
+  つまり x86-64 lane を tier 1 適合にするには codegen の 3 命令だけでは足りず、
+  **entry stub 側に root stack の確保を足す**必要がある。この事実は `NATIVE-ROOT-02` の
+  受入条件に反映した。`_lsharp_root_stack` シンボルはリポジトリ全体で上記 2 経路にしか無い。
+
 - **x86-64 の stub**: `emit-root-push-x86` は `xor eax, eax` を出すだけで (引数を捨てて常に 0 を返す)、tier 1 項目 1 (push した slot の index を返す) を満たさない。
   `root_pop` には emitter そのものが無く定数 0 を返す。`root_set` は store 命令を出さない。
 - **シンボルは存在しない**: `lsharp_root_push` / `lsharp_root_pop` / `lsharp_root_set` という
@@ -1147,8 +1176,8 @@
 - **なぜ顕在化していないか**: native lane は GC を導入しておらず、root stack を実際に
   使い切る経路がまだ無い。`I-17` が「native は実装していないので非互換は顕在化していない」と
   書いていたのは**シンボルの有無を見た誤読**で、挙動としては既に食い違っている。
-- **着手の追跡**: aarch64 は `NATIVE-ROOT-01` で閉じた。残る x86-64 lane は
-  `TODO.md` の `NATIVE-ROOT-02` が持つ。契約を書いた `RUNTIME-SPEC-01` は
+- **着手の追跡**: aarch64 の項目 3 は `NATIVE-ROOT-01` で閉じた。残る x86-64 lane は
+  `TODO.md` の `NATIVE-ROOT-02`、両 lane 共通の項目 4 (動的容量) は `NATIVE-ROOT-03` が持つ。契約を書いた `RUNTIME-SPEC-01` は
   native 実装を「含めない範囲」に明記していたため、非適合の記録である本項が先に立った。
 - **状態を open のままにしている理由**: tier 1 は全 backend 必須の契約であり、
   x86-64 が未実装である以上「native backend が適合した」とは言えない。
