@@ -283,7 +283,7 @@ fn test_root_lifetime_ledger_rejects_stale_slot_after_pop() {
         is_export: false,
     };
 
-    let error = validate_function(&function).expect_err("pop 済み slot の root_set は拒否すべき");
+    let error = validate_function(&function, &RootLifetimeExemptions::default()).expect_err("pop 済み slot の root_set は拒否すべき");
     assert!(
         matches!(error, RootLifetimeError::StaleSlot { .. }),
         "stale slot を専用エラーとして報告すべき: {error:?}"
@@ -311,7 +311,7 @@ fn test_root_lifetime_ledger_accepts_root_set_before_pop() {
         is_export: false,
     };
 
-    validate_function(&function).expect("active slot への root_set は root_pop 前なら有効");
+    validate_function(&function, &RootLifetimeExemptions::default()).expect("active slot への root_set は root_pop 前なら有効");
 }
 
 #[test]
@@ -333,7 +333,7 @@ fn test_root_lifetime_ledger_rejects_branch_depth_mismatch() {
     };
 
     let error =
-        validate_function(&function).expect_err("分岐間で root depth がずれる IR は拒否すべき");
+        validate_function(&function, &RootLifetimeExemptions::default()).expect_err("分岐間で root depth がずれる IR は拒否すべき");
     assert!(
         matches!(error, RootLifetimeError::BranchDepthMismatch { .. }),
         "branch depth mismatch を専用エラーとして報告すべき: {error:?}"
@@ -373,8 +373,8 @@ fn test_root_lifetime_ledger_accepts_explicit_cross_function_root_lease_helpers(
         is_export: false,
     };
 
-    validate_function(&acquire).expect("builtin root acquire helper は lease を返せるべき");
-    validate_function(&release).expect("builtin root release helper は caller の lease を解放できるべき");
+    validate_function(&acquire, &RootLifetimeExemptions::default()).expect("builtin root acquire helper は lease を返せるべき");
+    validate_function(&release, &RootLifetimeExemptions::default()).expect("builtin root release helper は caller の lease を解放できるべき");
 }
 
 #[test]
@@ -388,7 +388,7 @@ fn test_root_lifetime_ledger_rejects_unannotated_cross_function_root_lease() {
         is_export: false,
     };
 
-    let error = validate_function(&function).expect_err("未登録 helper の root lease は拒否すべき");
+    let error = validate_function(&function, &RootLifetimeExemptions::default()).expect_err("未登録 helper の root lease は拒否すべき");
     assert!(
         matches!(error, RootLifetimeError::ImbalancedExit { depth: 1, .. }),
         "通常関数の root lease は ImbalancedExit として拒否すべき: {error:?}"
@@ -403,7 +403,7 @@ fn test_root_lifetime_ledger_accepts_lowered_allocating_fixtures() {
         r#"(defn main [] (map-insert (map-new) (vector-new 0) "value"))"#,
     ] {
         let module = lower(source);
-        validate_module(&module).unwrap_or_else(|error| {
+        validate_module(&module, &RootLifetimeExemptions::default()).unwrap_or_else(|error| {
             panic!("lowered root lifetime が壊れている: source={source:?}, error={error:?}")
         });
     }
@@ -435,7 +435,8 @@ fn test_root_lifetime_ledger_accepts_main_holding_root_at_exit() {
     )
     .expect("main が root を保持したまま終わる module は lowering を通すべき");
 
-    validate_module(&module).expect("module 単体の再検証も通るべき");
+    validate_module(&module, &RootLifetimeExemptions::default())
+        .expect("module 単体の再検証も通るべき");
 }
 
 #[test]
@@ -477,7 +478,7 @@ fn test_root_lifetime_ledger_rejects_non_exported_function_named_main() {
         is_export: false,
     };
 
-    let error = validate_function(&function)
+    let error = validate_function(&function, &RootLifetimeExemptions::default())
         .expect_err("export されない main は WASI entry ではないので免除しない");
     assert!(
         matches!(error, RootLifetimeError::ImbalancedExit { depth: 1, .. }),
@@ -518,4 +519,101 @@ fn lower_errors_expose_stable_codes_and_spans() {
     };
     assert_eq!(root_error.code(), "LS3003");
     assert_eq!(root_error.span(), None);
+}
+
+#[test]
+fn test_root_lifetime_ledger_accepts_annotated_intentional_imbalance() {
+    // :roots-unbalanced が付いた関数は抽象実行ごと省略する (lease release helper の先例と同形)。
+    let module = try_lower(
+        r#"
+        (defn hold [x]
+          :roots-unbalanced "呼び出し側が解放する root lease"
+          (do (root_push x) 0))
+        (defn main [] (hold 1))
+        "#,
+    )
+    .expect("注釈された不均衡は lowering を通すべき");
+
+    let exemptions = RootLifetimeExemptions::from_names(["hold".to_string()]);
+    validate_module(&module, &exemptions).expect("免除集合を渡せば module 単体でも通るべき");
+
+    // 免除は IR に載らず lowering 時点の AST から導かれる。この非対称性は ADR に記録済み。
+    validate_module(&module, &RootLifetimeExemptions::default())
+        .expect_err("空の免除集合では従来どおり拒否されるべき");
+}
+
+#[test]
+fn test_root_lifetime_ledger_still_rejects_same_shape_without_annotation() {
+    // 上のテストと注釈 1 行だけが違う対。緩和が注釈に紐づいていることの保証。
+    let error = try_lower(
+        r#"
+        (defn hold [x] (do (root_push x) 0))
+        (defn main [] (hold 1))
+        "#,
+    )
+    .expect_err("注釈の無い不均衡は拒否し続けるべき");
+
+    assert!(
+        matches!(
+            error,
+            LowerError::RootLifetime {
+                error: RootLifetimeError::ImbalancedExit { ref function, .. }
+            } if function == "hold"
+        ),
+        "注釈が無ければ従来どおり ImbalancedExit: {error:?}"
+    );
+}
+
+#[test]
+fn test_root_lifetime_annotation_does_not_leak_to_sibling_function() {
+    // 同一 module の別関数へ免除が漏れないこと。
+    let error = try_lower(
+        r#"
+        (defn hold-a [x]
+          :roots-unbalanced "意図的に保持する"
+          (do (root_push x) 0))
+        (defn hold-b [x] (do (root_push x) 0))
+        (defn main [] (+ (hold-a 1) (hold-b 2)))
+        "#,
+    )
+    .expect_err("注釈の無い hold-b は拒否されるべき");
+
+    assert!(
+        matches!(
+            error,
+            LowerError::RootLifetime {
+                error: RootLifetimeError::ImbalancedExit { ref function, .. }
+            } if function == "hold-b"
+        ),
+        "免除は注釈された関数だけに閉じているべき: {error:?}"
+    );
+}
+
+#[test]
+fn test_root_lifetime_ledger_accepts_annotated_underflowing_pop() {
+    // 空 stack への root_pop は runtime spec 上 0 を返す合法な呼び出しだが、既定では拒否する。
+    try_lower(
+        r#"
+        (defn main []
+          :roots-unbalanced "空 root stack への pop が 0 を返すことを確認する fixture"
+          (do (root_pop) 0))
+        "#,
+    )
+    .expect("注釈された underflow pop は lowering を通すべき");
+}
+
+#[test]
+fn test_root_lifetime_ledger_accepts_annotated_branch_depth_mismatch() {
+    // 実 fixture (push-roots) と同形。if の then / else で root 深さが揃わない。
+    try_lower(
+        r#"
+        (defn push-roots [n]
+          :roots-unbalanced "root stack の grow を確認するため意図的に積み増す"
+          (if (<= n 0)
+            0
+            (do (root_push n) (push-roots (- n 1)))))
+        (defn main [] (push-roots 3))
+        "#,
+    )
+    .expect("注釈された branch depth mismatch は lowering を通すべき");
 }

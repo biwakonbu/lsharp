@@ -294,6 +294,8 @@ mod metadata_tests;
 mod pattern_tests;
 
 #[cfg(test)]
+mod roots_unbalanced_tests;
+#[cfg(test)]
 mod transitions_tests;
 
 #[cfg(test)]

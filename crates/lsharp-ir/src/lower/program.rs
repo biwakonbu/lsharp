@@ -220,8 +220,25 @@ impl Lower {
             globals: Vec::new(),
             string_data: self.string_data.clone(),
         };
-        crate::root_lifetime::validate_module(&module)
+        let exemptions = root_lifetime_exemptions(program);
+        crate::root_lifetime::validate_module(&module, &exemptions)
             .map_err(|error| LowerError::RootLifetime { error })?;
         Ok(module)
     }
+}
+
+/// `:roots-unbalanced "<理由>"` を宣言した `defn` の名前を集める。
+///
+/// 免除は IR には載せず、ここで AST から組み立てて `validate_module` へ渡す
+/// (判断は `docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md`)。
+/// 現状の対象は `defn` だけで、trait impl の method は含めない。
+fn root_lifetime_exemptions(program: &Program) -> crate::root_lifetime::RootLifetimeExemptions {
+    let names = program.decls.iter().filter_map(|decl| match unwrap_private(decl) {
+        Decl::Defn { name, metadata, .. } => metadata
+            .as_ref()
+            .and_then(|m| m.roots_unbalanced.as_ref())
+            .map(|_| name.clone()),
+        _ => None,
+    });
+    crate::root_lifetime::RootLifetimeExemptions::from_names(names)
 }

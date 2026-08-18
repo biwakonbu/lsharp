@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use super::*;
 use crate::{
     Function, Instruction, IrType, Module,
-    root_lifetime::{RootLifetimeError, validate_function, validate_module},
+    root_lifetime::{RootLifetimeError, RootLifetimeExemptions, validate_function, validate_module},
 };
 use lsharp_syntax::span::Span;
 use lsharp_types::{
@@ -23,7 +23,7 @@ fn lower(source: &str) -> Module {
     let module = lowerer
         .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
         .unwrap();
-    validate_module(&module).unwrap_or_else(|error| {
+    validate_module(&module, &RootLifetimeExemptions::default()).unwrap_or_else(|error| {
         panic!("lower helper produced invalid root lifetime: source={source:?}, error={error:?}")
     });
     module

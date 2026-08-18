@@ -697,6 +697,7 @@ impl Parser {
                     | "assert"
                     | "property"
                     | "transitions"
+                    | "roots-unbalanced"
             ),
             _ => false,
         }

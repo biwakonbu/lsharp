@@ -371,6 +371,32 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "roots-unbalanced" => {
+                            // :roots-unbalanced "<理由>"
+                            // 理由は必須。検査を黙らせるだけの注釈にしないため。
+                            self.advance(); // :
+                            self.advance(); // roots-unbalanced
+                            match self.peek_kind() {
+                                Some(TokenKind::String(_)) => {
+                                    let tok = self.advance();
+                                    if let TokenKind::String(s) = tok.kind {
+                                        metadata.roots_unbalanced = Some(s);
+                                        found = true;
+                                    }
+                                }
+                                _ => {
+                                    let found_kind = self
+                                        .peek_kind()
+                                        .map(|k| k.to_string())
+                                        .unwrap_or_else(|| "EOF".to_string());
+                                    return Err(ParseError::Unexpected {
+                                        expected: ":roots-unbalanced の理由文字列".to_string(),
+                                        found: found_kind,
+                                        span: self.peek_span(),
+                                    });
+                                }
+                            }
+                        }
                         "transitions" => {
                             // :transitions [(From -> To) ...]
                             self.advance(); // :

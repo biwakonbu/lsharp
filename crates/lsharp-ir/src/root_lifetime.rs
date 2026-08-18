@@ -8,12 +8,17 @@
 //! 後段で release する関数間 lease を使う。その2 helperは下の専用 shape checkで検査し、
 //! 通常の関数へ不均衡な root lifetime を広げない。
 //!
+//! ソース側から `:roots-unbalanced "<理由>"` を宣言した関数は、抽象実行ごと省略する。
+//! 免除集合は IR には載らず、lowering 時点の AST から組み立てて渡す
+//! (`RootLifetimeExemptions`)。判断は
+//! `docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md` が正本。
+//!
 //! 出口検査 (`ImbalancedExit`) は export される `main` だけ免除する。ここに残る slot は
 //! 直後にプログラムが終了するので stale になり得ず、`root_push` を pop せず保持する
 //! runtime spec どおりの使い方を通すためである。免除するのは出口検査だけで、
 //! `RootPopUnderflow` / `StaleSlot` / `BranchDepthMismatch` は main でも従来どおり報告する。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{Function, Instruction, Module};
 
@@ -24,6 +29,35 @@ pub const ROOT_SET_INDEX: u32 = 16;
 
 const ROOT_LEASE_ACQUIRE_HELPER: &str = "typeinfer-builtin-root-value";
 const ROOT_LEASE_RELEASE_HELPER: &str = "typeinfer-builtin-release-roots";
+
+/// `:roots-unbalanced` が宣言された関数名の集合。
+///
+/// IR の `Function` / `Module` には持たせない。literal 構築点が 107 / 83 箇所あり、
+/// `dump()` 出力が変わると insta snapshot も動くためである。検証点は lowering の
+/// 1 箇所しか無いので、そこで AST から組み立てて渡す。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RootLifetimeExemptions {
+    functions: HashSet<String>,
+}
+
+impl RootLifetimeExemptions {
+    pub fn from_names<I>(names: I) -> Self
+    where
+        I: IntoIterator<Item = String>,
+    {
+        Self {
+            functions: names.into_iter().collect(),
+        }
+    }
+
+    pub fn is_exempt(&self, function: &str) -> bool {
+        self.functions.contains(function)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.functions.is_empty()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RootLifetimeError {
@@ -155,7 +189,16 @@ impl State {
 }
 
 /// 1 関数の root slot lifetime を検証する。
-pub fn validate_function(function: &Function) -> Result<(), RootLifetimeError> {
+pub fn validate_function(
+    function: &Function,
+    exemptions: &RootLifetimeExemptions,
+) -> Result<(), RootLifetimeError> {
+    // 意図的な不均衡が宣言された関数は、抽象実行ごと省略する。
+    // 深さが揃わない状態から先の `roots` は意味を失っており、そこで残す検査は半盲になるため
+    // (`validate_root_lease_release` が同じ状況で取っている形に合わせる)。
+    if exemptions.is_exempt(&function.name) {
+        return Ok(());
+    }
     if function.name == ROOT_LEASE_ACQUIRE_HELPER {
         return validate_root_lease_acquire(function);
     }
@@ -235,9 +278,12 @@ fn count_call(body: &[Instruction], call_index: u32) -> usize {
 }
 
 /// モジュール内の全関数を検証する。
-pub fn validate_module(module: &Module) -> Result<(), RootLifetimeError> {
+pub fn validate_module(
+    module: &Module,
+    exemptions: &RootLifetimeExemptions,
+) -> Result<(), RootLifetimeError> {
     for function in &module.functions {
-        validate_function(function)?;
+        validate_function(function, exemptions)?;
     }
     Ok(())
 }

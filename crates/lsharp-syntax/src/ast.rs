@@ -104,6 +104,9 @@ pub struct Metadata {
     pub since: Option<String>,
     /// ADT 状態遷移メタデータ :transitions [(from -> to) ...]
     pub transitions: Vec<(String, String)>,
+    /// root 不均衡の意図宣言 :roots-unbalanced "<理由>"
+    /// root lifetime verifier (`lsharp-ir`) の検査を当該関数に限って外す。理由は必須。
+    pub roots_unbalanced: Option<String>,
     /// source order と directive span を保持する lossless contract forms。
     /// 既存 field は v0.1 consumer 向けの互換 projection として併存する。
     pub forms: Vec<MetadataForm>,
