@@ -677,8 +677,15 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `workspace-expected-failures.txt` から当該行を外す。
   **含めない範囲**: 案 A を採る場合でも CI の再開 (`I-19` / `SMOKE-GATE-03`) は本項目に含めない。
   164 件の中身の修正 (test 自体の高速化・統合) も含めない。
-  **判断材料**: 案 A は現在 run されて pass している 158 件を「どこでも走らない」状態にする
-  (CI は停止中)。案 B は run set を 1,799 のまま保つので `I-11` の測定 anchor が全て有効に残る。
+  **裁定済み (2026-08-18)**: **案 A** を採る。判断と却下理由は
+  [test gate ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md)。残るのは実装のみ。
+  **旧「判断材料」の訂正**: 「案 A は 158 件をどこでも走らない状態にする」は誤り。
+  `scripts/ci/compile-phase11-inputs.sh` は prefix 起動なので 164/164 が既存の起動対象に入る
+  (`:238` / `:240` / `:242` / `:244` / `:296`)。厳密名 grep で 0/164 と測ったのが誤測だった。
+  ただし default の workspace run から抜けること自体は正しく、CI 自動実行が止まっている間
+  (`I-19`) の実行経路は phase11 script の手動実行と release playbook の 2 つだけになる。
+  **追加の受入条件**: `workspace-expected-failures.txt:54-56` の 3 行 (164 件のうち現在 FAIL して
+  いるもの) を同じ変更で外すこと。付けないと checker の「expected が消えた」条件が発火する。
 
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース

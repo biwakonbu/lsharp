@@ -154,7 +154,7 @@
 | [I-19](#i-19) | CI 自動実行の停止で `ci.yml` の 17 job が 1 ヶ月以上まったく観測されていない | 中 | documented-limitation | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-20](#i-20) | selfhost parser が受理した 6 directive の payload を黙って捨てている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 | [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない (aarch64 は解決済、x86-64 が残件) | 高 | open | [空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) |
-| [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしておらず、どちらが陳腐化しているか未決 | 中 | open | [test gate 是正 ADR](docs/adr/decisions-test-gate-staleness-repair.md) |
+| [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしていない。案 A で裁定済み、実装のみ残る | 中 | open | [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) |
 | [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
 | [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
 
@@ -1231,6 +1231,12 @@
     細粒度 test であり (例: `selfhost_cli_core.rs:973` `test_e2e_selfhost_cli_check_file_resolves_imported_definition`)、
     heavy artifact gate という当初の対象像から外れている可能性が高い。
     採ると run set は 1,799 のまま動かず、`I-11` の測定 anchor が全て有効なまま残る。
+
+  **裁定 (2026-08-18)**: **案 A** を採った。判断と却下理由は
+  [test gate ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md)。
+  決め手は案 A 側の損失が実測で消えたこと — `scripts/ci/compile-phase11-inputs.sh` は
+  prefix 起動なので、`#[ignore]` を付けても 164/164 が phase11 lane で走り続ける
+  (当初 0/164 と測ったのは厳密名 grep による誤測)。以下の「案 A / 案 B」は裁定前の記述として残す。
 
   どちらを採るかは**規約側の意図の判断**であり、gate を green にするために片方へ寄せない。
   `DIAG-DEDUP-01` と同じ形 (規約 vs 蓄積した実態) なので、同様に裁定してから直す。
