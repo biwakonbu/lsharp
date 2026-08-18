@@ -217,8 +217,34 @@ prefix 表に無い test を取りこぼしていた。**完走後の全件結�
 
 **分類規則**: 以上により、本 sweep の FAIL は機械的に 3 分類できる。
 (a) Lima VM 依存、(b) `LSHARP_NATIVE_*` env 依存、(c) それ以外。
-回帰の候補になり得るのは (c) だけであり、完走時点で (c) に入るのは
-`bundle_initial_capacity` (`I-23`) のみであることを確認する。
+回帰の候補になり得るのは (c) だけである。
+
+**分類は test 名の prefix ではなく関数本体で行う。** 途中経過を prefix で数えたとき
+`test_e2e_native_linux_x86_*` を一括で (a) に入れたが、これは誤りだった。この prefix の
+大半は Lima ではなく `LSHARP_NATIVE_*` env を要求する (b) であり、同じ prefix の中に
+ok と FAIL が混在する事実と整合しない。`fn <name>(` から次の `fn` 直前までを本体として
+切り出し、本体中の `lima` / `LSHARP_NATIVE_` の有無で判定し直した。
+
+その結果 (2026-08-18、途中経過 65 件時点):
+
+| 分類 | 件数 | test |
+|---|---|---|
+| (a) Lima 依存 | 1 | `test_e2e_native_host_binary_bundle_if_result_preserves_outer_for_add` |
+| (b) env 依存 | 61 | `test_e2e_native_linux_x86_host_generates_*` ほか |
+| (c) それ以外 | 3 | 下記 |
+
+(c) の 3 件は `bundle_initial_capacity` (`I-23`) に加え、
+`test_e2e_selfhost_main_linux_x86_actual_seed_entry_call_offsets_diagnostic` と
+`test_e2e_selfhost_main_linux_x86_actual_seed_function_size_matches_generated_length_diagnostic`。
+**当初「(c) は `bundle_initial_capacity` のみ」と書いたのは prefix 分類による誤りで、訂正した。**
+
+後者 2 件が本変更と無関係であることは差分の到達範囲で言える。本変更が触った size table は
+`native-plain-instr-size-aarch64` (`:12373`) と `native-instr-size-aarch64-core` (`:18017`) の
+2 つだけで、どちらも aarch64 専用である。この 2 件が print するのは
+`native-instr-size-x86` / `native-function-size-x86` / `collect-native-bundle-offsets-x86` の値で、
+x86 側の size 経路には本変更の差分が 1 byte も入っていない。
+**ただしこれは到達不能性の議論であって、失敗理由そのものではない。**
+panic message は libtest が run 完了時にまとめて出すため、完走後に実測で確定させる。
 
 `bundle_initial_capacity` が本変更と無関係であることは**実測と算術の両方**で確定している。
 
