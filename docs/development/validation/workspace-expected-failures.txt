@@ -115,7 +115,7 @@ lsharp-wasm::e2e e2e::strings_patterns_compiler_integration::test_e2e_selfhost_w
 # [support] TESTGATE-02。cached_selfhost_bundle が (import Types.TypeInfer) を除去する (support.rs:1426) のに test は生ソースの verbatim 包含を要求する。2026-07-20 の 2b0c54b1 で検査が陳腐化した。mod 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる
 lsharp-wasm::e2e e2e::support::tests::test_support_selfhost_typeinfer_runtime_bundle_cached
 
-# ---- 非 e2e (binary_id(lsharp-wasm::e2e) 以外) : 2067 件中 38 FAIL / 1398.826s ----
+# ---- 非 e2e (binary_id(lsharp-wasm::e2e) 以外) : 2067 件中 37 FAIL / 1398.826s ----
 # 測定: 2026-08-16 20:11 JST, cargo nextest run --workspace --profile baseline \
 #       -E 'not binary_id(lsharp-wasm::e2e)'
 
@@ -128,7 +128,6 @@ lsharp-driver::default_path_delegation test_compile_with_preview1_target_without
 lsharp-driver::default_path_delegation test_compile_without_lsharp_path_uses_embedded_component_default_path
 lsharp-driver::default_path_delegation test_driver_component_lsharp_path_build_writes_runnable_component_artifact
 lsharp-driver::default_path_delegation test_driver_component_lsharp_path_compile_writes_runnable_component_artifact
-lsharp-driver::default_path_delegation test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path
 lsharp-driver::default_path_delegation test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_driver
 lsharp-driver::default_path_delegation test_test_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path
 lsharp-driver::default_path_delegation test_test_without_lsharp_path_uses_embedded_component_default_path

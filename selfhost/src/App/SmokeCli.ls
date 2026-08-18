@@ -1,4 +1,5 @@
 (module App.SmokeCli)
+(import App.CompilerMode)
 (import Syntax.Lexer)
 (import Syntax.Parser)
 (import Types.TypeInfer)

@@ -695,21 +695,15 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   「lint の異なる rule を落とさない」と AC-209 の設計判断として明記している。
   **単なる未実装 RED ではなく仕様の衝突**であり、どちらが陳腐化しているかは AC-209 の
   受入基準に当たって決める。
-- [ ] `SMOKE-GATE-01` `default-path-smoke` が dev build では通らない — 2026-08-17 実測。
-  `scripts/ci/default-path-smoke.sh:38-43` は `lsharp compile examples/fib.ls -o *.component.wasm` の
-  stdout に `wasm-size:` (= selfhost guest 側の出力) を要求するが、
-  build.rs が `selfhost/src/App/EmbeddedCli.ls` から自前で作る既定の embedded component は
-  **`error: wasi-component output requires external component packaging` で exit 1** になる。
-  driver は `main.rs:908-929` の設計どおり host compile へ fallback し、
-  Rust 側の `コンパイル成功: ... (18506 bytes)` を出すので assertion が落ちる。
-  `-o` を素の `.wasm` にしても同じメッセージで、**この guest は compile を一切遂行できない**。
-  結果として `scripts/ci/test-fresh-clone.sh` の clean-checkout 経路 (`:132-134`) も
-  必ず rc=1 になる。CI が緑なのは `LSHARP_EMBED_COMPONENT_PATH` 由来の
-  **packaged component を積んだバイナリ**で回しているからだと考えられる。
-  ゲートを「packaged 前提」と明示するか、dev build でも通る形に直すかを決める。
-  **本ブランチ起因ではないことは確認済み** — `crates/lsharp-driver/src` / `selfhost` /
-  `stdlib` / `wit` / 当該 2 script は `origin/main` と無差分で、
-  embedded component も cache を退避した fresh build とバイト一致する。
+- [ ] `SMOKE-GATE-03` `default-path-smoke` job が CI で skipped になる条件が未解明 — Issue `I-15`。
+  ゲート本体は 2026-08-18 に緑化し (`I-15` resolved、
+  [`decisions-default-path-smoke-determinism.md`](docs/adr/decisions-default-path-smoke-determinism.md))、
+  job には `cargo build --bin lsharp` を追加した。だが**なぜ直近 5 run すべてで
+  job が skipped だったのか**は解明していない。3 層の腐敗が誰にも見えないまま積み上がった
+  直接の原因はこれなので、トリガ条件 (`needs: [test]` の上流 job の状態 / path filter /
+  workflow の起動条件) を実測で特定する。
+  受入条件は (a) skipped の原因を特定して `I-15` へ追記、(b) 実際に 1 run 走って緑になることを確認。
+  **含めない範囲**: script の assertion 内容 (本件で決着済み)。
 - [ ] `SMOKE-GATE-02` 意図的に不均衡な root lifetime を IR へ伝える手段が無い — Issue `I-14`。
   第 1 段 (`main` の `ImbalancedExit` 免除) は
   [`decisions-root-lifetime-main-exit-exemption.md`](docs/adr/decisions-root-lifetime-main-exit-exemption.md)

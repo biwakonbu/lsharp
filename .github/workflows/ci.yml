@@ -101,6 +101,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # I-15: この job は `target/debug/lsharp` を前提に書かれているが、`needs: [test]` は
+      # 別 runner なので target/ を引き継がない。binary を自前で用意しないと script 冒頭の
+      # 存在チェックで即落ちる (= 実質 skip されていた)。
+      - name: build lsharp binary
+        run: cargo build --bin lsharp
+      # LSHARP_BIN は敢えて渡さない。script 既定の `$ROOT/target/debug/lsharp` は
+      # 絶対パスで、script 内の `cd` を跨いでも解決できる (相対値を渡すと壊れる)。
       - name: default-path-smoke.sh
         run: bash scripts/ci/default-path-smoke.sh
 

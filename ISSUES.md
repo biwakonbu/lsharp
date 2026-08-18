@@ -147,6 +147,7 @@
 | [I-12](#i-12) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | resolved | -- |
 | [I-13](#i-13) | native aarch64 の linear heap に回収機構と bounds check が無い | 高 | documented-limitation | -- |
 | [I-14](#i-14) | root lifetime verifier が公開 runtime API の合法な使用を拒否する | 中-高 | in-design (13/17 解消) | [main exit 免除 ADR](docs/adr/decisions-root-lifetime-main-exit-exemption.md) |
+| [I-15](#i-15) | `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない | 中 | resolved | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 
 ### ドキュメント (DOC)
 
@@ -787,6 +788,72 @@
   別 ADR 起票のうえ次スライスで扱う。`scripts/ci/test-runtime-limits.sh` は
   それまで rc=101 のまま残る。追跡は TODO.md の `SMOKE-GATE-02`。
 - **関連**: `LEGACY-ROOT-01` (TODO.md)、I-07 (rooting guard の未完)、I-11 (baseline の由来)。
+
+---
+
+<a id="i-15"></a>
+### I-15: `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない
+
+- **影響度**: 中 / **状態**: resolved
+- **内容**: `scripts/ci/default-path-smoke.sh:38-43,53-58` は `lsharp compile` /
+  `lsharp build` の**既定 target** (`wasi-component`) の stdout に `wasm-size:` を要求する。
+  しかし `wasm-size:` を出すのは embedded guest だけであり、**guest は既定 target を
+  一切遂行しない**。`selfhost/src/App/EmbeddedCli.ls:1230` の `run-compile-output` は
+  target が `preview1` でなければ**無条件に**
+  `error: wasi-component output requires external component packaging` を出して非 0 終了する
+  (`:1215` の `component-output-boundary-message`)。`run-build-output` (`:1231`) はその別名なので
+  `build` も同一挙動。
+- **含意**: このゲートは「既定経路が壊れたら落ちる」ものではなく、**書かれた条件が
+  最初から成立しない**。`crates/lsharp-driver/src/main.rs:900-928` の設計どおり
+  driver は host compile へ fallback し `コンパイル成功: ... (18506 bytes)` を出すので、
+  assertion は常に落ちる。結果として `scripts/ci/test-fresh-clone.sh:132-134` の
+  clean-checkout 経路も rc=1 になる。
+- **実測 (2026-08-18)**: worktree `codex/gate-fixes-root-lifetime` の `target/debug/lsharp` で 4 経路を測定した。
+
+  | 呼び出し | stdout | 経路 | 出力先頭 4 byte |
+  |---|---|---|---|
+  | `compile examples/fib.ls -o <out>.component.wasm` | `コンパイル成功: ... (18506 bytes)` | host fallback | `0061736d` |
+  | `compile examples/fib.ls --target wasi-preview1 -o <out>.wasm` | `wasm-size:2904` | guest | `0061736d` |
+  | `build examples/fib.ls --output <out>.component.wasm` | `コンパイル成功: ... (18506 bytes)` | host fallback | `0061736d` |
+  | `build examples/fib.ls --target wasi-preview1 --output <out>.wasm` | `wasm-size:2904` | guest | `0061736d` |
+
+  4 経路とも rc=0 で有効な Wasm を書き出す。**壊れているのは製品ではなくゲートの条件式**である。
+  `--target wasi-preview1` は `CliCompileTarget` の正規の variant で、`build` も受理する。
+- **取り下げた旧仮説**: 「CI が緑なのは `LSHARP_EMBED_COMPONENT_PATH` 由来の packaged component を
+  積んだバイナリで回しているから」と見ていたが、**誤り**。boundary は guest 側で無条件なので
+  packaged binary でも同じ結果になる。CI が緑だった実際の理由は
+  **`default-path-smoke` job が走っていなかった**こと — 直近 5 run はいずれも 2026-07-12 で、
+  問題の 2 commit より前であり、job は skipped だった。
+- **CI 側の欠落**: `.github/workflows/ci.yml` の `default-path-smoke` job には
+  `cargo build --bin lsharp` step が無く、`LSHARP_BIN` も渡していない。
+  `needs: [test]` は順序を作るだけで `target/` を共有しない
+  (`Swatinem/rust-cache` は workspace member の binary を保持しない)。
+  つまり job が実際に走っても、script は `:24-28` の「binary が無い」で落ちる。
+- **腐敗は 3 層あった (2026-08-18、script を完走させて判明)**: 当初は既定経路の
+  assertion 1 件と見ていたが、ゲートが一度も走らないあいだに次の 3 層が積み上がっていた。
+
+  | 層 | 箇所 | 症状 |
+  |---|---|---|
+  | 1 | `:39` / `:54` の既定経路 assertion | 条件が原理的に成立しない |
+  | 2 | guest `check` / `test` の assertion | 期待が plain text のままで、製品は structured JSON へ移行済み |
+  | 3 | `selfhost/src/App/SmokeCli.ls` | `(import App.CompilerMode)` 欠落でソースがコンパイルできない |
+
+  第 2 層の契約の正本は `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_contracts.rs:234-235`
+  (check JSON の `failureKinds`) と `docs/development/planning/v0.2-evidence-contracts.md:165-180`
+  (test の v0.2 assurance report)。script 側の期待は 2026-03-31 `bc752767` 由来で、
+  **契約側が後から動いたのに script が追随していなかった**。
+  第 3 層は `build-wasm-bytes-wasi` (`selfhost/src/App/CompilerMode.ls:6089`) を
+  import 無しで呼んでおり、`App/Main.ls` / `App/Cli.ls` / `App/EmbeddedCli.ls` /
+  `App/PipelineSmoke.ls` の 4 兄弟は同 import を持つ。`SmokeCli.ls` だけが欠けていた。
+- **解消 (2026-08-18)**: 3 層すべてを修正し、`scripts/ci/default-path-smoke.sh` が **rc=0** で
+  完走することを実測した。`ci.yml` の `default-path-smoke` job に `cargo build --bin lsharp` を追加。
+  第 3 層の修正で `lsharp-driver::default_path_delegation
+  test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path` が pass へ転じたため、
+  baseline から 1 行削除 (95 → 94)。判断と却下理由、満たせなかった受入条件は
+  [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) が正本。
+  **CI job が実際に緑になるかは push 後の 1 run を見るまで未確定**であり、
+  job が skipped だったトリガ条件そのものは未解明のまま残る。
+- **関連**: `SMOKE-GATE-03` (TODO.md、残件の skipped 原因調査)、`OPS-05` (job の由来)、I-11 (baseline の由来)。
 
 ---
 

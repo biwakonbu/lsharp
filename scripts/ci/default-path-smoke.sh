@@ -28,42 +28,59 @@ if [[ ! -x "$LSHARP_BIN" ]]; then
 fi
 
 echo "=== default-path-smoke: embedded compile/build default path ==="
+
+# I-15: 既定 target (wasi-component) と guest target (wasi-preview1) は別の契約なので、
+# 別 case として検査する。既定 target は embedded guest が無条件に boundary error を返し
+# driver が host compile へ fallback するので `コンパイル成功:` を、guest target は
+# guest 自身が出す `wasm-size:` を要求する。どちらか一方で可とする OR 判定にはしない。
+# byte 数は codegen の変化で動くため、判定は前置き部分だけに限る。
+assert_wasm_binary() {
+  local label="$1"
+  local out_path="$2"
+  if [[ ! -s "$out_path" ]]; then
+    echo "ERROR: $label output empty: $out_path"
+    exit 1
+  fi
+  if ! xxd -p -l 4 "$out_path" | grep -qi '^0061736d$'; then
+    echo "ERROR: $label output is not a Wasm binary: $out_path"
+    exit 1
+  fi
+}
+
+# 出力先は preopen 内の相対パスで渡す (guest は cwd 経由で書く)。
+run_default_path_case() {
+  local label="$1"
+  local expected="$2"
+  local out_path="$3"
+  shift 3
+  rm -f "$out_path"
+  local output
+  output="$("$LSHARP_BIN" "$@")"
+  if [[ "$output" != *"$expected"* ]]; then
+    echo "ERROR: $label output mismatch (expected substring: $expected)"
+    echo "$output"
+    exit 1
+  fi
+  assert_wasm_binary "$label" "$out_path"
+}
+
 OUT_COMPONENT="$OUT_DIR/examples_fib.component.wasm"
 OUT_BUILD="$OUT_DIR/examples_fib_build.component.wasm"
+OUT_PREVIEW1="$OUT_DIR/examples_fib.wasm"
+OUT_BUILD_PREVIEW1="$OUT_DIR/examples_fib_build.wasm"
 REL_OUT_COMPONENT="$OUT_DIR_REL/examples_fib.component.wasm"
 REL_OUT_BUILD="$OUT_DIR_REL/examples_fib_build.component.wasm"
-rm -f "$OUT_COMPONENT"
-rm -f "$OUT_BUILD"
+REL_OUT_PREVIEW1="$OUT_DIR_REL/examples_fib.wasm"
+REL_OUT_BUILD_PREVIEW1="$OUT_DIR_REL/examples_fib_build.wasm"
 
-COMPILE_OUTPUT="$("$LSHARP_BIN" compile examples/fib.ls -o "$REL_OUT_COMPONENT")"
-if [[ "$COMPILE_OUTPUT" != *"wasm-size:"* ]]; then
-  echo "ERROR: embedded compile output mismatch"
-  echo "$COMPILE_OUTPUT"
-  exit 1
-fi
-if [[ ! -s "$OUT_COMPONENT" ]]; then
-  echo "ERROR: component output empty: $OUT_COMPONENT"
-  exit 1
-fi
-if ! xxd -p -l 4 "$OUT_COMPONENT" | grep -qi '^0061736d$'; then
-  echo "ERROR: component output is not a Wasm binary: $OUT_COMPONENT"
-  exit 1
-fi
-
-BUILD_OUTPUT="$("$LSHARP_BIN" build examples/fib.ls --output "$REL_OUT_BUILD")"
-if [[ "$BUILD_OUTPUT" != *"wasm-size:"* ]]; then
-  echo "ERROR: embedded build output mismatch"
-  echo "$BUILD_OUTPUT"
-  exit 1
-fi
-if [[ ! -s "$OUT_BUILD" ]]; then
-  echo "ERROR: build output empty: $OUT_BUILD"
-  exit 1
-fi
-if ! xxd -p -l 4 "$OUT_BUILD" | grep -qi '^0061736d$'; then
-  echo "ERROR: build output is not a Wasm binary: $OUT_BUILD"
-  exit 1
-fi
+run_default_path_case "compile (wasi-component)" "コンパイル成功:" "$OUT_COMPONENT" \
+  compile examples/fib.ls -o "$REL_OUT_COMPONENT"
+run_default_path_case "compile (wasi-preview1)" "wasm-size:" "$OUT_PREVIEW1" \
+  compile examples/fib.ls --target wasi-preview1 -o "$REL_OUT_PREVIEW1"
+run_default_path_case "build (wasi-component)" "コンパイル成功:" "$OUT_BUILD" \
+  build examples/fib.ls --output "$REL_OUT_BUILD"
+run_default_path_case "build (wasi-preview1)" "wasm-size:" "$OUT_BUILD_PREVIEW1" \
+  build examples/fib.ls --target wasi-preview1 --output "$REL_OUT_BUILD_PREVIEW1"
 
 echo "=== default-path-smoke: embedded guest default path ==="
 EMBED_SMOKE_DIR="$OUT_DIR/embedded-smoke"
@@ -83,8 +100,10 @@ if [[ "$PARSE_OUTPUT" != *"decls:1"* ]] || [[ "$PARSE_OUTPUT" != *"diagnostics:0
   exit 1
 fi
 
+# check は structured JSON report が契約 (`selfhost_bootstrap_contracts.rs:234` が failureKinds を要求)。
+# 旧 plain text 期待値 `diagnostics:0` は 2026-03-31 由来で陳腐化していた (I-15)。
 CHECK_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" check smoke_input.ls)"
-if [[ "$CHECK_OUTPUT" != *"diagnostics:0"* ]]; then
+if [[ "$CHECK_OUTPUT" != *'"command":"check"'* ]] || [[ "$CHECK_OUTPUT" != *'"diagnostics":{"count":0'* ]] || [[ "$CHECK_OUTPUT" != *'"failureKinds":[0]'* ]]; then
   echo "ERROR: embedded check output mismatch"
   echo "$CHECK_OUTPUT"
   exit 1
@@ -98,8 +117,11 @@ cat > "$EMBED_SMOKE_DIR/test_input.ls" <<'EOF'
   (if (< x 0) (- 0 x) x))
 EOF
 
+# test は v0.2 structured assurance report が契約
+# (`docs/development/planning/v0.2-evidence-contracts.md:165-180`)。
+# 旧 plain text 期待値 `examples:1` / `invariants:1` / `failures:0` は陳腐化していた (I-15)。
 TEST_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" test test_input.ls)"
-if [[ "$TEST_OUTPUT" != *"examples:1"* ]] || [[ "$TEST_OUTPUT" != *"invariants:1"* ]] || [[ "$TEST_OUTPUT" != *"failures:0"* ]]; then
+if [[ "$TEST_OUTPUT" != *'"implementation_conformance"'* ]] || [[ "$TEST_OUTPUT" != *'"status":"pass"'* ]] || [[ "$TEST_OUTPUT" != *'"failed":0'* ]] || [[ "$TEST_OUTPUT" != *'"intent_validation"'* ]]; then
   echo "ERROR: embedded test output mismatch"
   echo "$TEST_OUTPUT"
   exit 1
