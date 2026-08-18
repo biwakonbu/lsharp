@@ -710,12 +710,15 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   の一環で spec へ引き上げ済み。
   受入条件は残り 3 項目を spec へ書き、wasm emitter の実装と対照した test で pin すること。
   **含めない範囲**: native backend の `lsharp_root_*` 実装そのもの (未着手)。
-- [ ] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
-  `crates/lsharp-syntax/src/parser/decl.rs` の `is_colon_directive` と
-  `selfhost/src/Syntax/Parser.ls` の `directive-symbol-v3` が手書きで並んでおり、
-  一致を検査する test が無い。2026-08-18 追加の `:roots-unbalanced` は Rust 側にしか無く、
-  divergence が 1 件ある。受入条件は両者の一覧の一致を検査する test を置くこと。
-  **含めない範囲**: 一覧を単一正本へ寄せる設計変更そのもの (parity test が先)。
+- [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
+  parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
+  片側だけの directive 追加は検出できる状態になった。判断と実測は
+  [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) が正本。
+  受入条件の文言 (一覧の**一致**を検査) は満たしておらず、差分を pin する形にした
+  (3 者は正しく運用していても一致しないため。判断は ADR の「受入条件との差」節)。
+  残るのは (1) `:roots-unbalanced` の selfhost への port、
+  (2) 一覧を単一正本へ寄せる設計変更、(3) `I-20` の受理と読み取りの乖離。
+  **含めない範囲**: 上記 3 件はいずれも本項目では扱わない。
 - [~] `DOC-07` ドキュメント同期ハーネス — `.claude/rules/doc-sync.md`、`.claude/hooks/doc-guard.sh`、
   `.claude/skills/doc-sync/` を追加した。残るのは実運用での有効性確認と、hook が「正しい正本へ
   正しい粒度で書かれたか」までは判定できない点の運用での補完。

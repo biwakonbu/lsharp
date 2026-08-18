@@ -150,8 +150,9 @@
 | [I-15](#i-15) | `default-path-smoke` が guest 経路を前提に書かれ、既定経路を検査していない | 中 | resolved | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-16](#i-16) | embedded component cache の key が build 入力 (`wit/` / `stdlib/`) を覆いきっていない | 中 | resolved | [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) |
 | [I-17](#i-17) | runtime spec が root 管理 API の戻り値と境界挙動を定義していない | 中 | open | [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
-| [I-18](#i-18) | metadata directive の allowlist が Rust parser と selfhost parser で二重管理されている | 中 | open | -- |
+| [I-18](#i-18) | metadata directive の allowlist が 3 系統で二重管理されている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 | [I-19](#i-19) | CI 自動実行の停止で `ci.yml` の 17 job が 1 ヶ月以上まったく観測されていない | 中 | documented-limitation | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
+| [I-20](#i-20) | selfhost parser が受理した 6 directive の payload を黙って捨てている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 
 ### ドキュメント (DOC)
 
@@ -967,28 +968,39 @@
 ---
 
 <a id="i-18"></a>
-### I-18: metadata directive の allowlist が Rust parser と selfhost parser で二重管理されている
+### I-18: metadata directive の allowlist が 3 系統で二重管理されている
 
-- **影響度**: 中 / **状態**: open
-- **内容**: `:` で始まる metadata directive を受理するかの判定表が **2 箇所**に手書きで存在する。
+- **影響度**: 中 / **状態**: open (parity test で見張っているが、二重管理そのものは残る)
+- **内容**: `:` で始まる metadata directive を受理するかの判定表が手書きで複数箇所に存在する。
+  当初 2 箇所と記録していたが、2026-08-18 の調査で **3 系統**あることが分かった。
 
-  | 実装 | 場所 |
-  |---|---|
-  | Rust parser | `crates/lsharp-syntax/src/parser/decl.rs` の `is_colon_directive` の `matches!` |
-  | selfhost parser | `selfhost/src/Syntax/Parser.ls` の `directive-symbol-v3` / `source-directive-symbol-v3` |
+  | 系統 | 場所 | 役割 | 件数 |
+  |---|---|---|---|
+  | `decl` | `crates/lsharp-syntax/src/parser/decl.rs` の `is_colon_directive` | directive として受理するか | 29 |
+  | `metadata` | `crates/lsharp-syntax/src/parser/metadata.rs` の `try_parse_metadata` | 受理したものをどう読むか | 27 |
+  | `selfhost` | `selfhost/src/Syntax/Parser.ls` の `directive-symbol-v3` + `source-directive-symbol-v3` | selfhost front end の受理判定 | 28 |
 
-  **両者が一致しているかを検査する test は無い** (`directive-symbol-v3` を参照する Rust 側の
-  parity test を探したが 0 件)。片方だけに directive を足すと、同じソースが front end によって
-  通ったり落ちたりする。directive でない `:` は戻り値型注釈として読まれるため、
-  食い違いは「未知の directive」ではなく**型注釈の parse error**として現れる。
+  片方だけに directive を足すと、同じソースが front end によって通ったり落ちたりする。
+  directive でない `:` は戻り値型注釈として読まれるため、食い違いは「未知の directive」ではなく
+  **型注釈の parse error** として現れ、原因が読み取りにくい。
 - **顕在化した実例**: 2026-08-18 に追加した `:roots-unbalanced` は Rust parser にだけ入れた
   (selfhost source を編集すると embedded component の再ビルドと cache key の再計算を巻き込むため、
   [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)
   の「含めない範囲」に置いた)。現時点で本 directive を使うのは Rust 側の e2e fixture だけなので
   実害は出ていないが、**divergence が 1 件ある状態が既に始まっている**。
-- **直し方の方向**: 一覧を単一の正本 (data file か、片方から生成) に寄せるのが筋。
-  最小の手当てとしては「両者の一覧が一致すること」を検査する parity test を先に置く方法もある。
-- **関連**: I-14 (`:roots-unbalanced` の導入経緯)、`LEGACY-MODULE-01` (selfhost 側の変更コスト)。
+- **3 者は正しく運用していても一致しない**: `where` / `constraints` は lexer が専用トークン
+  (`TokenKind::Where` / `TokenKind::Constraints`) へ落とすため、`is_colon_directive` で実際に効くのは
+  トークン側の腕であり、`matches!` 内の文字列腕は**到達しない死んだ枝**である。
+  `try_parse_metadata` は `Some(TokenKind::Symbol(_))` しか見ないので、この 2 つがそちらに
+  無いのは正しい。**完全一致を要求する検査は実装が正しいまま赤くなる。**
+- **手当て (2026-08-18)**: `crates/lsharp-syntax/tests/metadata_directive_parity.rs` を置き、
+  3 系統をすべて text 抽出して**ペアごとの差分**を pin した。新しい片側追加は検出できる。
+  判断と却下案は [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) が正本。
+  **二重管理そのものは解消していない** — 一覧は 3 系統のまま残り、正本化は未着手。
+- **直し方の方向**: 一覧を単一の正本 (data file か、片方から生成) に寄せる。
+  ただし正本化は lexer の予約語経路と selfhost の payload 処理の差異を先に整理しないと設計できない。
+- **関連**: I-14 (`:roots-unbalanced` の導入経緯)、I-20 (受理と読み取りの乖離)、
+  `LEGACY-MODULE-01` (selfhost 側の変更コスト)。
 
 ---
 
@@ -1031,6 +1043,34 @@
 ---
 
 ## ドキュメント上の問題
+
+<a id="i-20"></a>
+### I-20: selfhost parser が受理した 6 directive の payload を黙って捨てている
+
+- **影響度**: 中 / **状態**: open
+- **内容**: selfhost parser は `directive-symbol-v3` で **28 件**の directive を受理するが、
+  `parse-defn-metadata-step-v3` (`selfhost/src/Syntax/Parser.ls:1223`) が実際に読むのは
+  **22 件**である。名前で分岐する 8 件 (`doc` / `example` / `params` / `returns` /
+  `invariant` / `case` / `assert` / `property`) と、`source-metadata-form-kind-v3` が
+  非 0 を返す 14 件がそれで、残る **6 件は fall through して
+  `skip-directive-payload-v3` へ落ち、`meta` を更新せずに返る**。
+
+  ```
+  where / rationale / since / see-also / transitions / constraints
+  ```
+
+  Rust の `try_parse_metadata` はこのうち `rationale` / `since` / `see-also` / `transitions` を
+  `Metadata` へ格納する。**同じソースから front end によって異なるメタデータが出る。**
+- **パース error にはならない**: 受理はされ payload も読み飛ばされるので、
+  構文としては通る。**落ちないので baseline にも載らない**種類の欠落である。
+- **4 つ目の sync point**: `source-metadata-form-kind-v3` (`Parser.ls:1865`) は
+  `source-directive-symbol-v3` と同じ 14 件を kind コード付きで再度並べている。
+  I-18 が数えた 3 系統に加え、これが 4 つ目の手書き表になる。
+- **検出できていない理由**: `metadata_directive_parity.rs` は allowlist だけを比較する。
+  「受理したものをどう読むか」は比較対象外だと ADR に明記してある。
+- **関連**: I-18 (allowlist の二重管理)、`LEGACY-MODULE-01` (selfhost 側の変更コスト)。
+
+---
 
 <a id="doc-01"></a>
 ### DOC-01: ユーザーガイドの主要範囲不足
