@@ -695,6 +695,17 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **この項目に含めない範囲**: 重複判定の意味論。`I-24` で rule identity を含む形に裁定済みで、
   span が精密になっても判定規則は変わらない (同一 span に別 rule が正当に並ぶため)。
   **受入条件**: 上記 2 診断が別 range を持つこと、および `I-24` の pin 2 本が引き続き pass すること。
+  **2026-08-19 に判明した前提 (項目の重さが変わる)**: 「span を投影する」だけでは終わらない。
+  **selfhost の AST はそもそも位置情報を持っていない**。`Syntax/AST.ls:133` の
+  `make-let [name-hash init-expr body-expr]` は 4 要素 `[tag name-hash init body]` を作るだけで、
+  span slot が無い。lint 側 (`Tools/Doc/DocTools.ls:714` / `:729`) が line/col に定数 1 1 を
+  渡しているのは、渡せる値が存在しないためである。parser 側には span がある
+  (`Syntax/Span.ls` / `Parser.ls:5214` の `make-diagnostic [severity code span message-hash]`) ので、
+  parse 診断だけが実 span を持つ。したがって本項目は
+  (1) AST ノードへ span を載せる (末尾 slot 追加なら既存の添字参照は壊れないが、
+  全 `make-*` 構築点と parser 側の引き渡しを触る)、(2) 側テーブルで持つ、
+  (3) lint 側でソースを再走査して近似する、のいずれかを選ぶ**設計判断を含む**。
+  着手時に ADR を書くこと。
 
   **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
