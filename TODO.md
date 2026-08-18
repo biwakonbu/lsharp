@@ -710,14 +710,17 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **本ブランチ起因ではないことは確認済み** — `crates/lsharp-driver/src` / `selfhost` /
   `stdlib` / `wit` / 当該 2 script は `origin/main` と無差分で、
   embedded component も cache を退避した fresh build とバイト一致する。
-- [ ] `SMOKE-GATE-02` rooting 系 gate script が expected-failure を pass 前提で叩いている —
-  2026-08-17 実測。`scripts/ci/test-gc-rooting.sh` と `scripts/ci/test-runtime-limits.sh` は
-  `runtime_allocator_closures` の `..._collector_preserves_direct_rooted_string_across_trigger` /
-  `..._object_table_grows_past_initial_capacity` を単体実行するが、この 2 件は
-  `LEGACY-ROOT-01` として `docs/development/validation/workspace-expected-failures.txt` に
-  載っている既知 FAIL なので、script は構造的に rc=101 になる。
-  `LEGACY-ROOT-01` の解消と同時に見直す。それまでは「回すと必ず落ちる gate」であることを
-  baseline 側に注記してある。
+- [ ] `SMOKE-GATE-02` 意図的に不均衡な root lifetime を IR へ伝える手段が無い — Issue `I-14`。
+  第 1 段 (`main` の `ImbalancedExit` 免除) は
+  [`decisions-root-lifetime-main-exit-exemption.md`](docs/adr/decisions-root-lifetime-main-exit-exemption.md)
+  で 2026-08-18 に完了し、17 件中 13 件を解消した。**残るのは 4 件** —
+  `RootPopUnderflow` / `main` ×1 と `BranchDepthMismatch` (`push-roots` ×2 / `alloc-rooted` ×1)。
+  これらの fixture は root を意図的に積み増す・偏らせるので、免除では扱えず、
+  「この不均衡は意図である」を IR へ伝える明示的な注釈 (言語表面の追加) が要る。
+  **ADR の起票から始める**。受入条件は (a) 注釈あり / なしを対にした test が GREEN、
+  (b) `scripts/ci/test-runtime-limits.sh` が rc=0 (現在 rc=101)、
+  (c) `workspace-expected-failures.txt` から残り 4 件を削除。
+  **含めない範囲**: `crates/lsharp-wasm` lib の `RootSetWithoutActiveSlot` 既知 FAIL は別要因。
 - [ ] `EMBEDCACHE-01` embedded component cache の key が入力を覆いきっていない —
   `crates/lsharp-driver/build.rs` の `cached_default_embedded_component` は
   `selfhost/src` 全ファイル + build script binary の fingerprint を key にするが、

@@ -7,6 +7,11 @@
 //! selfhost の builtin 型環境だけは、helper 関数が root slot を acquire して caller が
 //! 後段で release する関数間 lease を使う。その2 helperは下の専用 shape checkで検査し、
 //! 通常の関数へ不均衡な root lifetime を広げない。
+//!
+//! 出口検査 (`ImbalancedExit`) は export される `main` だけ免除する。ここに残る slot は
+//! 直後にプログラムが終了するので stale になり得ず、`root_push` を pop せず保持する
+//! runtime spec どおりの使い方を通すためである。免除するのは出口検査だけで、
+//! `RootPopUnderflow` / `StaleSlot` / `BranchDepthMismatch` は main でも従来どおり報告する。
 
 use std::collections::HashMap;
 
@@ -166,13 +171,23 @@ pub fn validate_function(function: &Function) -> Result<(), RootLifetimeError> {
         state,
         &function.name,
     )?;
-    if !state.roots.is_empty() {
+    // WASI entry の出口に残る slot は、直後にプログラムが終了するので stale になり得ない。
+    // root_push / root_pop は runtime spec の公開 API で均衡を要求していないため、
+    // export される main に限り出口検査だけを免除する (I-14)。
+    if !state.roots.is_empty() && !is_wasi_entry(function) {
         return Err(RootLifetimeError::ImbalancedExit {
             function: function.name.clone(),
             depth: state.roots.len(),
         });
     }
     Ok(())
+}
+
+/// WASI entry として export される関数か。
+/// `is_export` が立つのは `lower/decl.rs` の `name == "main"` 一箇所だけだが、
+/// 免除を名前だけへ広げないため連言のまま判定する。
+fn is_wasi_entry(function: &Function) -> bool {
+    function.is_export && function.name == "main"
 }
 
 fn validate_root_lease_acquire(function: &Function) -> Result<(), RootLifetimeError> {

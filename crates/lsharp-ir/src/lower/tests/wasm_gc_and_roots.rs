@@ -409,6 +409,82 @@ fn test_root_lifetime_ledger_accepts_lowered_allocating_fixtures() {
     }
 }
 
+/// lowering の結果を `Result` のまま返す。
+/// root lifetime 検証は lowering 内部 (`program.rs:223`) で走るため、共有の `lower` helper は
+/// 失敗時に panic する。verifier 自体の挙動を検査するテストではこちらを使う。
+fn try_lower(source: &str) -> Result<Module, LowerError> {
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::new();
+    lowerer.lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+}
+
+#[test]
+fn test_root_lifetime_ledger_accepts_main_holding_root_at_exit() {
+    // WASI entry の出口に残る slot は、直後にプログラムが終了するので stale になり得ない。
+    // root_push / root_pop は runtime spec の公開 API で、均衡は要求されていない。
+    let module = try_lower(
+        r#"
+        (defn main []
+          (let [keep (string-concat "keep" "!")
+                _slot (root_push keep)]
+            0))
+        "#,
+    )
+    .expect("main が root を保持したまま終わる module は lowering を通すべき");
+
+    validate_module(&module).expect("module 単体の再検証も通るべき");
+}
+
+#[test]
+fn test_root_lifetime_ledger_still_rejects_lowered_non_main_imbalance() {
+    // 免除が main の外へ広がっていないことの保証。
+    let error = try_lower(
+        r#"
+        (defn hold [x] (do (root_push x) 0))
+        (defn main [] (hold 1))
+        "#,
+    )
+    .expect_err("非 main 関数の不均衡な root lease は拒否し続けるべき");
+
+    assert!(
+        matches!(
+            error,
+            LowerError::RootLifetime {
+                error: RootLifetimeError::ImbalancedExit { ref function, .. }
+            } if function == "hold"
+        ),
+        "免除は main だけに閉じているべき: {error:?}"
+    );
+    assert_eq!(error.code(), "LS3003", "診断コードは LS3003 のままであるべき");
+}
+
+#[test]
+fn test_root_lifetime_ledger_rejects_non_exported_function_named_main() {
+    // 免除条件は名前だけではなく `is_export` との連言である。
+    let function = Function {
+        name: "main".to_string(),
+        params: Vec::new(),
+        result: IrType::I64,
+        locals: Vec::new(),
+        body: vec![
+            Instruction::I64Const(42),
+            Instruction::Call(ROOT_PUSH_IDX),
+            Instruction::Drop,
+        ],
+        is_export: false,
+    };
+
+    let error = validate_function(&function)
+        .expect_err("export されない main は WASI entry ではないので免除しない");
+    assert!(
+        matches!(error, RootLifetimeError::ImbalancedExit { depth: 1, .. }),
+        "免除条件は is_export と名前の両方であるべき: {error:?}"
+    );
+}
+
 #[test]
 fn lower_errors_expose_stable_codes_and_spans() {
     let span = Span::new(5, 12);

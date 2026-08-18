@@ -28,13 +28,14 @@
 #     結果は **7 crate すべてが `0 passed; 0 failed`** — この workspace に doctest は 1 件も無い。
 #     所要 3s。FAIL は無いのでこのリストに載る行も無いが、「未計測」と「0 件」の区別のため記す。
 #   - `scripts/ci/test-*.sh` の shell 契約テストはこのリストの対象外 (別枠で管理)。
-#     ただし 2 本はこのリストの FAIL を直接叩くので、必ず非 0 になる (2026-08-17 実測):
-#       test-gc-rooting.sh    -> runtime_allocator_closures::..._collector_preserves_direct_rooted_string_across_trigger
+#     ただし 1 本はこのリストの FAIL を直接叩くので、必ず非 0 になる (2026-08-18 実測):
 #       test-runtime-limits.sh -> runtime_allocator_closures::..._object_table_grows_past_initial_capacity
-#     どちらも LEGACY-ROOT-01。gate script 側が expected-failure を pass 前提で叩いている
-#     状態なので、LEGACY-ROOT-01 の解消と同時に見直す (SMOKE-GATE-02)。
+#     I-14 の案 B1 が閉じるまで残る。主因は gate script ではなく root lifetime verifier 側である
+#     (旧注記の「script が expected-failure を pass 前提で叩いている」は主因の取り違えで取り下げ)。
+#     test-gc-rooting.sh が叩く ..._collector_preserves_direct_rooted_string_across_trigger は
+#     2026-08-18 に解消し、同 script は緑になった (SMOKE-GATE-02 第 1 段)。
 #
-# ---- e2e (binary_id(lsharp-wasm::e2e)) : 1799 件中 70 FAIL ----
+# ---- e2e (binary_id(lsharp-wasm::e2e)) : 1799 件中 57 FAIL ----
 # 測定: 2026-08-16〜17, cargo nextest run --workspace --profile baseline \
 #       -E 'binary_id(lsharp-wasm::e2e)' --partition hash:i/6 を i=1..6 で 6 回
 #       (1 プロセスで回すと 5〜6 時間かかり途中で中断されるため分割した)
@@ -44,24 +45,15 @@
 # [bootstrap_selfhost_lsp_integration] selfhost formatter の compile が UndefinedVar { name: "ast-defn-signature" } で失敗する。2 件とも同一 span (24644..24662) なので単一の未定義シンボル。未実装への RED
 lsharp-wasm::e2e e2e::bootstrap_selfhost_lsp_integration::test_e2e_selfhost_formatter
 lsharp-wasm::e2e e2e::bootstrap_selfhost_lsp_integration::test_e2e_selfhost_formatter_lsp_integration
-# [runtime_allocator_closures] LEGACY-ROOT-01。RootLifetime { RootPopUnderflow } / { ImbalancedExit } / { BranchDepthMismatch }
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_command_line_arg_heap_handle_is_tagged
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_read_file_heap_handle_is_tagged
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_read_stdin_heap_handle_is_tagged
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_root_runtime_api_preserves_argument_evaluation
+# [runtime_allocator_closures] LEGACY-ROOT-01 / I-14。残る 4 件は RootLifetime { RootPopUnderflow }
+#     (main、1 件) と { BranchDepthMismatch } (push-roots ×2 / alloc-rooted ×1)。
+#     いずれも「意図的な不均衡」を IR へ伝える明示的な注釈を要するため、案 B1 として次スライスへ送った。
+#     { ImbalancedExit } の 13 件は 2026-08-18 に解消済み
+#     (docs/adr/decisions-root-lifetime-main-exit-exemption.md の案 E)。
 lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_root_runtime_api_tracks_slots_and_values
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_ignores_legacy_zero_root_slot_sentinel
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_direct_rooted_string_across_trigger
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_string_reachable_through_rooted_closure_capture
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_string_reachable_through_rooted_map_value
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_preserves_string_reachable_through_rooted_ref_cell
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_collector_skips_tombstoned_map_value_when_tracing
 lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_object_table_grows_past_initial_capacity
 lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_root_stack_grows_past_initial_capacity
 lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_root_stack_growth_preserves_root_api
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_runtime_telemetry_tracks_root_stack_depth
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_string_heap_handles_are_tagged_for_runtime_discrimination
-lsharp-wasm::e2e e2e::runtime_allocator_closures::test_e2e_substring_heap_handle_is_tagged
 # [selfhost_cli_core] selfhost CLI の未実装挙動への RED。4 要因 -- parser-owned contract suite の canonical/legacy 分離で件数不一致 / canonical case の unsupported type を実行前に報告しない / validate-source-json が contradicting evidence を報告しない / import 先 helper を含む check が診断 0 件にならない (first-body:undefined symbol)
 lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_file_resolves_imported_definition
 lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_reports_invalid_canonical_case

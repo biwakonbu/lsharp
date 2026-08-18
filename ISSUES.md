@@ -146,6 +146,7 @@
 | [I-11](#i-11) | `cargo test --workspace` の恒常 FAIL が台帳未記載 | 高 | resolved | -- |
 | [I-12](#i-12) | ビルド再現性の綻び (`Cargo.lock` 非追跡 / dead test file) | 低-中 | resolved | -- |
 | [I-13](#i-13) | native aarch64 の linear heap に回収機構と bounds check が無い | 高 | documented-limitation | -- |
+| [I-14](#i-14) | root lifetime verifier が公開 runtime API の合法な使用を拒否する | 中-高 | in-design (13/17 解消) | [main exit 免除 ADR](docs/adr/decisions-root-lifetime-main-exit-exemption.md) |
 
 ### ドキュメント (DOC)
 
@@ -723,6 +724,69 @@
   「115 KB の入力に 8 GiB 超」という増幅そのものは解消しない。
 - **関連**: `LEGACY-IO-01` (dynamic root/data/heap layout)、`LEGACY-ROOT-01` (rooting discipline)、
   [`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)。
+
+---
+
+<a id="i-14"></a>
+### I-14: root lifetime verifier が公開 runtime API の合法な使用を拒否する
+
+- **影響度**: 中-高 / **状態**: in-design
+- **内容**: `crates/lsharp-ir/src/root_lifetime.rs` は「関数の出口で root stack が空であること」を
+  無条件に要求する (`ImbalancedExit`)。しかし `root_push` / `root_pop` / `root_set` は
+  [`docs/language/runtime-spec.md:78-79,84,142`](docs/language/runtime-spec.md) が定める**公開 runtime API**
+  であり、**均衡を要求する記述はどこにも無い**。結果として、仕様どおりに書かれたユーザーコードが
+  lowering 段階で `LS3003` に落ちる。
+- **判別測定 (2026-08-17)**: `runtime_allocator_closures` の恒常 FAIL 17 件について、
+  verifier を一時無効化した build と対照した。
+
+  | 条件 | 結果 |
+  |---|---|
+  | verifier 有効 (現状) | `17 failed` / rc=101 |
+  | verifier 無効 (`validate_module` を no-op 化) | **`94 passed; 0 failed`** / rc=0 |
+
+  **17 件すべてが verifier 起因で、その裏に隠れた本物の欠陥は 0 件**である。
+  patch は測定用スクリプト内で適用し、終了時に必ず逆適用した (tracked diff 空を事後確認済み)。
+
+- **内訳** (`validate_module` は fail-fast なので、各 test の error kind は第一報告のみ):
+
+  | error kind | 関数 | 件数 | 対応 |
+  |---|---|---|---|
+  | `ImbalancedExit` | `main` | 13 | 案 E (本 ADR) |
+  | `RootPopUnderflow` | `main` | 1 | 案 B1 (別スライス) |
+  | `BranchDepthMismatch` | `push-roots` ×2 / `alloc-rooted` ×1 | 3 | 案 B1 (別スライス) |
+
+- **原因**: **verifier が拒否する形と、fixture が意図して書いている形は構文が同一で、期待だけが正反対**である。
+  自動判別できる信号は IR 上に存在しない。これが本件の核心である。
+
+  ```lisp
+  (defn main []
+    (let [keep (string-concat "keep" "!")
+          _slot (root_push keep)]     ; プログラム終了まで保持する。pop しないのが仕様
+      (churn 200)
+      (print-string keep)))
+  ```
+
+  ```lisp
+  (defn alloc-rooted [n]              ; object table を溢れさせるため意図的に root を積み増す
+    (if (> n 0)
+        (let [value (alloc 8) _ (root_push value)] (alloc-rooted (- n 1)))
+        0))
+  ```
+
+- **verifier を消してはいけない根拠**: `f8234503` はこの verifier で
+  `selfhost/src/Backend/Wasm/Compiler.ls` の手書き `(root_pop)` 個数バグを **4 件**捕まえている
+  (`compile-user-call-arg-instrs-step-with-source:119` / `compile-recordupdate-with-ftable:1789` /
+  `register-adt-variants:3522` / `compile-let-with-ftable-impl-body-impl-3:4368`)。
+  selfhost の 38 ファイルが root API を直接使っており、検査を外すと**この 4 件の再発を検出できなくなる**。
+- **第 1 段の結果 (2026-08-18)**: `main` の出口検査だけを免除する案 E を実施し、
+  **17 件中 13 件を解消**した (`90 passed; 4 failed`)。baseline は 108 → 95 entry、
+  `scripts/ci/test-gc-rooting.sh` は rc=101 → rc=0。判定・却下理由・実測は
+  [`decisions-root-lifetime-main-exit-exemption.md`](docs/adr/decisions-root-lifetime-main-exit-exemption.md)。
+- **残件**: `RootPopUnderflow` / `main` ×1 と `BranchDepthMismatch` ×3 の計 4 件。
+  「意図的な不均衡」を IR へ伝える明示的な注釈 (言語表面の追加) を要するため、
+  別 ADR 起票のうえ次スライスで扱う。`scripts/ci/test-runtime-limits.sh` は
+  それまで rc=101 のまま残る。追跡は TODO.md の `SMOKE-GATE-02`。
+- **関連**: `LEGACY-ROOT-01` (TODO.md)、I-07 (rooting guard の未完)、I-11 (baseline の由来)。
 
 ---
 
