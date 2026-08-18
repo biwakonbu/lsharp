@@ -151,6 +151,7 @@
 | [I-16](#i-16) | embedded component cache の key が build 入力 (`wit/` / `stdlib/`) を覆いきっていない | 中 | resolved | [cache key 被覆 ADR](docs/adr/decisions-embedded-component-cache-key-coverage.md) |
 | [I-17](#i-17) | runtime spec が root 管理 API の戻り値と境界挙動を定義していない | 中 | open | [意図的不均衡の注釈 ADR](docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md) |
 | [I-18](#i-18) | metadata directive の allowlist が Rust parser と selfhost parser で二重管理されている | 中 | open | -- |
+| [I-19](#i-19) | CI 自動実行の停止で `ci.yml` の 17 job が 1 ヶ月以上まったく観測されていない | 中 | documented-limitation | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 
 ### ドキュメント (DOC)
 
@@ -866,9 +867,18 @@
   test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path` が pass へ転じたため、
   baseline から 1 行削除 (95 → 94)。判断と却下理由、満たせなかった受入条件は
   [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) が正本。
-  **CI job が実際に緑になるかは push 後の 1 run を見るまで未確定**であり、
-  job が skipped だったトリガ条件そのものは未解明のまま残る。
-- **関連**: `SMOKE-GATE-03` (TODO.md、残件の skipped 原因調査)、`OPS-05` (job の由来)、I-11 (baseline の由来)。
+- **skipped の原因 (2026-08-18 解明)**: job 側の条件ではなく、**workflow 全体が起動しない**
+  のが答えだった。`6651109b` (2026-07-12) が `ci.yml` から `push` / `pull_request` トリガを外し、
+  `workflow_dispatch` 限定にしている (`name: CI (manual only)`)。
+  `needs: [test]` の上流状態でも path filter でもない。
+  本ブランチを push しても run は 0 件で、リポジトリ全体の最新 run は 3 件とも 2026-07-12 だった。
+  **「直近 5 run で skipped」という当初の読み自体が不正確**で、正しくは
+  「その 5 run より後、job は一度も実行対象になっていない」である。
+  停止方針そのものは意図的かつ記録済みで、観測されない 17 job という副作用は I-19 が正本。
+- **残る未確定**: job が実際に緑になることは依然として未確認である。CI 停止中は push で
+  確かめられないため、確認には `workflow_dispatch` の手動起動が要る (`SMOKE-GATE-03`)。
+- **関連**: I-19 (CI 停止の副作用)、`SMOKE-GATE-03` (TODO.md、1 run 観測の残件)、
+  `OPS-05` (job の由来)、I-11 (baseline の由来)。
 
 ---
 
@@ -979,6 +989,44 @@
 - **直し方の方向**: 一覧を単一の正本 (data file か、片方から生成) に寄せるのが筋。
   最小の手当てとしては「両者の一覧が一致すること」を検査する parity test を先に置く方法もある。
 - **関連**: I-14 (`:roots-unbalanced` の導入経緯)、`LEGACY-MODULE-01` (selfhost 側の変更コスト)。
+
+---
+
+<a id="i-19"></a>
+### I-19: CI 自動実行の停止で `ci.yml` の 17 job が観測されない状態が続いている
+
+- **影響度**: 中 / **状態**: documented-limitation
+- **内容**: `6651109b` (2026-07-12) が `.github/workflows/ci.yml` から `push` / `pull_request`
+  トリガを外し、`workflow_dispatch` 限定にした。**方針そのものは意図的**で、
+  [`CI.md`](docs/development/operations/CI.md) の冒頭と
+  [branch protection checklist](docs/development/operations/branch-protection-checklist.md) に
+  「Temporary policy (2026-07-12): CI 自動実行は停止」として記録済みである。
+  台帳に無かったのは**その副作用**のほうで、`ci.yml` が定義する **17 job が誰にも観測されない**
+  状態がそれ以来続いている。
+
+  ```
+  test / doc-status / lint / format / bootstrap / default-path-smoke /
+  fresh-clone-artifact / test-fresh-clone / fresh-clone-smoke / gc-metrics-artifact /
+  native-proxy-artifact / native-linux-x86-smoke / editor-extension-build /
+  audit-docs / ci-gate / ci-gate-v2 / shadow-oracle
+  ```
+- **実測 (2026-08-18)**: `codex/gate-fixes-root-lifetime` を push しても
+  `gh run list --branch codex/gate-fixes-root-lifetime` は **0 件**。
+  `gh run list --limit 3` の最新 3 件はいずれも **2026-07-12** で、`6651109b` が入った当日である。
+- **実害の実例**: `I-15` の「3 層の腐敗」がこれである。`default-path-smoke` の assertion は
+  第 2 層 (structured JSON への移行) と第 3 層 (`SmokeCli.ls` の import 欠落) を
+  誰にも見られないまま積み上げた。**gate が落ちないのではなく、gate が走らない**ので
+  baseline にも載らず、`workspace-expected-failures.txt` からも見えない。
+- **代替手段の被覆範囲**: `6651109b` が代替として立てたのは
+  `native-official-release-local.sh` による **release の手元 gate** であり、
+  上記 17 job を代替するものではない。`scripts/ci/test-*.sh` の 41 本は手元で回せるが、
+  「CI job として組まれた形」(runner の clean 環境 / job 間の `needs` / artifact 受け渡し) は
+  手元では再現されない。
+- **含意**: CI 停止中は **`ci.yml` に書かれた内容の正しさが検証されない**。
+  本ブランチが `127f0d3d` で `default-path-smoke` job に足した `cargo build --bin lsharp` も、
+  YAML の構文妥当性 (`yaml.safe_load`) までしか確認できていない。
+- **関連**: I-15 (実害の実例)、`SMOKE-GATE-03` (TODO.md、1 run 観測の残件)、
+  `OPS-05` (job の由来)。
 
 ---
 

@@ -4,6 +4,10 @@
 
 CI の **ジョブ構成と依存関係の正本** は [`ci-gate-v2-job-graph.md`](./ci-gate-v2-job-graph.md)。ジョブ graph は明示的な診断 dispatch と将来の CI 再開用に保持する。
 
+停止の**副作用** (`ci.yml` の 17 job が観測されない / gate の腐敗が baseline に載らない) は
+[`ISSUES.md` I-19](../../../ISSUES.md#i-19) が正本。実害の実例は
+[`I-15`](../../../ISSUES.md#i-15) の「3 層の腐敗」。
+
 ## 参照先
 
 - ジョブ一覧 / `needs` / required checks: [`ci-gate-v2-job-graph.md`](./ci-gate-v2-job-graph.md)

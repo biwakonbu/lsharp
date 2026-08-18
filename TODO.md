@@ -695,15 +695,13 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   「lint の異なる rule を落とさない」と AC-209 の設計判断として明記している。
   **単なる未実装 RED ではなく仕様の衝突**であり、どちらが陳腐化しているかは AC-209 の
   受入基準に当たって決める。
-- [ ] `SMOKE-GATE-03` `default-path-smoke` job が CI で skipped になる条件が未解明 — Issue `I-15`。
-  ゲート本体は 2026-08-18 に緑化し (`I-15` resolved、
-  [`decisions-default-path-smoke-determinism.md`](docs/adr/decisions-default-path-smoke-determinism.md))、
-  job には `cargo build --bin lsharp` を追加した。だが**なぜ直近 5 run すべてで
-  job が skipped だったのか**は解明していない。3 層の腐敗が誰にも見えないまま積み上がった
-  直接の原因はこれなので、トリガ条件 (`needs: [test]` の上流 job の状態 / path filter /
-  workflow の起動条件) を実測で特定する。
-  受入条件は (a) skipped の原因を特定して `I-15` へ追記、(b) 実際に 1 run 走って緑になることを確認。
-  **含めない範囲**: script の assertion 内容 (本件で決着済み)。
+- [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
+  `SMOKE-GATE-03` `default-path-smoke` job が緑になることの 1 run 観測 — Issue `I-15` / `I-19`。
+  受入条件 (a) skipped の原因特定は **2026-08-18 に達成**した。原因は job 側の条件ではなく
+  `ci.yml` 全体が `workflow_dispatch` 限定になっていたことで、`I-15` と `I-19` に記録済み。
+  残るのは (b)「実際に 1 run 走って緑になる」だけで、これは CI 停止中は push で確認できない。
+  **解除条件**: CI 自動実行が再開されるか、`workflow_dispatch` の手動起動を行うか。
+  **含めない範囲**: script の assertion 内容 (決着済み)、CI 停止方針そのものの是非 (`I-19`)。
 - [ ] `RUNTIME-SPEC-01` root 管理 API の契約が実装より薄い — Issue `I-17`。
   `root_push` / `root_set` の戻り値、root stack の容量上限と grow、`root_set` 失敗時の
   観測可能性 (failure ledger → trap) が [runtime spec](docs/language/runtime-spec.md) に無い。
