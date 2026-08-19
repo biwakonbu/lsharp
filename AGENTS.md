@@ -179,6 +179,26 @@ scripts/dev-loop.sh                  # selfhost/src に変更があれば compon
   検証済み native stage0 + `scripts/native-selfhost-dev.sh` から取る。
 - 契約テストは `scripts/ci/test-dev-loop.sh`。
 
+### native emitter のバイト列を cargo 無しで読む
+
+`selfhost/src/Backend/Native/NativeCodegen.ls` は native の機械語をバイト列リテラルで持つ。
+これを読むのに cargo は要らないが、**grep で出現順に並べると誤る** — emitter は
+`(concat-three-byte-vectors-rooted (byte-vector-2 ...) heap-base (byte-vector-3 ...))` のように
+`let` 束縛を引数順で並べ替えるし、`read-stdin` / `int-to-string` / `string-concat` の chunk 群は
+`(ref-new (vector-new N))` へ `append-encoded-u32-rooted` を積む形式でリテラルを 1 つも持たない。
+
+`scripts/native_codegen_bytes.py` が S 式を評価して正しい並びのバイト列を返す。
+
+```bash
+python3 scripts/native_codegen_bytes.py --selftest              # 評価器の自己検証
+python3 scripts/native_codegen_bytes.py --list                  # frontier を進める helper を両 lane で列挙
+python3 scripts/native_codegen_bytes.py --dump <helper-name>     # 指定 helper のバイト列を hex で
+```
+
+`--list` は heap frontier の bump (aarch64 `add x22, x22, xN` / x86 `mov [r14], rN`) と
+limit 参照を数えるので、`NATIVE-HEAP-01` の棚卸しに使える。helper が新しい構築形式を
+使い始めたら `--list` の「評価不能」に名前が出る。**そこを空欄のまま読み飛ばすと undercount する。**
+
 ### Git worktree の配置と片付け
 
 - 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。

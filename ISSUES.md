@@ -157,6 +157,7 @@
 | [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしていない。案 A で裁定し 2026-08-19 に実装した | 中 | resolved | [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) |
 | [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
 | [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
+| [I-25](#i-25) | native emitter に呼び出し元 0 の helper が 4 つ残り、本体と乖離しても誰も気付かない | 低-中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -761,13 +762,25 @@
   **aarch64 側だけ非対称**である。よって heap 終端を越えた確保が検出されず、未マップページへ触れて SIGSEGV になる。
 
   **2026-08-19 追記: 欠落は `alloc-helper` 単独ではない。** x86 側を「コメントで limit を明示している」
-  としか確認していなかったので、両 lane の機械語を直接 decode し直した。aarch64 は
-  `emit-aarch64-selfhost-vector-push-helper` (`:14671`) と `emit-aarch64-selfhost-map-new-helper`
-  (`:15171`) にも limit 比較が無く、x86 は対応する `:9711` / `:9931` / `:9876` の 3 つすべてに
-  `cmp` を持つ。**aarch64 の bounds check 欠落は確保系 helper 全般に及ぶ** ので、
-  `NATIVE-HEAP-01` の対象は 1 helper ではなく 3 helper である。
-  同じ decode で得た確保サイズと成長ポリシーの lane 別実測は
+  としか確認していなかったので、両 lane の機械語を直接 decode し直した。まず 3 helper を調べて
+  3 つとも該当したので「対象は 3 helper」と書いたが、これは undercount だった。
+  emitter の S 式を評価して**全 selfhost helper のバイト列を組み立て**、frontier を進める命令
+  (aarch64 `add x22, x22, xN` / x86 `mov [r14], rN`) を機械的に数え直した結果
+  (`python3 scripts/native_codegen_bytes.py --list` で再現できる):
+
+  | lane | frontier を進める helper | bump 箇所 | limit を参照する箇所 |
+  |---|---|---|---|
+  | x86-64 | 9 | 9 | **9 / 9** |
+  | aarch64 | 10 | 11 | **0 / 11** |
+
+  **aarch64 は確保系 helper の全部に limit 比較が無い。** 検出された `cmp` 3 つは
+  length vs capacity / 倍化の下限クランプ / frontier とのタグ判別で、いずれも上限比較ではない。
+  そもそも **aarch64 lane には上限値を保持する場所が無い** — x86 が heap 先頭 16 bytes に
+  cursor/limit を置くのに対し、aarch64 は `x21` (base) と `x22` (frontier) しか持たない。
+  よって `NATIVE-HEAP-01` は「比較を足す」ではなく「**上限値をどこに置くか**」から始まる。
+  確保サイズ・成長ポリシーの lane 別実測と全列挙の内訳は
   [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md) にある。
+  なお同じ走査で呼び出し元 0 の helper を 4 つ見つけた ([I-25](#i-25))。
 - **切り分け済みの周辺事実**:
   - stage bootstrap 自体は成功する。stage0 package は壊れていない。
   - 小さい fixture (`tests/fixtures/validation/*.ls`) を使う
@@ -777,7 +790,7 @@
     `LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES` を持つ。ただし上記実測より、
     **env knob は本ワークロードの緩和策にならない**。
 - **根拠**: 2026-08-16 実測 (T1-1 の副産物 + 2 回の crash report 解析)。
-- **帰結する未完項目**: TODO.md の `NATIVE-HEAP-01` (aarch64 の確保系 helper 3 つの bounds check) と
+- **帰結する未完項目**: TODO.md の `NATIVE-HEAP-01` (aarch64 の確保系 helper 全部の bounds check) と
   `NATIVE-HEAP-02` (回収機構の設計)。前者は症状を診断メッセージへ変えるだけで、
   「115 KB の入力に 8 GiB 超」という増幅そのものは解消しない。
   後者の設計は [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md)
@@ -1409,6 +1422,30 @@
   本項目は span を載せるだけでは閉じない。
 - **関連**: I-11 (baseline)、`ISSUES.md` の I-22 (同じ「規約 vs 実態」の形。
   `:1201` が本件の裁定に倣うと書いている)。
+
+---
+
+<a id="i-25"></a>
+### I-25: native emitter に呼び出し元 0 の helper が 4 つ残っている
+
+- **影響度**: 低-中 / **状態**: open
+- **内容**: `selfhost/src/Backend/Native/NativeCodegen.ls` の
+  `emit-aarch64-selfhost-string-concat-helper-chunk1`〜`chunk4` (`:14944` / `:14973` /
+  `:15002` / `:15031`) は **定義だけがあり、呼び出し元が 1 箇所も無い**。
+  `grep -rn 'string-concat-helper-chunk' selfhost/ crates/ scripts/` で出るのは定義行と
+  `ci-artifacts/` 配下の生成物コピーだけである。
+  実際に使われる `emit-aarch64-selfhost-string-concat-helper` (`:15057`) は chunk を呼ばず、
+  自前で 77 word を組み立てている。
+- **なぜ問題か**: chunk3 は heap frontier を bump するコード (`add x22, x22, x2`) を含む。
+  つまり「確保系 helper を数える」「bounds check を入れる」といった作業の対象に**見えてしまう**。
+  実際 `NATIVE-HEAP-01` のスコープ確定で 1 件これを拾った。生きているコードと死んでいるコードが
+  同じ命名規則で並んでいる限り、同じ取り違えが再発する。
+- **判断していないこと**: 削除してよいかは未確認。chunk 群と本体が同じ機械語を表しているなら
+  単なる残骸だが、**乖離しているなら「どちらが正しいか」が先**である。
+  両者のバイト列を突き合わせるまでは削除しない。
+- **関連**: I-13 (同じ helper 群の bounds check 欠落)、
+  [native heap 回収機構 ADR](docs/adr/decisions-native-heap-reclamation.md) の
+  「確保系 helper の全列挙」節。
 
 ---
 

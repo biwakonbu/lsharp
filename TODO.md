@@ -643,18 +643,23 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `selfhost/src/Backend/Native/NativeCodegen.ls:14513` の
   `emit-aarch64-selfhost-alloc-helper` は 18 word / 72 bytes ちょうどで、decode しても
   **limit 比較も条件分岐も無い** (唯一の分岐は heap base 非ゼロ判定の `CBNZ x21`)。
-  **対象はこの 1 つではない** — `emit-aarch64-selfhost-vector-push-helper` (`:14671`) と
-  `emit-aarch64-selfhost-map-new-helper` (`:15171`) にも limit 比較が無い。
-  x86 側は対応する `:9711` / `:9931` / `:9876` の 3 つすべてに `cmp` を持つので
-  **aarch64 だけ非対称**。
+  **対象はこの 1 つではない。** 全 selfhost helper を S 式評価で組み立てて数え直すと、
+  frontier を進める helper は aarch64 10 個 / bump 11 箇所あり、**limit を参照するものは 0**。
+  x86 は 9 個 / 9 箇所すべてが limit を参照する (全列挙は
+  [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md))。
+  **かつ「比較を足す」だけでは済まない** — aarch64 lane は `x21` (base) と `x22` (frontier) しか
+  持たず、**上限値の置き場所が無い**。x86 の heap 先頭 16 bytes に倣うか、レジスタを 1 本増やすか、
+  helper 内で base から計算するかを先に決める必要がある。
   heap 終端を越えた確保を検出して SIGSEGV ではなく診断メッセージで停止させる。
   `selfhost/src` の編集なので fingerprint が動き、stage0 再生成と両 target の
   native E2E 証跡が要る。単独の slice として扱う。
 - [ ] `NATIVE-HEAP-02` native linear heap の回収機構 — `I-13` の本体。materializer は
   `calloc` 1 回 + bump のみで `free` / `munmap` / frontier reset が**一切無い**。
-  **ただし「native に collector が無いから作る」ではない** — wasm lane には mark-sweep
-  collector が実装済みで、実行中に走らない (呼び出し元は `main` return 後と `proc_exit(0)` のみ)
-  という制約が両 lane 共通である。移植だけでは何も変わらない。
+  **ただし「native に collector が無いから作る」ではない** — 回収機構の実体は既に 3 つある
+  (wasm compiler world の mark-sweep、wasm http handler world の同型、selfhost の
+  `Runtime/GC.ls`) が、**実行中に走るものが 0** である。compiler world は `main` return 後と
+  `proc_exit(0)` のみ、http handler world は呼び出し元 0、`Runtime/GC.ls` は e2e fixture 専用。
+  移植だけでは何も変わらない。
   消費は生存データ量ではなく累積確保回数に比例するため、heap 拡大は先送りにしかならない
   (4 GiB → 8 GiB へ倍増しても拡大分をちょうど使い切って落ちることを実測済み)。
   `NATIVE-HEAP-01` は症状を可視化するだけで、「115 KB の入力に 8 GiB 超」という増幅は解消しない。
@@ -664,6 +669,18 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (`(defn ` 6,656 個 × 64 KiB ≈ 416 MiB) では 8 GiB に届かない。
   計測は wasm lane でよい (呼び出し回数は lane に依らない)。
   `LEGACY-ROOT-01` / `LEGACY-IO-01` と関連。
+- [ ] `NATIVE-DEAD-01` 呼び出し元 0 の native emitter helper の裁定 — Issue `I-25`。
+  `NativeCodegen.ls` の `emit-aarch64-selfhost-string-concat-helper-chunk1`〜`chunk4`
+  (`:14944` / `:14973` / `:15002` / `:15031`) は定義だけで参照が無く、実際に使われる
+  `emit-aarch64-selfhost-string-concat-helper` (`:15057`) は chunk を呼ばずに自前で
+  77 word を組み立てている。chunk3 は frontier bump を含むため、確保系 helper の
+  数え上げに紛れ込む (`NATIVE-HEAP-01` のスコープ確定で実際に 1 件拾った)。
+  **受入条件**: (1) chunk1-4 を連結したバイト列と `:15057` 本体のバイト列を突き合わせ、
+  同一か乖離かを判定する。(2) 同一なら chunk 群を削除する。乖離しているなら
+  **どちらが正しいかを先に決め**、判断を `I-25` へ書く。
+  **含めない範囲**: 他の未参照 helper の探索。本項目は string-concat chunk 群だけを扱う。
+  `selfhost/src` の編集になるので fingerprint が動く。`NATIVE-HEAP-01` と同じ slice に
+  まとめてよい。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される
