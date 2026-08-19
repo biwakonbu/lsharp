@@ -173,7 +173,7 @@
 | [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | resolved | imp-02 |
 | [DOC-07](#doc-07) | ドキュメント更新が実装の後追いになり、依頼駆動でしか走らない | 中 | in-design | [doc-sync rule](.claude/rules/doc-sync.md) |
 | [DOC-08](#doc-08) | 陳腐化した記述と重複節 (legacy-rust-bootstrap README / TODO の v0.3 節) | 低-中 | resolved | -- |
-| [DOC-09](#doc-09) | 完了 TODO を削除する際に根拠が ADR へ移されず、原因究明の記録ごと消えている | 中 | open | -- |
+| [DOC-09](#doc-09) | 完了 TODO を削除する際に根拠が ADR へ移されず、原因究明の記録ごと消えている | 中 | resolved | [x86 値 liveness の却下案](docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md) |
 
 ---
 
@@ -1698,8 +1698,25 @@
   上表の 3 事例は (c) を支持する。**(c) だけが disassembly レベルの実測を持つ。**
   ただし本エントリの 5 件が (c) と同一原因かは未確認 (5 件は上表の他 3 件より 1〜3 ヶ月古い)。
   **判定には native 実行が要るため、本エントリでは決めない。**
+
+  **2026-08-19 追記 (`DOC-09-01` の救出による)**: `0bd8bd47` が削除していた
+  2026-05〜07 の調査記録から、当時到達していた所在が復活した。
+
+  > `call-rel` は helper 内の `push rax` 後ではなく、`append-zero-arg-call-bundle-x86` への
+  > **関数呼び出し境界で既に崩れている**。
+
+  同じ調査で **27 案が却下**されており、その落ち方には規則性がある。
+  新規 helper 追加 / rooted-ref 化 / control-loop 本体への分岐追加はいずれも
+  selfhost 自身の `parse` / `check` を壊すか artifact gate で Wasm OOB を起こし、
+  rel32 の算出位置を動かす案は static gate を通っても VM metadata の bytes / target が
+  不変だった。通ったのは既存分岐への合流だけである。
+  詳細は
+  [`docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md`](docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md)。
+  **これは候補 (b) と (c) の双方を支持し、(a) を積極的に支持する記述は無い。**
 - **関連**: I-26 (同じ x86 lane の未接続)、I-25 (この 7 件を含む棚卸し)、
-  I-07 (rooting guard の未完)、I-21 (x86-64 の root API 未適合)、DOC-07 (後追い更新)。
+  I-07 (rooting guard の未完)、I-21 (x86-64 の root API 未適合)、DOC-07 (後追い更新)、
+  DOC-09 (原因記録の消失)、
+  `docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md` (却下 27 案)。
 
 ---
 
@@ -1927,12 +1944,28 @@
   後追いは遅れるだけだが、こちらは書いた分が消えるので、同じ調査を後からやり直すことになる。
   実際 `I-27` の起票時、5 件の否定 assertion のうち 1 件だけ原因が判っていたのに、
   台帳からは「原因不明」に見えていた。
-- **どうするか**: `TODO.md` の大量削除を行う前に、削除対象の中から
-  「実測値」「原因の特定」「却下した案とその理由」を含む行を抽出し、ADR へ移す。
-  今回の `0bd8bd47` については、削除された 1,364 行のうち救出すべき記述が
-  他にどれだけあるかが未確認である。`DOC-09-01` として棚卸しする。
+- **解決 (2026-08-19)**: `0bd8bd47` の削除 1,364 行を棚卸しし、救出対象を ADR へ移した
+  (`DOC-09-01`)。
+  - **棚卸しの結果**: 救出すべき記述は **93 行** (原因の絞り込み 61 / 却下した案 35 / 重複 3)。
+    すべて `V2-13a-5b` (root gap の追跡) と `V2-13a-5h` (x86 call-rel の 27 却下案) の
+    2 項目に集中していた。他 45 項目と、`EC-M2` / 責務分離 30 節 / Phase 11・14・15 の
+    計画節には該当行が 0 件である。
+  - **移送先**:
+    [`docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md`](docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md)。
+    3 主題 (返却値の root gap / x86 call-rel の helper 呼び出し境界での消失 / IR サイズ別
+    fallback の廃止) にまとめた。挙げた test 名 11 件は削除行と現在の test source の
+    双方で照合済みで、改名されていたのは 1 件だけだった。
+  - **移送しなかった 1,271 行**とその理由は同 ADR の「移送しなかったもの」節に書いた。
+  - **再発防止**: `.claude/skills/doc-sync/SKILL.md` の doc-GREEN 手順 4 に、
+    削除前の救出走査 (`git diff -U0 -- TODO.md` の削除行を原因/却下語で grep) を足した。
+    1 行でも出たら ADR を先に作る。
+  - **`I-27` への効果**: 起票時に「原因不明」に見えていた件について、
+    「`call-rel` は helper 内ではなく `append-zero-arg-call-bundle-x86` への
+    **関数呼び出し境界で既に崩れている**」という当時の到達点が復活した。
+    候補 (b) と (c) の裏付けにあたる。
 - **関連**: DOC-07 (後追い更新)、DOC-05 (二重管理)、I-27 (この損失で原因不明に見えていた件)、
-  `.claude/rules/doc-sync.md` (「ADR / 運用記録へ移してから」の正本)。
+  `.claude/rules/doc-sync.md` (「ADR / 運用記録へ移してから」の正本)、
+  `docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md` (移送先)。
 
 ---
 
