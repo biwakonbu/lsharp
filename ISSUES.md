@@ -1453,7 +1453,23 @@
   | 生きた関数へ委譲するだけの adapter | 3 / 9 | `collect-function-starts-aarch64` は `(collect-callable-function-starts-aarch64 functions 0)` の 1 行 | 低 |
   | 未使用の変種 (生きた primitive を組む本体を持つ) | 5 / 66 | `emit-mov-forty-fourth-stack-from-rcx` (stack slot 直書き)、`emit-consume-four-produce-one-bundle-aarch64` | 低 |
 
-  残る 24 defn / 167 行は test に pin されている (下記)。
+  残る 24 defn / 167 行は test に pin されている。内訳は
+  「test が名前ごと参照する」16 件と「assertion だけ」8 件で、性質は次のとおり。
+
+  **16 件はほぼすべて既定引数 facade である (2026-08-19 に全件実読)。**
+  短い arity の名前が `import-count 0` / `import-stub-offset 0` / `function-start` を
+  埋めて、生きた full-arity 実装へ委譲する。production は常に import count を持つので
+  短い方を使わず、test だけが使う。
+
+  | 形 | 件数 | 例 |
+  |---|---|---|
+  | 既定引数 facade (`-with-import-count` 版へ委譲) | 9 | `codegen-ir-instr-bundle-x86`、`generate-native-function-aarch64-bundle` |
+  | module 末尾の公開 API facade (`emit-native-*`) | 5 | `emit-native-function-meta-bundle` (`generate-` 版へ 1 行委譲、test 呼び出し 138) |
+  | 生きた primitive を並べた arity dispatcher | 2 | `emit-call-bundle-x86-one-to-nine`、`spill-native-function-params-x86-twenty-to-sixty-one` |
+
+  **乖離した別実装は 1 件も無い。** 独立した判断を持つのは
+  `x86-selfhost-helper-trailer-size` だけで、それは `I-26` が追っている。
+  つまり `NATIVE-DEAD-01` が裁定すべき対象は 64 件中 chunk 群 4 件のみで確定する。
   **chunk 群を除く 36 件は、既存の生きたコードへ委譲するか単一命令を返すかのどちらかで、
   失われる意味論を持たない。** 「移行残り」に見えたものの実体はこれである。
 
