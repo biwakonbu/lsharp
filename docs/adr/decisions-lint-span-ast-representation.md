@@ -29,8 +29,15 @@ parser が構築するノードのうち、以下は byte offset の `start` / `
 | qualified var | `[4, name-hash, start, end, prefix-hash, suffix-hash]` | `Parser.ls:393` |
 | string | `[3, start, end, map-key-hash]` | `Parser.ls:400` |
 | float | `[19, start, end]` | `Parser.ls:404` |
-| apply | `[5, func, arg-count, arg1..argN, start, end]` | `MacroExpand.ls:196` にレイアウト注記 |
-| if | `[6, cond, then, else, start, end]` | `TypeInfer.ls:114-115` が読む |
+| apply | `[5, func, arg-count, arg1..argN, start, end]` | `Parser.ls:5124-5128` `parse-apply-v3` が `apply-start` / `previous-token-end-v3` を push |
+| if | `[6, cond, then, else, start, end]` | `Parser.ls:3472-3473` `finish-parse-if-result-after-expect-v3` が `if-start` / `if-end` を push |
+
+apply / if の 2 行は当初 reader 側 (`TypeInfer.ls:114-115` の条件付き読み) と
+`MacroExpand.ls:196` のレイアウト注記だけを根拠にしていたので、**構築点まで遡って裏を取り直した**。
+どちらも parser が実際に span を push しており、`make-lit-float` のような
+「reader 側だけが対応している死んだ経路」ではない。一方 `AST.ls:132` `make-if` /
+`AST.ls:133` `make-let` は span を取らないので、**同じ kind でも生成元によって長さが違う**。
+これは決定 1 を補強する事実である (一律の末尾 span slot は、この非対称をさらに増やす)。
 | module-decl / import-decl / type-alias | `name-start` / `name-end` を引数に取る | `AST.ls:262` / `:273` / `:238` |
 
 **持っていないのは `let` (tag 7) と `do` (tag 9)** — つまり `L0001` / `L0002` が
