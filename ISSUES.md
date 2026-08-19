@@ -743,6 +743,15 @@
   - materializer に `free` / `munmap` / frontier の reset が**一切無い**。`calloc` 1 回 + bump のみの
     純粋な bump allocator で**回収機構が存在しない**。消費量は生存データ量ではなく
     **累積確保回数**に比例するため、heap 拡大は先送りにしかならない。
+  - **2026-08-19 追記: これは native lane 固有の欠落ではない。** wasm lane には mark-sweep
+    collector が実装済みだが (`crates/lsharp-wasm/src/wasi/gc_collect_core.rs` /
+    `gc_mark.rs` / `free_list.rs`)、その唯一の呼び出し元は
+    `wasi/compiler_world/code.rs:131,150` — **`main` から return した後**と
+    `proc_exit(0)` の中だけである。実行中には一度も走らず、heap 圧力を下げない。
+    **wasm lane が落ちないのは回収しているからではなく `memory.grow` できるからで**、
+    両 lane に共通する「実行中は回収しない」設計が、grow できない native lane でだけ
+    crash として顕在化している。実行中に回せない理由は compiler-side の GC safe point が
+    未完だからで (`phase11-implementation-plan.md:713` の S14-S16)、これも両 lane 共通である。
 - **bounds check も無い**: `selfhost/src/Backend/Native/NativeCodegen.ls:14512-14548`
   `emit-aarch64-selfhost-alloc-helper` は 18 word / 72 bytes ちょうど (`:20361` の
   `append-native-bytes-rooted ... 72` と一致)。全 word を decode しても **limit 比較も条件分岐も無い**。

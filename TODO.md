@@ -652,6 +652,9 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   native E2E 証跡が要る。単独の slice として扱う。
 - [ ] `NATIVE-HEAP-02` native linear heap の回収機構 — `I-13` の本体。materializer は
   `calloc` 1 回 + bump のみで `free` / `munmap` / frontier reset が**一切無い**。
+  **ただし「native に collector が無いから作る」ではない** — wasm lane には mark-sweep
+  collector が実装済みで、実行中に走らない (呼び出し元は `main` return 後と `proc_exit(0)` のみ)
+  という制約が両 lane 共通である。移植だけでは何も変わらない。
   消費は生存データ量ではなく累積確保回数に比例するため、heap 拡大は先送りにしかならない
   (4 GiB → 8 GiB へ倍増しても拡大分をちょうど使い切って落ちることを実測済み)。
   `NATIVE-HEAP-01` は症状を可視化するだけで、「115 KB の入力に 8 GiB 超」という増幅は解消しない。

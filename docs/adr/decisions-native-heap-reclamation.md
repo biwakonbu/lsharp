@@ -5,7 +5,9 @@
 - Scope: `NATIVE-HEAP-02` / `I-13`
 - Related: [rust-free daily lane](decisions-dev-loop-rust-free-daily-lane.md)、
   `selfhost/src/Backend/Native/NativeCodegen.ls`、
-  `scripts/ci/materialize-native-macos-aarch64-bundle.py`
+  `scripts/ci/materialize-native-macos-aarch64-bundle.py`、
+  `crates/lsharp-wasm/src/wasi/gc_collect_core.rs` / `gc_mark.rs` / `free_list.rs`、
+  [`phase11-implementation-plan.md`](../development/planning/phase11-implementation-plan.md) S14-S16
 
 ## 問題
 
@@ -73,25 +75,66 @@ crash 対象の `App/Cli.ls` 単体ならさらに 1 桁小さい。
 131,072 回に届くには**式ごと・単一化ごとといった内側のループで呼ばれている**必要があり、
 それは静的には決まらない。**帰属には動的計測が要る。**
 
+## 既存 collector の所在 (2026-08-19、上記 decode の後に判明)
+
+**「native に GC が無いので設計する」という当初の構図は誤りだった。** 本 ADR の初版はそう書いたが、
+`crates/lsharp-wasm/src/wasi/` を見ると **mark-sweep collector は wasm lane に実装済み**である。
+
+- `gc_collect_core.rs` / `gc_mark.rs` / `free_list.rs` — mark / sweep / size-class free list
+- size class は 7 段 (`GC_FREE_CLASS_LIMITS = [16, 32, 64, 128, 256, 512, 1024]`、`wasi.rs:96`)。
+  **64 KiB の map は全段を外れて oversize class 行き**になる
+- `TAGGED_POINTER_MASK = 1 << 63` (`wasi.rs:97`) — 私が aarch64 helper から decode した
+  bit 63 タグと同一。object header (tag/capacity/length) も共通
+- 観測用 export が既にある: `__lsharp_heap_ptr` / `__lsharp_alloc_count` /
+  `__lsharp_gc_live_alloc_count` / `__lsharp_gc_freed_count` / `__lsharp_gc_collection_count` ほか
+
+**そして、この collector は実行中に一度も走らない。**
+`compiler_world/code.rs:131,150` の 2 箇所が唯一の呼び出し元で、内訳は
+
+- `_start`: `main` を呼んで **return した直後**
+- `__proc_exit_with_collect`: 引数が 0 (正常終了) のときだけ
+
+つまり回収は**プログラムが終わった後**にしか起きず、実行中の heap 圧力を一切下げない。
+`phase11-implementation-plan.md:713` はこれを telemetry の固定として記録しており、
+同じ行の末尾に「S14-S16 を閉じるには selfhost 側の broader closure/indirect heap 値判定と
+compiler-side GC-safe point spill / shadow stack 完全列挙がなお必要」と書いている。
+**実行中に回せないのは safe point が未完だからで、これは native 固有の欠落ではない。**
+
+### 構図の訂正
+
+`NATIVE-HEAP-02` の本質は「native lane に回収機構が無い」ではない。
+
+> **両 lane とも実行中は回収しない設計であり、線形メモリを grow できない native lane でだけ
+> それが crash として顕在化している。**
+
+wasm lane が落ちないのは回収しているからではなく、memory.grow できるからである。
+この違いを取り違えると「wasm から native へ collector を移植すれば直る」と読めてしまうが、
+**移植しても呼ぶ場所が無いので何も変わらない。**
+
 ## 選択肢
 
 | 案 | 内容 | 現時点の評価 |
 |---|---|---|
-| A | mark-sweep GC | root set は列挙可能 (`x27`..`x28` の連続配列 8 MiB)、object は自己記述 (tag@0 / capacity@4 / length@8、payload は 16 から)、pointer は bit 63 タグ付きで整数と区別できる。**mark は原理的に可能**。ただし GC は `NativeCodegen.ls` 自身が emit する機械語になるうえ、frontier が x86 は heap 先頭 16 bytes、aarch64 は `x22` レジスタと**非対称**で、共通実装を書けない |
-| B | phase 境界での arena reset | 実装は最も軽い。`I-13` の「累積確保回数に比例」という性質に直接効く。ただし phase を跨いで生存するデータの識別が要る |
-| C | 確保量の削減 (`map-new` の固定 64 KiB を縮める / 遅延確保) | **回収機構を入れずに問題が消える可能性がある。** 容疑 A が主因なら、これが最小の変更。案 A の実装重量を考えると先に検討する価値がある |
+| A | safe point を完備し、collector を確保パスから起動できるようにする | **根治。ただし wasm lane を含む共通課題** (`phase11` S14-S16)。native への port はその後の話で、port 自体は tagged pointer / object header / root stack が両 lane で共通なぶん見通しが良い。frontier 表現だけが非対称 (x86 は heap 先頭 16 bytes、aarch64 は `x22` レジスタ) |
+| B | phase 境界での arena reset | safe point の完備を待たずに `I-13` の「累積確保回数に比例」へ直接効く。phase を跨いで生存するデータの識別が要る。**A の前段として単独で成立する** |
+| C | 確保量の削減 (`map-new` の固定 64 KiB を縮める / 遅延確保) | **回収機構を入れずに問題が消える可能性がある。** 容疑 A が主因なら最小の変更。既存 collector の size class が 1024 bytes までしか無く 64 KiB が oversize 行きになることも、この確保が設計の想定外である傍証 |
 | D | heap 拡大 | **却下。** 4 GiB → 8 GiB の実測で拡大分をちょうど使い切って落ちた (`I-13`)。env knob も緩和策にならないことが同 issue に記録済み |
+| E | wasm の collector を native へ移植するだけ | **却下。** 実行中の呼び出し元が両 lane に存在しないため、移植しても回収は起きない。案 A の一部として初めて意味を持つ |
 
 **A / B / C は現時点で決めない。** 帰属が未確定のまま方式を選ぶと、
 効かない機構を実装する危険がある (案 D が実測で潰れたのと同じ失敗の型)。
 
 ## 受入条件
 
-1. **確保の帰属を動的に計測する。** どの call site が何回 `map-new` / `vector-push` grow /
-   `string-concat` を呼ぶかを、`App/Cli.ls` を入力とする実行で数える。
+1. **確保の帰属を動的に計測する。** `App/Cli.ls` を入力とする実行で、
+   `map-new` / `vector-push` grow / `string-concat` がそれぞれ何回・何 bytes 確保するかを数える。
    **計測は wasm lane で行ってよい** — 呼び出し回数は program logic の性質であり、
    lane によらない。native stage 再生成より安い経路である。
    (確保**サイズ**は lane で違うので、そちらは上表を使う。)
+   **計装を新規に書く必要は無い**: 総量は `__lsharp_heap_ptr` と `__lsharp_heap_start` の差、
+   総回数は `__lsharp_alloc_count` で取れる (`wasi.rs:124-126`、読み出し方は
+   `tests/e2e/support.rs:585` の `read_i32_global` が実例)。
+   内訳は `application_map_allocation.rs:20` の `default_cap` を変えた版との差分で切り分ける。
 2. 計測結果を本 ADR の Evidence 節へ戻し、容疑 A / B / C の寄与率を確定させる。
 3. その上で案を選ぶ。**選ばなかった案とその理由を本 ADR に残す。**
 
@@ -100,6 +143,7 @@ crash 対象の `App/Cli.ls` 単体ならさらに 1 桁小さい。
 - `NATIVE-HEAP-01` (bounds check)。ただし上記のとおり対象 helper が 3 つに増える事実は
   `I-13` / `TODO.md` へ反映する。
 - x86 / aarch64 の frontier 表現の統一。案 A を選んだ場合にのみ必要になる。
+- safe point の完備 (`phase11` S14-S16)。案 A の前提だが本項目より広く、wasm lane も対象である。
 
 ## Evidence
 
