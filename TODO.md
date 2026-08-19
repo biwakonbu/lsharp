@@ -855,6 +855,12 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   Lima 依存 60 件・env 依存 4 件の到達可能化、CI 再開 (`I-19`)。
   **cargo が要る。5 時間かかるので `os.setsid()` で切り離して回すこと** (前回 2 回のうち
   1 回はハーネスに 328/614 で停止された)。
+  **走らせる前に worktree の revision を必ず確かめること。** 2026-08-19 に
+  `lsharp-baseline-a3ae4551` を流用しかけたが、この worktree は `main` から **242 commit 前**で、
+  `--ignored --list` の分母が **611** だった。分母が 615 でなければ `main` ではない。
+  `git worktree add --detach <path> HEAD` で専用 worktree を切るのが安全である
+  (root checkout で回すと、test が実行時に `selfhost/src/**.ls` を読むため、
+  他セッションの編集が 5 時間の測定に混入しうる)。
 - [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
   parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
   片側だけの directive 追加は検出できる状態になった。判断と実測は
