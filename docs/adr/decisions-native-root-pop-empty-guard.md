@@ -322,12 +322,37 @@ harness 族に属する。
 2. 残る 52 件はいずれも `wasm trap` / harness 実行失敗 / x86 側の assert であり、
    本変更が触った aarch64 の `emit-root-pop-aarch64` と 2 つの size 表を経由しない。
 
-#### 満たせなかった条件 — 緩めずに書く
+#### baseline を取った (2026-08-19 追記)
 
-**`origin/main` (`8475b00a`) で同じ 614 件を走らせた baseline を取っていない。**
-したがって上の「本変更由来 0 件」は、**panic message と変更範囲からの帰属判定**であって、
-**前後比較による証明ではない**。前後比較を取るには同じ 5 時間を main 側でもう一度使う必要があり、
-今回はそれをしていない。
+前節で「満たせなかった条件」として記していた **`origin/main` (`8475b00a`) の baseline を
+実際に取り、前後比較へ置き換えた**。
+
+| run | revision | 分母 | passed | failed | 所要 |
+|---|---|---|---|---|---|
+| branch | `main` (32 commit ahead) | 614 | 497 | 117 | 18,756.35s |
+| baseline | `origin/main` `8475b00a` | 612 | 495 | 117 | 19,005.96s |
+
+両 run とも `running N tests` の宣言数と結果行のユニーク数が一致し、summary の
+pass/fail が結果行の実数と一致する (重複 0)。比較スクリプトはこの完走判定を先に行い、
+どちらかが不完全なら比較結果を台帳へ載せない設計にしてある。
+
+**積集合 612 件の上で FAIL 集合は完全に一致した。新規 FAIL 0 / 解消 0。**
+branch 側にだけある 2 件 (`test_e2e_native_aarch64_root_pop_emits_empty_stack_guard` /
+`test_e2e_native_host_binary_selfhost_root_pop_on_empty_stack_keeps_stack_pointer`) は
+本変更が追加した test で、どちらも pass している。
+
+したがって前節の「本変更由来 0 件」は、**panic message からの帰属判定ではなく
+前後比較で裏が取れた**。117 件はすべて `origin/main` 時点で既に FAIL している。
+
+分類も baseline 側の FAIL 名から独立に再実行し、`fn <name>(` 本体の走査で
+**(a) 60 / (b) 4 / (c) 53 / 帰属不能 0** を再現した。(c) 53 件のうち理由文字列つき
+`#[ignore]` が 22 件という内訳も一致する。
+
+全 117 件の名前・分類・`#[ignore]` 理由文字列は
+[`docs/development/validation/ignored-lane-expected-failures.txt`](../development/validation/ignored-lane-expected-failures.txt)
+が正本である (`workspace-expected-failures.txt` と同じ `<binary-id> <test-name>` の粒度)。
+同 script の入力にはしていない — 非 ignored lane の baseline へ混ぜると
+「実測に現れない expected」として必ず非 0 になるためで、自動検証は付いていない。
 
 この差を埋める作業は `STALE-PIN-01` / `I-23` の受入条件 (b)
 「環境要因と真の陳腐化 pin を分離する」に含めて残す。**「実測した」とは書かない。**

@@ -800,19 +800,30 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: x86-64 の root API 実装そのもの (`NATIVE-ROOT-02`)、
   GC 導入 (`NATIVE-HEAP-01/02`)。拡張方式 (mmap 再確保か倍々か) は実装時に決めてよい
   (契約は「動的であること」までしか定めていない)。
-- [~] `STALE-PIN-01` `#[ignore]` lane に眠る陳腐化した数値 pin を洗い出す — Issue `I-23`。
+- [ ] `STALE-PIN-02` 陳腐化が確定した pin の期待値を更新する — Issue `I-23`。
+  対象は **1 件だけ**である。
   `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` が
-  2026-08-03 (`1ee26eef`) から恒常 FAIL しているのに、CI 停止 (`I-19`) と
-  baseline が非 ignored 限定 (`I-11`) の二重の穴でどの台帳にも載っていなかった。
-  受入条件は (a) `selfhost_native_stage_chain` の `--ignored` lane を一度完走させて
-  FAIL 集合を確定させ、(b) 環境要因 (Lima VM 不在等) と真の陳腐化 pin を分離し、
-  (c) 真の陳腐化 pin を `workspace-expected-failures.txt` と同等の粒度で台帳化すること。
-  **含めない範囲**: 個々の pin の期待値更新 (洗い出しの後に別項目で扱う)、
-  `#[ignore]` 契約そのものの是非 (`TESTGATE-03` / `I-22`)、CI 再開 (`I-19`)。
-  **2026-08-19 に (a) を達成した** — 614 test 完走 (497 passed / 117 failed / 18,756.35s)、
-  関数本体ベースの分類で Lima 依存 60 / env 依存 4 / それ以外 53 / 帰属不能 0。
-  残るのは (b) と (c)。(b) には **`origin/main` での baseline run** が必要で、
-  今回の 117 件は変更範囲と panic message からの帰属判定にとどまる (前後比較ではない)。
+  `[2520, 3520]` を pin する一方、実測は `[3492, 4492]`。`I-23` に書いたとおり
+  `40 + 3296 + 156 = 3492` という算術が実装側と一致しており、pin 側が
+  `1ee26eef` (2026-08-03, read-stdin helper 追加) より前の世界を指している。
+  受入条件は (1) 期待値を更新して当該 test が pass すること、
+  (2) `ignored-lane-expected-failures.txt` の該当行を削除すること。
+  **含めない範囲**: (a) Lima 依存 60 件 / (b) env 依存 4 件 (到達可能にするのは別作業)、
+  wasm trap 由来の 37 件、`#[ignore]` 契約の是非 (`TESTGATE-03` / `I-22`)、CI 再開 (`I-19`)。
+  **cargo が要る。** 当該 test の単体実行で足りる。
+- [ ] `STALE-PIN-03` 数値 pin ではない 2 件の FAIL がどちら側の陳腐化か裁定する — Issue `I-23`。
+  `STALE-PIN-01` の洗い出しで残った 2 件は、**pin の更新で済むと決めつけてはならない**。
+  - `test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic`
+    — `assert_eq!` だが `Some(777000)` vs `Some(-1)`。`-1` は「mismatch 無し」の sentinel で、
+    `777000` は診断が実際に mismatch を検出した値。**pin が古いのではなく、
+    実装側に function size mismatch が現存している可能性が高い。**
+  - `test_e2e_selfhost_x86_int_to_string_import_sets_rdi` — `assert!` で emit された byte 列を
+    検査しており、数値 pin ではない。「rax の整数引数を rdi へ移してから push/call/pop する」
+    という**挙動の要求**が満たされていない。
+  受入条件は 2 件それぞれについて (1) 実装と test のどちらが正しいかを根拠つきで決め、
+  (2) 実装側が誤りなら `ISSUES.md` に採番して起票すること。
+  **含めない範囲**: 実装の修正そのもの (起票後に別項目)。
+  **cargo が要る。**
 - [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
   parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
   片側だけの directive 追加は検出できる状態になった。判断と実測は

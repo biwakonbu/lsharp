@@ -1,0 +1,172 @@
+# `#[ignore]` lane の既知 FAIL 一覧 (ISSUES.md I-23 / STALE-PIN-01 の正本)
+#
+# 書式は workspace-expected-failures.txt と同じ `<binary-id> <test-name>` の 2 語。
+# `#` 以降は注記。分類記号は下の「分類」節を参照。
+#
+# **このファイルは scripts/ci/check-workspace-baseline.sh の入力ではない。**
+# 同 script が読む workspace-expected-failures.txt は非 ignored lane の baseline であり、
+# そこへ ignored lane の test を混ぜると「実測に現れない expected」として必ず非 0 になる。
+# 分離しているのはそのためで、自動検証は付いていない (再測定は下記の手順で人が回す)。
+#
+# ---- 測定 ----
+#   対象: crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs の `--ignored` lane
+#   起動: target/debug/deps/e2e-<hash> --ignored --nocapture
+#         (os.setsid() で切り離す。5 時間かかりハーネス側の停止を受けるため)
+#
+#   | run | revision | 分母 | passed | failed | 所要 |
+#   |---|---|---|---|---|---|
+#   | branch   | main (32 commit ahead) | 614 | 497 | 117 | 18,756.35s |
+#   | baseline | origin/main 8475b00a   | 612 | 495 | 117 | 19,005.96s |
+#
+#   **前後比較の結果 (2026-08-19)**: 積集合 612 件の上で FAIL 集合は完全に一致する。
+#   新規 FAIL 0 / 解消 0。branch 側にだけある 2 件は NATIVE-ROOT-01 が追加した
+#   root_pop 空 stack ガードの test で、どちらも pass。
+#   したがって **117 件はすべて origin/main 時点で既に FAIL しており、
+#   merge 済みの 32 commit に由来するものは 1 件も無い**。
+#
+# ---- 分類 ----
+#   test 名の prefix ではなく `fn <name>(` から次の `fn` までの**本体**を読んで分けた。
+#   prefix で分けると、名前に x86 も lima も入っていない env 依存 test を取りこぼす。
+#
+#   [a] Lima VM 依存 60 件 -- 本体が lima / linux-x86 を参照。VM `lsharp-linux-x86` が
+#       Stopped のため到達不能。VM を起動すれば結果が変わる可能性がある。
+#   [b] LSHARP_NATIVE_* env 依存 4 件 -- 本体が env を参照。env 未設定のため到達不能。
+#   [c] それ以外 53 件 -- 環境を揃えても落ちる。**真の陳腐化 pin はこの中にしか無い。**
+#   帰属不能 0 件。
+#
+# ---- 期待値の更新について ----
+#   **pin 側の陳腐化と確定しているのは 1 件だけである。**
+#   test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer が
+#   [2520, 3520] を pin する一方、実測は [3492, 4492]。40 + 3296 + 156 = 3492 という
+#   算術が実装側と一致する (ISSUES.md I-23)。更新は TODO.md の STALE-PIN-02 が扱う。
+#
+#   残る 2 件は「数値 pin の陳腐化」ではないので、同じ扱いをしてはならない。
+#     - ..._x86_function_size_matches_generated_length_diagnostic は assert_eq! だが
+#       Some(777000) vs Some(-1) で、-1 が「mismatch 無し」の sentinel。
+#       診断が実際に mismatch を検出している側である。
+#     - ..._x86_int_to_string_import_sets_rdi は assert! で emit byte 列を検査しており、
+#       数値 pin ではなく挙動の要求。
+#   どちら側が正しいかの裁定は TODO.md の STALE-PIN-03 が扱う。
+
+# ---- [a] Lima VM 依存 (VM lsharp-linux-x86 が Stopped) : 60 件 ----
+lsharp-wasm::e2e test_e2e_linux_x86_actual_body_size_metadata_recursive_call_targets_self  # diagnostic: V2-13a-5 Linux x86 body-size recursive user-call target
+lsharp-wasm::e2e test_e2e_linux_x86_actual_function_metadata_helper_targets_avoid_body  # diagnostic: V2-13a-5 Linux x86 function metadata runtime helper rel32 targets
+lsharp-wasm::e2e test_e2e_linux_x86_actual_function_metadata_map_new_rel32_correlation  # diagnostic: V2-13a-5 Linux x86 entry metadata map-new rel32 correlation
+lsharp-wasm::e2e test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation  # diagnostic: V2-13a-5 Linux x86 function metadata user call rel32 correlation
+lsharp-wasm::e2e test_e2e_linux_x86_actual_function_segment_metadata_has_no_zeroed_runtime_helper_calls  # diagnostic: V2-13a-5 Linux x86 function metadata zeroed runtime helper calls
+lsharp-wasm::e2e test_e2e_linux_x86_actual_parser_call_metadata_correlates_to_stage_code  # diagnostic: V2-13a-5 Linux x86 parser call owner/metadata/code/rel32 correlation
+lsharp-wasm::e2e test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic  # diagnostic: V2-13a-5 Linux x86 stage2 entrypoint call windows/rel32 targets
+lsharp-wasm::e2e test_e2e_linux_x86_actual_stage2_entrypoint_map_new_ref_new_prefix_regression  # regression: V2-13a-5 Linux x86 stage2 entrypoint map-new/ref-new prefix
+lsharp-wasm::e2e test_e2e_linux_x86_actual_stage2_transport_segment_table_diagnostic  # diagnostic: V2-13a-5 Linux x86 actual stage2 transport segment table
+lsharp-wasm::e2e test_e2e_native_host_binary_bundle_if_result_preserves_outer_for_add
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_actual_stage1_diagnostic_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_argv_string_char_at_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_argv_string_length_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_codegen_append_depth_one_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_codegen_append_padded_depth_one_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_codegen_append_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_codegen_eight_arg_call_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_codegen_four_arg_call_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_codegen_loop_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_codegen_vector_get_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_concat_five_fourth_arg_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_const_42_code_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_context_direct_eight_arg_call_bytes_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_control_loop_eight_arg_call_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_eight_arg_branch_call_bytes_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_eight_arg_core_call_bytes_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_eight_arg_dispatch_matrix_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_file_exists_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_inline_eight_arg_branch_call_bytes_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_int_to_string_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_low_arity_prefix_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_map_insert_get_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_map_ref_get_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_map_size_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_param_spill_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_print_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_read_file_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_ref_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_ref_param_five_arg_state_set_get_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_ref_param_rooted_state_print_set_get_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_ref_param_rooted_state_set_get_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_ref_param_vector_set_get_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_ref_vector_after_i64_zero_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_seed_entry_segment_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_seed_function_segment_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_selfhost_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_source_seven_arg_call_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_string_concat_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_substring_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_test_runner_metadata_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_vector_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_write_file_bytes_elf_object_artifact
+lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_zero_arg_append_four_arg_call_probe_bundle_artifact
+lsharp-wasm::e2e test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_app_cli_bundle
+lsharp-wasm::e2e test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_test_runner_metadata_probe_bundle
+lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_entry_call_offsets_diagnostic
+lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_function_size_matches_generated_length_diagnostic
+lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_segmented_function_size_matches_generated_length_diagnostic
+
+# ---- [b] LSHARP_NATIVE_* env 依存 (env 未設定) : 4 件 ----
+lsharp-wasm::e2e test_e2e_native_macos_aarch64_actual_app_cli_release_program
+lsharp-wasm::e2e test_e2e_saved_native_stage3_compiler_app_cli_failing_invariant_command  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
+lsharp-wasm::e2e test_e2e_saved_native_stage3_compiler_app_cli_metadata_command  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
+lsharp-wasm::e2e test_e2e_saved_native_stage3_compiler_test_runner_metadata_probe  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
+
+# ---- [c] それ以外 (環境を揃えても落ちる) : 53 件 ----
+lsharp-wasm::e2e test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_before_helpers_current_global_window_diagnostic  # diagnostic current global window after import stubs and before helpers
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_before_helpers_earliest_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_building_earlier_chunks_preserves_latest_global_window  # diagnostic build-only chunk transport probe
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_crash_offset_maps_to_rust_function  # diagnostic: map representative crash offset to selfhost source order
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_crash_x8_offset_maps_to_source_order  # diagnostic: map refreshed representative crash x8 offset to selfhost source order
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_direct_aarch64_bundle_latest_global_window_is_clean
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layout  # diagnostic: representative payload helper still traps before returning offset
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_failing_chunk_text_is_plain_bytes
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_file_exists_helper_preserves_later_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_first_fifteen_helpers_current_global_window_diagnostic  # diagnostic current global window after first fifteen helper appends
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_first_fourteen_helpers_current_global_window_diagnostic  # diagnostic current global window after first fourteen helper appends
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_first_helper_current_global_window_diagnostic  # diagnostic current global window after first helper append
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_first_ten_helpers_current_global_window_diagnostic  # diagnostic current global window after first ten helper appends
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_first_thirteen_helpers_current_global_window_diagnostic  # diagnostic current global window after first thirteen helper appends
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_first_twelve_helpers_current_global_window_diagnostic  # diagnostic current global window after first twelve helper appends
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_full_prefix_cutoff_chunk_local_bad_window_diagnostic  # diagnostic full native-len prefix copy for representative owner corruption
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_function_loop_only_current_global_window_diagnostic  # diagnostic current global window for full function loop
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_function_loop_only_current_owner_window_diagnostic  # diagnostic current owner-relative window before helper append
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_function_loop_only_earliest_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_function
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_map_get_helper_preserves_latest_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_map_insert_helper_preserves_latest_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_map_new_fixed_helper_preserves_latest_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_map_new_helper_preserves_later_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_map_size_helper_preserves_later_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_owner_callable_isolated_chunk_local_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_owner_callable_isolated_current_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_owner_callable_isolated_earliest_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_owner_callable_isolated_next_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_owner_callable_isolated_remaining_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_owner_callable_isolated_shifted_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_post_entry_call_targets_map_to_source_order  # diagnostic: map representative post-entry call targets to selfhost source order
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_prefix_bundle_through_owner_earliest_bad_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_prefix_cutoff_chunk_local_bad_window_diagnostic  # diagnostic cutoff sweep for representative owner corruption
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_prefix_through_owner_emits_length  # diagnostic probe for direct partial bundle generation
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_prefix_through_owner_next_bad_window  # diagnostic probe for direct partial bundle generation
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_printing_earlier_chunks_preserves_latest_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_printing_earlier_chunks_via_ref_preserves_latest_global_window  # diagnostic ref-backed chunk transport probe
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_printing_latest_window_before_prefix_keeps_latest_output_clean  # diagnostic latest-before-prefix probe
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_read_file_helper_preserves_later_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_read_file_helper_preserves_latest_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_recomputed_wrapper_code_latest_global_window_is_clean
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_string_concat_helper_preserves_current_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_string_concat_helper_preserves_later_global_window
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic
+lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_elf_object_only
+lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_aarch64_only
+lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_only
+lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_imported_parse_int_digits_single_char_only
+lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_loop_last_char_only
+lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_seed_argv_probe  # diagnostic: inspect load-imports argv probe with actual seed
+lsharp-wasm::e2e test_e2e_selfhost_x86_int_to_string_import_sets_rdi  # 完全な selfhost harness の型推論を要するため、Linux source-file smoke で実行検証する

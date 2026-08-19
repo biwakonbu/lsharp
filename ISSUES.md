@@ -1366,9 +1366,29 @@
   「完走後の全件結果」節が正本。
   **1 回目の run はハーネスに 328/614 で停止されたため採用していない** —
   走っていない 286 件を pass と区別できないためである。
-  受入条件 (b) (環境要因と真の陳腐化 pin の分離) と (c) (台帳化) は未達で、
-  特に **`origin/main` での baseline を取っていない**ので、
-  (c) 53 件が本当に恒常 FAIL なのか前後比較では確認していない。
+- **baseline との前後比較 (2026-08-19)**: 受入条件 (b) の残りだった
+  「`origin/main` での baseline」を実測した。`origin/main` `8475b00a` で
+  **612 test / 495 passed / 117 failed / 19,005.96s**。
+  **積集合 612 件の上で FAIL 集合は branch と完全に一致し、新規 FAIL 0 / 解消 0。**
+  branch 側にだけある 2 件は `NATIVE-ROOT-01` が追加した root_pop ガードの test で、
+  どちらも pass する。したがって **117 件はすべて `origin/main` 時点で既に FAIL しており**、
+  merge 済みの 32 commit 由来のものは無い。分類 (a) 60 / (b) 4 / (c) 53 / 帰属不能 0 も
+  baseline 側から独立に再現した。
+- **台帳化 (2026-08-19)**: 受入条件 (c) を
+  [`docs/development/validation/ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
+  で満たした。`workspace-expected-failures.txt` と同じ `<binary-id> <test-name>` の粒度で
+  117 件すべてを分類つきで並べ、`#[ignore]` の理由文字列も併記してある。
+  **`scripts/ci/check-workspace-baseline.sh` の入力にはしていない** — 非 ignored lane の
+  baseline へ混ぜると「実測に現れない expected」として必ず非 0 になるためで、
+  自動検証は付いていない。ここは満たせなかった点として明示しておく。
+- **本 issue の pin 自体は未修正**: `(aarch64-selfhost-helper-trailer-size 10)` の
+  期待値 `2520` は陳腐化したままである。洗い出し (`STALE-PIN-01`) の受入条件は
+  「個々の pin の期待値更新」を範囲外としていたので、更新は `STALE-PIN-02` が扱う。
+  なお **pin 側の陳腐化と確定しているのは本 issue の 1 件だけ**である。
+  同じ (c) 53 件に含まれる `..._x86_function_size_matches_generated_length_diagnostic` と
+  `..._x86_int_to_string_import_sets_rdi` は、panic message を読むと数値 pin の陳腐化ではなく
+  **実装側の欠陥を検出している可能性が高い**ため、`STALE-PIN-03` で裁定してから扱う。
+  「(c) に入った = pin が古い」と一括りにしない。
 - **発見の経緯**: `NATIVE-ROOT-01` (aarch64 root_pop の空 stack ガード) の回帰確認で
   `selfhost_native_stage_chain` の `--ignored` lane を通したときに検出した。
   `NATIVE-ROOT-01` の変更とは無関係であることは上記の算術で確定している
