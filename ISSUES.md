@@ -160,6 +160,7 @@
 | [I-25](#i-25) | `NativeCodegen.ls` に呼び出し元 0 の defn が 64 個。うち 1 群は使用中の実装と乖離している | 低-中 | open | -- |
 | [I-26](#i-26) | x86 lane は helper trailer の補正を持たず、`x86-selfhost-helper-trailer-size` は呼び出し元 0 のまま | 中 | open | -- |
 | [I-27](#i-27) | x86 native の hot path で user call を挟むと local/引数が壊れる。回避策だけが test に pin され、欠陥そのものが台帳に無い | 中 | open | -- |
+| [I-28](#i-28) | x86 native の import 呼び出しが引数を rdi へ載せず、int-to-string helper が caller のゴミを読む | 中-高 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -1415,6 +1416,30 @@
   `..._x86_int_to_string_import_sets_rdi` は、panic message を読むと数値 pin の陳腐化ではなく
   **実装側の欠陥を検出している可能性が高い**ため、`STALE-PIN-03` で裁定してから扱う。
   「(c) に入った = pin が古い」と一括りにしない。
+- **`STALE-PIN-03` の裁定 (2026-08-19)**: 上で保留した 2 件について、
+  **実装と test のどちらが正しいかを両方とも確定させた。結論は 1 件ずつ逆である。**
+  - `..._x86_int_to_string_import_sets_rdi` — **実装側の欠陥**。`I-28` として起票した。
+  - `..._x86_function_size_matches_generated_length_diagnostic` — **test の harness が陳腐化**。
+    診断が出す `777000` レコードは `idx=3, opcode=41 (if), operand=0, depth=1, expected=11, actual=8`
+    で、差 `11 - 8 = 3` は `native-drop-bundle-size-x86(1)` と**厳密に一致**する。
+    サイズモデル `native-conditional-control-instr-size-x86(depth) = 8 + drop(depth)` は
+    実経路 (`append-control-if-instr-x86` -> `emit-control-if-bundle-x86`、`:11975-11978`) と
+    整合しており、食い違うのは **harness が bundle 分割前の
+    `emit-control-instr-x86` を呼んでいるから**である
+    (`selfhost_native_stage_chain.rs:43891`)。
+    同じ診断の関数レベル出力が `expected-size 466 == actual-size 466` /
+    `expected-start 0 == actual-start 0` であり、**トリガは instr-status のみ**だったことが
+    これを裏付ける。日付も一致する — harness は `3eae652c` (2026-05-11)、
+    bundle 分割は `4bd9ee9f` (2026-07-15) で、harness の方が 2 ヶ月古い。
+  - **production の legacy 経路は欠陥ではない**ことも確認した。
+    `emit-native` -> `generate-native` -> `generate-native-x86-64` -> `generate-native-instr-loop-x86`
+    -> `emit-control-instr-x86` は非 bundle だが、offset 側も
+    `collect-native-offsets-x86` -> `native-plain-instr-size-x86` (drop bundle を含まない) を使うため
+    **内部整合している**。bundle 経路も `collect-native-bundle-offsets-x86` ->
+    `native-instr-size-x86` で整合する。**両者を混ぜているのは harness だけ**である。
+  - 裁定は cargo 非依存で閉じた (診断値は `STALE-PIN-02` の run で取得済み、
+    残りはソース読解のみ)。**harness の修正は含めない** — `TODO.md` の
+    `STALE-HARNESS-01` が持つ。
 - **発見の経緯**: `NATIVE-ROOT-01` (aarch64 root_pop の空 stack ガード) の回帰確認で
   `selfhost_native_stage_chain` の `--ignored` lane を通したときに検出した。
   `NATIVE-ROOT-01` の変更とは無関係であることは上記の算術で確定している
@@ -1765,6 +1790,47 @@
   I-07 (rooting guard の未完)、I-21 (x86-64 の root API 未適合)、DOC-07 (後追い更新)、
   DOC-09 (原因記録の消失)、
   `docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md` (却下 27 案)。
+
+---
+
+<a id="i-28"></a>
+### I-28: x86 native の import 呼び出しが引数を rdi へ載せず、int-to-string helper が caller のゴミを読む
+
+- **影響度**: 中-高 / **状態**: open / **発見**: 2026-08-19 (`STALE-PIN-03` の裁定から)
+- **内容**: `(int-to-string 42)` を x86-64 native で codegen すると、生成される call site は
+  **引数を rdi へ移さない**。helper 側は rdi から読むので、変換されるのは
+  caller のレジスタに偶然残っていた値である。
+- **裁定**: **実装側が誤り。test は陳腐化していない。**
+  `test_e2e_selfhost_x86_int_to_string_import_sets_rdi`
+  (`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:20364`) は
+  `48 89 c7 51 e8 .. .. .. .. 59` (= `mov rdi,rax; push rcx; call rel32; pop rcx`) を
+  entry から 128 byte の窓で探し、見つからずに落ちている。
+- **証拠 (cargo 非依存。`NativeCodegen.ls` の byte リテラル復元のみで閉じる)**:
+
+  | # | 位置 | 事実 |
+  |---|---|---|
+  | 1 | `:10365` `emit-x86-selfhost-int-to-string-helper` | 40 個の `append-encoded-u32-rooted` リテラルを LE 復元すると先頭は `41 56 53 48 89 fb 4d 8b 16 ...` = `push r14; push rbx; mov rbx, rdi; ...`。**helper は引数を rdi から読む** |
+  | 2 | `:10968-10986` `codegen-x86-non-one-arg-call-bundle` | `target-param-count = 0` かつ `current-depth = 1` の分岐は `(emit-push-rax) ++ call-rel-bytes ++ (emit-pop-rcx)` = `50 e8 .. .. .. .. 59`。**観測バイト列と一致し、rdi へは何も書かない** |
+  | 3 | `:7179-7197` `emit-one-arg-call-x86-core-with-call-bytes` | `mov-rdi` ++ `push-rcx` ++ `call-rel` ++ `pop-rcx`。**test が要求する列はこの経路の出力そのもの**であり、test 側に古い定数は 1 つも無い |
+
+  1 と 2 から「helper が読む register を call site が書かない」が確定し、
+  3 から「test の期待は現在の実装内に存在する正しい呼び出し規約である」が確定する。
+  したがって 2 つの候補 — pin の陳腐化 / 別系統だが正しい規約 — はどちらも排除される。
+- **候補となる根本原因 (未確定)**: import が `target-param-count = 0` と見えている理由は 2 つある。
+  **どちらが効いているかは native 実行なしには切り分けられないので、ここでは確定させない。**
+  - (a) **`function-metas` の添字が生 operand**: `:11056-11064` は
+    `(vector-get function-metas (ref-get operand-ref))` で meta を引く一方、
+    `function-starts` は `(- operand import-count)` で引いている。
+    import の operand で meta を引くと **別の defined function の meta** が返る。
+  - (b) **meta の param-count が常に 0**: `wrap-ir-functions-as-meta-loop` (`:20577-20585`) は
+    全関数に対し `(make-native-function-meta 0 0 ir-func)` を作る。
+    この経路を通った functions は param-count を持たない。
+- **なぜ気付かれなかったか**: `I-23` と同じ構造である。本 test は `#[ignore]` で
+  `--ignored` lane からしか走らず、CI 自動実行は 2026-07-12 から停止している (`I-19`)。
+  非 ignored lane の baseline (`workspace-expected-failures.txt`) にも載らない。
+- **含めない範囲**: 修正そのもの。`TODO.md` の `NATIVE-IMPORT-ABI-01` が持つ。
+- **関連**: I-23 (裁定の親)、I-27 (同じ x86 call site 周辺の値破壊)、I-19 (CI 停止)、
+  I-21 (x86-64 の root API 未適合)、I-25 (呼び出し元 0 の defn 棚卸し)。
 
 ---
 

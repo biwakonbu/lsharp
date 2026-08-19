@@ -800,18 +800,43 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: x86-64 の root API 実装そのもの (`NATIVE-ROOT-02`)、
   GC 導入 (`NATIVE-HEAP-01/02`)。拡張方式 (mmap 再確保か倍々か) は実装時に決めてよい
   (契約は「動的であること」までしか定めていない)。
-- [ ] `STALE-PIN-03` 数値 pin ではない 2 件の FAIL がどちら側の陳腐化か裁定する — Issue `I-23`。
-  `STALE-PIN-01` の洗い出しで残った 2 件は、**pin の更新で済むと決めつけてはならない**。
-  - `test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic`
-    — `assert_eq!` だが `Some(777000)` vs `Some(-1)`。`-1` は「mismatch 無し」の sentinel で、
-    `777000` は診断が実際に mismatch を検出した値。**pin が古いのではなく、
-    実装側に function size mismatch が現存している可能性が高い。**
-  - `test_e2e_selfhost_x86_int_to_string_import_sets_rdi` — `assert!` で emit された byte 列を
-    検査しており、数値 pin ではない。「rax の整数引数を rdi へ移してから push/call/pop する」
-    という**挙動の要求**が満たされていない。
-  受入条件は 2 件それぞれについて (1) 実装と test のどちらが正しいかを根拠つきで決め、
-  (2) 実装側が誤りなら `ISSUES.md` に採番して起票すること。
-  **含めない範囲**: 実装の修正そのもの (起票後に別項目)。
+- [ ] `NATIVE-IMPORT-ABI-01` x86 native の import 呼び出しが引数を rdi へ載せない欠陥を直す —
+  Issue `I-28`。`STALE-PIN-03` の裁定で **実装側の欠陥**と確定した。
+  helper (`NativeCodegen.ls:10365`) は `mov rbx, rdi` で引数を rdi から読むが、
+  call site は `codegen-x86-non-one-arg-call-bundle` の `target-param-count = 0` /
+  `current-depth = 1` 分岐 (`:10968-10986`) に落ちて `push rax; call; pop rcx` しか出さない。
+  正しい列は `emit-one-arg-call-x86-core-with-call-bytes` (`:7179-7197`) が既に持っている。
+  **受入条件**: `test_e2e_selfhost_x86_int_to_string_import_sets_rdi` が GREEN になり、
+  かつ**なぜ import の param-count が 0 に見えていたかを根拠つきで確定させる**こと。
+  候補は `I-28` の (a) `function-metas` を生 operand で引いている (`:11056-11064`。
+  `function-starts` は `(- operand import-count)`) / (b) `wrap-ir-functions-as-meta-loop`
+  (`:20577-20585`) が全関数に param-count 0 の meta を作る、の 2 つ。
+  **期待値を実装に合わせて書き換えるのは禁止** — test は陳腐化していないと裁定済みである。
+  **含めない範囲**: `I-27` の値破壊 (別原因)、`NATIVE-ROOT-02/03`。
+  **cargo と native 実行が要る。**
+
+- [ ] `STALE-HARNESS-01` `function_size_matches_generated_length` 診断の埋め込み harness を
+  bundle 分割後の emitter へ寄せる — Issue `I-23` の `STALE-PIN-03` 裁定 [B]。
+  `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:43891` の `check-instr-sizes` は
+  サイズを `native-instr-size-x86` (drop bundle 込み) で見積もりながら、実バイト列を
+  bundle 分割前の `emit-control-instr-x86` で作っている。実経路
+  (`append-control-if-instr-x86` -> `emit-control-if-bundle-x86`) と揃えるなら
+  `emit-control-instr-bundle-x86 ir meta offsets idx frame-base-slot-count depth` を呼ぶ
+  (両変数とも `check-instr-sizes` のスコープに既にある)。
+  **受入条件**: (1) `..._representative_x86_function_size_matches_generated_length_diagnostic` が
+  `Some(-1)` を返すこと、(2) 修正後も**診断は最初の mismatch で止まる**ので、
+  1 回 GREEN を見て終わりにせず、残る mismatch が無いことまで確認すること、
+  (3) `emit-control-instr-bundle-x86` が opcode 80/81/83 について実ループ (`:11356`) の
+  per-opcode append と同じ列を出すことを確認すること。
+  **含めない範囲**: production の legacy 非 bundle 経路
+  (`generate-native-instr-loop-x86`。offset 側も `native-plain-instr-size-x86` を使うので
+  内部整合しており、欠陥ではないと確認済み)、
+  `test_linux_x86_metadata_replays_control_if_control_loop_single_row` (`:8257`。
+  production `:12994` へのソース文字列 pin であり本件と無関係)。
+  **同族 3 件**: `ignored-lane-expected-failures.txt` の `:135` / `:136` は Lima VM 依存で
+  未実測の同族候補、`:189` が裁定済みの本体。加えて
+  `test_e2e_native_aarch64_map_insert_instr_size_matches_emitted_length` (`:16762`、
+  harness `:18007`) が同じ書き方をしている。**行の削除は GREEN が出てから。**
   **cargo が要る。**
 - [ ] `IGNLANE-01` ignored lane の台帳を `main` 実体で再測定する — Issue `I-23`。
   `ignored-lane-expected-failures.txt` の 117 件は merge 前の worktree HEAD `8a20cfe2` で
@@ -825,7 +850,8 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
     79 件が bundle を組む系である。サイズ・オフセットを pin する assertion のずれは排除できない。
   受入条件は (1) `main` で `--ignored` lane を 615 件完走させ (完走判定は宣言数 == 結果行ユニーク数)、
   (2) 台帳との差分 (新規 FAIL / 解消 / 未測定 1 件の帰趨) を台帳ヘッダへ書き戻すこと。
-  **含めない範囲**: 個々の FAIL の修正 (`STALE-PIN-03` が持つ。`STALE-PIN-02` は完了済み)、
+  **含めない範囲**: 個々の FAIL の修正 (`NATIVE-IMPORT-ABI-01` / `STALE-HARNESS-01` が持つ。
+  `STALE-PIN-02` / `STALE-PIN-03` は完了済み)、
   Lima 依存 60 件・env 依存 4 件の到達可能化、CI 再開 (`I-19`)。
   **cargo が要る。5 時間かかるので `os.setsid()` で切り離して回すこと** (前回 2 回のうち
   1 回はハーネスに 328/614 で停止された)。

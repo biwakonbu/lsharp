@@ -71,7 +71,30 @@
 #       診断が実際に mismatch を検出している側である。
 #     - ..._x86_int_to_string_import_sets_rdi は assert! で emit byte 列を検査しており、
 #       数値 pin ではなく挙動の要求。
-#   どちら側が正しいかの裁定は TODO.md の STALE-PIN-03 が扱う。
+#
+#   裁定 (2026-08-19, STALE-PIN-03)。結論は 1 件ずつ逆になった。
+#     [A] ..._x86_int_to_string_import_sets_rdi -> 実装側の欠陥。ISSUES.md I-28 として起票。
+#         helper emit-x86-selfhost-int-to-string-helper (NativeCodegen.ls:10365) は
+#         mov rbx, rdi で引数を rdi から読むが、生成される call site は
+#         codegen-x86-non-one-arg-call-bundle の param-count=0 / depth=1 分岐
+#         (:10968-10986) で push rax; call; pop rcx を出すだけで rdi へ書かない。
+#         test が要求する mov rdi,rax; push rcx; call; pop rcx は
+#         emit-one-arg-call-x86-core-with-call-bytes (:7179-7197) の出力そのものであり、
+#         test 側に古い定数は 1 つも無い。修正は TODO.md NATIVE-IMPORT-ABI-01。
+#     [B] ..._x86_function_size_matches_generated_length_diagnostic -> test harness の陳腐化。
+#         診断は idx=3 opcode=41(if) operand=0 depth=1 expected=11 actual=8 を出し、
+#         差 3 は native-drop-bundle-size-x86(1) と厳密に一致する。
+#         サイズモデル (8 + drop) は実経路 append-control-if-instr-x86 ->
+#         emit-control-if-bundle-x86 と整合しており、食い違うのは harness
+#         (selfhost_native_stage_chain.rs:43891) が bundle 分割前の
+#         emit-control-instr-x86 を呼ぶからである。harness は 3eae652c (2026-05-11)、
+#         bundle 分割は 4bd9ee9f (2026-07-15) で harness の方が 2 ヶ月古い。
+#         同じ診断の関数レベル出力は expected-size 466 == actual-size 466 で、
+#         トリガは instr-status のみだった。修正は TODO.md STALE-HARNESS-01。
+#         **[B] の同族が本一覧に 3 件ある** (下記 [c] の 3 行に注記した)。うち
+#         linux_x86 の 2 件は Lima VM 依存で本裁定の実測は取れておらず、同族候補どまり。
+#
+#   **裁定は行の削除理由にならない。** 116 件は GREEN が出た時点でのみ減らす。
 
 # ---- [a] Lima VM 依存 (VM lsharp-linux-x86 が Stopped) : 60 件 ----
 lsharp-wasm::e2e test_e2e_linux_x86_actual_body_size_metadata_recursive_call_targets_self  # diagnostic: V2-13a-5 Linux x86 body-size recursive user-call target
@@ -132,8 +155,8 @@ lsharp-wasm::e2e test_e2e_native_linux_x86_host_generates_zero_arg_append_four_a
 lsharp-wasm::e2e test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_app_cli_bundle
 lsharp-wasm::e2e test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_test_runner_metadata_probe_bundle
 lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_entry_call_offsets_diagnostic
-lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_function_size_matches_generated_length_diagnostic
-lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_segmented_function_size_matches_generated_length_diagnostic
+lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_function_size_matches_generated_length_diagnostic  # STALE-PIN-03 [B] の同族候補。Lima VM 依存のため未実測
+lsharp-wasm::e2e test_e2e_selfhost_main_linux_x86_actual_seed_segmented_function_size_matches_generated_length_diagnostic  # STALE-PIN-03 [B] の同族候補。Lima VM 依存のため未実測
 
 # ---- [b] LSHARP_NATIVE_* env 依存 (env 未設定) : 4 件 ----
 lsharp-wasm::e2e test_e2e_native_macos_aarch64_actual_app_cli_release_program
@@ -186,11 +209,11 @@ lsharp-wasm::e2e test_e2e_selfhost_main_representative_read_file_helper_preserve
 lsharp-wasm::e2e test_e2e_selfhost_main_representative_recomputed_wrapper_code_latest_global_window_is_clean
 lsharp-wasm::e2e test_e2e_selfhost_main_representative_string_concat_helper_preserves_current_global_window
 lsharp-wasm::e2e test_e2e_selfhost_main_representative_string_concat_helper_preserves_later_global_window
-lsharp-wasm::e2e test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic
+lsharp-wasm::e2e test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic  # STALE-PIN-03 [B] 裁定済: test harness が陳腐化 (:43891)。修正は STALE-HARNESS-01
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_elf_object_only
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_aarch64_only
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_only
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_imported_parse_int_digits_single_char_only
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_loop_last_char_only
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_seed_argv_probe  # diagnostic: inspect load-imports argv probe with actual seed
-lsharp-wasm::e2e test_e2e_selfhost_x86_int_to_string_import_sets_rdi  # 完全な selfhost harness の型推論を要するため、Linux source-file smoke で実行検証する
+lsharp-wasm::e2e test_e2e_selfhost_x86_int_to_string_import_sets_rdi  # 完全な selfhost harness の型推論を要するため、Linux source-file smoke で実行検証する。STALE-PIN-03 [A] 裁定済: 実装側の欠陥 = ISSUES.md I-28
