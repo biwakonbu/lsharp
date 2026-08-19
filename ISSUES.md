@@ -173,6 +173,7 @@
 | [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | resolved | imp-02 |
 | [DOC-07](#doc-07) | ドキュメント更新が実装の後追いになり、依頼駆動でしか走らない | 中 | in-design | [doc-sync rule](.claude/rules/doc-sync.md) |
 | [DOC-08](#doc-08) | 陳腐化した記述と重複節 (legacy-rust-bootstrap README / TODO の v0.3 節) | 低-中 | resolved | -- |
+| [DOC-09](#doc-09) | 完了 TODO を削除する際に根拠が ADR へ移されず、原因究明の記録ごと消えている | 中 | open | -- |
 
 ---
 
@@ -1666,13 +1667,30 @@
   直前の stage2 entry (`opcode=40 target-param-count=4`) が `call-rel-bytes` を失って
   cursor を崩す下流症状だった**と書き残している。この記述は後の `TODO.md` 整理で
   失われており、現在の `TODO.md` には残っていない。
+- **同じ class の後続事例 (2026-08-19 に git 履歴から追加)**: 「native 実行時に local /
+  引数 / ref が別の値に化ける」現象は 2026-05〜08 に繰り返し現れ、**毎回 L# ソース側で
+  回避されている**。回避の形は 3 通りあるが、症状は同じである。
+
+  | 事例 | 日付 | 観測 | 回避 |
+  |---|---|---|---|
+  | 本エントリの 5 件 | 05-17 / 05-23 | hot path の user call を跨いで値が壊れる | wrapper を呼ばず inline 展開 / `ref-new` + `root_push` |
+  | `f5fe89bb` register state ref shadowing | 06-07 | 同一 function 内の branch 間で同名 `state-ref` が shadow し、`ref-get` が古い branch の local 6 を読む | branch ごとに別名の binding へ分離 |
+  | `7f9fd01c` defn body branch shadowing | 06-15 | **stage2-debug の function 1313 disassembly で `[rbp-0x78]` に `local.set` した直後、`body` の `local.get` が `[rbp-0x70]` を読んでいる** | branch 固有の local 名へ変更 |
+  | `50a2ad3c` one-argument builtin inference | 08-03 | `infer-apply-legacy-raw` の 1 引数分岐で **未使用の外側束縛が native local slot を衝突させる** (`TODO.md` の `V2-16b` に記録) | 当該分岐の束縛を整理 (`TypeInferApply.ls` のみ 1 ファイル修正) |
+
+  `7f9fd01c` の disassembly は「root / call の問題ではなく **selfhost lowering の local slot
+  解決の取り違え**」と明記しており、これが現時点で最も直接的な実測である。
+  **いずれの事例も lowering 側は直っておらず、呼び出し側の L# を書き換えて避けているだけ**である。
 - **未確定 (cargo が要る)**: 根本原因の特定。候補は
   (a) x86 の register/stack window 割り当てが呼び出しを跨いで caller の slot を潰す、
   (b) ref allocation が呼び出し先で走り caller の未 root な ref を無効化する
-  (`:12364` の assertion は root 順序を pin しているので、こちらの筋もある)。
-  **`b9d5d4e5` の修正が「値を `ref-new` して `root_push` する」だったことは (b) を支持する**
-  が、これは 5 件中 1 件の実測にすぎず、残り 4 件が同一原因かは未確認。
-  **どちらかを決めるには native 実行が要るため、本エントリでは判定しない。**
+  (`:12364` の assertion は root 順序を pin しているので、こちらの筋もある)、
+  (c) **selfhost lowering が同一 function 内で local slot を取り違える** (分岐間の同名束縛の
+  shadow、分岐内の未使用な外側束縛による衝突)。
+  `b9d5d4e5` の修正が「値を `ref-new` して `root_push` する」だったことは (b) を、
+  上表の 3 事例は (c) を支持する。**(c) だけが disassembly レベルの実測を持つ。**
+  ただし本エントリの 5 件が (c) と同一原因かは未確認 (5 件は上表の他 3 件より 1〜3 ヶ月古い)。
+  **判定には native 実行が要るため、本エントリでは決めない。**
 - **関連**: I-26 (同じ x86 lane の未接続)、I-25 (この 7 件を含む棚卸し)、
   I-07 (rooting guard の未完)、I-21 (x86-64 の root API 未適合)、DOC-07 (後追い更新)。
 
@@ -1871,6 +1889,36 @@
   「重複だ」と判断してはならない。
 - **根拠**: 2026-08-16 実測 (Track 0 調査の副産物)。是正の実施も同日。
 - **関連**: DOC-05 (正本の二重管理リスク)。
+
+<a id="doc-09"></a>
+### DOC-09: 完了 TODO を削除する際に根拠が ADR へ移されず、原因究明の記録ごと消えている
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-19 (`I-27` の由来調査から)
+- **内容**: `TODO.md` は「未完了タスクだけを持つ」正本であり、完了項目は
+  **ADR / 運用記録へ移してから削除する**と `.claude/rules/doc-sync.md` が定めている。
+  実際には移送されず削除だけが行われた実例があり、そこには
+  **native 実行時の値破壊の原因究明の記録**が含まれていた。
+- **根拠**: `0bd8bd47` 「docs: keep active-only TODO backlog」(2026-07-25) は
+  `TODO.md` から **1,492 行**を削除したが、同 commit は `docs/adr/` を 1 ファイルも
+  追加・変更していない (`git show --stat 0bd8bd47`)。移送先が存在しない。
+
+  消えた内容の具体例が `b9d5d4e5` (2026-05-23) の追加進捗である。commit body は空だが
+  `TODO.md` 側に **「`map-new depth=1` の bad rel32 target は、直前の stage2 entry
+  (`opcode=40 target-param-count=4`) が `call-rel-bytes` を失って cursor を崩す下流症状だった」**
+  という原因の記述と、それを突き止めた Rust 側 metadata 診断の手順が書かれていた。
+  現在の `TODO.md` を `grep` しても残っておらず (`map-new-four-arg-relref-full-v2` 0 hit)、
+  ADR にも無い。**`git log -S` で掘らない限り到達できない状態**になっている。
+- **なぜ問題か**: `DOC-07` は「ドキュメントが後追いになる」問題を扱うが、これは逆で
+  **一度は正しく書かれた知見が、正本整理の過程で失われる**という別種の損失である。
+  後追いは遅れるだけだが、こちらは書いた分が消えるので、同じ調査を後からやり直すことになる。
+  実際 `I-27` の起票時、5 件の否定 assertion のうち 1 件だけ原因が判っていたのに、
+  台帳からは「原因不明」に見えていた。
+- **どうするか**: `TODO.md` の大量削除を行う前に、削除対象の中から
+  「実測値」「原因の特定」「却下した案とその理由」を含む行を抽出し、ADR へ移す。
+  今回の `0bd8bd47` については、削除された 1,492 行のうち救出すべき記述が
+  他にどれだけあるかが未確認である。`DOC-09-01` として棚卸しする。
+- **関連**: DOC-07 (後追い更新)、DOC-05 (二重管理)、I-27 (この損失で原因不明に見えていた件)、
+  `.claude/rules/doc-sync.md` (「ADR / 運用記録へ移してから」の正本)。
 
 ---
 

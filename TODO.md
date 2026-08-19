@@ -716,12 +716,15 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
 - [ ] `NATIVE-INLINE-01` x86 hot path の「user call を挟むな」制約の根拠を台帳へ起こす — Issue `I-27`。
   x86 codegen の 5 箇所で「wrapper を呼ばずに inline 展開する」ことが test の否定 assertion に
   よって pin されているが、**なぜ user call で壊れるのかはどこにも書かれていない**。
-  導入は 2026-05-17 の `361d0d99` (`wip:` 本文なし、5,391 insertions)。
+  導入は 4 件が 2026-05-17 の `361d0d99` (`wip:` 本文なし、5,391 insertions)、
+  1 件が 2026-05-23 の `b9d5d4e5`。
   **受入条件**: (1) 最小再現を作る — hot path の 1 箇所を wrapper 呼び出しへ戻し、
   native 実行で値が壊れることを実測する。壊れないなら制約が既に陳腐化しているので、
   その事実を `I-27` へ書いて否定 assertion 側を畳む。
-  (2) 壊れるなら原因が register/stack window か ref rooting かを判別する
-  (`I-27` の候補 (a)/(b))。(3) いずれの結果でも `I-27` へ書き戻し、
+  (2) 壊れるなら原因が register/stack window か ref rooting か
+  **selfhost lowering の local slot 取り違え**かを判別する (`I-27` の候補 (a)/(b)/(c))。
+  **(c) を先に当たること** — `7f9fd01c` が disassembly (`[rbp-0x78]` へ書いて
+  `[rbp-0x70]` を読む) で実測しており、3 候補のうち唯一の直接証拠である。(3) いずれの結果でも `I-27` へ書き戻し、
   回避形が要るなら **assertion message ではなく `NativeCodegen.ls` のコメントに**
   理由を置く。test が唯一の記録である状態を解消するのが本項目の目的である。
   **含めない範囲**: 根本原因の**修正**。判別と記録までで閉じる。
@@ -729,7 +732,22 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   また回避前の 7 defn (`x86-function-emit-layout-*` 4 件、`native-call-rel-x86`、
   `emit-map-new-bundle-x86`、`emit-four-arg-call-x86-core`) の削除も含めない —
   削除しても否定 assertion は通るが、理由の記録先が決まるまで消さない。
-  **cargo と native 実行が要る。** cargo 非依存でできるのは本項目の起票までである。
+  **cargo と native 実行が要る。** cargo 非依存でできるのは起票と、
+  2026-08-19 に実施した後続事例 3 件の履歴突き合わせ (`I-27` の表) までである。
+
+- [ ] `DOC-09-01` `0bd8bd47` が `TODO.md` から削除した 1,492 行を棚卸しし、救出すべき記述を
+  ADR へ移す — Issue `DOC-09`。同 commit は `docs/adr/` を 1 ファイルも触っておらず、
+  移送先が存在しないまま削除だけが行われた。実害の 1 例は `b9d5d4e5` の追加進捗で、
+  native 値破壊の**原因の特定**が書かれていたのに現在の正本からは到達できない
+  (`I-27` 起票時に「原因不明」に見えていた)。
+  **受入条件**: (1) `git show 0bd8bd47 -- TODO.md` の削除行から
+  「実測値」「原因の特定」「却下した案とその理由」を含むものを抽出して一覧にする。
+  (2) 救出対象を主題ごとに既存 ADR へ追記するか、新規 ADR を起こす。
+  移送先が決まらないものは移送しない理由を `DOC-09` へ書く。
+  (3) 今後の大量削除で同じことが起きないよう、手順を `.claude/skills/doc-sync/SKILL.md` へ足す。
+  **含めない範囲**: 削除された項目の**再開**。あくまで記述の移送であり、
+  完了扱いになった作業を掘り返すものではない。`TODO.md` へ項目を戻さない。
+  **cargo 非依存。** git 履歴の読解と docs の編集だけで閉じる。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される
