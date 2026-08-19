@@ -1436,6 +1436,8 @@
 - **影響度**: 低-中 / **状態**: open
 - **内容**: `selfhost/src/Backend/Native/NativeCodegen.ls` (20,937 行 / 1,382 defn) のうち
   **64 defn / 449 行が selfhost 全体から一度も呼ばれない**。
+  行数は「その `defn` 行から次の `defn` 行の直前まで」で数えている (間の空行・コメントを含む)。
+  449 / 282 / 167 はいずれもこの同一方式による実測で、449 = 282 + 167 が成り立つ。
   最初は `string-concat-helper-chunk1`〜`chunk4` の 4 つだけを見つけて「4 つ」と書いたが、
   `selfhost/src` 全体を走査すると 64 個あった。内訳は 3 種類に分かれる。
 
@@ -1462,11 +1464,17 @@
   | 区分 | 件数 | 削除したら | 例 |
   |---|---|---|---|
   | test からも参照なし | 40 | 壊れない | `reg-rcx`、chunk1〜4、`emit-aarch64-mov-x0-x1` |
-  | test の埋め込み L# スニペットが**呼ぶ** | 16 | **壊れる** | `emit-native-function-meta-bundle` (138 呼び出し)、`x86-selfhost-helper-trailer-size` (8) |
+  | test が名前ごと参照する (L# 呼び出し / ソース走査表) | 16 | **壊れる** | `emit-native-function-meta-bundle` (呼び出し 138)、`x86-selfhost-helper-trailer-size` (呼び出し 7 + 走査表 1) |
   | ソース文字列 assertion だけ | 8 | 7 件は壊れない (否定 assertion `!body.contains(...)` のため)。`compile-and-run-native` の 1 件だけ肯定 assertion で壊れる | `x86-function-emit-layout-*` 4 件 |
 
   つまり **削除が test を壊さないのは 47 個、壊すのは 17 個**である。
   「未参照だから消してよい」と `.ls` の走査結果だけで判断すると 17 件で転ぶ。
+
+  参照の種類は 3 つある。**呼び出し**と **assertion** に加え、`("<name>", <上限>)` の形で
+  Rust 側の走査表に名前が載っているものがある (ネスト深さ上限表など)。これは L# の呼び出しでは
+  ないが、defn が消えれば走査が空振りするので削除は同じく壊れる側に入る。
+  16 件中この形を含むのは `native-function-body-size-x86-loop` と
+  `x86-selfhost-helper-trailer-size` の 2 件。
 - **なぜ問題か**: chunk3 は heap frontier を bump するコード (`add x22, x22, x2`) を含む。
   つまり「確保系 helper を数える」「bounds check を入れる」といった作業の対象に**見えてしまう**。
   実際 `NATIVE-HEAP-01` のスコープ確定で 1 件これを拾った。生きているコードと死んでいるコードが
@@ -1549,7 +1557,7 @@
   `code-len (+ user-total (x86-selfhost-helper-trailer-size 10))` として呼んでおり、
   **test だけがこの関数を「本来の用途」で使っている**。
   従って**この関数は単純には削除できない** — `.ls` の呼び出し元は 0 だが test 側の
-  参照が 8 箇所ある (`I-25` の「test の L# スニペットが呼ぶ」16 件の 1 つ)。
+  参照が 8 箇所ある (呼び出し 7 + 走査表 1。`I-25` の「test が名前ごと参照する」16 件の 1 つ)。
   接続するか、test ごと畳むかのどちらかになる。
 - **関連**: I-23 (aarch64 側 trailer-size pin の陳腐化)、I-21 (x86-64 の root API 未適合。
   x86 lane が aarch64 に追随できていないという同じ筋)、I-25 (同じ走査で見つかった)。

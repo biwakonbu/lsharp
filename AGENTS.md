@@ -207,9 +207,9 @@ python3 scripts/native_codegen_dead_defn.py --summary  # 件数だけ
 ```
 
 `selfhost/src/**.ls` からの呼び出し元が 0 の defn を出したうえで、
-`crates/lsharp-wasm/tests/**.rs` からの参照を「埋め込み L# スニペットが呼ぶ」
+`crates/lsharp-wasm/tests/**.rs` からの参照を「L# 呼び出し」「ソース走査表への登録」
 「ソース文字列 assertion だけ」に分けて表示する。**`.ls` の走査だけで削除を決めない** —
-production 未使用でも test の L# スニペットから呼ばれている defn があり、
+production 未使用でも test から名前ごと参照されている defn があり、
 現状 64 件中 17 件がそれに当たる (`I-25`)。
 識別子は語境界で照合している。部分一致で数えると `foo-x86` が `foo-x86-with-context` を
 拾って過大計上する。

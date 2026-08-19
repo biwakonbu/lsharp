@@ -48,11 +48,18 @@ def count_ls_callers(name, ls_blobs):
 
 
 def classify_test_refs(name, test_blobs):
-    """crates test からの参照を「L# 呼び出し」と「ソース文字列 assertion」に分ける。"""
+    """crates test からの参照を 3 種に分ける。
+
+    - call      : test 内の L# スニペットが実際に呼ぶ
+    - table     : Rust の文字列リテラルとして走査表に載っている (ネスト上限表など)
+    - assertion : ソース本文への `contains()` assertion
+    """
     call = 0
+    table = 0
     assertion = 0
     negative = 0
     pattern = re.compile(rf"(?<![a-zA-Z0-9!?<>=*+/_-]){re.escape(name)}(?![a-zA-Z0-9!?<>=*+/_-])")
+    quoted = re.compile(rf'"{re.escape(name)}"')
     for lines in test_blobs.values():
         for line in lines:
             if not pattern.search(line):
@@ -61,9 +68,11 @@ def classify_test_refs(name, test_blobs):
                 assertion += 1
                 if re.search(r"!\s*[\w.]*contains\(", line) or line.lstrip().startswith("!"):
                     negative += 1
+            elif quoted.search(line):
+                table += 1
             else:
                 call += 1
-    return call, assertion, negative
+    return call, table, assertion, negative
 
 
 def main():
@@ -82,9 +91,9 @@ def main():
     for name in names:
         if count_ls_callers(name, ls_blobs) != 0:
             continue
-        call, assertion, negative = classify_test_refs(name, test_blobs)
-        if call:
-            test_called.append((name, call, assertion))
+        call, table, assertion, negative = classify_test_refs(name, test_blobs)
+        if call or table:
+            test_called.append((name, call, table, assertion))
         elif assertion:
             assert_only.append((name, assertion, negative))
         else:
@@ -94,7 +103,7 @@ def main():
     print(f"NativeCodegen.ls の defn: {len(names)}")
     print(f"selfhost/src からの呼び出し元 0: {dead}")
     print(f"  うち crates test からも参照が無い : {len(free)}")
-    print(f"  うち test の L# スニペットが呼ぶ  : {len(test_called)}  <- 削除すると test が壊れる")
+    print(f"  うち test が名前ごと参照する      : {len(test_called)}  <- 削除すると test が壊れる")
     print(f"  うちソース文字列 assertion だけ   : {len(assert_only)}")
     if summary_only:
         return
@@ -103,10 +112,16 @@ def main():
     for name in free:
         print(f"  {name}")
 
-    print("\n--- test の L# スニペットから呼ばれる ---")
-    for name, call, assertion in test_called:
-        extra = f" + assertion {assertion}" if assertion else ""
-        print(f"  {name}  (呼び出し {call}{extra})")
+    print("\n--- test が名前ごと参照する (L# 呼び出し / 走査表) ---")
+    for name, call, table, assertion in test_called:
+        parts = []
+        if call:
+            parts.append(f"呼び出し {call}")
+        if table:
+            parts.append(f"走査表 {table}")
+        if assertion:
+            parts.append(f"assertion {assertion}")
+        print(f"  {name}  ({' + '.join(parts)})")
 
     print("\n--- ソース文字列 assertion だけ ---")
     for name, assertion, negative in assert_only:
