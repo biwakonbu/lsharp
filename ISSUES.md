@@ -159,6 +159,7 @@
 | [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
 | [I-25](#i-25) | `NativeCodegen.ls` に呼び出し元 0 の defn が 64 個。うち 1 群は使用中の実装と乖離している | 低-中 | open | -- |
 | [I-26](#i-26) | x86 lane は helper trailer の補正を持たず、`x86-selfhost-helper-trailer-size` は呼び出し元 0 のまま | 中 | open | -- |
+| [I-27](#i-27) | x86 native の hot path で user call を挟むと local/引数が壊れる。回避策だけが test に pin され、欠陥そのものが台帳に無い | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -1470,6 +1471,15 @@
   つまり **削除が test を壊さないのは 47 個、壊すのは 17 個**である。
   「未参照だから消してよい」と `.ls` の走査結果だけで判断すると 17 件で転ぶ。
 
+  **「assertion だけ」8 件のうち 7 件は移行残りではない (2026-08-19 に訂正)。**
+  否定 assertion の中身は「この defn を hot path で呼ぶな」であり、
+  呼ばれないこと自体が pin された仕様である (`x86-function-emit-layout-*` 4 件、
+  `native-call-rel-x86`、`emit-map-new-bundle-x86`、`emit-four-arg-call-x86-core`)。
+  理由は x86 native 実行時に user call を跨いで local / 引数が壊れることで、
+  **その欠陥は台帳のどこにも書かれていない**。`I-27` として起票した。
+  消しても assertion は通るが、hot path がこの書き方である理由の記録が失われるので、
+  `NATIVE-DEAD-01` / `NATIVE-INLINE-01` のどちらでも削除対象に含めない。
+
   参照の種類は 3 つある。**呼び出し**と **assertion** に加え、`("<name>", <上限>)` の形で
   Rust 側の走査表に名前が載っているものがある (ネスト深さ上限表など)。これは L# の呼び出しでは
   ないが、defn が消えれば走査が空振りするので削除は同じく壊れる側に入る。
@@ -1500,6 +1510,7 @@
   その入力が実際に発生しうるかは呼び出し側の契約に依る。判定には実行が要る。
   それまで削除しない。作業項目は `TODO.md` の `NATIVE-DEAD-01`。
 - **関連**: I-13 (同じ helper 群の bounds check 欠落)、
+  I-27 (「assertion だけ」7 件の実体。呼ばれないことが仕様である理由)、
   [native heap 回収機構 ADR](docs/adr/decisions-native-heap-reclamation.md) の
   「確保系 helper の全列挙」節。
 
@@ -1560,7 +1571,56 @@
   参照が 8 箇所ある (呼び出し 7 + 走査表 1。`I-25` の「test が名前ごと参照する」16 件の 1 つ)。
   接続するか、test ごと畳むかのどちらかになる。
 - **関連**: I-23 (aarch64 側 trailer-size pin の陳腐化)、I-21 (x86-64 の root API 未適合。
-  x86 lane が aarch64 に追随できていないという同じ筋)、I-25 (同じ走査で見つかった)。
+  x86 lane が aarch64 に追随できていないという同じ筋)、I-25 (同じ走査で見つかった)、
+  I-27 (同じ x86 lane の、台帳に無い制約)。
+
+---
+
+<a id="i-27"></a>
+### I-27: x86 native の hot path で user call を挟むと値が壊れる。回避策だけが test に pin されている
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-19 (`I-25` の未参照 defn 棚卸しから)
+- **内容**: `NativeCodegen.ls` の x86 codegen には「hot path で他の `defn` を呼んではならない」
+  という制約が複数箇所にある。理由は **native 実行時に呼び出しを跨いで local / 引数 / ref が
+  壊れるから**で、回避策は「wrapper を呼ばずに式を inline 展開する」。
+  この制約は **test の assertion message にしか書かれていない**。
+- **証拠**: `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の否定 assertion 群。
+
+  | 位置 | 呼んではならない対象 | assertion が挙げる理由 |
+  |---|---|---|
+  | `:8552` | `emit-map-new-bundle-x86` | wrapper に `rel` を渡すと native 実行時に引数が壊れる |
+  | `:8548` | `(let [rel ...])` そのもの | native 実行時に `rel` local が壊れる |
+  | `:12376` | `native-call-rel-x86` | `target-offset` local が `current-offset` に化けうる |
+  | `:12755` | `emit-four-arg-call-x86-core` (rel 版) | 同上。`-with-rel-ref` 版を使うこと |
+  | `:14386` | `x86-function-emit-layout-*` 4 accessor | accessor を user call すると stage1 native の rel32 が壊れる |
+
+  同種の文言 (「破壊」「化けうる」「失われないよう」) は e2e 全体で **20 箇所、すべて x86**。
+  aarch64 側には 1 件も無い。
+- **なぜ問題か**: 3 つある。
+
+  1. **欠陥そのものが台帳に無い。** 記録されているのは回避策だけで、
+     「なぜ user call で壊れるのか」「今も壊れるのか」はどこにも書かれていない。
+  2. **回避前の形が defn として残り、呼び出し元 0 になっている。**
+     `I-25` の「ソース文字列 assertion だけ」8 件のうち **7 件がこれ**である
+     (4 accessor + `native-call-rel-x86` + `emit-map-new-bundle-x86` +
+     `emit-four-arg-call-x86-core`)。名前だけ見ると「移行残り」だが、実体は
+     **意図的に呼ばれない形**で、test が「呼ぶな」を pin している。
+     消しても否定 assertion は通るが、**なぜ hot path がこの書き方なのかの記録が失われる**。
+  3. **同じ罠を将来また踏む。** 制約が台帳に無いので、hot path をリファクタして
+     wrapper に括り出す変更が「読みやすくなった」として通りうる。止めるのは test だけで、
+     test message を読むまで理由が分からない。
+- **由来**: 5 件の否定 assertion はすべて 2026-05-17 の `361d0d99`
+  「wip: advance linux x86 selfhost native path」で一括導入された。
+  **commit body は空**、変更は 10 ファイル 5,391 insertions。
+  判断の根拠がコミットメッセージにすら残っていない典型例で、`DOC-07` が指す
+  「ドキュメント更新が実装の後追いになる」の実害がここに出ている。
+- **未確定 (cargo が要る)**: 根本原因の特定。候補は
+  (a) x86 の register/stack window 割り当てが呼び出しを跨いで caller の slot を潰す、
+  (b) ref allocation が呼び出し先で走り caller の未 root な ref を無効化する
+  (`:12364` の assertion は root 順序を pin しているので、こちらの筋もある)。
+  **どちらかを決めるには native 実行が要るため、本エントリでは判定しない。**
+- **関連**: I-26 (同じ x86 lane の未接続)、I-25 (この 7 件を含む棚卸し)、
+  I-07 (rooting guard の未完)、I-21 (x86-64 の root API 未適合)、DOC-07 (後追い更新)。
 
 ---
 

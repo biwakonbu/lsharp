@@ -713,6 +713,23 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `crates/lsharp-wasm/tests` に 8 箇所の参照があり、消すと test が壊れる (`I-25`)。
   test ごと畳むなら、それは本項目ではなく別途の裁定が要る。
   **含めない範囲**: `I-23` (aarch64 側 pin の陳腐化) 本体の解消。別の pin である。
+- [ ] `NATIVE-INLINE-01` x86 hot path の「user call を挟むな」制約の根拠を台帳へ起こす — Issue `I-27`。
+  x86 codegen の 5 箇所で「wrapper を呼ばずに inline 展開する」ことが test の否定 assertion に
+  よって pin されているが、**なぜ user call で壊れるのかはどこにも書かれていない**。
+  導入は 2026-05-17 の `361d0d99` (`wip:` 本文なし、5,391 insertions)。
+  **受入条件**: (1) 最小再現を作る — hot path の 1 箇所を wrapper 呼び出しへ戻し、
+  native 実行で値が壊れることを実測する。壊れないなら制約が既に陳腐化しているので、
+  その事実を `I-27` へ書いて否定 assertion 側を畳む。
+  (2) 壊れるなら原因が register/stack window か ref rooting かを判別する
+  (`I-27` の候補 (a)/(b))。(3) いずれの結果でも `I-27` へ書き戻し、
+  回避形が要るなら **assertion message ではなく `NativeCodegen.ls` のコメントに**
+  理由を置く。test が唯一の記録である状態を解消するのが本項目の目的である。
+  **含めない範囲**: 根本原因の**修正**。判別と記録までで閉じる。
+  修正は codegen の設計変更になるので別項目に切る。
+  また回避前の 7 defn (`x86-function-emit-layout-*` 4 件、`native-call-rel-x86`、
+  `emit-map-new-bundle-x86`、`emit-four-arg-call-x86-core`) の削除も含めない —
+  削除しても否定 assertion は通るが、理由の記録先が決まるまで消さない。
+  **cargo と native 実行が要る。** cargo 非依存でできるのは本項目の起票までである。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される
