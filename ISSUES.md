@@ -1300,7 +1300,7 @@
   分類は test 名 prefix ではなく関数本体を読んで行い、
   **(a) Lima VM 依存 60 件 / (b) `LSHARP_NATIVE_*` env 依存 4 件 / (c) それ以外 53 件 /
   帰属不能 0 件**。(c) 53 件のうち 37 件は `wasm trap: out of bounds memory access` で
-  representative 破損調査の harness 族に属し、23 件は
+  representative 破損調査の harness 族に属し、22 件は
   `#[ignore = "diagnostic: ..."]` と理由文字列に失敗が既知である旨が書いてある。
   数字と原因クラスタの全量は
   [root_pop 空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) の

@@ -306,7 +306,7 @@ env 依存 test を取りこぼす。そこで各 FAIL の `fn <name>(` から�
 | 1 | payload offset harness の実行失敗 | `test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layout` |
 | 1 | prefix cutoff 2545 harness の実行失敗 | `test_e2e_selfhost_main_representative_prefix_cutoff_chunk_local_bad_window_diagnostic` |
 
-53 件のうち **23 件は `#[ignore = "diagnostic: ..."]` のように失敗が既知であることを
+53 件のうち **22 件は `#[ignore = "diagnostic: ..."]` のように失敗が既知であることを
 理由文字列に書いてある**。残り 31 件は理由なしの `#[ignore]` だが、名前は
 `*_bad_window` / `*_preserves_*_global_window` と、同じ representative 破損調査の
 harness 族に属する。
