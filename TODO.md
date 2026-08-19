@@ -732,6 +732,11 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (2) 同じズレが x86 にもあるかを、末尾関数を entrypoint にした
   bundle で `function-starts` の値と実測 offset を突き合わせて確認する。
   移植が必要なら実測 layout の x86 版から要る。
+  **紛らわしい同名関数がある (2026-08-20 に確認)**: x86 側の
+  `make-x86-function-emit-layout` (`:13993`) と付随する accessor 4 本 (`:14002`-`:14011`) は
+  呼び出し元から base 値を受け取って束ねるだけの**宣言的なレコード**であって、
+  `collect-callable-actual-layout-aarch64` (`:18562`) のような**実測**ではない。
+  名前が似ているので対応物と誤認しないこと。x86 に実測 layout は雛形も存在しない。
   (3) 判断を `I-26` へ書く。補正が要るなら実装し、要らないなら capacity 計算へ接続する。
   **「削除する」は選択肢に入れない** — `.ls` の呼び出し元は 0 だが
   `crates/lsharp-wasm/tests` に 8 箇所の参照があり、消すと test が壊れる (`I-25`)。
