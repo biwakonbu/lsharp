@@ -130,4 +130,50 @@ AST 側は byte offset のまま持ち、line/col への変換は診断を組み
 
 ## Evidence
 
+### 受入条件 3 (実装前の長さ probe 確認) — 2026-08-19 に実施
+
+cargo 非依存。`selfhost/src/**.ls` の 6,458 個の defn をトップレベル括弧走査で切り出し、
+`(= tag 7)` / `(= tag 9)` / `(= ... (ast-let))` / `(= ... (ast-do))` の分岐直下から
+呼ばれる defn 81 名を候補として集め、その本文でノード風仮引数に掛かる
+`(vector-length <param>)` を全数走査した (走査窓は 600 文字の過大近似で、
+安全側に振っている)。
+
+**結論: `let` / `do` ノードの長さを条件に使う分岐は 1 箇所も無い。**
+
+- 見つかった条件付き probe 4 箇所はいずれも**別 kind の専用ハンドラ**の中にある:
+  `TypeInfer.ls:61` (var の qualified name)、`:83` (var の span 有無)、
+  `:114-115` (`infer-if`)、`:177` (`infer-ann`)。`let` / `do` ノードはこれらに届かない
+- `let` / `do` ノードに実際に掛かる `vector-length` は **2 箇所だけ**で、
+  どちらも**条件ではなく print** である:
+
+  | 位置 | 関数 | 形 |
+  |---|---|---|
+  | `Backend/Wasm/Compiler.ls:3108` | `compile-let-with-source-normal-setup-diagnostic` | `(print (vector-length node))` |
+  | `Backend/Wasm/Compiler.ls:1434` | `compile-do-with-source-normal-setup-diagnostic` | `(print (vector-length node))` |
+
+  この 2 つは `-normal-setup-diagnostic` という**閉じた複製系統**にあり
+  (`Compiler.ls` 内の非 diagnostic 関数からの呼び出しは 0 件)、
+  対応する test (`selfhost_native_stage_chain.rs:5052,5132,5257,5312`) は
+  `(print 9000000237)` / `(print 9000000243)` という**ソース文字列の包含**しか見ていない。
+  出力される数値を pin した test は無いので、span slot 追加で数値が変わっても test は壊れない。
+  ただし診断ログを目視で読む側からは値が変わって見える
+
+### `do` は可変長ノードである — 末尾 span が安全な理由
+
+`do` の shape は `[9, expr-count, expr0, expr1, ...]` で (`Linter.ls:299` の構築が実例)、
+**長さがソース依存で変わる**。したがって「末尾 pair を足す」が成立するのは
+**全消費者が `vector-length` ではなく slot 1 の `expr-count` で走査を打ち切っている**
+場合に限る。実測でこれは成り立っていた:
+`FormatterExpr.ls:245,252` / `TypeInferBlock.ls:657` / `Compiler.ls:1352,1429` /
+`Linter.ls:98` はいずれも `(vector-get node 1)` を上限に使い、`vector-length` は使わない。
+
+`let` は `make-let` (`Syntax/AST.ls:133`) が固定長 4 (`[7, name-hash, init, body]`) を作るので
+この論点は無い。
+
+**この確認だけで受入条件 3 は満たした。** 残る受入条件 1 / 2 / 4 は実装を要する。
+
+再現手順は `scripts/lint_span_probe_survey.py`。
+
+### 受入条件 1 / 2 / 4
+
 (実装後に埋める)

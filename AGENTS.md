@@ -214,6 +214,24 @@ production 未使用でも test から名前ごと参照されている defn が
 識別子は語境界で照合している。部分一致で数えると `foo-x86` が `foo-x86-with-context` を
 拾って過大計上する。
 
+### AST に slot を足す前の長さ probe 確認 (cargo 無し)
+
+```bash
+python3 scripts/lint_span_probe_survey.py     # let/do ノードに掛かる vector-length を洗い出す
+```
+
+selfhost の AST ノードは vector で、**長さそのものを判別子に使っている箇所がある**
+(`TypeInfer.ls:61` は var ノードの長さ > 5 を qualified name の有無に使う)。
+末尾に slot を足す変更は、落ちずに誤動作する形で壊れうる。
+このスクリプトは対象 kind の分岐直下から呼ばれる defn を集め、ノード風仮引数への
+`vector-length` を全数走査する。**0 件なら probe 無しと言い切れる**が、非 0 なら
+1 件ずつ人が判定する。判定の正本は
+[lint span の AST 表現 ADR](docs/adr/decisions-lint-span-ast-representation.md) の Evidence 節。
+
+現状は `let` / `do` を対象に走らせてあり、条件分岐に使われる probe は 0 件、
+print だけが 2 件という結果を記録済み。別 kind へ広げるときは
+スクリプト内の分岐パターン (`BRANCH`) を書き換える。
+
 ### Git worktree の配置と片付け
 
 - 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。

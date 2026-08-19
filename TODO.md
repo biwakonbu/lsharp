@@ -762,6 +762,14 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **追加の受入条件**: 変更対象 kind に長さ probe が無いことを実装前に grep で確認して
   ADR の Evidence へ記録する。offset → line/col 変換に単体 test を置く
   (行頭 / 行末 / 最終行 / 空行を含む)。
+  **前者は 2026-08-19 に達成した** (cargo 非依存)。`scripts/lint_span_probe_survey.py` で
+  6,458 defn を走査し、`let` / `do` の長さを**条件に使う分岐は 0 件**、
+  掛かるのは診断系統の `(print (vector-length node))` 2 箇所
+  (`Backend/Wasm/Compiler.ls:3108` / `:1434`) だけと確定した。ADR の Evidence に記録済み。
+  同時に判明した制約: **`do` は `[9, expr-count, expr0, ...]` の可変長ノード**で、
+  末尾 span が成立するのは全消費者が `vector-length` ではなく slot 1 の `expr-count` で
+  走査を打ち切っているためである (実測で成立)。この不変条件を壊す変更を同時に入れない。
+  残るのは offset → line/col の単体 test で、こちらは実装を要する。
 
   **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
