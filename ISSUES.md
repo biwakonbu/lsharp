@@ -1294,6 +1294,22 @@
   追加という機能変更で、helper trailer が伸びること自体は正しい。
   ただし**期待値を実装に合わせて書き換えるだけで済ませない** — 同じ形の pin が
   他にも眠っている可能性が高く、そちらを先に洗い出す。
+- **lane 完走の実測 (2026-08-19)**: 受入条件 (a) の
+  「`--ignored` lane を一度完走させて FAIL 集合を確定させる」を満たした。
+  **614 test / 497 passed / 117 failed / 18,756.35s**。
+  分類は test 名 prefix ではなく関数本体を読んで行い、
+  **(a) Lima VM 依存 60 件 / (b) `LSHARP_NATIVE_*` env 依存 4 件 / (c) それ以外 53 件 /
+  帰属不能 0 件**。(c) 53 件のうち 37 件は `wasm trap: out of bounds memory access` で
+  representative 破損調査の harness 族に属し、23 件は
+  `#[ignore = "diagnostic: ..."]` と理由文字列に失敗が既知である旨が書いてある。
+  数字と原因クラスタの全量は
+  [root_pop 空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) の
+  「完走後の全件結果」節が正本。
+  **1 回目の run はハーネスに 328/614 で停止されたため採用していない** —
+  走っていない 286 件を pass と区別できないためである。
+  受入条件 (b) (環境要因と真の陳腐化 pin の分離) と (c) (台帳化) は未達で、
+  特に **`origin/main` での baseline を取っていない**ので、
+  (c) 53 件が本当に恒常 FAIL なのか前後比較では確認していない。
 - **発見の経緯**: `NATIVE-ROOT-01` (aarch64 root_pop の空 stack ガード) の回帰確認で
   `selfhost_native_stage_chain` の `--ignored` lane を通したときに検出した。
   `NATIVE-ROOT-01` の変更とは無関係であることは上記の算術で確定している

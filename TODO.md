@@ -744,7 +744,7 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: x86-64 の root API 実装そのもの (`NATIVE-ROOT-02`)、
   GC 導入 (`NATIVE-HEAP-01/02`)。拡張方式 (mmap 再確保か倍々か) は実装時に決めてよい
   (契約は「動的であること」までしか定めていない)。
-- [ ] `STALE-PIN-01` `#[ignore]` lane に眠る陳腐化した数値 pin を洗い出す — Issue `I-23`。
+- [~] `STALE-PIN-01` `#[ignore]` lane に眠る陳腐化した数値 pin を洗い出す — Issue `I-23`。
   `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` が
   2026-08-03 (`1ee26eef`) から恒常 FAIL しているのに、CI 停止 (`I-19`) と
   baseline が非 ignored 限定 (`I-11`) の二重の穴でどの台帳にも載っていなかった。
@@ -753,6 +753,10 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (c) 真の陳腐化 pin を `workspace-expected-failures.txt` と同等の粒度で台帳化すること。
   **含めない範囲**: 個々の pin の期待値更新 (洗い出しの後に別項目で扱う)、
   `#[ignore]` 契約そのものの是非 (`TESTGATE-03` / `I-22`)、CI 再開 (`I-19`)。
+  **2026-08-19 に (a) を達成した** — 614 test 完走 (497 passed / 117 failed / 18,756.35s)、
+  関数本体ベースの分類で Lima 依存 60 / env 依存 4 / それ以外 53 / 帰属不能 0。
+  残るのは (b) と (c)。(b) には **`origin/main` での baseline run** が必要で、
+  今回の 117 件は変更範囲と panic message からの帰属判定にとどまる (前後比較ではない)。
 - [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
   parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
   片側だけの directive 追加は検出できる状態になった。判断と実測は

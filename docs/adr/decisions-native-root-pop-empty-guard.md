@@ -185,7 +185,7 @@ wasm backend 側の実装 (`crates/lsharp-wasm/src/wasi/root.rs`) は本変更�
 `selfhost_native_stage_chain` の `--ignored` lane 全体を実行中。
 **分母は 614 test** (runner の `running 614 tests` 行で実測)。当初 534 と書いたのは
 13 個の test 名 prefix を grep で足し上げた暫定値で、`test_e2e_linux_x86_actual_*` など
-prefix 表に無い test を取りこぼしていた。**完走後の全件結果は本節へ追記する。**
+prefix 表に無い test を取りこぼしていた。**完走した (2026-08-19)。結果は下記「完走後の全件結果」節に記す。**
 
 この lane には **本変更と無関係な恒常 FAIL が既に存在する**ことが判明した。
 
@@ -256,6 +256,81 @@ panic message は libtest が run 完了時にまとめて出すため、完走�
 
 **この 2 つを分けて書くのは、`I-23` が「実測していない数字を台帳に残すな」という
 指摘そのものだからである。** 算術だけで済ませると同じ穴を作る。
+
+### 完走後の全件結果 (2026-08-19 実測)
+
+`selfhost_native_stage_chain` の `--ignored` lane を **614 test 全件**走らせて完走させた。
+
+| 項目 | 実測値 |
+|---|---|
+| 分母 | 614 |
+| passed | 497 |
+| failed | 117 |
+| 所要 | 18,756.35s (5 時間 12 分) |
+| exit code | 101 |
+
+取得条件: worktree `/Users/biwakonbu/github/tmp/lsharp-native-root` (HEAD `8a20cfe2`)、
+`target/debug/deps/e2e-68ea5703bbb19562` を `--ignored --nocapture` で直接起動、
+`os.setsid()` で切り離した PID 90694。
+
+**1 回目の run は採用しない。** ハーネスに 328/614 の時点で停止されたため、
+走っていない 286 件を pass と区別できない。本節の数字はすべて 2 回目 (完走) のものである。
+
+#### 分類は test 名ではなく関数本体で行った
+
+`test_e2e_linux_x86_*` のような prefix で分けると、名前に x86 も lima も入っていない
+env 依存 test を取りこぼす。そこで各 FAIL の `fn <name>(` から次の `fn` までを読み、
+本体に `lima` / `linux-x86` があれば (a)、`LSHARP_NATIVE_` があれば (b)、
+どちらも無ければ (c) とした。
+
+| 分類 | 件数 | 内容 |
+|---|---|---|
+| (a) Lima VM 依存 | 60 | VM `lsharp-linux-x86` が `Stopped` のため到達不能 |
+| (b) `LSHARP_NATIVE_*` env 依存 | 4 | env 未設定のため到達不能 |
+| (c) それ以外 | 53 | 下表 |
+| 帰属不能 | 0 | -- |
+
+#### (c) 53 件の原因クラスタ
+
+| 件数 | 原因 | 代表 |
+|---|---|---|
+| 37 | `wasm trap: out of bounds memory access` | `test_e2e_selfhost_main_representative_owner_callable_isolated_*` ほか |
+| 5 | `native-stage23-pipeline-smoke-*-only expected 実行に失敗` | `test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_*` |
+| 3 | crash offset から selfhost source order への対応が合わない | `test_e2e_selfhost_main_representative_crash_offset_maps_to_rust_function` |
+| 1 | `assert left==right`: AArch64 bundle 初期容量 | `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` |
+| 1 | `assert left==right`: x86 function size mismatch | `test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic` |
+| 1 | x86 int-to-string import が rdi へ移していない | `test_e2e_selfhost_x86_int_to_string_import_sets_rdi` |
+| 1 | packed line に非 byte 値が混入 | `test_e2e_selfhost_main_representative_failing_chunk_text_is_plain_bytes` |
+| 1 | `run-main-smoke` が user function index に無い | `test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_function` |
+| 1 | argv probe が pre/post marker を出さない | `test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_seed_argv_probe` |
+| 1 | payload offset harness の実行失敗 | `test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layout` |
+| 1 | prefix cutoff 2545 harness の実行失敗 | `test_e2e_selfhost_main_representative_prefix_cutoff_chunk_local_bad_window_diagnostic` |
+
+53 件のうち **23 件は `#[ignore = "diagnostic: ..."]` のように失敗が既知であることを
+理由文字列に書いてある**。残り 31 件は理由なしの `#[ignore]` だが、名前は
+`*_bad_window` / `*_preserves_*_global_window` と、同じ representative 破損調査の
+harness 族に属する。
+
+#### 本変更由来か
+
+**本変更由来と判定できるものは 0 件。** 根拠は 2 つある。
+
+1. (c) 53 件の panic message を `root_pop` / `opcode 75` / size 表の語で検索して
+   該当したのは `bundle_initial_capacity` の 1 件だけで、これは前節のとおり
+   実測値 `[3492, 4492]` が**本変更で触っていない**定数から算出される値と一致する。
+   陳腐化の起点は `1ee26eef` (2026-08-03、read-stdin helper 追加) である。
+2. 残る 52 件はいずれも `wasm trap` / harness 実行失敗 / x86 側の assert であり、
+   本変更が触った aarch64 の `emit-root-pop-aarch64` と 2 つの size 表を経由しない。
+
+#### 満たせなかった条件 — 緩めずに書く
+
+**`origin/main` (`8475b00a`) で同じ 614 件を走らせた baseline を取っていない。**
+したがって上の「本変更由来 0 件」は、**panic message と変更範囲からの帰属判定**であって、
+**前後比較による証明ではない**。前後比較を取るには同じ 5 時間を main 側でもう一度使う必要があり、
+今回はそれをしていない。
+
+この差を埋める作業は `STALE-PIN-01` / `I-23` の受入条件 (b)
+「環境要因と真の陳腐化 pin を分離する」に含めて残す。**「実測した」とは書かない。**
 
 ### lane ごとの witness
 
