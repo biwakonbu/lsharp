@@ -17,6 +17,7 @@
 #   |---|---|---|---|---|---|
 #   | sweep2   | codex/native-root-01 8a20cfe2 | 614 | 497 | 117 | 18,756.35s |
 #   | baseline | origin/main 8475b00a          | 612 | 495 | 117 | 19,005.96s |
+#   | main     | main 35ea7c32                 | 615 | 499 | 116 | 22,210.06s |
 #
 #   **前後比較の結果 (2026-08-19)**: 積集合 612 件の上で FAIL 集合は完全に一致する。
 #   新規 FAIL 0 / 解消 0。sweep2 側にだけある 2 件は NATIVE-ROOT-01 が追加した
@@ -40,9 +41,26 @@
 #     git grep -c '^\s*#\[ignore' <rev> -- \
 #       crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs
 #
-#   **したがって下の 116 行は 8a20cfe2 時点の集合であり、main では未検証である**
-#   (実測 117 件から、修正済みの 1 件を除いた残り)。
-#   main 実体での再実行は TODO.md の IGNLANE-01 が持つ。
+#   **main 実体での再実行 (2026-08-20 / IGNLANE-01) — 下の 116 行は main でそのまま再現した。**
+#     宣言数 615 == 結果行ユニーク数 615、重複行 0 で完走判定 OK。
+#     新規 FAIL 0 / 解消 0 / 未出現 0。台帳外の結果行 499 件はすべて pass。
+#     突合は scripts/compare_ignored_lane.py。
+#
+#     したがって 8a20cfe2..main の 3 branch はこの lane に 1 件も影響を与えていない。
+#     懸念していた 5e992d52 / 1855fa0b の LspServerNav.ls 22 行削除による
+#     サイズ・オフセット assertion のずれは起きなかった。
+#     未測定だった test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value
+#     は pass で、下の一覧へ足す必要は無い。
+#
+#     取得条件: worktree /Users/biwakonbu/github/tmp/lsharp-ignlane-main の 35ea7c32 で
+#     ビルドした target/debug/deps/e2e-68ea5703bbb19562 を --ignored --nocapture で実行。
+#     35ea7c32 と main のコード差分は scripts/ の解析スクリプト 2 本だけで、
+#     test binary に入るコードは同一。Lima VM lsharp-linux-x86 は Stopped、
+#     LSHARP_NATIVE_* は全て未設定 (分類 [a] 60 件 / [b] 4 件が到達不能である前提は前回と同じ)。
+#
+#     **所要は 22,210.06s で、8a20cfe2 の 18,756.35s より 3,454s (18%) 長い。**
+#     test は 1 件しか増えていないので、差は測定機のその時の負荷であって
+#     revision 由来の退行ではない。所要そのものを回帰指標に使ってはならない。
 #
 # ---- 分類 ----
 #   test 名の prefix ではなく `fn <name>(` から次の `fn` までの**本体**を読んで分けた。

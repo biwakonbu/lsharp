@@ -373,9 +373,15 @@ regression 0)** までである。「merge 済みの全 commit に由来する�
 `NativeCodegen.ls` の 3 モジュールしか組まないので、上表の `LspServerNav.ls` の懸念は届かない。
 台帳は 117 -> 116 件になった。
 
-**満たせなかった条件: `main` 実体での lane 再実行は未実施である。** 台帳 116 件は
-`8a20cfe2` 時点の集合であり、`main` で同じ 117 件になる保証は無い。再実行は
-`TODO.md` の `IGNLANE-01` が持つ。数字を静かに直さず、範囲を狭めて書き直した。
+**当初満たせなかった条件: `main` 実体での lane 再実行。** 記録時点では台帳 116 件は
+`8a20cfe2` 時点の集合にすぎず、`main` で同じ集合になる保証が無かった。
+**2026-08-20 に `IGNLANE-01` として再実行し、この条件を満たした** —
+`main` (`35ea7c32`) で **615 test / 499 passed / 116 failed / 22,210.06s**、
+宣言数 == 結果行ユニーク数 615 / 重複 0 で完走判定 OK、
+**新規 FAIL 0 / 解消 0 / 未出現 0**。台帳 116 件は `main` でそのまま再現した。
+上表で懸念した `LspServerNav.ls` 22 行削除の影響は 1 件も出ておらず、
+未測定だった `..._root_set_keeps_shadowed_slot_during_allocating_value` は pass だった。
+実測の全量は `ISSUES.md` の `I-23` と台帳ヘッダが正本である。
 
 全 117 件の名前・分類・`#[ignore]` 理由文字列は
 [`docs/development/validation/ignored-lane-expected-failures.txt`](../development/validation/ignored-lane-expected-failures.txt)

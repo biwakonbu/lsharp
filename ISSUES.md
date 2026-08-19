@@ -1392,8 +1392,7 @@
     ずれる可能性は排除できない。
 
   分母は revision ごとに実測した (`8475b00a` 612 / `8a20cfe2` 614 / `main` 615)。
-  **`main` 実体での lane 再実行は未実施**で、これは満たせなかった条件である。
-  再実行は `TODO.md` の `IGNLANE-01` が持つ。
+  **この未検証は 2026-08-20 に解消した (下の「`main` 実体での再実行」)。**
 - **台帳化 (2026-08-19)**: 受入条件 (c) を
   [`docs/development/validation/ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   で満たした。`workspace-expected-failures.txt` と同じ `<binary-id> <test-name>` の粒度で
@@ -1401,8 +1400,33 @@
   **`scripts/ci/check-workspace-baseline.sh` の入力にはしていない** — 非 ignored lane の
   baseline へ混ぜると「実測に現れない expected」として必ず非 0 になるためで、
   自動検証は付いていない。ここは満たせなかった点として明示しておく。
-  台帳の 117 行は `8a20cfe2` 時点の集合であり、`main` では未検証である
-  (上記「比較の射程を訂正した」を参照)。
+  台帳は当初 `8a20cfe2` 時点の集合であったが、2026-08-20 に `main` 実体で
+  再実行して全 116 行を確認した (下の「`main` 実体での再実行」)。
+- **`main` 実体での再実行 (2026-08-20)** — `IGNLANE-01`。
+  **615 test / 499 passed / 116 failed / 22,210.06s**。宣言数 615 == 結果行ユニーク数 615、
+  重複行 0 で完走判定 OK。突合は `scripts/compare_ignored_lane.py`。
+
+  | 分類 | 件数 |
+  |---|---|
+  | 新規 FAIL (実測で落ちたが台帳に無い) | **0** |
+  | 解消 (台帳にあるが実測で pass) | **0** |
+  | 未出現 (台帳にあるが結果行が無い) | **0** |
+  | 台帳外の結果行 | 499 (うち FAILED **0**) |
+
+  **したがって台帳 116 件は `main` 実体でそのまま再現し、
+  `8a20cfe2..main` の 3 branch はこの lane に 1 件も影響を与えていない。**
+  懸念していた `5e992d52` / `1855fa0b` の `LspServerNav.ls` 22 行削除
+  (bundle 構成モジュール、116 件のうち 78 件が bundle を組む系) による
+  サイズ・オフセット assertion のずれは**起きなかった**。
+  未測定だった `test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value`
+  (`939e4ec9` / `TESTGATE-03` が追加) は **pass** で、台帳へ足す必要は無い。
+- **上記再実行の取得条件**: worktree `/Users/biwakonbu/github/tmp/lsharp-ignlane-main` の
+  `35ea7c32` でビルドした `target/debug/deps/e2e-68ea5703bbb19562` を
+  `--ignored --nocapture` で実行。`os.setsid()` で切り離し (6 時間強かかりハーネスの停止を受けるため)。
+  `35ea7c32` と現 `main` のコード差分は `scripts/` へ足した解析スクリプト 2 本だけで、
+  test binary に入るコードは同一である。Lima VM `lsharp-linux-x86` は Stopped、
+  `LSHARP_NATIVE_*` は全て未設定 — 分類 (a) 60 件 / (b) 4 件が到達不能である前提は
+  前回と同じである。
 - **pin を更新した (2026-08-19)**: `main` 実体で RED を確認し
   (`left: [3492, 4492]` / `right: [2520, 3520]`)、
   `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:26444` の期待値を
