@@ -1377,6 +1377,14 @@
   [dedup 単一正本化 ADR](docs/adr/decisions-lsp-dedup-single-source.md)。
   2026-08-19 に実装まで完了し、受入条件 3 件 (非 docs 参照 0 / parity test 3 本が期待値据え置きで pass /
   `Cli.ls` 経路の pin 7 件が pass) をすべて実測で満たした。
+- **`LINT-SPAN-01` の設計判断は 2026-08-19 に確定した**:
+  [lint span の AST 表現 ADR](docs/adr/decisions-lint-span-ast-representation.md)。
+  併せて「selfhost の AST は位置情報を持っていない」という当初の見立てを訂正した。
+  var / string / float / apply / if / module-decl / import-decl / type-alias は既に
+  byte offset の span を持ち、欠けているのは `let` (tag 7) と `do` (tag 9) だけである。
+  ただし AST ノードの**長さが意味の判別子として使われている** (`TypeInfer.ls:60` / `:114-115`) ため
+  一律の末尾 slot は採れず、加えて selfhost に offset → line/col 変換が存在しないので、
+  本項目は span を載せるだけでは閉じない。
 - **関連**: I-11 (baseline)、`ISSUES.md` の I-22 (同じ「規約 vs 実態」の形。
   `:1201` が本件の裁定に倣うと書いている)。
 

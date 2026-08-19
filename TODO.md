@@ -661,17 +661,25 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **この項目に含めない範囲**: 重複判定の意味論。`I-24` で rule identity を含む形に裁定済みで、
   span が精密になっても判定規則は変わらない (同一 span に別 rule が正当に並ぶため)。
   **受入条件**: 上記 2 診断が別 range を持つこと、および `I-24` の pin 2 本が引き続き pass すること。
-  **2026-08-19 に判明した前提 (項目の重さが変わる)**: 「span を投影する」だけでは終わらない。
-  **selfhost の AST はそもそも位置情報を持っていない**。`Syntax/AST.ls:133` の
-  `make-let [name-hash init-expr body-expr]` は 4 要素 `[tag name-hash init body]` を作るだけで、
-  span slot が無い。lint 側 (`Tools/Doc/DocTools.ls:714` / `:729`) が line/col に定数 1 1 を
-  渡しているのは、渡せる値が存在しないためである。parser 側には span がある
-  (`Syntax/Span.ls` / `Parser.ls:5214` の `make-diagnostic [severity code span message-hash]`) ので、
-  parse 診断だけが実 span を持つ。したがって本項目は
-  (1) AST ノードへ span を載せる (末尾 slot 追加なら既存の添字参照は壊れないが、
-  全 `make-*` 構築点と parser 側の引き渡しを触る)、(2) 側テーブルで持つ、
-  (3) lint 側でソースを再走査して近似する、のいずれかを選ぶ**設計判断を含む**。
-  着手時に ADR を書くこと。
+  **設計判断は 2026-08-19 に ADR で確定した**:
+  [lint span の AST 表現](docs/adr/decisions-lint-span-ast-representation.md)。
+  採ったのは「kind ごとに span 付き構築形を足す既存規約への追従」で、
+  却下したのは全ノード一律の末尾 slot / 側テーブル / ソース再走査による近似。
+  **旧記述の訂正**: 「selfhost の AST はそもそも位置情報を持っていない」は過度な一般化だった。
+  var / string / float / apply / if / module-decl / import-decl / type-alias は既に
+  byte offset の span を持つ。持たないのは `let` (tag 7) と `do` (tag 9) — L0001 / L0002 が
+  対象とするまさにその 2 種だけである。
+  **一律の末尾 slot は採れない**: AST ノード対象の長さ probe が 46 箇所あり、
+  `TypeInfer.ls:60` は var ノードの長さ > 5 を qualified name の判別子に、
+  `:114-115` は if ノードの長さ > 5 を span の有無の判別子に使っている。
+  長さを一律に変えると**落ちずに誤動作する**。
+  **もう一段の欠落**: span は byte offset、診断は line/col で、
+  selfhost に offset → line/col 変換が存在しない (`selfhost/src` 全体で 0 件)。
+  さらに `review-collect-node [node results]` (`DocTools.ls:790`) はソースを受け取らないので、
+  走査の signature を変える必要がある。ここが本項目の実質的な重さである。
+  **追加の受入条件**: 変更対象 kind に長さ probe が無いことを実装前に grep で確認して
+  ADR の Evidence へ記録する。offset → line/col 変換に単体 test を置く
+  (行頭 / 行末 / 最終行 / 空行を含む)。
 
   **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
