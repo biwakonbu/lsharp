@@ -800,19 +800,34 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: x86-64 の root API 実装そのもの (`NATIVE-ROOT-02`)、
   GC 導入 (`NATIVE-HEAP-01/02`)。拡張方式 (mmap 再確保か倍々か) は実装時に決めてよい
   (契約は「動的であること」までしか定めていない)。
-- [ ] `NATIVE-IMPORT-ABI-01` x86 native の import 呼び出しが引数を rdi へ載せない欠陥を直す —
-  Issue `I-28`。`STALE-PIN-03` の裁定で **実装側の欠陥**と確定した。
-  helper (`NativeCodegen.ls:10365`) は `mov rbx, rdi` で引数を rdi から読むが、
-  call site は `codegen-x86-non-one-arg-call-bundle` の `target-param-count = 0` /
-  `current-depth = 1` 分岐 (`:10968-10986`) に落ちて `push rax; call; pop rcx` しか出さない。
-  正しい列は `emit-one-arg-call-x86-core-with-call-bytes` (`:7179-7197`) が既に持っている。
-  **受入条件**: `test_e2e_selfhost_x86_int_to_string_import_sets_rdi` が GREEN になり、
-  かつ**なぜ import の param-count が 0 に見えていたかを根拠つきで確定させる**こと。
-  候補は `I-28` の (a) `function-metas` を生 operand で引いている (`:11056-11064`。
-  `function-starts` は `(- operand import-count)`) / (b) `wrap-ir-functions-as-meta-loop`
-  (`:20577-20585`) が全関数に param-count 0 の meta を作る、の 2 つ。
-  **期待値を実装に合わせて書き換えるのは禁止** — test は陳腐化していないと裁定済みである。
-  **含めない範囲**: `I-27` の値破壊 (別原因)、`NATIVE-ROOT-02/03`。
+- [ ] `NATIVE-IMPORT-ABI-01` x86 native の int-to-string import 呼び出しで rdi が書かれない
+  問題を直す — Issue `I-28`。
+
+  **根本原因は 2026-08-19 のソース読解で確定した (候補 (a)(b) はどちらも否定)。**
+  失敗 test が使う harness `run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args`
+  (`selfhost_native_stage_chain.rs:19572`) は、seed の `push-import-placeholders` (`:350-365`) が
+  10 個の import placeholder を **一様に param-count 0** で積む。`int-to-string` は
+  `ftable-with-native-runtime-imports` (`CompilerBase.ls:428`) で **func-idx 6** に登録されるので、
+  `function-metas[6]` の param-count が 0 になり、`codegen-x86-opcode-call-bundle` の
+  `(= target-param-count 1)` 分岐に入れない。`48 89 c7` は構造的に出ない。
+
+  **直し方は既にリポジトリ内にある。** `root_linux_x86_seed_int_to_string_import_arity` (`:348`) が
+  既定版を `(if (= idx 6) 1 0)` へ書き換える rewriter で、`:663` の Linux-x86 root seed だけが
+  これを適用している。失敗 test の harness にも同じ rewriter を通すのが第一手である。
+
+  **受入条件**:
+  1. `test_e2e_selfhost_x86_int_to_string_import_sets_rdi` が GREEN になる
+  2. **rewriter を適用しただけで GREEN になったなら、それは production の証明ではない。**
+     `selfhost/src/**.ls` に import meta の構築点が存在しない事実 (`I-28` の
+     「production 側の帰趨は未確定」節) をどう扱うかを結論づけ、
+     production 側にも欠陥があるなら別 ID を起票する
+  3. 同族の `..._x86_function_size_...` (`STALE-HARNESS-01`) と混ぜない
+
+  **期待値を実装に合わせて書き換えるのは禁止** — `48 89 c7 51 e8 .. .. .. .. 59` は
+  `emit-one-arg-call-x86-core-with-call-bytes` (`:7179-7197`) の出力そのもので、古い定数ではない。
+  **含めない範囲**: `I-27` の値破壊 (別原因)、`NATIVE-ROOT-02/03`、
+  `wrap-ir-functions-as-meta-loop` (`:20577-20585`) が param-count 0 を固定する件
+  (`emit-native-bundle` 経路の別個の欠陥として `I-28` に記録済み)。
   **cargo と native 実行が要る。**
 
 - [ ] `STALE-HARNESS-01` `function_size_matches_generated_length` 診断の埋め込み harness を

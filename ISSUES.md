@@ -160,7 +160,7 @@
 | [I-25](#i-25) | `NativeCodegen.ls` に呼び出し元 0 の defn が 64 個。うち 1 群は使用中の実装と乖離している | 低-中 | open | -- |
 | [I-26](#i-26) | x86 lane は helper trailer の補正を持たず、`x86-selfhost-helper-trailer-size` は呼び出し元 0 のまま | 中 | open | -- |
 | [I-27](#i-27) | x86 native の hot path で user call を挟むと local/引数が壊れる。回避策だけが test に pin され、欠陥そのものが台帳に無い | 中 | open | -- |
-| [I-28](#i-28) | x86 native の import 呼び出しが引数を rdi へ載せず、int-to-string helper が caller のゴミを読む | 中-高 | open | -- |
+| [I-28](#i-28) | x86 native の int-to-string import 呼び出しが rdi を書かない (harness が import placeholder の param-count を 0 で種まきするため) | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -1418,7 +1418,9 @@
   「(c) に入った = pin が古い」と一括りにしない。
 - **`STALE-PIN-03` の裁定 (2026-08-19)**: 上で保留した 2 件について、
   **実装と test のどちらが正しいかを両方とも確定させた。結論は 1 件ずつ逆である。**
-  - `..._x86_int_to_string_import_sets_rdi` — **実装側の欠陥**。`I-28` として起票した。
+  - `..._x86_int_to_string_import_sets_rdi` — `I-28` として起票した。当初は **実装側の欠陥**と
+    書いたが、2026-08-19 のソース読解で **harness の import placeholder 種まき**が原因と確定し、
+    `I-28` 本文で訂正した。
   - `..._x86_function_size_matches_generated_length_diagnostic` — **test の harness が陳腐化**。
     診断が出す `777000` レコードは `idx=3, opcode=41 (if), operand=0, depth=1, expected=11, actual=8`
     で、差 `11 - 8 = 3` は `native-drop-bundle-size-x86(1)` と**厳密に一致**する。
@@ -1800,7 +1802,9 @@
 - **内容**: `(int-to-string 42)` を x86-64 native で codegen すると、生成される call site は
   **引数を rdi へ移さない**。helper 側は rdi から読むので、変換されるのは
   caller のレジスタに偶然残っていた値である。
-- **裁定**: **実装側が誤り。test は陳腐化していない。**
+- **裁定 (2026-08-19 に訂正)**: 当初は **「実装側が誤り」** と書いたが、後続のソース読解で
+  **harness の import placeholder 種まきが原因**であることが判明した。下の
+  「**根本原因 (2026-08-19 に確定)**」節が正本であり、上の一文は撤回する。
   `test_e2e_selfhost_x86_int_to_string_import_sets_rdi`
   (`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:20364`) は
   `48 89 c7 51 e8 .. .. .. .. 59` (= `mov rdi,rax; push rcx; call rel32; pop rcx`) を
@@ -1816,15 +1820,32 @@
   1 と 2 から「helper が読む register を call site が書かない」が確定し、
   3 から「test の期待は現在の実装内に存在する正しい呼び出し規約である」が確定する。
   したがって 2 つの候補 — pin の陳腐化 / 別系統だが正しい規約 — はどちらも排除される。
-- **候補となる根本原因 (未確定)**: import が `target-param-count = 0` と見えている理由は 2 つある。
-  **どちらが効いているかは native 実行なしには切り分けられないので、ここでは確定させない。**
-  - (a) **`function-metas` の添字が生 operand**: `:11056-11064` は
-    `(vector-get function-metas (ref-get operand-ref))` で meta を引く一方、
-    `function-starts` は `(- operand import-count)` で引いている。
-    import の operand で meta を引くと **別の defined function の meta** が返る。
-  - (b) **meta の param-count が常に 0**: `wrap-ir-functions-as-meta-loop` (`:20577-20585`) は
-    全関数に対し `(make-native-function-meta 0 0 ir-func)` を作る。
-    この経路を通った functions は param-count を持たない。
+- **根本原因 (2026-08-19 に確定。cargo 非依存のソース読解のみ)**:
+  **harness が `int-to-string` の import placeholder に param-count 0 を種まきしている。**
+  したがって `codegen-x86-opcode-call-bundle` の `(= target-param-count 1)` 分岐に入れず、
+  `48 89 c7` は**構造的に生成されえない**。assertion は当該 harness では原理的に満たせない。
+
+  | # | 位置 | 事実 |
+  |---|---|---|
+  | 4 | `CompilerBase.ls:428` `ftable-with-native-runtime-imports` | `int-to-string` を **func-idx 6** に登録する。call codegen の `(= operand 6)` 特別扱いと一致する |
+  | 5 | `NativeCodegen.ls:14244` `generate-native-x86-64-bundle-with-import-count` | `n = (- (vector-length functions) import-count)`。**先頭 import-count 個が import meta である**という契約を持つ |
+  | 6 | `selfhost_native_stage_chain.rs:350-365` `push-import-placeholders` (既定版) | `(make-function-meta 0 0 (vector-new 0))` を **10 個一様に**積む。idx 6 も param-count 0 |
+  | 7 | 同 `:348` `root_linux_x86_seed_int_to_string_import_arity` | 既定版を `(if (= idx 6) 1 0)` へ書き換える rewriter。**修正は既にリポジトリ内にある** |
+  | 8 | 同 `:663` | 7 の**唯一の呼び出し元**。Linux-x86 root seed 専用で、失敗 test が使う `run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args` (`:19572`) には適用されない |
+
+  当初の候補 (a) (b) はいずれも**否定された**。
+  - (a) 「`function-metas` を生 operand で引くのが不整合」 -- **否定**。証拠 5 のとおり
+    `functions` は先頭に import meta を持つ設計であり、`function-starts` を
+    `(- operand import-count)` で引くのと整合する。不整合ではない。
+  - (b) 「`wrap-ir-functions-as-meta-loop` が param-count 0 を固定する」 -- **本経路では否定**。
+    失敗 test は `emit-native-bundle` を通らず、`compile-file-functions-payload-with-cache` +
+    harness の `push-import-placeholders` を通る。ただし (b) 自体は
+    `emit-native-bundle` 経路に残る別個の欠陥であり、取り消さない。
+- **production 側の帰趨は未確定**: `selfhost/src/**.ls` には `push-import-placeholders` に
+  相当する import meta 構築点が**存在しない** (`make-native-function-meta` の呼び出しは
+  `:20581` の wrap loop と `:20673` の normalizer の 2 箇所のみで、前者は 0 固定、
+  後者は既存値の保存)。したがって「production も同じ症状を持つか」は本読解では決まらない。
+  **harness を直すことと production を直すことは別の作業である。**
 - **なぜ気付かれなかったか**: `I-23` と同じ構造である。本 test は `#[ignore]` で
   `--ignored` lane からしか走らず、CI 自動実行は 2026-07-12 から停止している (`I-19`)。
   非 ignored lane の baseline (`workspace-expected-failures.txt`) にも載らない。
