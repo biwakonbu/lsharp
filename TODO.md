@@ -689,16 +689,18 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   定数 wrapper 群とパイプライン残骸群は危険度が違うので、まとめて 1 slice にしない。
   `selfhost/src` の編集になるので fingerprint が動く。`NATIVE-HEAP-01` と同じ slice に
   まとめてよい。
-- [ ] `NATIVE-TRAILER-01` x86 lane の helper trailer size が production path から使われていない — Issue `I-26`。
-  `x86-selfhost-helper-trailer-size` (`NativeCodegen.ls:10645`) は selfhost 内の呼び出し元が 0 で、
-  呼ぶのは e2e test だけ (`selfhost_native_stage23_gap/part_000.rs:571` は戻り値 `24` を pin する)。
-  aarch64 版 (`:16012`) は `:16016` の import-stub offset と `:20828` の `trailer-length` で
-  実際に layout 計算へ入っている。
-  **受入条件**: (1) x86 の code layout が trailer 分をどこで足しているかを特定する
-  (別経路で足しているのか、そもそも足していないのか)。(2) 足していないなら、生成される
-  機械語で実害が出るかを実行で確認する。(3) 判断を `I-26` へ書き、pin する test を
-  「関数の戻り値」ではなく「layout に反映されていること」を見る形へ寄せるか決める。
-  **含めない範囲**: `I-23` (aarch64 側 pin の陳腐化) 本体の解消。両者は別の pin である。
+- [ ] `NATIVE-TRAILER-01` x86 lane に helper trailer の補正が無い — Issue `I-26`。
+  aarch64 は `aarch64-selfhost-helper-trailer-size` を (a) bundle 初期 capacity と
+  (b) 末尾関数の entrypoint offset 再計算 (`NativeCodegen.ls:20828-20831`) の 2 箇所で使うが、
+  x86 は (a) を `2048` の直書きで済ませ (`:10561`)、(b) の分岐自体を持たない (`:20791-20795`)。
+  `x86-selfhost-helper-trailer-size` (`:10645`) は定義だけで呼び出し元 0。
+  なお helper size の実合計は 2,486 bytes で、直書きの 2048 に 438 bytes 足りない。
+  **受入条件**: (1) aarch64 に (b) の補正が入った commit を `git log -S` で特定し、
+  何を直したのかを読む。(2) 同じズレが x86 にもあるかを、末尾関数を entrypoint にした
+  bundle で `function-starts` の値と実測 offset を突き合わせて確認する。
+  (3) 判断を `I-26` へ書く。補正が要るなら実装し、要らないなら
+  `x86-selfhost-helper-trailer-size` を削除するか capacity 計算へ接続する。
+  **含めない範囲**: `I-23` (aarch64 側 pin の陳腐化) 本体の解消。別の pin である。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される

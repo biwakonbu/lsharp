@@ -158,7 +158,7 @@
 | [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
 | [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
 | [I-25](#i-25) | `NativeCodegen.ls` に呼び出し元 0 の defn が 64 個。うち 1 群は使用中の実装と乖離している | 低-中 | open | -- |
-| [I-26](#i-26) | `x86-selfhost-helper-trailer-size` が production path から呼ばれず、test だけが値を pin している | 中 | open | -- |
+| [I-26](#i-26) | x86 lane は helper trailer の補正を持たず、`x86-selfhost-helper-trailer-size` は呼び出し元 0 のまま | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -1474,29 +1474,38 @@
 ---
 
 <a id="i-26"></a>
-### I-26: `x86-selfhost-helper-trailer-size` が production path から参照されていない
+### I-26: x86 lane は helper trailer の補正を持たない (aarch64 だけが持つ)
 
 - **影響度**: 中 / **状態**: open
-- **内容**: `NativeCodegen.ls` の trailer size 計算に lane 非対称がある。
+- **内容**: `x86-selfhost-helper-trailer-size` (`NativeCodegen.ls:10645`) は
+  **selfhost 内の呼び出し元が 0**。定義だけがあり、production の bundle 生成経路から一度も呼ばれない。
+  aarch64 版 (`:16012`) は 2 箇所で使われている。用途は 2 つある。
 
-  | lane | 定義 | selfhost 内の呼び出し元 | test からの参照 |
-  |---|---|---|---|
-  | aarch64 | `:16012` | **2 箇所** (`:16016` の import-stub offset、`:20828` の `trailer-length`) | あり |
-  | x86-64 | `:10645` | **0 箇所** | あり (`selfhost_native_stage_chain.rs` 6 箇所ほか) |
+  | 用途 | aarch64 | x86-64 |
+  |---|---|---|
+  | bundle の初期 capacity | `:16016` で `import-stub-offset + trailer-size` | `:10561` で `import-stub-offset + stub + **2048 の直書き**` |
+  | 末尾関数の entrypoint offset 補正 | `:20828-20831`。`(vector-length bundle) - trailer-length - entrypoint-length` で再計算 | **無い**。`function-starts` の値をそのまま使う (`:20791-20795`) |
 
-  aarch64 は helper trailer の長さを code layout の計算に実際に使っているが、
-  **x86 は定義があるだけで、機械語を組み立てる経路から一度も呼ばれない**。
-  呼ぶのは e2e test だけで、`selfhost_native_stage23_gap/part_000.rs:571` は
-  `("x86-selfhost-helper-trailer-size", 24)` という値を pin してすらいる。
-- **なぜ問題か**: test は「この関数が 24 を返すこと」を検査しているが、その 24 が
-  **実際に生成される機械語に反映されているかは検査していない**。x86 側で layout が
-  別経路 (定数の直書き等) で計算されているなら、両者が食い違っても test は緑のままになる。
-  `I-23` (aarch64 側 trailer-size pin の陳腐化) と同じ「pin はあるが実体を追っていない」形である。
-- **未確認**: x86 の code layout が trailer を別経路で正しく織り込んでいるのか、
-  それとも trailer 分が単に欠けているのか。**判定していない。** 機械語を読むだけでは
-  「どこにも足されていない」ことの証明が要るので、`NATIVE-DEAD-01` と同様に実行が要る。
-- **関連**: I-21 (x86-64 の root API が未適合。x86 lane の未完成という同じ筋)、
-  I-23 (trailer-size pin の陳腐化)、I-25 (同じ走査で見つかった)。
+  後者が本質である。両 lane とも通常は `function-starts` の静的 offset を使うが、
+  **aarch64 だけが「entrypoint が最後の callable 関数のとき」に実測 bundle 長から
+  trailer を差し引いて offset を引き直す**。x86 にはこの分岐自体が無い。
+- **未確認 (判定していない)**: この非対称が
+  (a) x86 の layout 計測が正確なので補正が要らない、なのか
+  (b) x86 にも同じズレがあるが補正が入っていない、なのか。
+  aarch64 側に補正が入った経緯を追わないと決まらない。
+- **副次的に見つかったこと**: x86 の初期 capacity の直書き `2048` は、
+  helper size を実際に合計すると **2,486 bytes** (27 helper) で **438 bytes 足りない**。
+  `vector-push` は容量超過時に倍化するので即座の破綻ではないが、
+  「2048 は当て推量で、`x86-selfhost-helper-trailer-size` はそれを置き換えるために
+  書かれたまま接続されていない」と読める。
+- **test の状況 (誤読しやすい)**: `selfhost_native_stage23_gap/part_000.rs:571` の
+  `("x86-selfhost-helper-trailer-size", 24)` は **戻り値ではなく `defn` の最大ネスト深さ**の
+  上限である。値そのものを pin する test は無い。
+  `selfhost_native_stage_chain.rs` の 6 箇所は test 内に埋め込んだ L# スニペットが
+  `code-len (+ user-total (x86-selfhost-helper-trailer-size 10))` として呼んでおり、
+  **test だけがこの関数を「本来の用途」で使っている**。
+- **関連**: I-23 (aarch64 側 trailer-size pin の陳腐化)、I-21 (x86-64 の root API 未適合。
+  x86 lane が aarch64 に追随できていないという同じ筋)、I-25 (同じ走査で見つかった)。
 
 ---
 
