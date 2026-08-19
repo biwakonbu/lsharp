@@ -26439,9 +26439,15 @@ fn test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer(
     )
     .expect("AArch64 bundle initial capacity harness 実行に失敗");
     let lines = parse_numeric_lines(&output);
+    // 期待値は NativeCodegen.ls の定数から決まる:
+    //   trailer-size(10) = helper-base-offset(0,10) + 3296 + 156
+    //                    = import-stub-count(10) * 4 + 3452 = 40 + 3452 = 3492
+    //   bundle-initial-capacity(1000,10) = 1000 + 3492 = 4492
+    // 旧 pin [2520, 3520] は read-stdin helper 追加 (1ee26eef, 2026-08-03) より前の値で、
+    // 実装ではなく pin 側が陳腐化していた (ISSUES.md I-23)。
     assert_eq!(
         lines,
-        vec![2520, 3520],
+        vec![3492, 4492],
         "AArch64 bundle result capacity は helper trailer 全体を含むべき: {lines:?}"
     );
 }

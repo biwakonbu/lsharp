@@ -800,17 +800,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: x86-64 の root API 実装そのもの (`NATIVE-ROOT-02`)、
   GC 導入 (`NATIVE-HEAP-01/02`)。拡張方式 (mmap 再確保か倍々か) は実装時に決めてよい
   (契約は「動的であること」までしか定めていない)。
-- [ ] `STALE-PIN-02` 陳腐化が確定した pin の期待値を更新する — Issue `I-23`。
-  対象は **1 件だけ**である。
-  `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer` が
-  `[2520, 3520]` を pin する一方、実測は `[3492, 4492]`。`I-23` に書いたとおり
-  `40 + 3296 + 156 = 3492` という算術が実装側と一致しており、pin 側が
-  `1ee26eef` (2026-08-03, read-stdin helper 追加) より前の世界を指している。
-  受入条件は (1) 期待値を更新して当該 test が pass すること、
-  (2) `ignored-lane-expected-failures.txt` の該当行を削除すること。
-  **含めない範囲**: (a) Lima 依存 60 件 / (b) env 依存 4 件 (到達可能にするのは別作業)、
-  wasm trap 由来の 37 件、`#[ignore]` 契約の是非 (`TESTGATE-03` / `I-22`)、CI 再開 (`I-19`)。
-  **cargo が要る。** 当該 test の単体実行で足りる。
 - [ ] `STALE-PIN-03` 数値 pin ではない 2 件の FAIL がどちら側の陳腐化か裁定する — Issue `I-23`。
   `STALE-PIN-01` の洗い出しで残った 2 件は、**pin の更新で済むと決めつけてはならない**。
   - `test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic`
@@ -836,7 +825,7 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
     79 件が bundle を組む系である。サイズ・オフセットを pin する assertion のずれは排除できない。
   受入条件は (1) `main` で `--ignored` lane を 615 件完走させ (完走判定は宣言数 == 結果行ユニーク数)、
   (2) 台帳との差分 (新規 FAIL / 解消 / 未測定 1 件の帰趨) を台帳ヘッダへ書き戻すこと。
-  **含めない範囲**: 個々の FAIL の修正 (`STALE-PIN-02` / `STALE-PIN-03` が持つ)、
+  **含めない範囲**: 個々の FAIL の修正 (`STALE-PIN-03` が持つ。`STALE-PIN-02` は完了済み)、
   Lima 依存 60 件・env 依存 4 件の到達可能化、CI 再開 (`I-19`)。
   **cargo が要る。5 時間かかるので `os.setsid()` で切り離して回すこと** (前回 2 回のうち
   1 回はハーネスに 328/614 で停止された)。

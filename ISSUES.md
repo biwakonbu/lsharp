@@ -1401,10 +1401,16 @@
   自動検証は付いていない。ここは満たせなかった点として明示しておく。
   台帳の 117 行は `8a20cfe2` 時点の集合であり、`main` では未検証である
   (上記「比較の射程を訂正した」を参照)。
-- **本 issue の pin 自体は未修正**: `(aarch64-selfhost-helper-trailer-size 10)` の
-  期待値 `2520` は陳腐化したままである。洗い出し (`STALE-PIN-01`) の受入条件は
-  「個々の pin の期待値更新」を範囲外としていたので、更新は `STALE-PIN-02` が扱う。
-  なお **pin 側の陳腐化と確定しているのは本 issue の 1 件だけ**である。
+- **pin を更新した (2026-08-19)**: `main` 実体で RED を確認し
+  (`left: [3492, 4492]` / `right: [2520, 3520]`)、
+  `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:26444` の期待値を
+  `vec![3492, 4492]` へ更新して GREEN (`test result: ok. 1 passed`, 43.13s)。
+  算術の由来をコメントとして同じ位置に残したので、次に定数が動いたときは
+  `git log -S` ではなく test 本文から辿れる。
+  `ignored-lane-expected-failures.txt` の該当行も削除した (117 -> 116 件)。
+  実行は `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/stale-pin-02/target` で行い、
+  root checkout に `target/` を作っていない。
+  なお **pin 側の陳腐化と確定していたのは本 issue の 1 件だけ**である。
   同じ (c) 53 件に含まれる `..._x86_function_size_matches_generated_length_diagnostic` と
   `..._x86_int_to_string_import_sets_rdi` は、panic message を読むと数値 pin の陳腐化ではなく
   **実装側の欠陥を検出している可能性が高い**ため、`STALE-PIN-03` で裁定してから扱う。

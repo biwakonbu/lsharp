@@ -31,16 +31,17 @@
 #     - 939e4ec9 (TESTGATE-03) が selfhost_native_stage_chain.rs に #[ignore] を 1 個追加。
 #       **main での分母は 615。** 増えた
 #       test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value
-#       は本測定に含まれておらず、下の 117 行にも載っていない (未測定であって pass ではない)。
+#       は本測定に含まれておらず、下の 116 行にも載っていない (未測定であって pass ではない)。
 #     - 5e992d52 / 1855fa0b が LspServerNav.ls から 22 行削除。同ファイルは selfhost bundle の
-#       構成モジュール (tests/e2e/support.rs:37-39) で、下の 117 件のうち 79 件が bundle を
+#       構成モジュール (tests/e2e/support.rs:37-39) で、下の 116 件のうち 78 件が bundle を
 #       組む系なので、サイズ・オフセットを pin する assertion のずれは排除できない。
 #
 #   分母の実測値: 8475b00a 612 / 8a20cfe2 614 / main 615
 #     git grep -c '^\s*#\[ignore' <rev> -- \
 #       crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs
 #
-#   **したがって下の 117 行は 8a20cfe2 時点の集合であり、main では未検証である。**
+#   **したがって下の 116 行は 8a20cfe2 時点の集合であり、main では未検証である**
+#   (実測 117 件から、修正済みの 1 件を除いた残り)。
 #   main 実体での再実行は TODO.md の IGNLANE-01 が持つ。
 #
 # ---- 分類 ----
@@ -50,14 +51,19 @@
 #   [a] Lima VM 依存 60 件 -- 本体が lima / linux-x86 を参照。VM `lsharp-linux-x86` が
 #       Stopped のため到達不能。VM を起動すれば結果が変わる可能性がある。
 #   [b] LSHARP_NATIVE_* env 依存 4 件 -- 本体が env を参照。env 未設定のため到達不能。
-#   [c] それ以外 53 件 -- 環境を揃えても落ちる。**真の陳腐化 pin はこの中にしか無い。**
+#   [c] それ以外 53 件 (うち 1 件は修正済みで下の一覧からは削除、残り 52 件)
+#       -- 環境を揃えても落ちる。**真の陳腐化 pin はこの中にしか無い。**
 #   帰属不能 0 件。
 #
 # ---- 期待値の更新について ----
-#   **pin 側の陳腐化と確定しているのは 1 件だけである。**
+#   **pin 側の陳腐化と確定していたのは 1 件だけで、それは修正済みである (2026-08-19)。**
 #   test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer が
-#   [2520, 3520] を pin する一方、実測は [3492, 4492]。40 + 3296 + 156 = 3492 という
-#   算術が実装側と一致する (ISSUES.md I-23)。更新は TODO.md の STALE-PIN-02 が扱う。
+#   [2520, 3520] を pin する一方、実測は [3492, 4492] だった。main 実体で RED を確認し
+#   (left [3492, 4492] / right [2520, 3520])、pin を [3492, 4492] へ更新して GREEN。
+#   算術は NativeCodegen.ls の定数と一致する:
+#     trailer-size(10) = import-stub-count(10)*4 + 3296 + 156 = 40 + 3452 = 3492
+#     bundle-initial-capacity(1000,10) = 1000 + 3492 = 4492
+#   したがって本行は上の一覧から削除した (117 -> 116 件)。ISSUES.md I-23 / STALE-PIN-02。
 #
 #   残る 2 件は「数値 pin の陳腐化」ではないので、同じ扱いをしてはならない。
 #     - ..._x86_function_size_matches_generated_length_diagnostic は assert_eq! だが
@@ -135,8 +141,7 @@ lsharp-wasm::e2e test_e2e_saved_native_stage3_compiler_app_cli_failing_invariant
 lsharp-wasm::e2e test_e2e_saved_native_stage3_compiler_app_cli_metadata_command  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
 lsharp-wasm::e2e test_e2e_saved_native_stage3_compiler_test_runner_metadata_probe  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
 
-# ---- [c] それ以外 (環境を揃えても落ちる) : 53 件 ----
-lsharp-wasm::e2e test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer
+# ---- [c] それ以外 (環境を揃えても落ちる) : 52 件 ----
 lsharp-wasm::e2e test_e2e_selfhost_main_representative_before_helpers_current_global_window_diagnostic  # diagnostic current global window after import stubs and before helpers
 lsharp-wasm::e2e test_e2e_selfhost_main_representative_before_helpers_earliest_bad_window
 lsharp-wasm::e2e test_e2e_selfhost_main_representative_building_earlier_chunks_preserves_latest_global_window  # diagnostic build-only chunk transport probe

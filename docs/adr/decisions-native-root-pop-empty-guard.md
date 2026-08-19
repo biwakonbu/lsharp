@@ -367,7 +367,13 @@ regression 0)** までである。「merge 済みの全 commit に由来する�
 分母は revision ごとに実測した: `8475b00a` 612 / `8a20cfe2` 614 / `main` 615
 (`git grep -c '^\s*#\[ignore' <rev> -- crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs`)。
 
-**満たせなかった条件: `main` 実体での lane 再実行は未実施である。** 台帳 117 件は
+**pin は `main` 実体で更新した (2026-08-19)。** `bundle_initial_capacity` の 1 件だけは
+`main` 上で RED (`left: [3492, 4492]` / `right: [2520, 3520]`) を確認したうえで期待値を
+`[3492, 4492]` へ更新し GREEN にした。この test の harness は `IR.ls` / `NativeTarget.ls` /
+`NativeCodegen.ls` の 3 モジュールしか組まないので、上表の `LspServerNav.ls` の懸念は届かない。
+台帳は 117 -> 116 件になった。
+
+**満たせなかった条件: `main` 実体での lane 再実行は未実施である。** 台帳 116 件は
 `8a20cfe2` 時点の集合であり、`main` で同じ 117 件になる保証は無い。再実行は
 `TODO.md` の `IGNLANE-01` が持つ。数字を静かに直さず、範囲を狭めて書き直した。
 
