@@ -161,6 +161,7 @@
 | [I-26](#i-26) | x86 lane は helper trailer の補正を持たず、`x86-selfhost-helper-trailer-size` は呼び出し元 0 のまま | 中 | open | -- |
 | [I-27](#i-27) | x86 native の hot path で user call を挟むと local/引数が壊れる。回避策だけが test に pin され、欠陥そのものが台帳に無い | 中 | open | -- |
 | [I-28](#i-28) | x86 native の int-to-string import 呼び出しが rdi を書かない (harness が import placeholder の param-count を 0 で種まきするため) | 中 | open | -- |
+| [I-29](#i-29) | aarch64 native の文字列表現が bit 32 を判別子に使うため、heap offset が 4 GiB を越えると base 相対 offset が絶対番地として strlen される | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -1923,6 +1924,53 @@
 - **含めない範囲**: 修正そのもの。`TODO.md` の `NATIVE-IMPORT-ABI-01` が持つ。
 - **関連**: I-23 (裁定の親)、I-27 (同じ x86 call site 周辺の値破壊)、I-19 (CI 停止)、
   I-21 (x86-64 の root API 未適合)、I-25 (呼び出し元 0 の defn 棚卸し)。
+
+---
+
+<a id="i-29"></a>
+### I-29: aarch64 native の文字列表現が bit 32 を判別子に使い、4 GiB 超の heap offset で誤読する
+
+- **影響度**: 中 / **状態**: open
+- **内容**: aarch64 native の文字列値は 1 word に 3 形式を詰めており、判別を
+  **bit 63 と bit 32 の 2 本の test 命令**で行っている。
+
+  | bit 63 | bit 32 | 解釈 |
+  |---|---|---|
+  | 1 | -- | tag 付きの base 相対 offset |
+  | 0 | 0 | untagged な base 相対 offset。実体は `x21 + v` の長さ前置文字列 |
+  | 0 | 1 | **絶対番地**の NUL 終端ポインタ。strlen ループへ入る |
+
+  実際に稼働する `emit-aarch64-selfhost-string-concat-helper`
+  (`selfhost/src/Backend/Native/NativeCodegen.ls:15057`) は 2 引数それぞれについて
+  `tbnz xN, #63` (`3086483767` / `3086483768` を `:15077` / `:15095` で emit) に続けて
+  `tbz xN, #32` (`3053453623` / `3053453624` を `:15080` / `:15100` で emit) を出す。
+
+  **したがって base 相対 offset が 4 GiB (2^32) に達した時点で bit 32 が立ち、
+  同じ値が絶対番地として strlen される。** offset は `x21` (mmap した heap base) 起点で、
+  確保 frontier `x22` は `movz x22, #1, lsl #16` = 0x10000 から単調増加する。
+- **これが仮定の話でない根拠**: heap 確保サイズは
+  `native_host_bundle_alloc_size` (`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:37642`)
+  が `data_frontier.max(0x10000) + 0x1_0000_0000` を返す形で、**最小でも 4 GiB、
+  data_frontier がある分だけ 4 GiB を越える**。加えて `I-13` の macOS materializer は
+  heap を 8 GiB へ倍増しても拡大分をちょうど使い切って落ちる実測を持っており、
+  4 GiB 超の offset は到達しうる領域である。
+- **未確定なこと**: 上記 alloc size 式は **test harness 側にしか無く**
+  (`grep` で production 側に同名関数は 0 件)、production materializer が実際に何 byte
+  確保するかは未確認である。よって「production で今すぐ踏む」とは断定しない。
+  bit 32 が実際に立つ offset で `string-concat` が呼ばれる経路の有無も未確認。
+  **判別子の設計が 4 GiB で破綻する**という静的事実だけが確定している。
+- **見つかった経緯**: `I-25` (chunk 群と本体の byte 突き合わせ) の副産物。
+  `I-25` の裁定自体は byte 同一性だけに依り、どの表現が実際に現れるかには依らないので、
+  `I-25` の受入条件は本件では再開しない。
+- **失敗の仕方**: 落ちるのではなく**誤読する**。base 相対 offset を絶対番地とみなして
+  strlen するので、運が良ければ SIGSEGV、悪ければ無関係なメモリを文字列として読む。
+  `I-25` で却下した「一律の長さ変更」や `LINT-SPAN-01` の長さ probe と同じ、
+  **判別子の値域を暗黙に仮定する**という失敗の類型である。
+- **次の一手**: production materializer の heap 確保サイズを確定させ、4 GiB を越えるなら
+  (a) 判別子を bit 32 から heap 上限に依らない別の位置へ移す、(b) heap を 4 GiB 未満に
+  抑える、のいずれかを選ぶ。`NATIVE-HEAP-02` の回収機構が入れば (b) が現実的になる。
+- **関連**: `I-13` (heap に回収機構が無い)、`I-25` (発見経緯)、
+  `TODO.md` の `NATIVE-HEAP-01` / `NATIVE-HEAP-02`。
 
 ---
 

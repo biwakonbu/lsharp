@@ -671,6 +671,20 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (`(defn ` 6,656 個 × 64 KiB ≈ 416 MiB) では 8 GiB に届かない。
   計測は wasm lane でよい (呼び出し回数は lane に依らない)。
   `LEGACY-ROOT-01` / `LEGACY-IO-01` と関連。
+- [ ] `NATIVE-STR-TAG-01` aarch64 文字列表現の bit 32 判別子が 4 GiB で破綻する — Issue `I-29`。
+  稼働中の `emit-aarch64-selfhost-string-concat-helper`
+  (`selfhost/src/Backend/Native/NativeCodegen.ls:15057`) は 2 引数それぞれに
+  `tbnz xN, #63` + `tbz xN, #32` を出し、bit 32 が立つ値を**絶対番地の NUL 終端ポインタ**として
+  strlen する。base 相対 offset が 4 GiB に達すると同じ値が誤読される。
+  **受入条件**: (1) production materializer の heap 確保サイズを確定させる
+  (現状 `native_host_bundle_alloc_size` は harness 側にしか無く、`data_frontier + 4 GiB` = 4 GiB 超)。
+  (2) 4 GiB を越えるなら、判別子を heap 上限に依らない位置へ移すか heap を 4 GiB 未満へ抑えるかを
+  ADR で決める。(3) 選んだ方の受入 test を置く。
+  **この項目に含めない範囲**: heap の回収機構そのもの (`NATIVE-HEAP-02`)。
+  ただし回収が入れば 4 GiB 未満に抑える案が現実的になるので、順序としては
+  `NATIVE-HEAP-02` の後に (2) を決めるほうが選択肢が広い。
+  **未確定**: bit 32 が立つ offset で `string-concat` が呼ばれる経路の有無は未確認。
+  静的に確定しているのは「判別子の設計が 4 GiB で破綻する」ことだけである。
 - [ ] `NATIVE-DEAD-01` 呼び出し元 0 の native emitter helper の裁定 — Issue `I-25`。
   `NativeCodegen.ls` の `emit-aarch64-selfhost-string-concat-helper-chunk1`〜`chunk4`
   (`:14944` / `:14973` / `:15002` / `:15031`) は定義だけで参照が無く、実際に使われる
