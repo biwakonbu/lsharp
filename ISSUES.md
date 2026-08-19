@@ -601,9 +601,9 @@
   | `default_path_delegation` | 12 | embedded guest default path の selfhost 出力不一致 |
   | `selfhost_native_stage23_gap` | 10 | selfhost codegen の未達。式深度上限 (8 > 7) / harness fixture 不在 / native helper emitter の offset・trailer・prologue 不一致 |
   | insta snapshot | 14 | insta が 2026-05-31 で停止、codegen は 2026-07-27 まで進行 |
-  | `selfhost_lsp_docs_ops` | 5 | 4 要因。`TESTGATE-01` / `DIAG-DEDUP-01` (2 件) / 標準 LSP Diagnostic 配列投影の未実装 / release-smoke.sh の boundary 未検証。うち `DIAG-DEDUP-01` の 2 件は **2026-08-18 に解消** (`I-24`) し、現在は 3 件 / 3 要因 |
+  | `selfhost_lsp_docs_ops` | 5 | 4 要因。`TESTGATE-01` / `DIAG-DEDUP-01` (2 件) / 標準 LSP Diagnostic 配列投影の未実装 / release-smoke.sh の boundary 未検証。うち `DIAG-DEDUP-01` の 2 件は **2026-08-18 に解消** (`I-24`)、`TESTGATE-01` 由来の 1 件 (`ops03c`) は **2026-08-19 に解消** (`TESTGATE-03`)。現在は 2 件 / 2 要因 |
   | `strings_patterns_compiler_integration` | 5 | codegen が host `alloc` へ**負の size** を渡す 4 件 (`RootLifetime` とも I-13 の heap 枯渇とも別) + WasmEmit が native 専用 opcode 88 を黙って破棄する 1 件 |
-  | `selfhost_cli_core` | 4 | selfhost CLI の未実装挙動への RED。contract suite の canonical/legacy 分離 / unsupported type の実行前報告 / contradicting evidence / import 先 helper の診断 |
+  | `selfhost_cli_core` | 4 | selfhost CLI の未実装挙動への RED。contract suite の canonical/legacy 分離 / unsupported type の実行前報告 / contradicting evidence / import 先 helper の診断。後ろ 3 件は **2026-08-19 の `TESTGATE-03` で当該 test が `#[ignore]` へ移り** default lane から外れたため expected FAIL から削除した (**挙動が直ったわけではない**。phase11 lane で走る)。現在は 1 件 / 1 要因 |
   | `bootstrap_selfhost_lsp_integration` | 2 | selfhost formatter の compile が `UndefinedVar { name: "ast-defn-signature" }`。2 件とも同一 span |
   | `LS0102` | 2 | `lsharp-lsp` と `lsharp-tooling` に跨る |
   | `support` | 6 | 上記の陳腐化 -- `TESTGATE-02`。`mod` 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる (**2026-08-18 解消**) |
@@ -614,8 +614,12 @@
   **`#[ignore]` 検査の陳腐化と `support` の陳腐化は production バグではない。**
   CLAUDE.md の 500-800 行制限に沿った mod 分割 (`include!("<name>/part_NNN.rs")`) を
   親ファイルの `read_to_string` で検査する形が壊れたもので、修正は安価。
-  **follow-up は `TODO.md` に ID 付きで登録済み** -- `TESTGATE-01` / `TESTGATE-02` /
+  **follow-up は `TODO.md` に ID 付きで登録した** -- `TESTGATE-01` / `TESTGATE-02` /
   `DIAG-DEDUP-01`。それ以外はすべて未実装挙動への RED であり、新規 ID は切っていない。
+  **3 件とも解消済みで `TODO.md` からは削除した** (`TESTGATE-02` / `DIAG-DEDUP-01` は 2026-08-18、
+  `TESTGATE-01` は切り出し先の `TESTGATE-03` を含めて 2026-08-19)。証拠は
+  [test gate 是正 ADR](docs/adr/decisions-test-gate-staleness-repair.md) と
+  [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) にある。
 
   **`DIAG-DEDUP-01` は 2026-08-18 に解消した** (`TODO.md` から削除済み)。3 者間の衝突を
   `I-24` として採番し、spec AC-209 の文言のほうが陳腐化していると裁定した。
@@ -1198,7 +1202,8 @@
   ちょうど 164 増えた)。`workspace-expected-failures.txt` からは 4 行を外した — 裁定時に
   数えていた 3 行に加え、GREEN になった `ops03c` 自身の行も外さないと
   「expected が pass に転じた」条件が発火するためである。
-  **164 件が phase11 lane で実際に走ることは実行では確認していない** (prefix 被覆からの推論)。
+  **phase11 lane の selection は 2026-08-19 に実測済み** -- 該当 4 filter の `--ignored --list` 和集合 585 件に 164 件が **164/164 含まれる** (漏れ 0)。
+  ただし**実走して pass/fail を見てはいない** (全件 5 時間規模)。
   判断・実測・満たせなかった条件は
   [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) の Evidence 節が正本。
 - **内容**: `TESTGATE-01` で `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` の

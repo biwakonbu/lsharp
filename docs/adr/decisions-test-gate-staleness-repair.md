@@ -1,8 +1,10 @@
 # ADR: 陳腐化した検査 test の是正 (TESTGATE-01 / TESTGATE-02)
 
-- Status: Accepted (TESTGATE-02 は verified / TESTGATE-01 は構造的破損の是正のみ verified、
-  露出した 164 件の違反は `I-22` / `TESTGATE-03` へ切り出し)
-- Date: 2026-08-18
+- Status: Accepted (TESTGATE-02 / TESTGATE-01 とも verified。本 ADR 時点で未達だった
+  「ops03c が GREEN にならない」は、切り出し先の `I-22` / `TESTGATE-03` が
+  2026-08-19 に案 A で解消した →
+  [decisions-test-gate-ignore-contract.md](decisions-test-gate-ignore-contract.md))
+- Date: 2026-08-18 (本 ADR) / 2026-08-19 (切り出し先の解消)
 - Scope: `TESTGATE-01` / `TESTGATE-02` / `I-11` /
   `crates/lsharp-wasm/tests/e2e/support.rs` /
   `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs`
@@ -164,13 +166,19 @@ backup から復元後、`git diff --numstat -- .../selfhost_bootstrap_four_laye
 偽陽性の可能性は `crates/lsharp-wasm/tests/` に `#[cfg_attr(..., ignore)]` 形が
 **0 件**であることで排除した (行スキャン方式が取りこぼす形が存在しない)。
 
-**満たせなかった受入条件**: ops03c は GREEN にならない。検査が復活した結果、
+**満たせなかった受入条件 (本 ADR 時点。2026-08-19 に解消済み)**: ops03c は GREEN にならない。検査が復活した結果、
 **本物の違反 164 件**が現れたため (`selfhost_cli_core.rs` 158 /
 `selfhost_cli_actual_main_args.rs` 5 / `selfhost_native_stage_chain.rs` 1)。
 これは本 ADR の範囲外の判断 (規約と実態のどちらが陳腐化しているか) なので、
 `I-22` / `TESTGATE-03` へ切り出した。**gate を green にするために prefix ルールを
 黙って絞ることはしない。** baseline の FAIL 集合は本作業の前後で不変
 (`ops03c` は元から expected FAIL であり、新規 FAIL も pass への転換も無い)。
+
+**その後 (2026-08-19)**: 切り出し先の `TESTGATE-03` が案 A (実態側を直す = 164 件に
+`#[ignore]` を付ける) で裁定・実装され、`ops03c` は GREEN になり
+`workspace-expected-failures.txt` から外れた。上の「baseline の FAIL 集合は不変」は
+**本 ADR の作業前後についての記述**であり、その後の変化は
+[decisions-test-gate-ignore-contract.md](decisions-test-gate-ignore-contract.md) が持つ。
 
 なお当初 `TODO.md` に書かれていた「現時点では 215 件とも `#[ignore]` を持っており
 live な regression は無い」は、分割済み 4 親だけを見た測定だった。非分割ファイルの

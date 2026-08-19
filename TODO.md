@@ -653,22 +653,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (4 GiB → 8 GiB へ倍増しても拡大分をちょうど使い切って落ちることを実測済み)。
   `NATIVE-HEAP-01` は症状を可視化するだけで、「115 KB の入力に 8 GiB 超」という増幅は解消しない。
   GC ないし arena reset の設計から始める。`LEGACY-ROOT-01` / `LEGACY-IO-01` と関連。
-- [~] `TESTGATE-01` `#[ignore]` ゲート検査が mod 分割に追随していない — Issue `I-11` / `I-22`。
-  ADR: [test gate 是正](docs/adr/decisions-test-gate-staleness-repair.md)。
-  **構造的破損の是正は完了 (2026-08-18)**: `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` の
-  ops03b / ops03c を `selfhost_bootstrap_acceptance_file_size.rs` と同じ方式へ寄せた。
-  fragment ディレクトリを `read_dir` で列挙し、親の `include!` マニフェストが全 fragment を
-  順序どおり含むことを検証したうえで親と全 fragment を走査する。
-  加えて (1) 一致 0 件の prefix ルールを `dead_prefix_rules` として明示的に落とす、
-  (2) dead rule と offenders を 1 本の assert にまとめ、前者が後者を隠さないようにした。
-  **未達の受入条件**: ops03c 自体は GREEN になっていない。検査が復活した結果、
-  **本物の違反 164 件**が現れたため (`selfhost_cli_core.rs` 158 / `selfhost_cli_actual_main_args.rs` 5 /
-  `selfhost_native_stage_chain.rs` 1)。この 164 件を「規約違反として `#[ignore]` を付ける」のか
-  「prefix ルールが広すぎるので絞る」のかは規約側の判断であり、`I-22` / `TESTGATE-03` が持つ。
-  この裁定は 2026-08-19 に案 A で実装済みで、`ops03c` は GREEN になり expected FAIL から外れた。
-  **この項目の記述の訂正**: 旧記述の「現時点では 215 件とも `#[ignore]` を持っており live な
-  regression は無い」は、分割済み 4 親だけを見た測定だった。非分割の `selfhost_cli_core.rs` 等は
-  厳密名モードの panic に隠れていて数えられていない。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される

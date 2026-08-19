@@ -191,11 +191,20 @@ checker の「expected が pass に転じた」条件が発火する。順序は
 
 ### 満たせなかった条件 — 緩めずに書く
 
-1. **`--ignored` lane の再走をしていない。** 164 件が phase11 lane で実際に走ることは、
-   doc-RED 時点で `compile-phase11-inputs.sh` の prefix 被覆を読んで確認した推論である。
-   今回それを**実行では確認していない** (該当 lane は 1 件 ~186s サンプルで、全件 5 時間規模)。
+1. **selection は実測済み。実行だけが未。** 164 件が phase11 lane に「選ばれる」ことは
+   2026-08-19 に実測した。`compile-phase11-inputs.sh` の全 78 filter のうち 164 件を拾いうる
+   4 本を取り出し、`cargo test -p lsharp-wasm --test e2e <filter> -- --ignored --list` を
+   実行して和集合 585 件を得たところ、164 件の完全修飾名 (`e2e::<mod>::<fn>`) は
+   **164/164 がその中にある** (漏れ 0)。内訳は
+   `e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_` 85 /
+   `e2e::selfhost_cli_core::test_e2e_selfhost_cli_` 73 /
+   `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_` 5 /
+   `e2e::selfhost_native_stage_chain::test_e2e_selfhost_pipeline_smoke_` 1。
+   これで案 A が恐れていた「default からも ignored lane からも外れてどこでも走らなくなる」は
+   **排除された**。残る未達は**実走して pass/fail を見ていない**ことだけで
+   (該当 lane は 1 件 ~186s サンプル、全件 5 時間規模)、これは次の lane 実走時に行う。
    なお 164 件は今回はじめて「default では走らず ignored lane でのみ走る」状態になったので、
-   phase11 lane の実効カバレッジが変わる。この検証は次の lane 実走時に行う。
+   default lane の実効カバレッジは確かに減っている。
 2. **削除した expected FAIL 3 行が「もう FAIL しない」ことを実測していない。**
    根拠は「`#[ignore]` は junit に載らない」という semantics からの帰結であって、
    前後の junit 比較ではない。3 件の未実装挙動そのものは直っていない
