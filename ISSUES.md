@@ -1620,13 +1620,54 @@
   「新しい実装を書いたが呼び出し側を差し替え忘れた」形に見える。
 
   逆アセンブルすると構造差は 2 点。
-  (a) 本体は 2 引数それぞれに `tbz x23/x24, #63` (`0xb6000137` / `0xb6000138`) を持つが
+  (a) 本体は 2 引数それぞれに **`tbz x23/x24, #32`** (`0xb6000137` / `0xb6000138`) を持つが
   chunk には無い。(b) chunk は `0x74` / `0xbc` に「長さ 0 / ポインタ 0」を書き込む
   default 経路を持ち、本体はそこを 1 命令で通過する。
-- **判断していないこと**: **どちらが正しいかは機械語の読みだけでは決まらない。**
-  両版が違う結果を出すのは bit 63 が立っていないポインタを渡したときで、
-  その入力が実際に発生しうるかは呼び出し側の契約に依る。判定には実行が要る。
-  それまで削除しない。作業項目は `TODO.md` の `NATIVE-DEAD-01`。
+
+  **(a) の bit 番号を 2026-08-19 に訂正した。当初「`tbz ..., #63`」と書いたが誤りで、
+  `0xb6000137` は `TBZ x23, #32` である。** TBZ/TBNZ の bit 番号は
+  `b5` (bit 31) と `b40` (bits 23-19) の連結で、`0xb6000137` は `b5=1, b40=0` なので 32。
+  bit 63 を見る `TBNZ` は `0xb7f80137` の方で、**こちらは chunk にもある**。
+  つまり chunk に無いのは bit 63 の判定ではなく **bit 32 の判定**である。
+- **どちらが正しいかは決着した (2026-08-19。実行は不要だった)**:
+  **本体 (bit 32 判定を持つ方) が新しく、chunk 群は置き換えられた旧実装の分割コピーである。**
+
+  決め手は byte 一致である。`e9f761cb^` 時点の `emit-aarch64-selfhost-string-concat-helper`
+  の 77 word と、現在の chunk1-4 を連結した 77 word が**完全に一致する**。
+
+  ```
+  git show e9f761cb^:selfhost/src/Backend/Native/NativeCodegen.ls   # 旧本体を取り出す
+  # 旧本体の append-encoded-u32-rooted 引数列 == chunk1..4 の連結 (77 word、差分 0)
+  ```
+
+  `e9f761cb` (2026-04-29) 単独で **旧本体の削除・chunk1-4 の追加・新本体の追加**が
+  同時に起きている (`git show e9f761cb -- .../NativeCodegen.ls` の `-(defn ...helper []`
+  1 箇所と `+(defn ...helper-chunk1..4 []` / `+(defn ...helper []` 5 箇所)。
+  `git log -S` が示す「本体 `901c10d8` / chunk `e9f761cb`」は**名前の初出**であって
+  実装の新旧ではない。**「新しい実装を書いたが呼び出し側を差し替え忘れた」という
+  当初の読みは撤回する。** 実体は「本体を書き換えたが、旧版を分割して置き去りにした」である。
+
+  **両版が食い違う入力も特定できた。** 引数ごとの分岐はこうなっている
+  (`x21` は遅延初期化される heap base、`0x008` の `CBNZ x21` が初期化を跳ばす)。
+
+  | 入力 | 現本体 | chunk (旧本体) |
+  |---|---|---|
+  | 0 | default 経路 | default 経路 (同じ) |
+  | bit 63 が立つ | tag を落として `x21 + v` を base 相対の長さ前置文字列として読む | 同じ |
+  | bit 63 clear / **bit 32 clear** | **`x21 + v` を base 相対の長さ前置文字列として読む** | **`v` を絶対番地の NUL 終端文字列として strlen する** |
+  | bit 63 clear / bit 32 set | `v` を絶対番地の NUL 終端文字列として strlen する | 同じ (同一) |
+
+  つまり差が出るのは **bit 63 と bit 32 が両方 clear の非 0 値**だけで、
+  当初書いた「bit 63 が立っていないポインタ」よりも狭い。
+  そしてこれは **tag の無い base 相対 offset そのもの**である
+  (heap base は `movz x22, #1, lsl #16` = 0x10000 から始まるので、offset は 4 GiB 未満に収まる)。
+  同じ 3 分岐は生きている `emit-aarch64-selfhost-string-char-at-helper` も持つ
+  (`TBNZ#63/x9` と `TBNZ#32/x9`) ので、bit 32 の判別は runtime の文字列表現契約の一部であり、
+  chunk 側はその case を扱えない。
+- **残るのは削除だけ**: 裁定は済んだので、chunk1-4 を削除して本体を残す。
+  `crates/lsharp-wasm/tests` からの参照も無いので test は壊れない。
+  ただし `selfhost/src` の編集は source fingerprint を動かすため cargo と stage0 再生成が要る。
+  作業項目は `TODO.md` の `NATIVE-DEAD-01` 受入条件 (3)。
 - **関連**: I-13 (同じ helper 群の bounds check 欠落)、
   I-27 (「assertion だけ」7 件の実体。呼ばれないことが仕様である理由)、
   [native heap 回収機構 ADR](docs/adr/decisions-native-heap-reclamation.md) の
