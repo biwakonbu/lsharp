@@ -823,11 +823,28 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (`append-control-if-instr-x86` -> `emit-control-if-bundle-x86`) と揃えるなら
   `emit-control-instr-bundle-x86 ir meta offsets idx frame-base-slot-count depth` を呼ぶ
   (両変数とも `check-instr-sizes` のスコープに既にある)。
+  **直し方は確定している (2026-08-19 にソース読解で決着)。** production の
+  `codegen-x86-control-loop-fallback-native` (`:11204-11216`) が
+  **harness と同じ形の分岐を既に持っている**:
+
+  ```
+  (if (= (is-control-opcode opcode) 1)
+    (emit-control-instr-bundle-x86 ir-func meta offsets idx frame-base-slot-count current-depth)
+    ...)
+  ```
+
+  harness (`:43891`) はこの行の陳腐化コピーで、末尾 2 引数を落として非 bundle 版を呼んでいる。
+  **production の行へ揃えるだけでよく、新しい判断は要らない。**
+  `frame-base-slot-count` / `depth` はどちらも `check-instr-sizes` のスコープに既にある。
   **受入条件**: (1) `..._representative_x86_function_size_matches_generated_length_diagnostic` が
   `Some(-1)` を返すこと、(2) 修正後も**診断は最初の mismatch で止まる**ので、
-  1 回 GREEN を見て終わりにせず、残る mismatch が無いことまで確認すること、
-  (3) `emit-control-instr-bundle-x86` が opcode 80/81/83 について実ループ (`:11356`) の
-  per-opcode append と同じ列を出すことを確認すること。
+  1 回 GREEN を見て終わりにせず、残る mismatch が無いことまで確認すること。
+  当初 (3) として「opcode 80/81/83 で実ループと同じ列を出すか」を置いていたが、
+  **ソース読解で discharge した**ので受入条件から外した。根拠は 2 つ:
+  `emit-control-instr-bundle-x86` が扱う opcode 集合 {41, 79, 80, 81, 83} は
+  `native-control-instr-size-x86` (`:12275-12285`) の非 0 集合と完全一致し、
+  `native-instr-size-x86` (`:8997-9002`) が bundle 込みサイズへ回す 3 つ (41 / 81 / 83) は
+  bundle 版と非 bundle 版で出力が異なる 3 つと厳密に一致する。79 / 80 は両版で同一である。
   **含めない範囲**: production の legacy 非 bundle 経路
   (`generate-native-instr-loop-x86`。offset 側も `native-plain-instr-size-x86` を使うので
   内部整合しており、欠陥ではないと確認済み)、
