@@ -1489,10 +1489,24 @@
   後者が本質である。両 lane とも通常は `function-starts` の静的 offset を使うが、
   **aarch64 だけが「entrypoint が最後の callable 関数のとき」に実測 bundle 長から
   trailer を差し引いて offset を引き直す**。x86 にはこの分岐自体が無い。
+- **経緯 (2026-08-19 に確認)**: aarch64 の補正は 2026-05-04 の `bf35168d`
+  "Fix AArch64 entrypoint payload offset" で入った。当時は trailer 長を
+  `(+ (aarch64-selfhost-map-new-fixed-helper-offset 0 import-count) 92)` と式で直書きしており、
+  同日の `cf41069e` で `aarch64-selfhost-helper-trailer-size` へ切り出されている
+  (直書き時代の `aarch64-selfhost-map-new-fixed-helper-offset` は現在 呼び出し元 0。`I-25` の 64 件に入る)。
+  **x86 版が入ったのは 4 日後の 2026-05-08 `f56fcabd` "Close native stage23 helper gaps"** で、
+  同じ commit が `selfhost_native_stage23_gap.rs` を +210 行している。
+  つまり **test と一緒に追加され、production への接続だけが行われないまま残った**。
+- **決定的な非対称**: aarch64 の補正は `collect-callable-actual-layout-aarch64` (`:18562`) が
+  返す**実測 layout** を前提にしている。**x86 にはこの「実測 layout」自体が無い** —
+  `collect-callable-actual-layout-x86` は存在せず、x86 は静的な
+  `collect-callable-function-starts-x86` しか持たない。
+  よって x86 へ補正を移植するには、先に実測 layout に相当するものが要る。
 - **未確認 (判定していない)**: この非対称が
-  (a) x86 の layout 計測が正確なので補正が要らない、なのか
+  (a) x86 の静的 layout が正確なので補正が要らない、なのか
   (b) x86 にも同じズレがあるが補正が入っていない、なのか。
-  aarch64 側に補正が入った経緯を追わないと決まらない。
+  aarch64 で補正が必要だった理由 (measure と emit のズレ) が x86 にも当てはまるかは、
+  末尾関数を entrypoint にした bundle を実際に生成して offset を突き合わせないと決まらない。
 - **副次的に見つかったこと**: x86 の初期 capacity の直書き `2048` は、
   helper size を実際に合計すると **2,486 bytes** (27 helper) で **438 bytes 足りない**。
   `vector-push` は容量超過時に倍化するので即座の破綻ではないが、

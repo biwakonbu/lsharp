@@ -695,9 +695,14 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   x86 は (a) を `2048` の直書きで済ませ (`:10561`)、(b) の分岐自体を持たない (`:20791-20795`)。
   `x86-selfhost-helper-trailer-size` (`:10645`) は定義だけで呼び出し元 0。
   なお helper size の実合計は 2,486 bytes で、直書きの 2048 に 438 bytes 足りない。
-  **受入条件**: (1) aarch64 に (b) の補正が入った commit を `git log -S` で特定し、
-  何を直したのかを読む。(2) 同じズレが x86 にもあるかを、末尾関数を entrypoint にした
+  **受入条件**: (1) aarch64 に (b) の補正が入った経緯を特定する — **済 (2026-08-19)**。
+  `bf35168d` (2026-05-04) が aarch64 に補正を入れ、x86 版の関数は 4 日後の `f56fcabd`
+  (2026-05-08) が test と一緒に追加して接続しなかった。かつ aarch64 の補正は
+  `collect-callable-actual-layout-aarch64` (`:18562`) の**実測 layout** を前提にしており、
+  **x86 にはその実測 layout 自体が無い** (詳細は `I-26`)。
+  (2) 同じズレが x86 にもあるかを、末尾関数を entrypoint にした
   bundle で `function-starts` の値と実測 offset を突き合わせて確認する。
+  移植が必要なら実測 layout の x86 版から要る。
   (3) 判断を `I-26` へ書く。補正が要るなら実装し、要らないなら
   `x86-selfhost-helper-trailer-size` を削除するか capacity 計算へ接続する。
   **含めない範囲**: `I-23` (aarch64 側 pin の陳腐化) 本体の解消。別の pin である。
