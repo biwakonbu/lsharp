@@ -1369,11 +1369,29 @@
 - **baseline との前後比較 (2026-08-19)**: 受入条件 (b) の残りだった
   「`origin/main` での baseline」を実測した。`origin/main` `8475b00a` で
   **612 test / 495 passed / 117 failed / 19,005.96s**。
-  **積集合 612 件の上で FAIL 集合は branch と完全に一致し、新規 FAIL 0 / 解消 0。**
-  branch 側にだけある 2 件は `NATIVE-ROOT-01` が追加した root_pop ガードの test で、
+  **積集合 612 件の上で FAIL 集合は sweep2 と完全に一致し、新規 FAIL 0 / 解消 0。**
+  sweep2 側にだけある 2 件は `NATIVE-ROOT-01` が追加した root_pop ガードの test で、
   どちらも pass する。したがって **117 件はすべて `origin/main` 時点で既に FAIL しており**、
-  merge 済みの 32 commit 由来のものは無い。分類 (a) 60 / (b) 4 / (c) 53 / 帰属不能 0 も
+  `NATIVE-ROOT-01` 由来のものは無い。分類 (a) 60 / (b) 4 / (c) 53 / 帰属不能 0 も
   baseline 側から独立に再現した。
+- **比較の射程を訂正した (2026-08-19)**: 上の 1 行目を当初「`main` (32 commit ahead)」と
+  書いていたが誤りである。sweep2 を取ったのは merge 前の worktree HEAD `8a20cfe2` で、
+  ADR 側の取得条件には `8a20cfe2` と書いてあったので文書内で矛盾していた。
+  比較が証明したのは **`8475b00a` ≡ `8a20cfe2`** — つまり `NATIVE-ROOT-01` 由来 0 まで
+  であって、merge 済みの他 3 branch は覆っていない。`8a20cfe2..main` のうちこの lane に
+  届くのは 2 つ:
+  - `939e4ec9` (`TESTGATE-03`) が `selfhost_native_stage_chain.rs` に `#[ignore]` を 1 個追加した。
+    **`main` での lane の分母は 615** で、増えた
+    `test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value`
+    は本測定に含まれていない (未測定であって pass ではない)。
+  - `5e992d52` / `1855fa0b` が `LspServerNav.ls` から 22 行削除した。同ファイルは
+    selfhost bundle の構成モジュール (`crates/lsharp-wasm/tests/e2e/support.rs:37-39`) で、
+    117 件のうち 79 件が bundle を組む系なので、サイズ・オフセットを pin する assertion が
+    ずれる可能性は排除できない。
+
+  分母は revision ごとに実測した (`8475b00a` 612 / `8a20cfe2` 614 / `main` 615)。
+  **`main` 実体での lane 再実行は未実施**で、これは満たせなかった条件である。
+  再実行は `TODO.md` の `IGNLANE-01` が持つ。
 - **台帳化 (2026-08-19)**: 受入条件 (c) を
   [`docs/development/validation/ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   で満たした。`workspace-expected-failures.txt` と同じ `<binary-id> <test-name>` の粒度で
@@ -1381,6 +1399,8 @@
   **`scripts/ci/check-workspace-baseline.sh` の入力にはしていない** — 非 ignored lane の
   baseline へ混ぜると「実測に現れない expected」として必ず非 0 になるためで、
   自動検証は付いていない。ここは満たせなかった点として明示しておく。
+  台帳の 117 行は `8a20cfe2` 時点の集合であり、`main` では未検証である
+  (上記「比較の射程を訂正した」を参照)。
 - **本 issue の pin 自体は未修正**: `(aarch64-selfhost-helper-trailer-size 10)` の
   期待値 `2520` は陳腐化したままである。洗い出し (`STALE-PIN-01`) の受入条件は
   「個々の pin の期待値更新」を範囲外としていたので、更新は `STALE-PIN-02` が扱う。

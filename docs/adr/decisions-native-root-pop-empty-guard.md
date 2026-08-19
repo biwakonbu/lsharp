@@ -329,7 +329,7 @@ harness 族に属する。
 
 | run | revision | 分母 | passed | failed | 所要 |
 |---|---|---|---|---|---|
-| branch | `main` (32 commit ahead) | 614 | 497 | 117 | 18,756.35s |
+| sweep2 | worktree `codex/native-root-01` `8a20cfe2` | 614 | 497 | 117 | 18,756.35s |
 | baseline | `origin/main` `8475b00a` | 612 | 495 | 117 | 19,005.96s |
 
 両 run とも `running N tests` の宣言数と結果行のユニーク数が一致し、summary の
@@ -347,6 +347,29 @@ branch 側にだけある 2 件 (`test_e2e_native_aarch64_root_pop_emits_empty_s
 分類も baseline 側の FAIL 名から独立に再実行し、`fn <name>(` 本体の走査で
 **(a) 60 / (b) 4 / (c) 53 / 帰属不能 0** を再現した。(c) 53 件のうち理由文字列つき
 `#[ignore]` が 22 件という内訳も一致する。
+
+#### 何が証明できていて、何ができていないか (2026-08-19 訂正)
+
+**上表の 1 行目を当初 `main` (32 commit ahead) と書いていたが、誤りである。**
+この run は worktree `/Users/biwakonbu/github/tmp/lsharp-native-root` の HEAD `8a20cfe2` で
+取った (同じ節の取得条件に `8a20cfe2` と書いてあり、文書内で矛盾していた)。
+`main` は `8a20cfe2` を含むが、その後に 3 branch 分の commit が乗っている。
+
+したがって前後比較が証明したのは **`8475b00a` ≡ `8a20cfe2` (本変更 = `NATIVE-ROOT-01` 由来の
+regression 0)** までである。「merge 済みの全 commit に由来するものは無い」とは言えない。
+`8a20cfe2..main` の差分のうち、この lane に届きうるものが 2 つある:
+
+| 差分 | commit | この lane への影響 |
+|---|---|---|
+| `selfhost_native_stage_chain.rs` に `#[ignore]` を 1 個追加 | `939e4ec9` (`TESTGATE-03`) | **lane の分母が 614 → 615 になる。** 増えた `test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value` は本 run では ignored lane に居らず、**未測定** |
+| `LspServerNav.ls` から 22 行削除 / `LspServer.ls` の呼び出し先を変更 | `5e992d52` / `1855fa0b` (`LSP-DEDUP-MERGE-01` / `DIAG-DEDUP-01`) | `LspServerNav.ls` は selfhost bundle の構成モジュール (`crates/lsharp-wasm/tests/e2e/support.rs:37-39`)。台帳 117 件のうち 79 件が bundle を組む系の test なので、**サイズ・オフセットを pin する assertion がずれる可能性を排除できない** |
+
+分母は revision ごとに実測した: `8475b00a` 612 / `8a20cfe2` 614 / `main` 615
+(`git grep -c '^\s*#\[ignore' <rev> -- crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs`)。
+
+**満たせなかった条件: `main` 実体での lane 再実行は未実施である。** 台帳 117 件は
+`8a20cfe2` 時点の集合であり、`main` で同じ 117 件になる保証は無い。再実行は
+`TODO.md` の `IGNLANE-01` が持つ。数字を静かに直さず、範囲を狭めて書き直した。
 
 全 117 件の名前・分類・`#[ignore]` 理由文字列は
 [`docs/development/validation/ignored-lane-expected-failures.txt`](../development/validation/ignored-lane-expected-failures.txt)

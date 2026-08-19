@@ -130,8 +130,14 @@ chunked control loop と row-state loop を使い分けていた。blocker は�
 | `V2-15` の Lexer fixed radix 由来 (1 行) | 原因 (「`NativeCodegen.ls` が 1,000,000 bytes を超え、fixed radix が `end-pos` を巻き戻す」) が修正箇所の**コメントとして現存する** — `selfhost/src/Syntax/Lexer.ls:386` 「未終端文字列の末尾 escape は source-len + 1 を返せるため、それより大きい radix を使う」。回帰 test `test_selfhost_lexer_lex_result_encoding_scales_with_source_length` / `test_e2e_selfhost_lexer_lex_result_round_trips_large_and_trailing_escape_positions` も現存する |
 | `V2-16` の ADT field key 由来 (1 行) | 同様に `selfhost/src/Backend/Wasm/CompilerBase.ls:57` に「Map runtime の 0 は空スロット判定に使うため、ADT field key は 1 始まりにする」というコメントが残り、実装 `(defn adt-constructor-field-key [idx] (+ idx 1))` と対になっている。回帰 test は `test_e2e_selfhost_compiler_mode_adt_nested_constructor_pattern_runs` |
 
-`V2-13a-5` (親項目) の 2 行は移送済みで、主題 1 の
-`test_wasm_compiler_source_defn_step64_continuations_root_recursive_result_before_unwinding` の行がこれにあたる。
+`V2-13a-5` (親項目) の 2 行はどちらも移送済みで、上表の 2 行に対応する — 1 行目が
+`test_wasm_compiler_source_defn_step64_continuations_root_recursive_result_before_unwinding`
+(64-step continuation の root 漏れ)、2 行目が
+`test_selfhost_parser_parse_let_roots_returned_result_before_unwinding_bindings`
+(`parse-let-v3` の返却 AST が binding roots の unwind 中に stale 化する穴)。
+2 行目は先頭が artifact の green 記録 (`code_len=3590589` ほか) なので進捗ログに見えるが、
+本文の後半で「step64 fix は直接 blocker ではない」と否定したうえで原因を `parse-let-v3` へ
+絞り込んでおり、移送対象の「原因の絞り込み」に当たる。
 
 **`V2-15` / `V2-16` の 2 行を移送しないと決めたのは、「原因が消える」条件を満たさないためである。**
 `DOC-09` が問題にしているのは *`git log -S` でしか到達できなくなること* であって、行が消えること自体ではない。

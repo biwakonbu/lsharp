@@ -824,6 +824,22 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (2) 実装側が誤りなら `ISSUES.md` に採番して起票すること。
   **含めない範囲**: 実装の修正そのもの (起票後に別項目)。
   **cargo が要る。**
+- [ ] `IGNLANE-01` ignored lane の台帳を `main` 実体で再測定する — Issue `I-23`。
+  `ignored-lane-expected-failures.txt` の 117 件は merge 前の worktree HEAD `8a20cfe2` で
+  取ったものであり、`main` では未検証である。`8a20cfe2..main` にはこの lane に届く差分が 2 つある。
+  - `939e4ec9` (`TESTGATE-03`) が `selfhost_native_stage_chain.rs` に `#[ignore]` を 1 個足した。
+    **`main` での分母は 615** (実測: `8475b00a` 612 / `8a20cfe2` 614 / `main` 615)。増えた
+    `test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value`
+    は台帳に載っていない。**未測定であって pass ではない。**
+  - `5e992d52` / `1855fa0b` が `LspServerNav.ls` から 22 行削除した。同ファイルは selfhost bundle の
+    構成モジュール (`crates/lsharp-wasm/tests/e2e/support.rs:37-39`) で、台帳 117 件のうち
+    79 件が bundle を組む系である。サイズ・オフセットを pin する assertion のずれは排除できない。
+  受入条件は (1) `main` で `--ignored` lane を 615 件完走させ (完走判定は宣言数 == 結果行ユニーク数)、
+  (2) 台帳との差分 (新規 FAIL / 解消 / 未測定 1 件の帰趨) を台帳ヘッダへ書き戻すこと。
+  **含めない範囲**: 個々の FAIL の修正 (`STALE-PIN-02` / `STALE-PIN-03` が持つ)、
+  Lima 依存 60 件・env 依存 4 件の到達可能化、CI 再開 (`I-19`)。
+  **cargo が要る。5 時間かかるので `os.setsid()` で切り離して回すこと** (前回 2 回のうち
+  1 回はハーネスに 328/614 で停止された)。
 - [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
   parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
   片側だけの directive 追加は検出できる状態になった。判断と実測は

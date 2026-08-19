@@ -15,14 +15,33 @@
 #
 #   | run | revision | 分母 | passed | failed | 所要 |
 #   |---|---|---|---|---|---|
-#   | branch   | main (32 commit ahead) | 614 | 497 | 117 | 18,756.35s |
-#   | baseline | origin/main 8475b00a   | 612 | 495 | 117 | 19,005.96s |
+#   | sweep2   | codex/native-root-01 8a20cfe2 | 614 | 497 | 117 | 18,756.35s |
+#   | baseline | origin/main 8475b00a          | 612 | 495 | 117 | 19,005.96s |
 #
 #   **前後比較の結果 (2026-08-19)**: 積集合 612 件の上で FAIL 集合は完全に一致する。
-#   新規 FAIL 0 / 解消 0。branch 側にだけある 2 件は NATIVE-ROOT-01 が追加した
+#   新規 FAIL 0 / 解消 0。sweep2 側にだけある 2 件は NATIVE-ROOT-01 が追加した
 #   root_pop 空 stack ガードの test で、どちらも pass。
 #   したがって **117 件はすべて origin/main 時点で既に FAIL しており、
-#   merge 済みの 32 commit に由来するものは 1 件も無い**。
+#   NATIVE-ROOT-01 由来のものは 1 件も無い**。
+#
+#   **測った revision は main ではない (2026-08-19 訂正)。** 当初この行を
+#   「main (32 commit ahead)」と書いていたが、実際は merge 前の worktree HEAD
+#   8a20cfe2 である。main はこれを含むが、その後に 3 branch 分が乗っており、
+#   うち 2 つがこの lane に届く:
+#     - 939e4ec9 (TESTGATE-03) が selfhost_native_stage_chain.rs に #[ignore] を 1 個追加。
+#       **main での分母は 615。** 増えた
+#       test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value
+#       は本測定に含まれておらず、下の 117 行にも載っていない (未測定であって pass ではない)。
+#     - 5e992d52 / 1855fa0b が LspServerNav.ls から 22 行削除。同ファイルは selfhost bundle の
+#       構成モジュール (tests/e2e/support.rs:37-39) で、下の 117 件のうち 79 件が bundle を
+#       組む系なので、サイズ・オフセットを pin する assertion のずれは排除できない。
+#
+#   分母の実測値: 8475b00a 612 / 8a20cfe2 614 / main 615
+#     git grep -c '^\s*#\[ignore' <rev> -- \
+#       crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs
+#
+#   **したがって下の 117 行は 8a20cfe2 時点の集合であり、main では未検証である。**
+#   main 実体での再実行は TODO.md の IGNLANE-01 が持つ。
 #
 # ---- 分類 ----
 #   test 名の prefix ではなく `fn <name>(` から次の `fn` までの**本体**を読んで分けた。
