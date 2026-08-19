@@ -639,11 +639,14 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `DEVLOOP-T1-2` を入れても **`selfhost/src` を編集した瞬間に両 lane とも fingerprint 不一致で `die`
   する**ため、source 編集ループの待ち時間は変わっていない。dev lane が救うのは
   「commit は進んだが `selfhost/src` は同一」のケースだけである。ここが本命。
-- [ ] `NATIVE-HEAP-01` aarch64 alloc helper の bounds check — `I-13` の帰結。
-  `selfhost/src/Backend/Native/NativeCodegen.ls:14512-14548` の
+- [ ] `NATIVE-HEAP-01` aarch64 確保系 helper の bounds check — `I-13` の帰結。
+  `selfhost/src/Backend/Native/NativeCodegen.ls:14513` の
   `emit-aarch64-selfhost-alloc-helper` は 18 word / 72 bytes ちょうどで、decode しても
   **limit 比較も条件分岐も無い** (唯一の分岐は heap base 非ゼロ判定の `CBNZ x21`)。
-  x86 側 (`:9635` / `:9861`) は cursor/limit を持つので **aarch64 だけ非対称**。
+  **対象はこの 1 つではない** — `emit-aarch64-selfhost-vector-push-helper` (`:14671`) と
+  `emit-aarch64-selfhost-map-new-helper` (`:15171`) にも limit 比較が無い。
+  x86 側は対応する `:9711` / `:9931` / `:9876` の 3 つすべてに `cmp` を持つので
+  **aarch64 だけ非対称**。
   heap 終端を越えた確保を検出して SIGSEGV ではなく診断メッセージで停止させる。
   `selfhost/src` の編集なので fingerprint が動き、stage0 再生成と両 target の
   native E2E 証跡が要る。単独の slice として扱う。
@@ -652,7 +655,12 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   消費は生存データ量ではなく累積確保回数に比例するため、heap 拡大は先送りにしかならない
   (4 GiB → 8 GiB へ倍増しても拡大分をちょうど使い切って落ちることを実測済み)。
   `NATIVE-HEAP-01` は症状を可視化するだけで、「115 KB の入力に 8 GiB 超」という増幅は解消しない。
-  GC ないし arena reset の設計から始める。`LEGACY-ROOT-01` / `LEGACY-IO-01` と関連。
+  設計は [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md)
+  で in-design。**次の一手は方式の選択ではなく確保の帰属の動的計測** —
+  aarch64 `map-new` の無条件 65,536 bytes 確保が主要容疑だが、静的な数え上げ
+  (`(defn ` 6,656 個 × 64 KiB ≈ 416 MiB) では 8 GiB に届かない。
+  計測は wasm lane でよい (呼び出し回数は lane に依らない)。
+  `LEGACY-ROOT-01` / `LEGACY-IO-01` と関連。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される

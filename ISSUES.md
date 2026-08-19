@@ -750,6 +750,15 @@
   `emit-x86-selfhost-vector-new-helper:9635` / `emit-x86-selfhost-string-concat-helper:9861` は
   「先頭 16 bytes は cursor/limit」「cursor/limit の範囲へ bump allocate」とコメントで limit を明示しており、
   **aarch64 側だけ非対称**である。よって heap 終端を越えた確保が検出されず、未マップページへ触れて SIGSEGV になる。
+
+  **2026-08-19 追記: 欠落は `alloc-helper` 単独ではない。** x86 側を「コメントで limit を明示している」
+  としか確認していなかったので、両 lane の機械語を直接 decode し直した。aarch64 は
+  `emit-aarch64-selfhost-vector-push-helper` (`:14671`) と `emit-aarch64-selfhost-map-new-helper`
+  (`:15171`) にも limit 比較が無く、x86 は対応する `:9711` / `:9931` / `:9876` の 3 つすべてに
+  `cmp` を持つ。**aarch64 の bounds check 欠落は確保系 helper 全般に及ぶ** ので、
+  `NATIVE-HEAP-01` の対象は 1 helper ではなく 3 helper である。
+  同じ decode で得た確保サイズと成長ポリシーの lane 別実測は
+  [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md) にある。
 - **切り分け済みの周辺事実**:
   - stage bootstrap 自体は成功する。stage0 package は壊れていない。
   - 小さい fixture (`tests/fixtures/validation/*.ls`) を使う
@@ -759,9 +768,13 @@
     `LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES` を持つ。ただし上記実測より、
     **env knob は本ワークロードの緩和策にならない**。
 - **根拠**: 2026-08-16 実測 (T1-1 の副産物 + 2 回の crash report 解析)。
-- **帰結する未完項目**: TODO.md の `NATIVE-HEAP-01` (aarch64 alloc helper の bounds check) と
+- **帰結する未完項目**: TODO.md の `NATIVE-HEAP-01` (aarch64 の確保系 helper 3 つの bounds check) と
   `NATIVE-HEAP-02` (回収機構の設計)。前者は症状を診断メッセージへ変えるだけで、
   「115 KB の入力に 8 GiB 超」という増幅そのものは解消しない。
+  後者の設計は [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md)
+  で in-design。**「累積確保回数に比例」に機構を与える主要容疑は aarch64 `map-new` の
+  無条件 65,536 bytes 確保** (resize path 無し、`map-insert` / `map-remove` は in-place で 0 確保)
+  だが、静的な数え上げでは 8 GiB に届かないため帰属は動的計測待ちである。
 - **関連**: `LEGACY-IO-01` (dynamic root/data/heap layout)、`LEGACY-ROOT-01` (rooting discipline)、
   [`decisions-dev-loop-rust-free-daily-lane.md`](docs/adr/decisions-dev-loop-rust-free-daily-lane.md)。
 
