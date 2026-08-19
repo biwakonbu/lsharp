@@ -55076,6 +55076,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_r
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value() {
     if !host_native_exec_supported() {
         return;

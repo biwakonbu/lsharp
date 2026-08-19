@@ -1,7 +1,7 @@
 # ADR: heavy e2e 164 件の `#[ignore]` 契約をどちらへ寄せるか (TESTGATE-03)
 
-- Status: doc-RED (判断のみ確定。実装は本ブランチに載せない)
-- Date: 2026-08-18
+- Status: 実装済み (2026-08-19)
+- Date: 2026-08-18 (裁定) / 2026-08-19 (実装)
 - Scope: `TESTGATE-03` / `I-22` /
   `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs` /
   `crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs` /
@@ -115,7 +115,7 @@ prefix ルール (規約) は変えない。
 - **164 件を高速化・統合して default run に残す** — 却下。`TESTGATE-03` の
   「含めない範囲」に明記済み。test 自体の設計変更であり、契約の裁定とは別の作業。
 
-## 実装をこのブランチに載せない理由
+## 実装をこのブランチに載せない理由 (裁定時点の判断。2026-08-19 に別 slice で実装した)
 
 3 つある。(1) `ops03c` を GREEN にする検証は test run を要し、現在 sweep が CPU を占有している。
 (2) merge 対象の slice (`NATIVE-ROOT-01` / `DIAG-DEDUP-01`) に無関係な 164 ファイル変更が混ざる。
@@ -124,4 +124,81 @@ revert 単位として正しい。
 
 ## Evidence
 
-実装後に埋める。受入条件は `TODO.md` の `TESTGATE-03` が正本。
+2026-08-19、worktree `lsharp-diag-dedup` / branch `codex/testgate-03` (`main` `6680e991` 起点) で実装した。
+
+### 変更内容
+
+| 対象 | 変更 |
+|---|---|
+| `selfhost_cli_core.rs` | `#[ignore]` 158 行追加 |
+| `selfhost_cli_actual_main_args.rs` | `#[ignore]` 5 行追加 |
+| `selfhost_native_stage_chain.rs` | `#[ignore]` 1 行追加 |
+| `workspace-expected-failures.txt` | 4 行削除 + コメント 2 ブロック書き換え |
+
+test 本体には一切手を入れていない。`git diff --stat` は test 3 ファイルで
+**166 insertions / 0 deletions** (`#[ignore]` 164 行と `workspace-expected-failures.txt` の
+コメント 2 行)、削除は expected-failures の 6 行のみ。
+
+offender の特定は `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` の panic 出力から
+`file:line` を抽出して行った。panic header 自身の行 (`selfhost_lsp_docs_ops.rs:3891`) が
+素朴な grep では 165 件目として混ざるので、**ヘッダ以降の行だけを取る**必要がある。
+除外後は 164 件ちょうどで、内訳も doc-RED 時点の記録 (158 / 5 / 1) と一致した。
+
+挿入位置は `fn` 行の直前である。`has_ignore_attribute`
+(`selfhost_lsp_docs_ops.rs:3339-3351`) は `fn` 行から遡って**最初の非空行 1 行だけ**を見て
+`#[ignore` で始まるかを判定するので、`#[test]` と `fn` の間に置かないと通らない。
+`#[cfg_attr(..., ignore)]` 形も通らない。
+
+### 受入判定
+
+| 受入条件 | 結果 |
+|---|---|
+| `ops03c` が GREEN | **達成**。`test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted ... ok` |
+| 同じ検査系を巻き添えにしていない | **達成**。`ops03` / `ops03b` / `ops03c` / `ops03d` の 4 件が ok, 0 failed |
+| baseline checker が壊れない | **達成**。`scripts/ci/test-check-workspace-baseline.sh` exit 0 (PASS) |
+
+### run set の実測 — 予測とのズレ 1 件
+
+`--list` で前後を実測した (変更 3 ファイルを `git stash` して測り、`stash pop` で戻した)。
+
+| | 合計 | ignored | default で走る |
+|---|---|---|---|
+| 変更前 | 3,062 | 1,262 | 1,800 |
+| 変更後 | 3,062 | 1,426 | 1,636 |
+
+**移動量は 164 でちょうど一致**し、合計は動いていない。
+doc-RED 時点の予測は「1,799 → 1,635」だったので**両側とも 1 件多い**が、
+差は分母 (合計 test 数) 側にあり、移動量 164 の側ではない。
+予測を書いた 2026-08-18 以降に merge した slice が default test を 1 件増やしたためと見られるが、
+**どの test かは特定していない**。ここは「予測が 1 件ずれていた」以上のことは書かない。
+
+### 削除した expected FAIL 4 行について
+
+doc-RED の「実測コスト 2」が挙げた 3 行 (`selfhost_cli_core` の
+`check_file_resolves_imported_definition` / `check_reports_invalid_canonical_case` /
+`validate_source_json_reports_contradicting_evidence`) は、164 件の**名前で交差を取り直して**
+実測で確認した。行番号 `:54-56` は merge でファイルが動いた後も一致していた。
+
+**doc-RED に無かった 4 行目がある。** `ops03c` 自身
+(`e2e::selfhost_lsp_docs_ops::test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted`) が
+expected FAIL に載っていたので、GREEN になった以上これも同じ変更で外さないと
+checker の「expected が pass に転じた」条件が発火する。順序は
+**「ops03c を実走して GREEN を確認 → 行を削除」**とした。
+
+コメントブロックも実態へ合わせた。`[selfhost_cli_core]` の「4 要因」は残存 1 行分へ、
+`[selfhost_lsp_docs_ops]` の「3 要因」は解消後の 2 要因へ書き直し、
+どちらも**削除した要因が「直った」のではなく「lane が移った」だけ**である旨を残した。
+
+### 満たせなかった条件 — 緩めずに書く
+
+1. **`--ignored` lane の再走をしていない。** 164 件が phase11 lane で実際に走ることは、
+   doc-RED 時点で `compile-phase11-inputs.sh` の prefix 被覆を読んで確認した推論である。
+   今回それを**実行では確認していない** (該当 lane は 1 件 ~186s サンプルで、全件 5 時間規模)。
+   なお 164 件は今回はじめて「default では走らず ignored lane でのみ走る」状態になったので、
+   phase11 lane の実効カバレッジが変わる。この検証は次の lane 実走時に行う。
+2. **削除した expected FAIL 3 行が「もう FAIL しない」ことを実測していない。**
+   根拠は「`#[ignore]` は junit に載らない」という semantics からの帰結であって、
+   前後の junit 比較ではない。3 件の未実装挙動そのものは直っていない
+   (`[selfhost_cli_core]` のコメントにその旨を明記した)。
+3. **164 件が heavy であることは依然として推論のまま。** doc-RED の「heaviness の根拠」節から
+   変わっていない。実測したのは 7 件サンプルの ~186s/件だけである。

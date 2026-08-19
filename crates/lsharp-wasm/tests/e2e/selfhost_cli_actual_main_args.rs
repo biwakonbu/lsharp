@@ -273,6 +273,7 @@ fn test_e2e_selfhost_cli_main_batched_version_and_parse_argv() {
 
 /// TEST-CLI-02-AP: actual Cli main は argv 経由で check file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_check_file() {
     let lines = run_cli_main_with_input_file("check", "(defn main [] 42)", &["check", "input.ls"]);
 
@@ -285,6 +286,7 @@ fn test_e2e_selfhost_cli_main_with_args_check_file() {
 
 /// EC-M1-03: actual selfhost CLI の check --json が source JSON report を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_check_json_file() {
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
         run_cli_main_with_input_file_capture(
@@ -307,6 +309,7 @@ fn test_e2e_selfhost_cli_main_with_args_check_json_file() {
 
 /// EC-M1-03: actual selfhost check --json が診断時に exit code 1 を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_check_json_diagnostic_exit() {
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
         run_cli_main_with_input_file_capture(
@@ -373,6 +376,7 @@ fn test_e2e_selfhost_cli_main_check_json_aliases() {
 
 /// EC-M1-06: actual selfhost CLI の test --format json が assurance の二軸 report を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
         run_cli_main_with_input_file_capture(
@@ -512,6 +516,7 @@ fn assert_non_bool_invariant_json_matches_rust_oracle(
 
 /// EC-M1-01/06: actual selfhost CLI の legacy non-Bool invariant が structured report の failure boundary を保つこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant() {
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
         run_cli_main_with_input_file_capture(

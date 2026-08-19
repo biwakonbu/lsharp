@@ -154,7 +154,7 @@
 | [I-19](#i-19) | CI 自動実行の停止で `ci.yml` の 17 job が 1 ヶ月以上まったく観測されていない | 中 | documented-limitation | [default-path-smoke 決定論化 ADR](docs/adr/decisions-default-path-smoke-determinism.md) |
 | [I-20](#i-20) | selfhost parser が受理した 6 directive の payload を黙って捨てている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 | [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない (aarch64 は解決済、x86-64 が残件) | 高 | open | [空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) |
-| [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしていない。案 A で裁定済み、実装のみ残る | 中 | open | [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) |
+| [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしていない。案 A で裁定し 2026-08-19 に実装した | 中 | resolved | [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) |
 | [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
 | [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
 
@@ -652,8 +652,10 @@
   検査が復活すると、非分割ファイルに隠れていた**本物の違反 164 件**が現れた
   (`selfhost_cli_core.rs` 158 / `selfhost_cli_actual_main_args.rs` 5 /
   `selfhost_native_stage_chain.rs` 1)。この 164 件をどう扱うかは規約側の判断なので
-  `I-22` / `TESTGATE-03` へ切り出した。`ops03c` は expected FAIL のまま残り、
-  **本作業の前後で baseline の FAIL 集合は変わらない**。
+  `I-22` / `TESTGATE-03` へ切り出した。**本作業 (`TESTGATE-01`) の前後で baseline の
+  FAIL 集合は変わらない** — `ops03c` は expected FAIL のまま残った。
+  その後 2026-08-19 に `TESTGATE-03` が案 A で実装され、`ops03c` は GREEN になって
+  expected FAIL からも外れている。
 
 - **個々の FAIL の修正はスコープ外。** 特に snapshot 14 件は `cargo insta accept` 一発で
   消えるが、2 ヶ月分の未レビューな codegen 出力を追認することになるので**やらない**。
@@ -1189,7 +1191,16 @@
 <a id="i-22"></a>
 ### I-22: heavy e2e 164 件が `#[ignore]` 契約を満たしておらず、規約と実態のどちらが陳腐化しているか未決
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: resolved
+- **解決 (2026-08-19)**: **案 A** (164 件に `#[ignore]` を付ける) を採って実装した。
+  `ops03c` は GREEN、`ops03` / `ops03b` / `ops03d` も巻き添えなく ok。
+  default で走る test は **1,800 -> 1,636** (合計 3,062 は不変、ignored が 1,262 -> 1,426 と
+  ちょうど 164 増えた)。`workspace-expected-failures.txt` からは 4 行を外した — 裁定時に
+  数えていた 3 行に加え、GREEN になった `ops03c` 自身の行も外さないと
+  「expected が pass に転じた」条件が発火するためである。
+  **164 件が phase11 lane で実際に走ることは実行では確認していない** (prefix 被覆からの推論)。
+  判断・実測・満たせなかった条件は
+  [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) の Evidence 節が正本。
 - **内容**: `TESTGATE-01` で `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` の
   構造的破損 (fragment 未追随 / prefix モードの無言無効化) を直したところ、
   検査が**本物の違反 164 件**を報告した。従来はこれらが見えていなかった。
@@ -1248,8 +1259,9 @@
   「規約どおりに直すと利用者から見える指摘が消える」という**具体的な損失**であって、
   実態が蓄積していたことそのものではない。本件で同じ問いを立てるなら
   「案 A を採ると 158 件がどこでも走らなくなる」という損失を同じ天秤に載せる。
-- **現在の扱い**: `ops03c` は `workspace-expected-failures.txt` の expected FAIL として残る
-  (`TESTGATE-01` 前後で baseline の FAIL 集合は不変)。着手の追跡は `TODO.md` の `TESTGATE-03`。
+- **現在の扱い**: 解決済み。`TESTGATE-01` 直後は `ops03c` が `workspace-expected-failures.txt` の
+  expected FAIL として残っていた (同 slice の前後で baseline の FAIL 集合は不変) が、
+  2026-08-19 の `TESTGATE-03` 実装で GREEN になり、当該行は削除した。
 
 ---
 

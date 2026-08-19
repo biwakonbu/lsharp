@@ -50,13 +50,9 @@ lsharp-wasm::e2e e2e::bootstrap_selfhost_lsp_integration::test_e2e_selfhost_form
 #     後者は :roots-unbalanced 注釈で fixture 側が意図を宣言する形に変えた
 #     (docs/adr/decisions-root-lifetime-intentional-imbalance-annotation.md)。
 #     このクラスタの登録行は 0 になった。実測 94 passed; 0 failed。
-# [selfhost_cli_core] selfhost CLI の未実装挙動への RED。4 要因 -- parser-owned contract suite の canonical/legacy 分離で件数不一致 / canonical case の unsupported type を実行前に報告しない / validate-source-json が contradicting evidence を報告しない / import 先 helper を含む check が診断 0 件にならない (first-body:undefined symbol)
-lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_file_resolves_imported_definition
-lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_check_reports_invalid_canonical_case
-lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence
+# [selfhost_cli_core] selfhost CLI の未実装挙動への RED。残る 1 要因 -- parser-owned contract suite の canonical/legacy 分離で件数不一致。他の 3 要因 (canonical case の unsupported type を実行前に報告しない / validate-source-json が contradicting evidence を報告しない / import 先 helper を含む check が診断 0 件にならない) は 2026-08-19 の TESTGATE-03 で当該 test が #[ignore] へ移り、default lane から外れたので本ブロックから削除した。挙動が直ったわけではなく、phase11 lane (compile-phase11-inputs.sh の test_e2e_selfhost_cli_ prefix) で走る
 lsharp-wasm::e2e e2e::selfhost_cli_core::test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms
-# [selfhost_lsp_docs_ops] 3 要因。(1) I-22 / TESTGATE-03: heavy test 164 件が #[ignore] 契約を満たしていない (selfhost_cli_core 158 / selfhost_cli_actual_main_args 5 / selfhost_native_stage_chain 1)。2026-08-18 に TESTGATE-01 で検査側の構造的破損 (親が include! のみで fragment を見ていない / prefix モードが一致 0 件でも無言 pass) を是正した結果、隠れていた本物の違反が現れたもの。規約と実態のどちらを直すかは未決なので本行は残る (2) type diagnostics の標準 LSP Diagnostic 配列投影が未実装 (3) release-smoke.sh が native-only artifact の --version / --help boundary を検証していない。DIAG-DEDUP-01 由来の 2 件 (render_sorted_deduped_diagnostics_json / _snapshot) は 2026-08-18 に I-24 として裁定し解消したため本ブロックから削除した
-lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted
+# [selfhost_lsp_docs_ops] 残る 2 要因。(1) type diagnostics の標準 LSP Diagnostic 配列投影が未実装 (2) release-smoke.sh が native-only artifact の --version / --help boundary を検証していない。過去に登録していた 2 要因は解消済み -- DIAG-DEDUP-01 由来の 2 件 (render_sorted_deduped_diagnostics_json / _snapshot) は 2026-08-18 に I-24 として裁定、ops03c の #[ignore] 契約違反 164 件は 2026-08-19 に TESTGATE-03 で規約側ではなく実態側 (test に #[ignore] を付ける) を採って解消した
 lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_ops06_release_smoke_contract
 lsharp-wasm::e2e e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_type_diagnostics_use_standard_projection
 # [selfhost_main_module_determinism] selfhost の module graph topological sort が全モジュールを覆えていない (循環依存は無い)。未実装への RED

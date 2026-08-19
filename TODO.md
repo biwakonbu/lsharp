@@ -665,28 +665,10 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **本物の違反 164 件**が現れたため (`selfhost_cli_core.rs` 158 / `selfhost_cli_actual_main_args.rs` 5 /
   `selfhost_native_stage_chain.rs` 1)。この 164 件を「規約違反として `#[ignore]` を付ける」のか
   「prefix ルールが広すぎるので絞る」のかは規約側の判断であり、`I-22` / `TESTGATE-03` が持つ。
-  そのため `ops03c` は expected FAIL のまま残る (baseline の FAIL 集合は本作業の前後で不変)。
+  この裁定は 2026-08-19 に案 A で実装済みで、`ops03c` は GREEN になり expected FAIL から外れた。
   **この項目の記述の訂正**: 旧記述の「現時点では 215 件とも `#[ignore]` を持っており live な
   regression は無い」は、分割済み 4 親だけを見た測定だった。非分割の `selfhost_cli_core.rs` 等は
   厳密名モードの panic に隠れていて数えられていない。
-- [ ] `TESTGATE-03` heavy e2e 164 件の `#[ignore]` 契約 — 規約と実態のどちらを直すか — Issue `I-22`。
-  `TESTGATE-01` で検査を復活させたところ 164 件の違反が現れた。増加は 2026-07-17 以降で、
-  CI 自動実行が止まった 2026-07-12 (`I-19`) の 5 日後から 1 commit あたり 1〜3 件ずつ積み上がっている。
-  **受入条件**: 案 A (164 件に `#[ignore]` を付ける) / 案 B (prefix ルールを絞る) のどちらを採るかを
-  ADR に却下理由つきで記録し、そのとおりに直したうえで `ops03c` を GREEN にし、
-  `workspace-expected-failures.txt` から当該行を外す。
-  **含めない範囲**: 案 A を採る場合でも CI の再開 (`I-19` / `SMOKE-GATE-03`) は本項目に含めない。
-  164 件の中身の修正 (test 自体の高速化・統合) も含めない。
-  **裁定済み (2026-08-18)**: **案 A** を採る。判断と却下理由は
-  [test gate ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md)。残るのは実装のみ。
-  **旧「判断材料」の訂正**: 「案 A は 158 件をどこでも走らない状態にする」は誤り。
-  `scripts/ci/compile-phase11-inputs.sh` は prefix 起動なので 164/164 が既存の起動対象に入る
-  (`:238` / `:240` / `:242` / `:244` / `:296`)。厳密名 grep で 0/164 と測ったのが誤測だった。
-  ただし default の workspace run から抜けること自体は正しく、CI 自動実行が止まっている間
-  (`I-19`) の実行経路は phase11 script の手動実行と release playbook の 2 つだけになる。
-  **追加の受入条件**: `workspace-expected-failures.txt:54-56` の 3 行 (164 件のうち現在 FAIL して
-  いるもの) を同じ変更で外すこと。付けないと checker の「expected が消えた」条件が発火する。
-
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される
