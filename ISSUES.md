@@ -1796,12 +1796,13 @@
 ---
 
 <a id="i-28"></a>
-### I-28: x86 native の import 呼び出しが引数を rdi へ載せず、int-to-string helper が caller のゴミを読む
+### I-28: x86 native の int-to-string import 呼び出しが rdi を書かない (harness seed の import placeholder が param-count 0 のため)
 
-- **影響度**: 中-高 / **状態**: open / **発見**: 2026-08-19 (`STALE-PIN-03` の裁定から)
-- **内容**: `(int-to-string 42)` を x86-64 native で codegen すると、生成される call site は
-  **引数を rdi へ移さない**。helper 側は rdi から読むので、変換されるのは
-  caller のレジスタに偶然残っていた値である。
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-19 (`STALE-PIN-03` の裁定から)
+- **内容**: `(int-to-string 42)` を **当該 test harness の seed で** x86-64 native codegen すると、
+  生成される call site は **引数を rdi へ移さない**。helper 側は rdi から読むので、
+  変換されるのは caller のレジスタに偶然残っていた値である。
+  production の生成器が同じ結果になるかは**未確定** (下の「production 側の帰趨は未確定」を見よ)。
 - **裁定 (2026-08-19 に訂正)**: 当初は **「実装側が誤り」** と書いたが、後続のソース読解で
   **harness の import placeholder 種まきが原因**であることが判明した。下の
   「**根本原因 (2026-08-19 に確定)**」節が正本であり、上の一文は撤回する。

@@ -822,6 +822,13 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
      「production 側の帰趨は未確定」節) をどう扱うかを結論づけ、
      production 側にも欠陥があるなら別 ID を起票する
   3. 同族の `..._x86_function_size_...` (`STALE-HARNESS-01`) と混ぜない
+  4. **巻き添えを確認する。** rewriter は seed を書き換えるので、同じ harness
+     `run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args`
+     を共有する test すべてに効く。import 6 が 1 引数呼び出しになると call site の
+     byte 長が 7 byte (`50 e8 .. .. .. .. 59`) から 10 byte
+     (`48 89 c7 51 e8 .. .. .. .. 59`) へ伸びるため、`int-to-string` を呼ぶ経路の
+     byte offset / size pin を持つ現状 GREEN の同族 test がずれうる。
+     ずれたものを「陳腐化」と即断せず、伸びが上記 3 byte 差で説明できるかを先に確かめる
 
   **期待値を実装に合わせて書き換えるのは禁止** — `48 89 c7 51 e8 .. .. .. .. 59` は
   `emit-one-arg-call-x86-core-with-call-bytes` (`:7179-7197`) の出力そのもので、古い定数ではない。

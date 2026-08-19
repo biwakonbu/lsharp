@@ -73,7 +73,11 @@
 #       数値 pin ではなく挙動の要求。
 #
 #   裁定 (2026-08-19, STALE-PIN-03)。結論は 1 件ずつ逆になった。
-#     [A] ..._x86_int_to_string_import_sets_rdi -> 実装側の欠陥。ISSUES.md I-28 として起票。
+#     [A] ..._x86_int_to_string_import_sets_rdi -> ISSUES.md I-28 として起票。
+#         (2026-08-19 訂正) 当初ここに「実装側の欠陥」と書いたが、後続のソース読解で
+#         harness seed 側が原因と確定した。裁定の正本は ISSUES.md I-28 に移した。
+#         以下 4 行は「rdi へ書かない」という観測事実としては正しいが、
+#         その原因を実装側に帰属させる読み方は撤回する。
 #         helper emit-x86-selfhost-int-to-string-helper (NativeCodegen.ls:10365) は
 #         mov rbx, rdi で引数を rdi から読むが、生成される call site は
 #         codegen-x86-non-one-arg-call-bundle の param-count=0 / depth=1 分岐
@@ -216,4 +220,4 @@ lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bun
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_imported_parse_int_digits_single_char_only
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_loop_last_char_only
 lsharp-wasm::e2e test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_seed_argv_probe  # diagnostic: inspect load-imports argv probe with actual seed
-lsharp-wasm::e2e test_e2e_selfhost_x86_int_to_string_import_sets_rdi  # 完全な selfhost harness の型推論を要するため、Linux source-file smoke で実行検証する。STALE-PIN-03 [A] 裁定済: 実装側の欠陥 = ISSUES.md I-28
+lsharp-wasm::e2e test_e2e_selfhost_x86_int_to_string_import_sets_rdi  # 完全な selfhost harness の型推論を要するため、Linux source-file smoke で実行検証する。STALE-PIN-03 [A] 裁定済 (2026-08-19 に原因を訂正): 原因は harness seed の import placeholder = ISSUES.md I-28
