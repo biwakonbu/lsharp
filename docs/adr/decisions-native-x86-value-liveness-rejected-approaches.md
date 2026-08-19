@@ -127,6 +127,17 @@ chunked control loop と row-state loop を使い分けていた。blocker は�
 | 各 slice の commit hash 列 | `git log` で引ける。ADR に写すと二重管理になる |
 | `EC-M2` / 責務分離 (2026-07-26) の 30 節 | いずれも「ファイルを分割した」だけで、却下理由も原因記述も含まない (該当行 0) |
 | Phase 11 / 14 / 15 の計画節 | `docs/development/planning/phase11-implementation-plan.md` が正本として現存する |
+| `V2-15` の Lexer fixed radix 由来 (1 行) | 原因 (「`NativeCodegen.ls` が 1,000,000 bytes を超え、fixed radix が `end-pos` を巻き戻す」) が修正箇所の**コメントとして現存する** — `selfhost/src/Syntax/Lexer.ls:386` 「未終端文字列の末尾 escape は source-len + 1 を返せるため、それより大きい radix を使う」。回帰 test `test_selfhost_lexer_lex_result_encoding_scales_with_source_length` / `test_e2e_selfhost_lexer_lex_result_round_trips_large_and_trailing_escape_positions` も現存する |
+| `V2-16` の ADT field key 由来 (1 行) | 同様に `selfhost/src/Backend/Wasm/CompilerBase.ls:57` に「Map runtime の 0 は空スロット判定に使うため、ADT field key は 1 始まりにする」というコメントが残り、実装 `(defn adt-constructor-field-key [idx] (+ idx 1))` と対になっている。回帰 test は `test_e2e_selfhost_compiler_mode_adt_nested_constructor_pattern_runs` |
+
+`V2-13a-5` (親項目) の 2 行は移送済みで、主題 1 の
+`test_wasm_compiler_source_defn_step64_continuations_root_recursive_result_before_unwinding` の行がこれにあたる。
+
+**`V2-15` / `V2-16` の 2 行を移送しないと決めたのは、「原因が消える」条件を満たさないためである。**
+`DOC-09` が問題にしているのは *`git log -S` でしか到達できなくなること* であって、行が消えること自体ではない。
+この 2 件は原因が修正箇所のコメントとして読める位置にあり、回帰 test も名前ごと現存するので、
+ADR へ写しても到達性は上がらない。逆に主題 1〜3 は、修正が入らなかった却下案の記録なので、
+コメントとして残る先が無い。
 
 ## Related
 
