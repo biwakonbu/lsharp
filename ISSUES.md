@@ -1439,11 +1439,20 @@
   最初は `string-concat-helper-chunk1`〜`chunk4` の 4 つだけを見つけて「4 つ」と書いたが、
   `selfhost/src` 全体を走査すると 64 個あった。内訳は 3 種類に分かれる。
 
+  **危険なのは 1 群だけである (2026-08-19 に全 40 件の本体を確認)。**
+  `crates` test からも参照が無い 40 defn / 282 行の内訳:
+
   | 種類 | 件数 / 行数 | 例 | 危険度 |
   |---|---|---|---|
   | 使用中の実装と**乖離した別実装** | 4 / 113 | `emit-aarch64-selfhost-string-concat-helper-chunk1`〜`4` | **高** (下記) |
-  | 定数・単一命令 wrapper の網羅定義 | 約 30 / 90 | `reg-rcx`、`emit-aarch64-mov-x0-x1`、`x86-function-emit-layout-import-count` | 低 |
-  | パイプライン中核名の残骸 | 約 30 / 246 | `codegen-ir-instr-bundle-x86`、`collect-function-starts-aarch64`、`emit-native-bundle`、`compile-and-run-native` | 中 (別実装への移行残り) |
+  | 定数・単一命令 wrapper の網羅定義 | 24 / 73 | `reg-rcx`、`emit-aarch64-mov-x0-x1` | 低 |
+  | 引数を足した新名へ移行した旧名 | 4 / 21 | `generate-native-control-instr-bundle-loop-x86` → `-with-context` (5 呼び出し) | 低 |
+  | 生きた関数へ委譲するだけの adapter | 3 / 9 | `collect-function-starts-aarch64` は `(collect-callable-function-starts-aarch64 functions 0)` の 1 行 | 低 |
+  | 未使用の変種 (生きた primitive を組む本体を持つ) | 5 / 66 | `emit-mov-forty-fourth-stack-from-rcx` (stack slot 直書き)、`emit-consume-four-produce-one-bundle-aarch64` | 低 |
+
+  残る 24 defn / 167 行は test に pin されている (下記)。
+  **chunk 群を除く 36 件は、既存の生きたコードへ委譲するか単一命令を返すかのどちらかで、
+  失われる意味論を持たない。** 「移行残り」に見えたものの実体はこれである。
 
   再現は `python3 scripts/native_codegen_dead_defn.py` (cargo 非依存)。
 - **「呼び出し元 0」は `.ls` に限った話である (2026-08-19 に追加走査)**:

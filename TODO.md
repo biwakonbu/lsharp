@@ -689,7 +689,8 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: chunk 群以外の未参照 defn の削除。**探索自体は完了しており** (64 defn /
   449 行、内訳は `I-25` の表。再現は `python3 scripts/native_codegen_dead_defn.py`)、
   本項目が裁定するのは乖離した別実装である chunk 群だけである。
-  定数 wrapper 群とパイプライン残骸群は危険度が違うので、まとめて 1 slice にしない。
+  他 36 件は生きた関数への委譲か単一命令かのどちらかで意味論を持たない (`I-25` の表) ため、
+  裁定が要るのは chunk 群だけである。
   加えて 64 件中 17 件は test に pin されていて単純削除できない (`I-25`)。
   `selfhost/src` の編集になるので fingerprint が動く。`NATIVE-HEAP-01` と同じ slice に
   まとめてよい。
