@@ -1456,16 +1456,23 @@
   残る 24 defn / 167 行は test に pin されている。内訳は
   「test が名前ごと参照する」16 件と「assertion だけ」8 件で、性質は次のとおり。
 
-  **16 件はほぼすべて既定引数 facade である (2026-08-19 に全件実読)。**
+  **16 件の大半は既定引数 facade である (2026-08-19 に全件実読)。**
   短い arity の名前が `import-count 0` / `import-stub-offset 0` / `function-start` を
   埋めて、生きた full-arity 実装へ委譲する。production は常に import count を持つので
   短い方を使わず、test だけが使う。
 
   | 形 | 件数 | 例 |
   |---|---|---|
-  | 既定引数 facade (`-with-import-count` 版へ委譲) | 9 | `codegen-ir-instr-bundle-x86`、`generate-native-function-aarch64-bundle` |
+  | 既定引数 facade (`-with-import-count` / `-and-base` 版へ委譲) | 6 | `codegen-ir-instr-bundle-x86`、`generate-native-function-aarch64-bundle` |
   | module 末尾の公開 API facade (`emit-native-*`) | 5 | `emit-native-function-meta-bundle` (`generate-` 版へ 1 行委譲、test 呼び出し 138) |
-  | 生きた primitive を並べた arity dispatcher | 2 | `emit-call-bundle-x86-one-to-nine`、`spill-native-function-params-x86-twenty-to-sixty-one` |
+  | 生きた primitive を並べた arity dispatcher | 3 | `emit-call-bundle-x86-one-to-nine`、`spill-native-function-params-x86-twenty-to-sixty-one`、`emit-sixty-one-arg-call-x86` |
+  | context を組み立てて委譲 | 1 | `native-function-body-size-x86-loop` (`make-x86-body-size-context` → `x86-body-size-loop-ctx`) |
+  | 独立した判断を持つ | 1 | `x86-selfhost-helper-trailer-size` (`I-26`) |
+
+  **当初この表は 9 / 5 / 2 と書いていたが (2026-08-19 に訂正)、合計 16 は合っていても
+  `x86-selfhost-helper-trailer-size` の居場所が無かった。** 同じ節の 2 行下で
+  「独立した判断を持つのは trailer-size だけ」と書いておきながら、
+  それを既定引数 facade に数えていたことになる。全件を分類し直した結果が上表である。
 
   **乖離した別実装は 1 件も無い。** 独立した判断を持つのは
   `x86-selfhost-helper-trailer-size` だけで、それは `I-26` が追っている。
@@ -1495,6 +1502,20 @@
   **その欠陥は台帳のどこにも書かれていない**。`I-27` として起票した。
   消しても assertion は通るが、hot path がこの書き方である理由の記録が失われるので、
   `NATIVE-DEAD-01` / `NATIVE-INLINE-01` のどちらでも削除対象に含めない。
+
+  **残る 1 件 `compile-and-run-native` は無効化された差分 test の placeholder である。**
+  本体は `(compile-to-native ir target)` への一行委譲。pin しているのは
+  `selfhost_gc_runtime_bootstrap.rs:733-739` の
+  `contains("(defn compile-and-run-native") || contains("(defn native-run") ||
+  contains("(defn emit-and-execute")` という 3 択の名前存在チェックで、
+  「Wasm と native の実行結果が一致すること」という**本来の assertion は同 test の
+  `:741-747` にコメントアウトされたまま**である。つまり生きているのは
+  「native 実行関数と呼べる名前が 1 つある」という契約表面だけで、その裏の比較は動いていない。
+  test コメントが参照する `NATIVE-06` という ID は `ISSUES.md` / `TODO.md` /
+  `docs/adr/` のいずれにも存在せず、**この無効化自体がどの正本にも載っていない**。
+  `DOC-07` と同じ形の抜けだが、欠陥ではなく未実装なので新規 ID は切らずここに記録する。
+
+  **これで 64 件すべての性質が実測で確定した (2026-08-19)。**
 
   参照の種類は 3 つある。**呼び出し**と **assertion** に加え、`("<name>", <上限>)` の形で
   Rust 側の走査表に名前が載っているものがある (ネスト深さ上限表など)。これは L# の呼び出しでは
@@ -1607,11 +1628,17 @@
   | `:8552` | `emit-map-new-bundle-x86` | wrapper に `rel` を渡すと native 実行時に引数が壊れる |
   | `:8548` | `(let [rel ...])` そのもの | native 実行時に `rel` local が壊れる |
   | `:12376` | `native-call-rel-x86` | `target-offset` local が `current-offset` に化けうる |
-  | `:12755` | `emit-four-arg-call-x86-core` (rel 版) | 同上。`-with-rel-ref` 版を使うこと |
+  | `:12755` | `emit-four-arg-call-x86-core` (rel 版) | rel32 を integer で渡すと root されない。`(ref-new rel)` を `root_push` して `-with-rel-ref` 版へ渡すこと |
   | `:14386` | `x86-function-emit-layout-*` 4 accessor | accessor を user call すると stage1 native の rel32 が壊れる |
 
-  同種の文言 (「破壊」「化けうる」「失われないよう」) は e2e 全体で **20 箇所、すべて x86**。
-  aarch64 側には 1 件も無い。
+  同種の文言 (「破壊」「化けうる」「失われないよう」) を含む行は e2e 全体で **24 行**
+  (当初「20 箇所、すべて x86」と書いたが、それは `grep -oE 'x86|aarch64'` による
+  **token 出現数**であり行数ではなかった。2026-08-19 に行単位で数え直した)。
+  内訳は x86 を明示 **17 行** / aarch64 を明示 **2 行** / lane を書かない **5 行**。
+  aarch64 の 2 行は `write-file` helper 内で base register を書込件数で潰すなという話で、
+  **user call を跨ぐ破壊とは別種**。lane 無しの 5 行は `test_wasm_compiler_*` 系で
+  「native 実行時」とだけ書く。**user call を跨ぐ破壊として lane を明示しているものは
+  x86 のみ**である。
 - **なぜ問題か**: 3 つある。
 
   1. **欠陥そのものが台帳に無い。** 記録されているのは回避策だけで、
@@ -1625,15 +1652,26 @@
   3. **同じ罠を将来また踏む。** 制約が台帳に無いので、hot path をリファクタして
      wrapper に括り出す変更が「読みやすくなった」として通りうる。止めるのは test だけで、
      test message を読むまで理由が分からない。
-- **由来**: 5 件の否定 assertion はすべて 2026-05-17 の `361d0d99`
+- **由来**: 5 件のうち **4 件**が 2026-05-17 の `361d0d99`
   「wip: advance linux x86 selfhost native path」で一括導入された。
   **commit body は空**、変更は 10 ファイル 5,391 insertions。
   判断の根拠がコミットメッセージにすら残っていない典型例で、`DOC-07` が指す
   「ドキュメント更新が実装の後追いになる」の実害がここに出ている。
+
+  **残る 1 件 (`:12755` の four-arg) だけは別 commit で、しかも根拠が残っている**
+  (当初「5 件すべて `361d0d99`」と書いたが、`git log -S` を 3 件にしか当てていなかった。
+  2026-08-19 に残り 2 件へも当てて訂正した)。2026-05-23 の `b9d5d4e5`
+  「Restore x86 four-arg call rel rooting」は commit body こそ空だが、
+  同 commit の `TODO.md` 進捗ログに **`map-new depth=1` の bad rel32 target は
+  直前の stage2 entry (`opcode=40 target-param-count=4`) が `call-rel-bytes` を失って
+  cursor を崩す下流症状だった**と書き残している。この記述は後の `TODO.md` 整理で
+  失われており、現在の `TODO.md` には残っていない。
 - **未確定 (cargo が要る)**: 根本原因の特定。候補は
   (a) x86 の register/stack window 割り当てが呼び出しを跨いで caller の slot を潰す、
   (b) ref allocation が呼び出し先で走り caller の未 root な ref を無効化する
   (`:12364` の assertion は root 順序を pin しているので、こちらの筋もある)。
+  **`b9d5d4e5` の修正が「値を `ref-new` して `root_push` する」だったことは (b) を支持する**
+  が、これは 5 件中 1 件の実測にすぎず、残り 4 件が同一原因かは未確認。
   **どちらかを決めるには native 実行が要るため、本エントリでは判定しない。**
 - **関連**: I-26 (同じ x86 lane の未接続)、I-25 (この 7 件を含む棚卸し)、
   I-07 (rooting guard の未完)、I-21 (x86-64 の root API 未適合)、DOC-07 (後追い更新)。
