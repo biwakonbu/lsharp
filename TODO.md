@@ -765,10 +765,37 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   `TypeInfer.ls:60` は var ノードの長さ > 5 を qualified name の判別子に、
   `:114-115` は if ノードの長さ > 5 を span の有無の判別子に使っている。
   長さを一律に変えると**落ちずに誤動作する**。
-  **もう一段の欠落**: span は byte offset、診断は line/col で、
-  selfhost に offset → line/col 変換が存在しない (`selfhost/src` 全体で 0 件)。
-  さらに `review-collect-node [node results]` (`DocTools.ls:790`) はソースを受け取らないので、
-  走査の signature を変える必要がある。ここが本項目の実質的な重さである。
+  **旧記述の訂正 (2026-08-20)**: 当初ここに「span は byte offset、診断は line/col で、
+  selfhost に offset → line/col 変換が存在しない (`selfhost/src` 全体で 0 件)。さらに
+  `review-collect-node [node results]` (`DocTools.ls:790`) はソースを受け取らないので、
+  走査の signature を変える必要がある。ここが本項目の実質的な重さである」と書いた。
+  **2 つとも誤りである。** 変換は `lsp-position-from-offset` (`LspServerNav.ls:285`) と
+  `lsp-range-from-offsets` (`:288`) として既にあり、呼び出し元は 7 箇所ある
+  (`LspServerNav.ls:536` / `:579` / `:948` / `:1083`、`Cli.ls:1404-1405` / `:1455-1456`)。
+  走査の signature も変えなくてよい。投影境界 `lsp-source-lint-diagnostics [src]`
+  (`Cli.ls:1681`) が既に `src` を持っており、`src` を要するのは
+  `lsp-review-diagnostic-to-lsp [diag]` (`Cli.ls:1660`) と、そこへ渡す
+  `lsp-source-lint-diagnostics-loop` だけである。これは兄弟 2 本
+  (`lsp-parse-diagnostic-to-lsp [diag src]` `:1400` /
+  `lsp-type-diagnostic-to-lsp [code src start end]` `:1450`) が既に取っている引数であり、
+  3 本の signature を揃える向きの変更になる。**本項目は当初見積もりより軽い。**
+  **`0:0..0:0` の機構を特定した (2026-08-20)**: `DocTools.ls:713` / `:732` が
+  `make-review-diagnostic` へ line/column を **1 1 で直書き**している。selfhost 内部は
+  1-based で、`render-standard-diagnostic-json` (`LspServerCore.ls:613-616`) が JSON 境界で
+  各座標から 1 を引いて 0-based の LSP range にする。1 − 1 = 0 が観測値そのものである。
+  **第 2 の消費者がいる**: `docjson-render-review-diagnostic` (`DocJson.ls:111`) が同じ
+  slot 4/5 を `line` / `column` として JSON に出し、
+  `tests/snapshots/doctools/review-payload.json` が `line: 1, column: 1` を pin している。
+  slot 4/5 の意味を offset へ変えると、この snapshot と 2 つのフィールド名が同時に嘘になる。
+  しかも `generate-review-schema-json [ast source-id]` (`DocJson.ls:244`) は `src` を持たず、
+  この経路では offset → line/col 変換ができない。よって **slot 4/5 は line/col のまま残し、
+  offset は末尾 slot へ足す**。review 診断ベクタ (7 slot) に対する長さ probe は 0 件
+  (`vector-length` が掛かるのは診断の**配列**側だけ) なので末尾追加は安全である。
+  ただし LSP 投影後の 10 slot ベクタは長さ 8 / 10 を判別子に使っているので
+  (`LspServerNav.ls:1198` / `:1200`、`LspServerCore.ls:636`)、そちらの長さは変えない。
+  **docjson 経路の line/column は本項目に含めない**。1 1 のまま残る事実をここに明示しておく。
+  **`Linter.ls` は LSP の生きた経路ではない**: `make-diagnostic ... 0 0` (`:203` / `:236`) は
+  別系統で、didopen は `generate-review` → `DocTools` を通る。ここを直しても観測値は動かない。
   **追加の受入条件**: 変更対象 kind に長さ probe が無いことを実装前に grep で確認して
   ADR の Evidence へ記録する。offset → line/col 変換に単体 test を置く
   (行頭 / 行末 / 最終行 / 空行を含む)。
@@ -779,7 +806,10 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   同時に判明した制約: **`do` は `[9, expr-count, expr0, ...]` の可変長ノード**で、
   末尾 span が成立するのは全消費者が `vector-length` ではなく slot 1 の `expr-count` で
   走査を打ち切っているためである (実測で成立)。この不変条件を壊す変更を同時に入れない。
-  残るのは offset → line/col の単体 test で、こちらは実装を要する。
+  残るのは offset → line/col の単体 test だが、**変換自体は既にあるので新規実装ではなく
+  既存 `lsp-position-from-offset` への test 追加**である (行頭 / 行末 / 最終行 / 空行 /
+  `offset == string-length` の境界)。改行判定は char 10 のみで CR は列文字として数える。
+  これは `lsp-offset-from-line-col` (`:276`) と逆向きで一貫しており、本項目では変えない。
 
   **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]

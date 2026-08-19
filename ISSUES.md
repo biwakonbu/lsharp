@@ -1498,8 +1498,21 @@
   var / string / float / apply / if / module-decl / import-decl / type-alias は既に
   byte offset の span を持ち、欠けているのは `let` (tag 7) と `do` (tag 9) だけである。
   ただし AST ノードの**長さが意味の判別子として使われている** (`TypeInfer.ls:60` / `:114-115`) ため
-  一律の末尾 slot は採れず、加えて selfhost に offset → line/col 変換が存在しないので、
-  本項目は span を載せるだけでは閉じない。
+  一律の末尾 slot は採れない。
+  **訂正 (2026-08-20)**: ここに続けて「加えて selfhost に offset → line/col 変換が存在しないので、
+  本項目は span を載せるだけでは閉じない」と書いていたが、**この前提は誤りである**。
+  変換は `lsp-position-from-offset` (`LspServerNav.ls:285`) / `lsp-range-from-offsets` (`:288`)
+  として既にあり、呼び出し元も 7 箇所ある。合わせて「`review-collect-node` がソースを受け取らないので
+  走査の signature を変える必要がある」という重さの見積もりも誤りだった。投影境界
+  `lsp-source-lint-diagnostics [src]` (`Cli.ls:1681`) が既に `src` を持っているため、
+  `src` を要するのは `lsp-review-diagnostic-to-lsp` (`Cli.ls:1660`) とその loop だけで、
+  これは兄弟 2 本 (`:1400` / `:1450`) が既に取っている引数である。
+  観測値 `0:0..0:0` の機構も特定した。`DocTools.ls:713` / `:732` が line/column を **1 1 で直書き**し、
+  `render-standard-diagnostic-json` (`LspServerCore.ls:613-616`) が JSON 境界で 1 を引いて
+  0-based にする。1 − 1 = 0 である。詳細と、review 診断 slot 4/5 を line/col のまま残す判断
+  (第 2 の消費者 `DocJson.ls:111` と snapshot `tests/snapshots/doctools/review-payload.json` が
+  `line: 1, column: 1` を pin しており、その経路には `src` が無い) は
+  [lint span の AST 表現 ADR](docs/adr/decisions-lint-span-ast-representation.md) の Evidence 節。
 - **関連**: I-11 (baseline)、`ISSUES.md` の I-22 (同じ「規約 vs 実態」の形。
   `:1201` が本件の裁定に倣うと書いている)。
 
