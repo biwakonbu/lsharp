@@ -1445,14 +1445,29 @@
   | 定数・単一命令 wrapper の網羅定義 | 約 30 / 90 | `reg-rcx`、`emit-aarch64-mov-x0-x1`、`x86-function-emit-layout-import-count` | 低 |
   | パイプライン中核名の残骸 | 約 30 / 246 | `codegen-ir-instr-bundle-x86`、`collect-function-starts-aarch64`、`emit-native-bundle`、`compile-and-run-native` | 中 (別実装への移行残り) |
 
-  再現は
-  `python3 -c` で `selfhost/src` 全体を走査するだけ (定義行を除いた出現回数が 0 のもの)。
+  再現は `python3 scripts/native_codegen_dead_defn.py` (cargo 非依存)。
+- **「呼び出し元 0」は `.ls` に限った話である (2026-08-19 に追加走査)**:
+  64 個のうち **25 個は `crates/lsharp-wasm/tests` から参照されている**。
+  production 未使用でも test からは生きているので、削除可否は 3 つに分かれる。
+
+  | 区分 | 件数 | 削除したら | 例 |
+  |---|---|---|---|
+  | test からも参照なし | 40 | 壊れない | `reg-rcx`、chunk1〜4、`emit-aarch64-mov-x0-x1` |
+  | test の埋め込み L# スニペットが**呼ぶ** | 16 | **壊れる** | `emit-native-function-meta-bundle` (138 呼び出し)、`x86-selfhost-helper-trailer-size` (8) |
+  | ソース文字列 assertion だけ | 8 | 7 件は壊れない (否定 assertion `!body.contains(...)` のため)。`compile-and-run-native` の 1 件だけ肯定 assertion で壊れる | `x86-function-emit-layout-*` 4 件 |
+
+  つまり **削除が test を壊さないのは 47 個、壊すのは 17 個**である。
+  「未参照だから消してよい」と `.ls` の走査結果だけで判断すると 17 件で転ぶ。
 - **なぜ問題か**: chunk3 は heap frontier を bump するコード (`add x22, x22, x2`) を含む。
   つまり「確保系 helper を数える」「bounds check を入れる」といった作業の対象に**見えてしまう**。
   実際 `NATIVE-HEAP-01` のスコープ確定で 1 件これを拾った。生きているコードと死んでいるコードが
   同じ命名規則で並んでいる限り、同じ取り違えが再発する。
-  この棚卸し自体も同じ罠を 2 回踏んでいる (「3 helper」→ 実数 10、「chunk 4 つ」→ 実数 64)。
-  **数を書くときは全走査してから書く。**
+  この棚卸し自体も同じ罠を 3 回踏んでいる。
+  (1) 「3 helper」→ 実数 10、(2) 「chunk 4 つ」→ 実数 64、
+  (3) test 参照を**部分一致**で数えて 25 件中 3 件を誤分類した
+  (`generate-native-control-instr-bundle-loop-x86` の「92 呼び出し」は全て
+  `-with-context` / `-with-import-count-and-base` という別関数だった)。
+  **数を書くときは全走査してから書き、識別子は語境界で照合する。**
 - **突き合わせ結果 (2026-08-19)**: **単なる残骸ではなく、乖離した別実装だった。**
   chunk1-4 を連結すると 308 bytes / 77 word で本体と**長さは完全に一致**するが、
   `0x34` 以降の 63 word が異なる。しかも `git log -S` で追うと
@@ -1498,10 +1513,16 @@
   同じ commit が `selfhost_native_stage23_gap.rs` を +210 行している。
   つまり **test と一緒に追加され、production への接続だけが行われないまま残った**。
 - **決定的な非対称**: aarch64 の補正は `collect-callable-actual-layout-aarch64` (`:18562`) が
-  返す**実測 layout** を前提にしている。**x86 にはこの「実測 layout」自体が無い** —
-  `collect-callable-actual-layout-x86` は存在せず、x86 は静的な
-  `collect-callable-function-starts-x86` しか持たない。
-  よって x86 へ補正を移植するには、先に実測 layout に相当するものが要る。
+  返す**実測 layout** を前提にしている。x86 にはこれに相当するものが無い。
+  紛らわしいので明示すると、**x86 にも `layout` という名前のものはある** —
+  `make-x86-function-emit-layout` (`:13993`) は 5 箇所から呼ばれる生きた構造体だが、
+  中身は `import-count` / `import-stub-offset` / `function-start-base` / `emit-start-base` の
+  **静的な emit パラメータ束**であって、実際に emit したバイト長を測ったものではない。
+  実測に当たる `measure-native-function-aarch64-bundle-with-import-count` (`:18325`) と
+  `collect-callable-function-lengths-aarch64` (`:18416`) には x86 版が存在せず、
+  x86 は静的な `collect-callable-function-starts-x86` (`:9264`) しか持たない
+  (`defn` 名に `measure` / `actual` / `layout` を含むものを `selfhost/src` 全体で走査して確認)。
+  よって x86 へ補正を移植するには、先に「実際に emit した長さを測る」機構から要る。
 - **未確認 (判定していない)**: この非対称が
   (a) x86 の静的 layout が正確なので補正が要らない、なのか
   (b) x86 にも同じズレがあるが補正が入っていない、なのか。
@@ -1518,6 +1539,9 @@
   `selfhost_native_stage_chain.rs` の 6 箇所は test 内に埋め込んだ L# スニペットが
   `code-len (+ user-total (x86-selfhost-helper-trailer-size 10))` として呼んでおり、
   **test だけがこの関数を「本来の用途」で使っている**。
+  従って**この関数は単純には削除できない** — `.ls` の呼び出し元は 0 だが test 側の
+  参照が 8 箇所ある (`I-25` の「test の L# スニペットが呼ぶ」16 件の 1 つ)。
+  接続するか、test ごと畳むかのどちらかになる。
 - **関連**: I-23 (aarch64 側 trailer-size pin の陳腐化)、I-21 (x86-64 の root API 未適合。
   x86 lane が aarch64 に追随できていないという同じ筋)、I-25 (同じ走査で見つかった)。
 

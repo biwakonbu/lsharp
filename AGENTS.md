@@ -199,6 +199,21 @@ python3 scripts/native_codegen_bytes.py --dump <helper-name>     # 指定 helper
 limit 参照を数えるので、`NATIVE-HEAP-01` の棚卸しに使える。helper が新しい構築形式を
 使い始めたら `--list` の「評価不能」に名前が出る。**そこを空欄のまま読み飛ばすと undercount する。**
 
+### 未参照 defn の棚卸し (cargo 無し)
+
+```bash
+python3 scripts/native_codegen_dead_defn.py            # 未参照 defn を削除可否で分類
+python3 scripts/native_codegen_dead_defn.py --summary  # 件数だけ
+```
+
+`selfhost/src/**.ls` からの呼び出し元が 0 の defn を出したうえで、
+`crates/lsharp-wasm/tests/**.rs` からの参照を「埋め込み L# スニペットが呼ぶ」
+「ソース文字列 assertion だけ」に分けて表示する。**`.ls` の走査だけで削除を決めない** —
+production 未使用でも test の L# スニペットから呼ばれている defn があり、
+現状 64 件中 17 件がそれに当たる (`I-25`)。
+識別子は語境界で照合している。部分一致で数えると `foo-x86` が `foo-x86-with-context` を
+拾って過大計上する。
+
 ### Git worktree の配置と片付け
 
 - 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。

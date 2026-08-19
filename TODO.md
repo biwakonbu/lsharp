@@ -684,9 +684,13 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (2) **どちらが正しいかを決める。** 両版が違う結果を出すのは bit 63 が立っていない
   ポインタを渡したときなので、その入力が発生しうるかを呼び出し側の契約から確認し、
   必要なら両版を実行して差を取る。(3) 決めた側を残し、もう一方を削除して判断を `I-25` へ書く。
+  なお chunk1-4 は `crates/lsharp-wasm/tests` からも参照が無いので (`I-25` の
+  「test からも参照なし」40 件に入る)、負けた方を削除しても test は壊れない。
   **含めない範囲**: chunk 群以外の未参照 defn の削除。**探索自体は完了しており** (64 defn /
-  449 行、内訳は `I-25` の表)、本項目が裁定するのは乖離した別実装である chunk 群だけである。
+  449 行、内訳は `I-25` の表。再現は `python3 scripts/native_codegen_dead_defn.py`)、
+  本項目が裁定するのは乖離した別実装である chunk 群だけである。
   定数 wrapper 群とパイプライン残骸群は危険度が違うので、まとめて 1 slice にしない。
+  加えて 64 件中 17 件は test に pin されていて単純削除できない (`I-25`)。
   `selfhost/src` の編集になるので fingerprint が動く。`NATIVE-HEAP-01` と同じ slice に
   まとめてよい。
 - [ ] `NATIVE-TRAILER-01` x86 lane に helper trailer の補正が無い — Issue `I-26`。
@@ -703,8 +707,10 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (2) 同じズレが x86 にもあるかを、末尾関数を entrypoint にした
   bundle で `function-starts` の値と実測 offset を突き合わせて確認する。
   移植が必要なら実測 layout の x86 版から要る。
-  (3) 判断を `I-26` へ書く。補正が要るなら実装し、要らないなら
-  `x86-selfhost-helper-trailer-size` を削除するか capacity 計算へ接続する。
+  (3) 判断を `I-26` へ書く。補正が要るなら実装し、要らないなら capacity 計算へ接続する。
+  **「削除する」は選択肢に入れない** — `.ls` の呼び出し元は 0 だが
+  `crates/lsharp-wasm/tests` に 8 箇所の参照があり、消すと test が壊れる (`I-25`)。
+  test ごと畳むなら、それは本項目ではなく別途の裁定が要る。
   **含めない範囲**: `I-23` (aarch64 側 pin の陳腐化) 本体の解消。別の pin である。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
