@@ -157,7 +157,8 @@
 | [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしていない。案 A で裁定し 2026-08-19 に実装した | 中 | resolved | [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) |
 | [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
 | [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
-| [I-25](#i-25) | native emitter に呼び出し元 0 の helper が 4 つ残り、本体と乖離しても誰も気付かない | 低-中 | open | -- |
+| [I-25](#i-25) | `NativeCodegen.ls` に呼び出し元 0 の defn が 64 個。うち 1 群は使用中の実装と乖離している | 低-中 | open | -- |
+| [I-26](#i-26) | `x86-selfhost-helper-trailer-size` が production path から呼ばれず、test だけが値を pin している | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -773,6 +774,9 @@
   | x86-64 | 9 | 9 | **9 / 9** |
   | aarch64 | 10 | 11 | **0 / 11** |
 
+  なお aarch64 の 10 のうち `string-concat-helper-chunk3` は呼び出し元 0 ([I-25](#i-25)) なので、
+  **実際に bounds check を入れる対象は両 lane とも 9 helper** である。
+
   **aarch64 は確保系 helper の全部に limit 比較が無い。** 検出された `cmp` 3 つは
   length vs capacity / 倍化の下限クランプ / frontier とのタグ判別で、いずれも上限比較ではない。
   そもそも **aarch64 lane には上限値を保持する場所が無い** — x86 が heap 先頭 16 bytes に
@@ -780,7 +784,8 @@
   よって `NATIVE-HEAP-01` は「比較を足す」ではなく「**上限値をどこに置くか**」から始まる。
   確保サイズ・成長ポリシーの lane 別実測と全列挙の内訳は
   [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md) にある。
-  なお同じ走査で呼び出し元 0 の helper を 4 つ見つけた ([I-25](#i-25))。
+  なお同じ走査で呼び出し元 0 の defn が 64 個あることも分かった ([I-25](#i-25))。
+  最初は 4 つと書いたが、それは string-concat chunk 群だけを見た undercount だった。
 - **切り分け済みの周辺事実**:
   - stage bootstrap 自体は成功する。stage0 package は壊れていない。
   - 小さい fixture (`tests/fixtures/validation/*.ls`) を使う
@@ -1426,20 +1431,28 @@
 ---
 
 <a id="i-25"></a>
-### I-25: native emitter に呼び出し元 0 の helper が 4 つ残っている
+### I-25: `NativeCodegen.ls` に呼び出し元 0 の defn が 64 個ある
 
 - **影響度**: 低-中 / **状態**: open
-- **内容**: `selfhost/src/Backend/Native/NativeCodegen.ls` の
-  `emit-aarch64-selfhost-string-concat-helper-chunk1`〜`chunk4` (`:14944` / `:14973` /
-  `:15002` / `:15031`) は **定義だけがあり、呼び出し元が 1 箇所も無い**。
-  `grep -rn 'string-concat-helper-chunk' selfhost/ crates/ scripts/` で出るのは定義行と
-  `ci-artifacts/` 配下の生成物コピーだけである。
-  実際に使われる `emit-aarch64-selfhost-string-concat-helper` (`:15057`) は chunk を呼ばず、
-  自前で 77 word を組み立てている。
+- **内容**: `selfhost/src/Backend/Native/NativeCodegen.ls` (20,937 行 / 1,382 defn) のうち
+  **64 defn / 449 行が selfhost 全体から一度も呼ばれない**。
+  最初は `string-concat-helper-chunk1`〜`chunk4` の 4 つだけを見つけて「4 つ」と書いたが、
+  `selfhost/src` 全体を走査すると 64 個あった。内訳は 3 種類に分かれる。
+
+  | 種類 | 件数 / 行数 | 例 | 危険度 |
+  |---|---|---|---|
+  | 使用中の実装と**乖離した別実装** | 4 / 113 | `emit-aarch64-selfhost-string-concat-helper-chunk1`〜`4` | **高** (下記) |
+  | 定数・単一命令 wrapper の網羅定義 | 約 30 / 90 | `reg-rcx`、`emit-aarch64-mov-x0-x1`、`x86-function-emit-layout-import-count` | 低 |
+  | パイプライン中核名の残骸 | 約 30 / 246 | `codegen-ir-instr-bundle-x86`、`collect-function-starts-aarch64`、`emit-native-bundle`、`compile-and-run-native` | 中 (別実装への移行残り) |
+
+  再現は
+  `python3 -c` で `selfhost/src` 全体を走査するだけ (定義行を除いた出現回数が 0 のもの)。
 - **なぜ問題か**: chunk3 は heap frontier を bump するコード (`add x22, x22, x2`) を含む。
   つまり「確保系 helper を数える」「bounds check を入れる」といった作業の対象に**見えてしまう**。
   実際 `NATIVE-HEAP-01` のスコープ確定で 1 件これを拾った。生きているコードと死んでいるコードが
   同じ命名規則で並んでいる限り、同じ取り違えが再発する。
+  この棚卸し自体も同じ罠を 2 回踏んでいる (「3 helper」→ 実数 10、「chunk 4 つ」→ 実数 64)。
+  **数を書くときは全走査してから書く。**
 - **突き合わせ結果 (2026-08-19)**: **単なる残骸ではなく、乖離した別実装だった。**
   chunk1-4 を連結すると 308 bytes / 77 word で本体と**長さは完全に一致**するが、
   `0x34` 以降の 63 word が異なる。しかも `git log -S` で追うと
@@ -1457,6 +1470,33 @@
 - **関連**: I-13 (同じ helper 群の bounds check 欠落)、
   [native heap 回収機構 ADR](docs/adr/decisions-native-heap-reclamation.md) の
   「確保系 helper の全列挙」節。
+
+---
+
+<a id="i-26"></a>
+### I-26: `x86-selfhost-helper-trailer-size` が production path から参照されていない
+
+- **影響度**: 中 / **状態**: open
+- **内容**: `NativeCodegen.ls` の trailer size 計算に lane 非対称がある。
+
+  | lane | 定義 | selfhost 内の呼び出し元 | test からの参照 |
+  |---|---|---|---|
+  | aarch64 | `:16012` | **2 箇所** (`:16016` の import-stub offset、`:20828` の `trailer-length`) | あり |
+  | x86-64 | `:10645` | **0 箇所** | あり (`selfhost_native_stage_chain.rs` 6 箇所ほか) |
+
+  aarch64 は helper trailer の長さを code layout の計算に実際に使っているが、
+  **x86 は定義があるだけで、機械語を組み立てる経路から一度も呼ばれない**。
+  呼ぶのは e2e test だけで、`selfhost_native_stage23_gap/part_000.rs:571` は
+  `("x86-selfhost-helper-trailer-size", 24)` という値を pin してすらいる。
+- **なぜ問題か**: test は「この関数が 24 を返すこと」を検査しているが、その 24 が
+  **実際に生成される機械語に反映されているかは検査していない**。x86 側で layout が
+  別経路 (定数の直書き等) で計算されているなら、両者が食い違っても test は緑のままになる。
+  `I-23` (aarch64 側 trailer-size pin の陳腐化) と同じ「pin はあるが実体を追っていない」形である。
+- **未確認**: x86 の code layout が trailer を別経路で正しく織り込んでいるのか、
+  それとも trailer 分が単に欠けているのか。**判定していない。** 機械語を読むだけでは
+  「どこにも足されていない」ことの証明が要るので、`NATIVE-DEAD-01` と同様に実行が要る。
+- **関連**: I-21 (x86-64 の root API が未適合。x86 lane の未完成という同じ筋)、
+  I-23 (trailer-size pin の陳腐化)、I-25 (同じ走査で見つかった)。
 
 ---
 

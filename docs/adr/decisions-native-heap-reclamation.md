@@ -78,12 +78,18 @@ S 式評価で **全 selfhost helper のバイト列を組み立て、heap front
 | lane | frontier を進める helper | bump 箇所 | limit を参照する箇所 |
 |---|---|---|---|
 | x86-64 | 9 | 9 | **9 / 9** |
-| aarch64 | 10 | 11 | **0 / 11** |
+| aarch64 | 10 (うち生存 9) | 11 (うち生存 10) | **0 / 11** |
 
 内訳。両 lane に共通するのは 8 つ (`vector-new` / `vector-push` / `ref-new` / `substring` /
 `string-concat` / `map-new` / `read-file` / `read-stdin`) で、`read-file` だけ aarch64 が
 2 箇所 bump する。x86 のみが `int-to-string`、aarch64 のみが `alloc` と
 `string-concat-helper-chunk3` を持つ。
+
+**ただし `string-concat-helper-chunk3` は呼び出し元 0 の死んだ実装である** (`I-25`)。
+これを除くと**両 lane とも生きている確保系 helper は 9 つ**で、bump 箇所は x86 9 / aarch64 10
+(aarch64 の `read-file` だけが 2 箇所) になる。`NATIVE-HEAP-01` が bounds check を入れる対象は
+この生存 9 つであって、11 でも 10 でもない。数え上げの際は
+`python3 -c` による未参照 defn 走査 (`I-25` 参照) と突き合わせること。
 
 x86 の参照形は 2 通りある。`vector-push` / `int-to-string` は `cmp rdi, [r14+8]` の直接メモリ比較、
 残る 7 つは `mov rcx, [r14+8]` でロードしてからレジスタ比較する。どちらも到達点は同じで、

@@ -647,6 +647,8 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   frontier を進める helper は aarch64 10 個 / bump 11 箇所あり、**limit を参照するものは 0**。
   x86 は 9 個 / 9 箇所すべてが limit を参照する (全列挙は
   [`decisions-native-heap-reclamation.md`](docs/adr/decisions-native-heap-reclamation.md))。
+  ただし aarch64 の 10 のうち `string-concat-helper-chunk3` は呼び出し元 0 (`I-25`) なので、
+  **本項目が実際に手を入れる対象は 9 helper / 10 bump 箇所**である。
   **かつ「比較を足す」だけでは済まない** — aarch64 lane は `x21` (base) と `x22` (frontier) しか
   持たず、**上限値の置き場所が無い**。x86 の heap 先頭 16 bytes に倣うか、レジスタを 1 本増やすか、
   helper 内で base から計算するかを先に決める必要がある。
@@ -682,9 +684,21 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (2) **どちらが正しいかを決める。** 両版が違う結果を出すのは bit 63 が立っていない
   ポインタを渡したときなので、その入力が発生しうるかを呼び出し側の契約から確認し、
   必要なら両版を実行して差を取る。(3) 決めた側を残し、もう一方を削除して判断を `I-25` へ書く。
-  **含めない範囲**: 他の未参照 helper の探索。本項目は string-concat chunk 群だけを扱う。
+  **含めない範囲**: chunk 群以外の未参照 defn の削除。**探索自体は完了しており** (64 defn /
+  449 行、内訳は `I-25` の表)、本項目が裁定するのは乖離した別実装である chunk 群だけである。
+  定数 wrapper 群とパイプライン残骸群は危険度が違うので、まとめて 1 slice にしない。
   `selfhost/src` の編集になるので fingerprint が動く。`NATIVE-HEAP-01` と同じ slice に
   まとめてよい。
+- [ ] `NATIVE-TRAILER-01` x86 lane の helper trailer size が production path から使われていない — Issue `I-26`。
+  `x86-selfhost-helper-trailer-size` (`NativeCodegen.ls:10645`) は selfhost 内の呼び出し元が 0 で、
+  呼ぶのは e2e test だけ (`selfhost_native_stage23_gap/part_000.rs:571` は戻り値 `24` を pin する)。
+  aarch64 版 (`:16012`) は `:16016` の import-stub offset と `:20828` の `trailer-length` で
+  実際に layout 計算へ入っている。
+  **受入条件**: (1) x86 の code layout が trailer 分をどこで足しているかを特定する
+  (別経路で足しているのか、そもそも足していないのか)。(2) 足していないなら、生成される
+  機械語で実害が出るかを実行で確認する。(3) 判断を `I-26` へ書き、pin する test を
+  「関数の戻り値」ではなく「layout に反映されていること」を見る形へ寄せるか決める。
+  **含めない範囲**: `I-23` (aarch64 側 pin の陳腐化) 本体の解消。両者は別の pin である。
 - [ ] `LINT-SPAN-01` lint 診断の span 投影が未実装で、全 lint が `0:0..0:0` へ落ちる — Issue `I-24`。
   `L0001` (unused binding) と `L0002` (empty do block) が実ソース
   `(defn main [] (let [unused (do)] 0))` に対し、どちらも range `0:0..0:0` で publish される
