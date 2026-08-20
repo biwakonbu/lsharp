@@ -78,6 +78,7 @@ mod selfhost_typeinfer_records_computation;
 mod selfhost_typeinfer_record_inference;
 mod selfhost_typeinfer_block_loops;
 mod selfhost_typeinfer_record_filtering;
+mod selfhost_type_record_checks;
 mod selfhost_type_record_ops;
 mod selfhost_adt_import_runtime;
 mod selfhost_typeinfer_recursive_defns;

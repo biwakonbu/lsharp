@@ -408,16 +408,106 @@
 
 ;; Record の field type にも置換を再帰適用する。
 (defn apply-subst-record-fields [subst ty idx len out]
+  (do
+    (root_push subst)
+    (root_push ty)
+    (root_push out)
+    (let [result
+            (apply-subst-record-fields-rooted-v3
+              subst ty idx len out)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn apply-subst-record-fields-state [done next-idx out]
+  (type-record-operation-state done next-idx out))
+
+(defn apply-subst-record-fields-step-v3
+  [subst ty idx len out]
   (if (>= idx len)
-    out
-    (let [field-hash (vector-get ty idx)
-      field-ty (vector-get ty (+ idx 1))]
-      (apply-subst-record-fields
-        subst
-        ty
-        (+ idx 2)
-        len
-        (type-record-add-field out field-hash (apply-subst subst field-ty))))))
+    (apply-subst-record-fields-state 1 idx out)
+    (do
+      (root_push subst)
+      (root_push ty)
+      (root_push out)
+      (let [field-hash (vector-get ty idx)
+            field-ty (vector-get ty (+ idx 1))]
+        (do
+          (root_push field-ty)
+          (let [field-result (apply-subst subst field-ty)]
+            (do
+              (root_push field-result)
+              (let [next-out
+                      (type-record-add-field out field-hash field-result)]
+                (do
+                  (root_push next-out)
+                  (let [state
+                          (apply-subst-record-fields-state
+                            0 (+ idx 2) next-out)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state)))))))))))
+
+(defn apply-subst-record-fields-step-64-loop-bounded
+  [subst ty idx len out remaining]
+  (do
+    (root_push subst)
+    (root_push ty)
+    (root_push out)
+    (let [step
+            (apply-subst-record-fields-step-v3 subst ty idx len out)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-out (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-out)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (apply-subst-record-fields-step-64-loop-bounded
+                      subst ty next-idx len next-out (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn apply-subst-record-fields-step-64
+  [subst ty idx len out]
+  (apply-subst-record-fields-step-64-loop-bounded
+    subst ty idx len out 64))
+
+(defn apply-subst-record-fields-rooted-v3
+  [subst ty idx len out]
+  (let [step
+          (apply-subst-record-fields-step-64 subst ty idx len out)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-out (vector-get step 2)]
+          (do
+            (root_push next-out)
+            (let [resolved
+                    (apply-subst-record-fields-rooted-v3
+                      subst ty next-idx len next-out)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn apply-subst-fun-rooted [subst ty]
   (do
@@ -474,11 +564,80 @@
 
 ;; record field 型のいずれかに型変数が出現するかを調べる。
 (defn occurs-check-record-fields [var-id ty idx len]
+  (do
+    (root_push ty)
+    (let [result
+            (occurs-check-record-fields-rooted-v3 var-id ty idx len)]
+      (do
+        (root_pop)
+        result))))
+
+(defn occurs-check-record-fields-state [done next-idx result]
+  (type-record-operation-state done next-idx result))
+
+(defn occurs-check-record-fields-step-v3
+  [var-id ty idx len]
   (if (>= idx len)
-    0
-    (if (= (occurs-check var-id (vector-get ty (+ idx 1))) 1)
-      1
-      (occurs-check-record-fields var-id ty (+ idx 2) len))))
+    (occurs-check-record-fields-state 1 idx 0)
+    (do
+      (root_push ty)
+      (let [result
+              (occurs-check var-id (vector-get ty (+ idx 1)))]
+        (let [state
+                (if (= result 1)
+                  (occurs-check-record-fields-state 1 idx 1)
+                  (occurs-check-record-fields-state 0 (+ idx 2) 0))]
+          (do
+            (root_pop)
+            state))))))
+
+(defn occurs-check-record-fields-step-64-loop-bounded
+  [var-id ty idx len remaining]
+  (do
+    (root_push ty)
+    (let [step
+            (occurs-check-record-fields-step-v3 var-id ty idx len)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (occurs-check-record-fields-step-64-loop-bounded
+                      var-id ty next-idx len (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn occurs-check-record-fields-step-64 [var-id ty idx len]
+  (occurs-check-record-fields-step-64-loop-bounded
+    var-id ty idx len 64))
+
+(defn occurs-check-record-fields-rooted-v3 [var-id ty idx len]
+  (let [step
+          (occurs-check-record-fields-step-64 var-id ty idx len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+                    (occurs-check-record-fields-rooted-v3
+                      var-id ty next-idx len)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn occurs-check [var-id ty]
   (if (= (type-tag ty) 2)
@@ -519,15 +678,106 @@
 
 ;; 同名 record の field 型を declaration order で単一化する。
 (defn unify-record-fields [ty1 ty2 idx len subst]
+  (do
+    (root_push ty1)
+    (root_push ty2)
+    (root_push subst)
+    (let [result
+            (unify-record-fields-rooted-v3 ty1 ty2 idx len subst)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn unify-record-fields-state [done next-idx subst]
+  (type-record-operation-state done next-idx subst))
+
+(defn unify-record-fields-step-v3
+  [ty1 ty2 idx len subst]
   (if (>= idx len)
-    subst
-    (if (= (vector-get ty1 idx) (vector-get ty2 idx))
-      (let [next-subst
-              (unify (vector-get ty1 (+ idx 1)) (vector-get ty2 (+ idx 1)) subst)]
-        (if (= (unify-failed next-subst) 1)
-          next-subst
-          (unify-record-fields ty1 ty2 (+ idx 2) len next-subst)))
-      (unify-error))))
+    (unify-record-fields-state 1 idx subst)
+    (do
+      (root_push ty1)
+      (root_push ty2)
+      (root_push subst)
+      (let [state
+              (if (= (vector-get ty1 idx) (vector-get ty2 idx))
+                (let [next-subst
+                        (unify
+                          (vector-get ty1 (+ idx 1))
+                          (vector-get ty2 (+ idx 1))
+                          subst)]
+                  (do
+                    (root_push next-subst)
+                    (let [next-state
+                            (if (= (unify-failed next-subst) 1)
+                              (unify-record-fields-state 1 idx next-subst)
+                              (unify-record-fields-state
+                                0 (+ idx 2) next-subst))]
+                      (do
+                        (root_pop)
+                        next-state))))
+                (unify-record-fields-state 1 idx (unify-error)))]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          state)))))
+
+(defn unify-record-fields-step-64-loop-bounded
+  [ty1 ty2 idx len subst remaining]
+  (do
+    (root_push ty1)
+    (root_push ty2)
+    (root_push subst)
+    (let [step
+            (unify-record-fields-step-v3 ty1 ty2 idx len subst)
+          done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-subst (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-subst)
+        (let [parsed
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (unify-record-fields-step-64-loop-bounded
+                      ty1 ty2 next-idx len next-subst (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn unify-record-fields-step-64
+  [ty1 ty2 idx len subst]
+  (unify-record-fields-step-64-loop-bounded
+    ty1 ty2 idx len subst 64))
+
+(defn unify-record-fields-rooted-v3
+  [ty1 ty2 idx len subst]
+  (let [step
+          (unify-record-fields-step-64 ty1 ty2 idx len subst)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+              next-subst (vector-get step 2)]
+          (do
+            (root_push next-subst)
+            (let [resolved
+                    (unify-record-fields-rooted-v3
+                      ty1 ty2 next-idx len next-subst)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn unify-record-types [ty1 ty2 subst]
   (if (= (type-tag ty2) 4)
