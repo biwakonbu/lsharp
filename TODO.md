@@ -2790,6 +2790,43 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 旧 scanner 2 本が `TestRunner.ls` から消え、`grep -c` が 0 になること。
   現 runner の result shape と invariant-first suite shape が変わらないこと (E2E で固定する)。
   **含めない範囲**: canonical migration classifier の実装、runner の result shape 変更そのもの。
+- [ ] `TYPEINFER-SPLIT-01` `TypeInfer.ls` から signature 推論を別モジュールへ切り出す —
+  ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+  滞留 branch `codex/lsharp-typeinfer-property-aggregation-batch` (`3b5dbef5`) が
+  `selfhost/src/Types/TypeInferSignature.ls` (305 行) として実施済みだが、`TypeInfer.ls` +3013 行と
+  `crates/lsharp-wasm/tests/e2e/support.rs` 10 箇所以上を巻き込むため取り込まなかった。
+  受入条件: `TypeInfer.ls` が 800 行以内に収まり、切り出し後も `selfhost_typeinfer*` の e2e が
+  全件 PASS すること。切り出し単位は branch の分割をそのまま真似る必要はない。
+  **含めない範囲**: bounded rooted scan への変換 (別枠)、branch の他の差分の取り込み。
+- [ ] `BOUNDED-SCAN-01` 滞留 branch の bounded rooted scan 変換を移植する —
+  ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+  `codex/lsharp-typeinfer-property-aggregation-batch` (`3b5dbef5`) が入れた
+  `<name>-step-64-loop-bounded` 族のうち、**main と branch が同じ defn を両方書き換えている**
+  ため機械的に取り込めなかった分。branch ref は消さないこと (唯一の実装が載っている)。
+  - `Types/TypeInfer.ls` (両方変更 4 / 17 family): `typeinfer-build-parametric-alias-param-state`
+    `typeinfer-free-vars-to-set` `typeinfer-import-only-contains` `typeinfer-next-module-index`
+    `typeinfer-pending-env-vars` `typeinfer-predeclare-closed-aliases` `typeinfer-predeclare-defns`
+    `typeinfer-prior-definition-failed` `typeinfer-program-analysis`
+    `typeinfer-qualify-import-adt-variants` `typeinfer-qualify-import-record-accessors`
+    `typeinfer-qualify-imports-with-open` `typeinfer-recursive-alias-count`
+    `typeinfer-refresh-closed-aliases` `typeinfer-refresh-closed-aliases-rounds`
+    `typeinfer-remove-defns-before-module` `typeinfer-type-expr-contains-name`
+  - `Syntax/Parser.ls` (両方変更 27 / 20 family): `collect-example-expression-spans`
+    `parse-computation` `parse-constructor-pattern-args` `parse-do-expr` `parse-import-only-symbols`
+    `parse-import-options` `parse-int-digits-from-str` `parse-let-binding` `parse-let-fold`
+    `parse-match-arm` `parse-params` `parse-record-decl-fields` `parse-recordlit-fields`
+    `parse-recordpat-fields` `parse-skip-to-close` `parse-type-alias-param-hashes`
+    `parse-type-expr-list` `parse-type-variant-fields` `parse-type-variants`
+    `skip-optional-metadata`
+  - `Types/TypeInferPattern.ls` (両方変更 13 / 2 family): `infer-match-arms`
+    `strip-match-scrutinee-vars`
+  - `Types/TypeInferCore.ls` (5 family): branch が `error-code-recursive-alias` を再定義せず
+    削除しており、main は 9 箇所から呼ぶ。**diagnostics code の対応関係を先に決めること。**
+  - `Types/TypeInferFunctions.ls` (5 family): `TYPEINFER-SPLIT-01` に従属。branch が
+    `TypeInferSignature.ls` へ移した 3 defn を main の `TypeInfer.ls` が呼んでいるため単独では入らない。
+  受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
+  **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
+  branch の非 bounded-scan 差分。
 - [~] `LEGACY-TEST-01` property/fuzz/limit coverage — Issues `I-06` / `I-08`。syntax/types
   property test と複数の GC/type/runtime limit lane、bounded regex repeat の 64-case property
   lane は verified。再利用可能な generator、leak/rooting stress、performance threshold、
