@@ -2784,6 +2784,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   production split と `lsharp-ir/src/lib.rs` の `Instruction` / `IrType` および
   `Module` / `Function` / GC model、linker seam、compile surface seam、compile/incremental orchestration seam、`validation_source` node/evidence/typed edge seam、validation source adapter test seam、selfhost evidence registry runtime/validation test seam、selfhost evidence parser duplicate-field seam、selfhost native differential test seam、selfhost bootstrap four-layer test seam、selfhost bootstrap acceptance test seam、selfhost typeinfer E2E test seam、selfhost lexer/parser parity E2E test seam、WasmGC probe test seam、selfhost native stage23 gap test seam、validation input manifest/reference seam、native emitter memory seam、atomic/durable writer cleanup test seam、validation output manifest wire seam、native selfhost transport strict payload-length seam、WASI runner Preview1/Preview2 mode seam は verified。`wasi.rs`、`lsharp-ir/src/lib.rs`、`lsharp-tooling/src/compile.rs`、
   `infer.rs`、parser/lower/driver/LSP の責務分割を、型・focused test・snapshot parity を保って完了する。WasmGC emitter の instruction lowering / Component output seam / Preview2・CLI runner seam、WASI HTTP handler core seam、WASI GC collector seam、WASI tests core seam も verified とし、残る責務分割を続ける。
+- [ ] `RUNNER-SCANNER-01` selfhost TestRunner の legacy scanner を canonical inventory へ収束させる —
+  Issue `I-30`。`TestRunner.ls` に `collect-defn-metadata-loop` / `extract-test-cases-loop` の
+  旧 scanner 2 本と `extract-parser-contract-suites` の canonical inventory が並存している。
+  受入条件: 旧 scanner 2 本が `TestRunner.ls` から消え、`grep -c` が 0 になること。
+  現 runner の result shape と invariant-first suite shape が変わらないこと (E2E で固定する)。
+  **含めない範囲**: canonical migration classifier の実装、runner の result shape 変更そのもの。
 - [~] `LEGACY-TEST-01` property/fuzz/limit coverage — Issues `I-06` / `I-08`。syntax/types
   property test と複数の GC/type/runtime limit lane、bounded regex repeat の 64-case property
   lane は verified。再利用可能な generator、leak/rooting stress、performance threshold、

@@ -162,6 +162,7 @@
 | [I-27](#i-27) | x86 native の hot path で user call を挟むと local/引数が壊れる。回避策だけが test に pin され、欠陥そのものが台帳に無い | 中 | open | -- |
 | [I-28](#i-28) | x86 native の int-to-string import 呼び出しが rdi を書かない (harness が import placeholder の param-count を 0 で種まきするため) | 中 | open | -- |
 | [I-29](#i-29) | aarch64 native の文字列表現が bit 32 を判別子に使うため、heap offset が 4 GiB を越えると base 相対 offset が絶対番地として strlen される | 中 | open | -- |
+| [I-30](#i-30) | selfhost TestRunner に legacy scanner 2 本と canonical inventory が並存し、実行対象の正本が二つある | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ### ドキュメント (DOC)
 
@@ -1995,6 +1996,37 @@
   抑える、のいずれかを選ぶ。`NATIVE-HEAP-02` の回収機構が入れば (b) が現実的になる。
 - **関連**: `I-13` (heap に回収機構が無い)、`I-25` (発見経緯)、
   `TODO.md` の `NATIVE-HEAP-01` / `NATIVE-HEAP-02`。
+
+---
+
+<a id="i-30"></a>
+### I-30: selfhost TestRunner に legacy scanner 2 本と canonical inventory が並存し、実行対象の正本が二つある
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-20 (滞留 worktree の取り込み判定から)
+- **内容**: `selfhost/src/Tools/Test/TestRunner.ls` (5019 行) には、metadata から
+  test case を取り出す経路が **2 系統**ある。
+
+  | 経路 | 実体 | 性質 |
+  |---|---|---|
+  | canonical | `extract-parser-contract-suites` とその一族 (`:275-357`) | ordered form / span / owner を保つ inventory |
+  | legacy | `collect-defn-metadata-loop` / `extract-test-cases-loop` | source を独自に再走査する旧 scanner |
+
+  canonical 側は後から入ったが、**legacy 2 本は削除されていない**。
+  source order / grouping / span の正本が inventory なのに、実行対象を決めるのが
+  どちらなのかがソースからは一意に読めない。
+
+- **経緯**: この drift は 2026-07-17 の `986ac1e3`
+  (`refactor: generate selfhost tests from contract forms`) が既に予告していた。
+  当該 commit は legacy 2 本を削除して converter へ収束させる設計だったが、
+  main はその後 `extract-parser-contract-suites` という**別の**canonical 経路を
+  入れたため、7 ヶ月前のパッチはそのままでは当たらない。
+  したがって `986ac1e3` は却下し、**予告された問題の方を本台帳へ移した**
+  (判断は [worktree 取り込み判定 ADR](docs/adr/decisions-worktree-absorption-2026-08-20.md))。
+- **根拠**: 2026-08-20 実測。`grep -c` で `collect-defn-metadata-loop` 4 hit /
+  `extract-test-cases-loop` 6 hit、`contract-forms-to-test-cases` 0 hit。
+- **含めない範囲**: legacy scanner の削除そのもの。削除には現 runner の
+  result shape と invariant-first suite shape を保つ確認が要るため、独立の slice にする。
+- **関連**: `LEGACY-TEST-01` (runner 系の後始末)、DOC-05 (正本の二重管理リスク)。
 
 ---
 
