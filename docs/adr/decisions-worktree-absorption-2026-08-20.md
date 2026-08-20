@@ -313,6 +313,38 @@ work を patch-id で完全に含む**。`-type-record-ops-batch` だけ tip に
 このうち `codex/lsharp-typeinfer-record-next` の未 commit 分は本 ADR の
 「取り込んだもの」で既に main へ landing 済みだが、salvage の突き合わせが済むまで残す。
 
+### merge 前に閉じた 2 つの穴 (2026-08-20)
+
+swap は削除された defn だけでなく、**共有 defn 29 件の body も全面的に書き換えている**。
+Gate 1 / Gate 2 はどちらも defn 名と import 行しか見ないので、
+**body 本文へ文字列 assertion を張っている test** は検出できない。回帰 run の
+filter (`selfhost_type`) の外にそういう test がいると、merge まで気付けない。
+
+`grep -ln 'TypeScheme\|TypeInferRecordDecl' crates/lsharp-wasm/tests/e2e/*.rs` で 14 file を洗い、
+filter 外の 8 file を個別に見た。source 本文へ assertion を張っているのは
+`selfhost_bootstrap_contracts.rs` の `test_e2e_selfhost_type_responsibility_separation`
+(TEST-TYPE-01, `:490`) だけで、述語は 6 つ。swap 後の実測:
+
+| 述語 | 期待 | 実測 |
+|---|---|---|
+| `(defn mono` を含む | >0 | 1 |
+| `(defn poly` を含む | >0 | 2 |
+| `(defn generalize` を含む | >0 | 6 |
+| `(defn instantiate` を含む | >0 | 17 |
+| `(defn free-vars` を含む | >0 | 22 |
+| `(defn infer-` を**含まない** | 0 | 0 |
+
+6 つとも満たしている。残る 7 file は module 名の列挙か import 行の assertion で、
+`git diff main -- <2 file> | grep -E '^[+-]\(import|^[+-]\(module'` が空
+(= import ヘッダは 1 行も動いていない) なので判定は swap 前と同一である。
+
+もう 1 つは台帳の穴。`codex/lsharp-type-record-ops-batch` は batch tip `3b5dbef5` に
+含まれない commit を 1 つ持つが (`a5bb397a docs: record Linux evidence for Type record
+operations`)、`BOUNDED-SCAN-01` は bounded family だけを、`WORKTREE-ABSORB-02` は
+batch family を除外対象としていたため、**この 1 commit だけがどちらの正本にも載らない**
+状態になっていた。docs-only 2 file なので `WORKTREE-ABSORB-02` の一覧へ明示的に足し、
+同項目の対象を 25 本 → 26 本に改めた。
+
 ## ディスク
 
 `target/` 42 本を削除し **86 GB** を回収した (`621Gi used / 251Gi avail` →
