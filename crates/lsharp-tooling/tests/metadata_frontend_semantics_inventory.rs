@@ -77,6 +77,14 @@ fn ordered_forms(source: &str, metadata: &Metadata) -> Vec<Value> {
                     "kind": "LegacyInvariant",
                     "directive": directive,
                 }),
+                // fixture は legacy example / invariant しか持たないので、この arm は
+                // 実行時には通らない。MetadataFormKind が増えても inventory が
+                // コンパイルエラーで落ちないようにするための受け皿である。
+                other => json!({
+                    "kind": "Unexpected",
+                    "directive": directive,
+                    "debug": format!("{other:?}"),
+                }),
             }
         })
         .collect()

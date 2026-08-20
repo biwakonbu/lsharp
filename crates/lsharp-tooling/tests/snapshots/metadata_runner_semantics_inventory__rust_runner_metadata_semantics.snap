@@ -7,9 +7,9 @@ expression: "serde_json::to_string_pretty(&snapshot).expect(\"snapshot JSON を 
   "non_bool_example_boundary": {
     "checker_diagnostic_count": 0,
     "generated_as_if_condition": true,
-    "runner_error_code": "E0002",
+    "runner_error_code": "LS1002",
     "runner_error_mentions_type_check_phase": true,
-    "runner_error_uses_public_ls_code": false,
+    "runner_error_uses_public_ls_code": true,
     "runner_succeeded": false
   },
   "supported_boolean_contracts": {
