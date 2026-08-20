@@ -277,6 +277,26 @@ GREEN (`TypeScheme.ls` / `TypeInferRecordDecl.ls` を `3b5dbef5` から byte 一
   `BOUNDED-SCAN-01` に family 名ごと登録した
 
 
+### swap 後の広域回帰 (2026-08-20)
+
+focused test 4 file の GREEN だけでは swap の影響範囲を覆えないので、`selfhost_type` filter で
+234 test を切り離し実行した (pid 9283 / PPID=1 / `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/absorb-target`)。
+
+```
+test result: FAILED. 226 passed; 1 failed; 7 ignored; 0 measured; 2837 filtered out; finished in 2238.49s
+FAILED: e2e::selfhost_type_parser_parity::test_e2e_selfhost_parser_nested_module_decl
+```
+
+**合格条件は「0 failed」ではなく「FAILED 集合 ⊆ 台帳」である。**
+`test_e2e_selfhost_parser_nested_module_decl` は
+`docs/development/validation/workspace-expected-failures.txt` の `:103` と `:150` に登録済みで、
+本体 (`selfhost_type_parser_parity.rs:495`) は `(module App (module Sub (defn inner [] 42)))` の
+parse を見る test であり、swap した 2 file のどちらにも触れていない。よって swap 由来の回帰ではなく、
+新規 FAIL は **0 件**である。
+
+待ち役の background job は途中でハーネスに 2 度停止させられたが、計測本体は `setsid` 切り離し
+(PPID=1) なので巻き添えにならず完走した。長時間計測を切り離す運用の有効性がここでも確認できた。
+
 ## worktree / branch の片付け (2026-08-20)
 
 「取り込むべきものが残っているか」を **checkout の有無ではなく patch-id** で判定した。
