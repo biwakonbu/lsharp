@@ -101,7 +101,11 @@ fn module_nested_legacy_forms_are_inventoried_without_loss() {
     let suites = inventory_contract_suites(&program)
         .expect("module body の legacy metadata は inventory できるべき");
     assert_eq!(suites.len(), 1);
-    assert_eq!(suites[0].owner().as_str(), "succ");
+    // body 付き module に入っている defn の owner は module で修飾する。
+    // 以前はここが未修飾の "succ" を pin していたが、それは
+    // `metadata_contract.rs` が「後続 inventory slice で追加する」と
+    // 予告していた暫定挙動である。
+    assert_eq!(suites[0].owner().as_str(), "Math.succ");
     assert!(suites[0].docs().is_empty());
     assert!(suites[0].executable().is_empty());
     assert_eq!(suites[0].pending_migration().len(), 1);
