@@ -2827,6 +2827,28 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 25 本の取り込み判断 —
+  ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+  `git cherry main <branch>` が `+` を返す 29 本のうち、batch family 4 本
+  (`BOUNDED-SCAN-01` が正本) を除いた 25 本。**branch ref は消さないこと。**
+  commit 数の多い順に:
+  - `codex/v0.2-ec-m1-02-integration` (121) — **origin に無い local のみ**。main に無いファイル 66 件を持つ
+  - `codex/legacy-module-cache-format-identity` (120) / `codex/legacy-maintenance-docs-active-only` (86) /
+    `codex/legacy-maint-native-stage-chain-split` (67) /
+    `codex/legacy-maint-native-differential-split-audit` (65) /
+    `codex/legacy-maintenance-stage-chain-integration` (56) /
+    `codex/legacy-module-scc-cache-contract` (7) / `codex/legacy-test-01-limits` (4) —
+    いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)
+  - `codex/lsharp-wasmgc-atomic-artifact` (37) / `codex/v0.2-ec-m1-06-all-form-differential` (25) /
+    `codex/v0.2-diag-api-doc-forwarding-rebased` (12)
+  - 1〜2 commit の 14 本: `codex/v0.2-ec-m1-02-{frontend-snapshot,generator-gate,inventory,selfhost-generator}` /
+    `codex/legacy-test-01-{formatter-blocker,recursion-runtime,occur-check}` / `codex/legacy-module-scc` /
+    `codex/gc-soak-telemetry-lane` / `codex/todo-active-backlog` / `codex/lsharp-qualified-record-literal` /
+    `codex/lsharp-qualified-record-accessor` / `codex/lsharp-open-unqualified` /
+    `backup/dev-loop-speedup-pre-rebase`
+  受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
+  この一覧から削除すること。**未 commit の実内容がある 7 worktree は salvage を先に行う。**
+  **含めない範囲**: branch ref の削除 (判断が全部終わるまでしない)、CI 設定。
 - [~] `LEGACY-TEST-01` property/fuzz/limit coverage — Issues `I-06` / `I-08`。syntax/types
   property test と複数の GC/type/runtime limit lane、bounded regex repeat の 64-case property
   lane は verified。再利用可能な generator、leak/rooting stress、performance threshold、

@@ -276,6 +276,43 @@ GREEN (`TypeScheme.ls` / `TypeInferRecordDecl.ls` を `3b5dbef5` から byte 一
 - `TypeInferFunctions.ls` / `TypeInferCore.ls` は gate 不通過のため取り込んでいない。
   `BOUNDED-SCAN-01` に family 名ごと登録した
 
+
+## worktree / branch の片付け (2026-08-20)
+
+「取り込むべきものが残っているか」を **checkout の有無ではなく patch-id** で判定した。
+`git cherry main <branch>` が `+` を 1 つも出さない branch は、commit hash が違っても
+中身が main に入っている。branch 名や ahead 数だけを見ると、この 46 件を見落とす。
+
+| 分類 | 件数 | 処置 |
+|---|---|---|
+| main の祖先 (clean) | 17 | checkout 削除 |
+| batch tip `3b5dbef5` に包含される | 22 | checkout 削除 (`BOUNDED-SCAN-01` が正本) |
+| **patch-id が main と一致 = 取り込み済み** | **46** | checkout 削除 |
+| 真に未取り込みの commit を持つ | 29 | **checkout も ref も残す** |
+| 実内容のある未 commit 変更あり | 7 | **手を触れない** |
+
+worktree は **110 本 → 37 本**。**branch ref は 1 つも消していない**ので、
+`git worktree add <path> <branch>` でいつでも復元できる。ディスクは 335Gi → 338Gi。
+
+### batch family は tip 1 本に畳める
+
+`codex/lsharp-typescheme-batch` / `-typeinfer-apply-batch` / `-type-record-check-batch` は
+tip と別系列に見えるが、`git cherry <tip> <sibling>` が 0 件を返す。つまり **tip がこの 3 本の
+work を patch-id で完全に含む**。`-type-record-ops-batch` だけ tip に無い commit が 1 件ある。
+したがって batch family 26 本の取り込み判断は `BOUNDED-SCAN-01` 1 件に集約してよい。
+
+### 手を触れなかった 7 本
+
+未 commit の実内容 (新規 script / `.ls` 編集) が載っている。`.DS_Store` だけの dirty
+13 本とは区別した。
+
+`codex/release-input-bundle` (5) / `codex/v0.2-ec-m1-01` (4) /
+`codex/v2-16c-native-selfhost-{doc,install,repl}` (各 2) /
+`codex/lsharp-next-type-expression` (5) / `codex/lsharp-typeinfer-record-next` (6)
+
+このうち `codex/lsharp-typeinfer-record-next` の未 commit 分は本 ADR の
+「取り込んだもの」で既に main へ landing 済みだが、salvage の突き合わせが済むまで残す。
+
 ## ディスク
 
 `target/` 42 本を削除し **86 GB** を回収した (`621Gi used / 251Gi avail` →
