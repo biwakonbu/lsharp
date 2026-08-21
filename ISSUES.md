@@ -165,6 +165,7 @@
 | [I-30](#i-30) | selfhost TestRunner に legacy scanner 2 本と canonical inventory が並存し、実行対象の正本が二つある | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 3 件) | 低 | open | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
 | [I-33](#i-33) | analysis-only cache の直後に compile すると空の IR が返る (clean-hit が IR readiness を見ていない) | 中 | resolved | [analysis/compile cache 境界](docs/adr/decisions-legacy-module-analysis-compile-cache-boundary.md) |
+| [I-34](#i-34) | `cargo fmt --check -p lsharp-ir` が main で既に落ちる (`lower/mod.rs` の mod 宣言順 8 箇所) | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2070,6 +2071,22 @@
   branch 側で直していた。main は `lib.rs` を分割済みで diff は当たらないため、
   指摘だけを取り込んで main の構造へ移植した。
 - **関連**: `LEGACY-MODULE-01`、[worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-34"></a>
+### I-34: `cargo fmt --check -p lsharp-ir` が main で既に落ちる
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`I-33` の commit 前検査中)
+- **内容**: `crates/lsharp-ir/src/lower/mod.rs` の `mod` 宣言順が rustfmt の期待と食い違い、
+  8 箇所の diff が出る。`#[cfg(test)] mod *_tests;` が対応する `mod *;` の直後ではなく
+  ブロック末尾へ寄せられているのが原因。
+- **根拠**: 2026-08-22 実測。`cargo fmt --check -p lsharp-ir` の `Diff in` は
+  `lower/mod.rs` の 8 箇所だけで、他のファイルには出ない。`I-33` の変更以前から出ている
+  (触ったのは `cache.rs` / `compile_incremental.rs` / `lib_tests/incremental_compile.rs` の 3 本)。
+- **含めない範囲**: 修正そのもの。`cargo fmt -p lsharp-ir` を流せば消えるが、
+  test 分割の並び順を機械的に崩すため、`I-31` (clippy gate) と合わせて
+  「lint / format gate をどこまで CI で常時要求するか」を決めてから入れる。
+  CI の扱いは本 slice のスコープ外。
+- **関連**: `I-31` (同じく main で既に落ちている gate)。
 
 ### DOC-01: ユーザーガイドの主要範囲不足
 

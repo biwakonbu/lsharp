@@ -2861,6 +2861,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   compile error になる。`INFER-DEPTH-01` の変更以前から出ている。
   受入条件: 当該 3 経路が exit 0 になること。
   **含めない範囲**: `-D warnings` を CI で常時要求するかの判断 (CI の扱いは別 slice)。
+- [ ] `LINT-FMT-01` `lsharp-ir` の rustfmt gate 復旧 — Issue `I-34`。
+  `crates/lsharp-ir/src/lower/mod.rs` の `mod` 宣言順が rustfmt の期待と食い違い、
+  `cargo fmt --check -p lsharp-ir` が 8 箇所の diff を出す。
+  受入条件: 同コマンドが exit 0 になること。
+  **含めない範囲**: CI で fmt gate を常時要求するかの判断 (`LINT-CLIPPY-01` と併せて決める)。
 - [~] `LEGACY-TEST-01` property/fuzz/limit coverage — Issues `I-06` / `I-08`。syntax/types
   property test と複数の GC/type/runtime limit lane、bounded regex repeat の 64-case property
   lane は verified。再利用可能な generator、leak/rooting stress、performance threshold、
