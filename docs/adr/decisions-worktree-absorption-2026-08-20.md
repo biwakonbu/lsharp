@@ -489,8 +489,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/v0.2-diag-api-doc-forwarding-rebased` | 21 件 | **一部が live。`I-02` へ引き継ぐ** | 10 件は取り込み済み、1 件は main が別実装を採用済み。残る **10 件** (`feat: forward ... diagnostics` 8 + cycle/export span 2) は main に無く、その範囲は `I-02` の未解消部分と一致する (下記) |
 | `codex/v0.2-ec-m1-06-all-form-differential` | 25 件 | **一部が live。`EC-M1-06` / `EC-M1-07` / `ROOT-SLOT-PROBE-01` へ引き継ぐ** | 7 件は main が別設計で達成済み、1 件は修正の実体だけ取り込み済み。残るのは provenance の field 集合、JSON `contracts` field、mixed JSON と text の CLI coverage、canonical case failure message、schema 文書、root slot probe (下記) |
 | `codex/lsharp-wasmgc-atomic-artifact` | 37 件 | **全件取り込み済み** | `git cherry` の `+` は main が後から入れた file 分割 (`wasmgc.rs` -> `wasmgc/` 3 module、`wasmgc_runner.rs` -> 5 module、`wasmgc_probe.rs` -> `part_000..015.rs`) で patch-id が崩れただけ。追加関数 208 個はミス 0、ADR 79 本と `wit/` 2 本も main にある (下記) |
+| `codex/legacy-maintenance-stage-chain-integration` | 56 件 | **一部が live。`FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `I-01` / `I-35` へ引き継ぐ** | 18 件の file 分割は main が独自に実施済み、10 件の imp-06 進捗記録は却下、型推論 limit の src fix は逐語で main にある。live は string literal / typed signature の Display 欠落 2 件、GC 強制回収 live=0 契約 1 件、workspace 全域 800 行 gate 1 件、occur-check bench 1 件 (下記) |
 
-残る未判定は 6 本。batch family の例外 1 本は上表で判定済み。
+残る未判定は 5 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -806,3 +807,148 @@ branch の名前になっている atomic artifact 化 (`35f59fe5`) は `git che
 37 件中 24 件が「追加関数 0 個」と出て、**ヒット率 0/0 を「判定不能」ではなく
 「取り込み済み」と読み違える**危険がある。triage の抽出は `fn [a-z0-9_]+` で行い、
 **抽出数が 0 の commit は triage 失敗として扱って内容を見る。**
+
+#### `codex/legacy-maintenance-stage-chain-integration` の 56 commit を判定した根拠
+
+merge-base は `80b2d91a` (2026-07-20)、tip は `c82b5389`。main に対して **1510 commit behind**、
+236 files / 94346 insertions / 92463 deletions。imp-06 (大 file 分割) と imp-07 (test 基盤) の
+lane である。`git cherry main` の `+` は 59 commit 中 **56 件**。
+
+56 件を `fn [a-z0-9_]+` 抽出で triage した結果は 7 群に分かれた。抽出 0 件の 10 commit
+(`docs(planning)` 系) と、ミスのあった 9 commit は本 ADR の規約どおり内容を直接見た。
+
+| 群 | commit 数 | 判定 |
+|---|---|---|
+| `refactor(...)` の file 分割 | 18 | 取り込み済み (main が同じ分割を独自に実施) |
+| `docs(planning)` の imp-06 進捗記録 | 10 | 却下 (main の imp-06 は自前の進捗を持つ) |
+| 型推論 limit (src fix / test / bench / doc) | 5 | src fix は取り込み済み、bench 1 本と doc 1 本が live |
+| `fix(syntax)` の Display / lexer 修正 | 3 | **2 件 live**、1 件取り込み済み |
+| runtime / GC の contract test と doc | 5 | 1 件 live、4 件却下 |
+| file size gate | 2 | **live** |
+| main が分割しなかった file の分割 | 4 | 分割自体は live だが 1510 commit 越しには当てない |
+| その他 (property / test distribution / allocator) | 9 | 既判定または却下 |
+
+##### live な 5 件 -- 内容
+
+| commit | branch が持つもの | main の状態 | 引き取り先 |
+|---|---|---|---|
+| `05b98847` fix(syntax): preserve string literal escapes | `token.rs` に `fmt_string_literal` を足し、`Literal::String` と `TokenKind::String` の Display から使う | **main は生文字のまま出す** (`ast.rs:602` / `token.rs:71` が `write!(f, "\"{s}\"")`)。`"` や改行を含む文字列を pretty-print すると re-parse できない | `FMT-ROUNDTRIP-01` (新規) |
+| `fe5ed3c1` fix(syntax): preserve typed signatures in display | `Param` / `WhereClause` の `Display` を足し、defn の `:where`、trait method の return type、defmacro の macro type を保つ | **main の `Decl::Defn` Display は `p.name` しか出さない** (`ast.rs:325`)。parameter の型注釈と `:where` clause が pretty-print で落ちる | 同上 |
+| `8be951e4` の e2e `test_e2e_runtime_collector_returns_live_allocations_to_baseline_after_each_cycle` | 128 alloc x 10 cycle の mixed-size churn を回し、cycle ごとに `__lsharp_gc_collect` を強制して `live=0` へ戻ることを契約化する | main の GC 検証は object table / free list / root stack の**容量成長** 5 件 (`decisions-legacy-test-runtime-limits-lane.md`) と soak 2 件で、**強制回収ごとの live=0 契約は無い** | `GC-LEAK-CYCLE-01` (新規) |
+| `3c37f574` + `e6ae428e` の workspace 全域 800 行 gate | `crates/lsharp-wasm/tests/rust_file_size_contract.rs` (`MAX_RUST_SOURCE_LINES = 800`、`crates/**/src/**` と `crates/**/tests/**` を走査) + allowlist 2 本 (src 5 / test 23) | main は per-file の targeted guard 8 本しか持たない | `I-01` / imp-06 |
+| `867e898b` の `bench_occur_check_rejection` と `tests/support/inference_limit_fixture.rs` | occur-check 拒否の Criterion 計測と、test/bench で共有する fixture module | main の `benches/infer_limits.rs` は nested / wide-record の 2 本のみ | `I-01` とは別。型推論 limit の持ち主へ (下記) |
+
+##### 型推論 limit -- src fix は**逐語的に**取り込み済み
+
+`867e898b` / `a5c8ee3d` は test 名 grep ではミスが出るが、**修正の実体は main に逐語で入っている**。
+
+| branch の変更 | main の位置 |
+|---|---|
+| `INFER_STACK_RED_ZONE = 256 KiB` / `INFER_STACK_SEGMENT_SIZE = 2 MiB` + `stacker::maybe_grow` | `crates/lsharp-types/src/infer/expr.rs:8,10,23` |
+| `Substitution::compose` の両側 `is_empty()` short-circuit | `crates/lsharp-types/src/types.rs`、日本語コメント付きで同じ 2 分岐 |
+| App の引数 loop で `current_env` を `Option` にし、最終引数では環境更新を省く | `crates/lsharp-types/src/infer/expr.rs:150-162` |
+
+test も同じ契約を **別名で** main が持つ。branch `tests/inference_limits.rs` の
+`nested_type_inference_covers_documented_depth_limits` /
+`wide_record_inference_covers_documented_field_limits` /
+`occur_check_rejects_documented_depth_limits_with_stable_diagnostic` は、main の
+`tests/infer_limits.rs` の `deeply_nested_type_annotations_do_not_panic` /
+`wide_record_type_annotations_do_not_panic` /
+`occur_check_reports_infinite_type_at_documented_depths` に対応する。
+main はさらに `self_application_reports_infinite_type` を持つので **main の方が広い**。
+
+**`docs/development/validation/type-inference-limits.md` (branch のみ) は取り込まない。**
+Criterion の before/after 表 (nested 128 段 2.4398 ms → 1.5236 ms、occur-check 128 段
+4.6071 s → 65.583 ms) は 2026-07-20 の branch code state の実測であり、main の現行 code で
+取り直していない数字を main の正本へ現在値として書くのは doc-GREEN の規律に反する。
+記録が要るなら main 上で取り直す。
+
+##### 却下した runtime / GC 契約 -- main が同じ境界を後から別設計で持つ
+
+- **`cb8eb3a1` 非末尾再帰の stack 境界。** branch は `max_wasm_stack = 256 KiB` の test 専用
+  engine を立て、深度 16/64/256/1024/4096/8192/16384 の**単調遷移**を契約化する。
+  main は `runtime_recursion_limits.rs` の `test_e2e_runtime_recursion_stack_limit_reports_trap` が
+  同じ fixture 形で 64 KiB / 深度 0,32,128 成功 / 100000 失敗 + `stack` かつ `trap` を張り、
+  engine 構築は `support::try_compile_and_run_with_wasm_stack_limit` へ寄せてある。
+  **単調遷移の assertion だけが差分**だが、7 深度分の compile+run を足す価値は現状無いと判断した。
+- **`61e54d94` の `validation/runtime-recursion-limit.md`。** main は同名 file を
+  2026-07-25 の `LEGACY-TEST-01` lane 版として持つ。branch 版 (2026-07-20) の方が
+  7 深度の実測表と portability の根拠まで書いていて厚いが、**main に無い test を説明する文書**なので
+  取り込むと文書と実装が食い違う。
+- **`3f52cf6c` の `validation/gc-limit-leak.md`。** 証拠表 6 件のうち 5 件は main にある。
+  6 件目が上記 `GC-LEAK-CYCLE-01` の live 分。文書は test を入れるときに main 上で書き直す。
+
+##### `8be951e4` の allocator 修正が moot である根拠と、残る罠
+
+branch は `emit_alloc_func` の free-list first-fit search で、内側 `if` を抜ける `Br(0)` を
+`Br(1)` へ直す (「内側の if ではなく free-list search loop の次 iteration へ進む」)。
+
+main の同じ関数は size-class heads を採ったため、**legacy first-fit search 全体へ入らない**。
+
+```
+crates/lsharp-wasm/src/wasi/allocator.rs
+136:    // free-list first-fit search
+137:    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+138:    // 旧 table は新しい class heads と併用しない。コードは ABI 差分を
+139:    // 小さく保つため残すが、常に bump/class path へ進む。
+140:    f.instruction(&W::Br(0));
+```
+
+したがって修正は挙動を変えない。**却下。**
+
+ただし **branch が直そうとしたバグ自体は main に残っている**。`allocator.rs:172` の `Br(0)` は
+`:140` の無条件 skip で到達不能なだけで、誤りのまま置かれている。この dead path を将来
+再有効化すると同じバグを踏む。`ISSUES.md` の `I-35` に記録した。
+
+##### main が分割しなかった 4 file -- 分割は live だが branch 単位では当てない
+
+branch は分割したが main は monolith のままの file が 4 本ある。test 関数名の hit 率は
+いずれも 100% (中身は main にある) で、live なのは**分割そのもの**である。
+
+| file | main の行数 | branch の分割 |
+|---|---|---|
+| `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` | 62990 | `c82b5389` が `part_000..087.rs` の 88 分割 |
+| `crates/lsharp-driver/tests/default_path_delegation.rs` | 2750 | `dd657061` が責務別 9 module + support |
+| `crates/lsharp-wasm/tests/lsp_stateful_parity.rs` | 1618 | `1beac560` |
+| `crates/lsharp-wasm/tests/gc_metrics_contract.rs` | 1148 | `d7743298` |
+
+**1510 commit 越しに分割 diff を当てない。** 分割は当てる先の行構成に完全に依存するため、
+main の現行内容の上でやり直す方が安い。`I-01` / imp-06 の対象として branch を参照実装に残す。
+なお `selfhost_native_stage_chain.rs` は未判定の `codex/legacy-maint-native-stage-chain-split`
+(67 commit) も同じ file を対象にしているので、引き取りは同 branch の判定と合わせて決める。
+
+##### main が別設計で解いていた 2 件 (grep のミスが誤読を招く形)
+
+- **`57e32f8a` の `try_infer_formatter_trio_batch`** (108 中 1 ミス)。main は formatter trio を
+  incremental pipeline ではなく **module graph の dirty set 展開**で解いた
+  (`module_graph/mutation.rs:148` `is_formatter_trio_module` / `:152` `expand_changed_modules`)。
+  contract は `module_graph/tests.rs:199`
+  `test_compute_dirty_set_expands_formatter_trio_atomically`。
+  これは `decisions-legacy-formatter-scc-imports.md` が
+  「`Formatter.ls` 固有の特例を消して generic な `infer_scc_type_surfaces` に寄せる」と
+  記録した判断の帰結であり、**main が明示的に却下した方向**である。
+- **`b5157570` の `try_lower_{scalar,vector,map}_app` / `lower_call_app`** (5 中 4 ミス)。
+  main は同じ責務分割を **より細かい粒度と別命名**で済ませてある
+  (`lower/expr/application_{scalar,vector,map,map_lookup,map_mutation,map_allocation,calls,ref,ref_vector,strings,string_heap}.rs` の
+  `lower_app_*`)。同じ intent、後から別設計。
+
+##### `2d134700` は取り込み済み (別形)
+
+非 ASCII の unknown escape 直後で lexer が 1 byte だけ進み char boundary を割る panic は、
+main の `lexer/tokenization.rs:58-68` が **byte match のまま unknown escape arm だけ char を読んで
+`ch.len_utf8()` 進める**形で直してある。branch は match 全体を char 単位へ寄せた。
+property test も `crates/lsharp-syntax/src/lib.rs:121`
+`parser_never_panics_for_bounded_arbitrary_bytes` が同じ契約を張る。
+
+`361d91e6` (property-based inference) と `e8602766` / `cbe5d768` は
+[`codex/legacy-test-01-limits` の節](#codexlegacy-test-01-limits-の-4-commit-を却下した根拠)
+および [test distribution ADR](decisions-legacy-test-distribution.md) で既に判定済み。
+
+##### この branch から学んだこと -- main が**壊れた実装ごと**保持することがある
+
+これまでの「main が同じ intent を後から別設計で満たす」に加えて、本 branch では
+**main が誤った実装を残したまま到達不能にする**形が出た (`allocator.rs:140` と `:172`)。
+patch が当たらない理由が「別設計」でも「先へ進んだ」でもなく、
+**「その path をもう通らないから直す必要が無かった」**という第 3 の形である。
+この形は却下でよいが、**dead code に残ったバグを台帳へ載せないと消える**。
+ADR の却下表に書くだけでは足りず、`ISSUES.md` に起票する。

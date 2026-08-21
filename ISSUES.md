@@ -166,6 +166,8 @@
 | [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 3 件) | 低 | open | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
 | [I-33](#i-33) | analysis-only cache の直後に compile すると空の IR が返る (clean-hit が IR readiness を見ていない) | 中 | resolved | [analysis/compile cache 境界](docs/adr/decisions-legacy-module-analysis-compile-cache-boundary.md) |
 | [I-34](#i-34) | `cargo fmt --check -p lsharp-ir` が main で既に落ちる (`lower/mod.rs` の mod 宣言順 8 箇所) | 低 | open | -- |
+| [I-35](#i-35) | allocator の到達不能 free-list search に誤った `Br(0)` が残り、path を再有効化すると無限 loop する | 低 | open | -- |
+| [I-36](#i-36) | AST / token の Display が string escape と型注釈・`:where` を落とし、pretty-print が re-parse できない | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2114,6 +2116,59 @@
   「lint / format gate をどこまで CI で常時要求するか」を決めてから入れる。
   CI の扱いは本 slice のスコープ外。
 - **関連**: `I-31` (同じく main で既に落ちている gate)。
+
+<a id="i-35"></a>
+### I-35: allocator の到達不能 free-list search に誤った `Br(0)` が残っている
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maintenance-stage-chain-integration` の判定中)
+- **内容**: `emit_alloc_func` の legacy free-list first-fit search は、size-class heads を
+  導入した際に `crates/lsharp-wasm/src/wasi/allocator.rs:140` の無条件 `Br(0)` で
+  丸ごと skip されるようになった。skip される区間の `:172` にある `Br(0)` は
+  **内側の `if` を抜けるだけで search loop の次 iteration へ進まない**という誤りを
+  抱えたまま残っている。現状は到達不能なので挙動に影響しない。
+- **根拠**: 2026-08-22 実測。`allocator.rs:137-140` が
+  「旧 table は新しい class heads と併用しない。コードは ABI 差分を小さく保つため残すが、
+  常に bump/class path へ進む。」というコメント付きで `Br(0)` を出している。
+  `:167-173` の内側 `if` 末尾が `Br(0)` で、`Br(1)` であるべき。
+  `codex/legacy-maintenance-stage-chain-integration` の `8be951e4`
+  (`fix(wasm): skip undersized free-list entries`) が同じ箇所を `Br(1)` へ直しているが、
+  main では dead path なので取り込みは却下した。
+- **含めない範囲**: 修正そのもの。dead path を直すか消すかは
+  「legacy free-list を ABI 互換のために残し続けるか」という設計判断とセットで、
+  `I-04` (free list 線形探索) の範囲で決める。
+- **関連**: `I-04`。判定は
+  [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-36"></a>
+### I-36: AST / token の Display が string escape と型注釈を落とす
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maintenance-stage-chain-integration` の判定中)
+- **内容**: pretty-print した結果が元の source として re-parse できない箇所が 2 種類ある。
+  1. **string literal の escape が復元されない。** `crates/lsharp-syntax/src/ast.rs:602` と
+     `crates/lsharp-syntax/src/token.rs:71` がどちらも文字列を quote で挟むだけで、
+     lexer が解釈済みの `"` / backslash / 改行 / tab / CR を生文字のまま出す。
+     `"` を含む文字列は出力が壊れ、改行を含む文字列は行が割れる。
+  2. **宣言の型注釈が落ちる。** `ast.rs:325` (defn) / `:519` (lambda) / trait method /
+     defmacro のいずれも parameter を `p.name` だけで出し、`Param::ty` を無視する。
+     defn の `where_clauses`、trait method の `return_ty`、defmacro の `macro_type` も
+     出力されない。
+- **根拠**: 2026-08-22 実測 (コード読み)。加えて **既存の roundtrip gate が構造上この 2 件を
+  見られない**ことを確認した。`crates/lsharp-syntax/src/lib.rs:141`
+  `roundtrip_property_tests::pretty_printed_ast_reparses_to_the_same_source` は
+  `test_gen.rs` の generator を使うが、
+  - `safe_string()` (`test_gen.rs:23`) は `a`-`z` 6 文字までしか生成せず、
+    escape が要る文字を一切含まない
+  - `arb_expr()` が作る `Param` は `ty: None` 固定 (`test_gen.rs:59-63`) で、
+    `Decl` を生成しないため `where_clauses` にも届かない
+
+  gate は存在するが、生成器の側で盲点が作られている。
+- **含めない範囲**: 修正そのもの。`codex/legacy-maintenance-stage-chain-integration` の
+  `05b98847` / `fe5ed3c1` が参照実装になるが、1510 commit 越しに patch を当てず
+  main の現行 file 構成 (`lexer/` / `parser/` 分割後) の上で書き直す。
+  metadata projection の Display は別契約なので含めない。
+- **関連**: `FMT-ROUNDTRIP-01` (`TODO.md`)。判定は
+  [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+  公開 CLI では `fmt` は LSP / MCP の内部 API 扱いなので、影響面は IDE 経路である。
 
 ### DOC-01: ユーザーガイドの主要範囲不足
 

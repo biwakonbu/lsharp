@@ -919,6 +919,51 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: native lane の root API 実装 (`NATIVE-ROOT-02`)、
   root stack の動的容量 (`NATIVE-ROOT-03`)。**cargo が要る。**
 
+- [ ] `FMT-ROUNDTRIP-01` AST / token の Display を re-parse 可能にする — Issue `I-36`。
+  `crates/lsharp-syntax/src/ast.rs:602` と `crates/lsharp-syntax/src/token.rs:71` が
+  string literal の escape を復元せず、`ast.rs:325` (defn) / `:519` (lambda) /
+  trait method / defmacro が parameter の型注釈と `where_clauses` / `return_ty` /
+  `macro_type` を落とす。参照実装は `codex/legacy-maintenance-stage-chain-integration` の
+  `05b98847` (共通 `fmt_string_literal`) と `fe5ed3c1` (`Param` / `WhereClause` の Display) だが、
+  1510 commit 越しに patch は当てず main の現行 file 構成の上で書き直す
+  (ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md))。
+  受入条件: `test_gen.rs` の generator を escape 必須文字と `ty: Some(..)` / `where_clauses`
+  付き `Decl` まで広げたうえで、`pretty_printed_ast_reparses_to_the_same_source` が PASS すること。
+  **generator を広げずに Display だけ直すのは不可** — 現状 gate が盲点を持っていること自体が
+  `I-36` の根拠の半分である。
+  **含めない範囲**: metadata projection の Display (別契約)、`fmt` サブコマンドの CLI 公開判断。
+
+- [ ] `GC-LEAK-CYCLE-01` 強制回収ごとに live allocation が baseline へ戻ることを契約化する —
+  Issue `I-06`。main の GC 検証は object table / free list / root stack の**容量成長** 5 件
+  (ADR [`decisions-legacy-test-runtime-limits-lane.md`](docs/adr/decisions-legacy-test-runtime-limits-lane.md))
+  と soak 2 件で、**`__lsharp_gc_collect` を強制した後に live が 0 へ戻るか**は見ていない。
+  参照実装は `codex/legacy-maintenance-stage-chain-integration` の `8be951e4` に含まれる
+  `test_e2e_runtime_collector_returns_live_allocations_to_baseline_after_each_cycle`
+  (128 allocation x 10 cycle の mixed-size churn)。
+  受入条件: cycle ごとに `live=0` を assert すること。
+  **branch が記録している `freed` / free-list entry 数の実測値 (10 cycle で 384→402 等) は
+  旧 first-fit 設計に紐づくので期待値に使わない。** size-class heads の下では違う数になる。
+  **含めない範囲**: 到達不能な legacy free-list path の修正 (`I-35`)、GC アルゴリズムの変更。
+
+- [ ] `ALLOC-DEAD-BR-01` allocator の到達不能 free-list search を直すか消すか決める —
+  Issue `I-35`。`crates/lsharp-wasm/src/wasi/allocator.rs:140` の無条件 `Br(0)` が
+  legacy first-fit search 全体を skip しているため、`:172` の誤った `Br(0)`
+  (`Br(1)` であるべき) は現状発火しない。path を再有効化すると無限 loop する。
+  受入条件: `I-04` (free list 線形探索) の設計判断とセットで、
+  「ABI 互換のために残す」なら誤りを直す、「残さない」なら区間ごと削る、のどちらかへ倒すこと。
+  **含めない範囲**: size-class allocator 自体の変更。
+
+- [ ] `RUST-FILE-SIZE-GATE-01` workspace 全域の 800 行 gate を入れる — Issue `I-01`。
+  main は per-file の targeted guard 8 本しか持たず、`crates/**/src/**` と
+  `crates/**/tests/**` を走査する gate が無い。参照実装は
+  `codex/legacy-maintenance-stage-chain-integration` の `e6ae428e` / `3c37f574`
+  (`crates/lsharp-wasm/tests/rust_file_size_contract.rs` + allowlist 2 本)。
+  **2026-08-22 実測で main の allowlist は 39 件必要** (src 6 / tests 33)。最大は
+  `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の 62990 行、次が
+  `selfhost_cli_core.rs` 19412 行。branch の allowlist は 28 件だった。
+  受入条件: allowlist が単調減少すること (追加には ADR を要求する)。
+  **含めない範囲**: 超過 file の分割そのもの (`LEGACY-MAINT-01`)。gate と分割は別 slice。
+
 - [ ] `STALE-HARNESS-01` `function_size_matches_generated_length` 診断の埋め込み harness を
   bundle 分割後の emitter へ寄せる — Issue `I-23` の `STALE-PIN-03` 裁定 [B]。
   `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:43891` の `check-instr-sizes` は
@@ -2860,13 +2905,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 6 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 5 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
   `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
   tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
-  17 本は ADR で判定済み。ここの対象は残る **6 本**。
+  18 本は ADR で判定済み。ここの対象は残る **5 本**。
   **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
   patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
@@ -2876,9 +2921,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - `codex/legacy-module-cache-format-identity` (120) / `codex/v0.2-ec-m1-02-integration` (119) /
     `codex/legacy-maintenance-docs-active-only` (86) /
     `codex/legacy-maint-native-stage-chain-split` (67) /
-    `codex/legacy-maint-native-differential-split-audit` (65) /
-    `codex/legacy-maintenance-stage-chain-integration` (56) —
-    いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)
+    `codex/legacy-maint-native-differential-split-audit` (65) —
+    いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)。
+    `codex/legacy-maintenance-stage-chain-integration` (56) は 2026-08-22 に判定済みで、
+    live な残りは `FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `RUST-FILE-SIZE-GATE-01` / `I-35` へ
+    引き取った
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
   **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。
