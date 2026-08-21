@@ -186,6 +186,7 @@
 | [DOC-07](#doc-07) | ドキュメント更新が実装の後追いになり、依頼駆動でしか走らない | 中 | in-design | [doc-sync rule](.claude/rules/doc-sync.md) |
 | [DOC-08](#doc-08) | 陳腐化した記述と重複節 (legacy-rust-bootstrap README / TODO の v0.3 節) | 低-中 | resolved | -- |
 | [DOC-09](#doc-09) | 完了 TODO を削除する際に根拠が ADR へ移されず、原因究明の記録ごと消えている | 中 | resolved | [x86 値 liveness の却下案](docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md) |
+| [DOC-10](#doc-10) | 設計ドキュメントと TODO に完了済み項目が蓄積し、残作業が読めない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ---
 
@@ -382,6 +383,11 @@
 - **関連**: selfhost 側は ADR-168 (STR-01〜03) で分割実績あり (TypeInfer.ls 1093 → 290 行など)。
   Rust 側の分割設計は [imp-06](docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md)。
   分割そのものは `LEGACY-MAINT-01`、gate は `RUST-FILE-SIZE-GATE-01`。
+  **超過 13 file 分の分割軸は設計済みのものがある** — `codex/legacy-maintenance-docs-active-only`
+  (2026-07-24) が同じ file を分割しており、追加された test 本体は全件 main にある
+  (ミスは file-size guard 関数 1 個のみ)。軸の一覧は
+  [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+  分割案が読めなくなっている件は `DOC-10`。
 
 <a id="i-02"></a>
 ### I-02: 診断 code/span が全 surface に未貫通
@@ -2641,3 +2647,35 @@
 - 問題が解消されたら削除せず `状態: resolved` に変更し、解消根拠 (コミット / テスト) を追記する
 - 着手タスク化する場合は TODO.md (正本) に項目を作り、本台帳からは ID 参照のみ行う
 - file:line の根拠は記載時点の実測とし、大きくずれた場合は検証日とともに更新する
+
+<a id="doc-10"></a>
+### DOC-10: 設計ドキュメントと TODO に完了済み項目が蓄積し、残作業が読めない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maintenance-docs-active-only` の判定中)
+- **内容**: `TODO.md` には「**未完了タスクだけ**を持つ単一正本」という規約があるが、
+  同じ規律が設計ドキュメントと一部の TODO 項目本文には効いていない。
+  完了済みの分割・module 名が本文へ追記され続け、**残っている作業が読めなくなっている**。
+- **根拠**: 2026-08-22 実測。
+
+  | 対象 | 実測 |
+  |---|---|
+  | `docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md` | 全 299 行のうち「## ステータス」節が **20,594 バイト**。完了済み module 名の列挙で、`infer.rs` が **8 回**、`lib.rs` が 4 回登場する |
+  | `TODO.md` の `LEGACY-MAINT-01` 本文 | 完了済み seam の列挙が 1 行に連結され、**「残る責務分割を続ける」以外に何が残っているかが書かれていない** |
+
+  ```bash
+  awk '/^## ステータス/{f=1} f' docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md | wc -c
+  awk '/^## ステータス/{f=1} f' docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md \
+    | grep -oE '[a-z_]+\.rs' | sort | uniq -c | sort -rn | head
+  ```
+
+  完了の記録そのものは必要だが、置き場所は ADR / 運用記録であって設計ドキュメントの
+  ステータス節ではない (`.claude/rules/docs-organization.md`)。
+- **`I-01` との関係**: `I-01` は「39 file が 800 行超過」という**事実**を持ち、
+  こちらは「その分割計画が読めない」という**記述の問題**である。分割の実作業は
+  `LEGACY-MAINT-01`、gate は `RUST-FILE-SIZE-GATE-01` が持つ。
+- **含めない範囲**: 分割そのもの、`TODO.md` 全体の再編。
+- **関連**: `DOC-09` (完了 TODO の根拠が ADR へ移らない) と同じ病理の別の面。
+  `codex/legacy-maintenance-docs-active-only` の `5348570e` は同じ問題を branch 側で
+  直そうとしたが、**2026-07-24 時点の実測値を現在値として書く**形だったので却下した
+  ([worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md))。
+  方針は正しいので、main の実測に基づいてやり直す。

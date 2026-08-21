@@ -492,8 +492,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-maintenance-stage-chain-integration` | 56 件 | **一部が live。`FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `I-01` / `I-35` へ引き継ぐ** | 18 件の file 分割は main が独自に実施済み、10 件の imp-06 進捗記録は却下、型推論 limit の src fix は逐語で main にある。live は string literal / typed signature の Display 欠落 2 件、GC 強制回収 live=0 契約 1 件、workspace 全域 800 行 gate 1 件、occur-check bench 1 件 (下記) |
 | `codex/legacy-maint-native-stage-chain-split` | 67 件 | **一部が live。`MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` へ引き継ぐ** | 約 18 件の test 分割は姉妹 branch で判定済みの同一 family、約 11 件は merge。imp-04 の feature lane 18 件のうち SCC 系 4 群は main が別設計で持ち、`CompileSession` も別配置で持つ。live は同名 function の衝突 (silent miscompilation)、cross-module type-alias、block 形式 module body の 3 件 (下記) |
 | `codex/legacy-maint-native-differential-split-audit` | 65 件 | **却下 (新規判定は 1 件のみ)** | 65 commit のうち **64 件は `codex/legacy-maint-native-stage-chain-split` と hash が一致**し判定済み。新規は `b4bc2db9` の imp-06 進捗記録 1 件で、doc-GREEN の規律により却下。あわせて前節で group 扱いだった fix 6 件を個別判定し、`67624ca7` から `I-40` を起票した (下記) |
+| `codex/legacy-maintenance-docs-active-only` | 86 件 | **一部が live。`LEGACY-MAINT-01` / `RUST-FILE-SIZE-GATE-01` / `DOC-ACTIVE-ONLY-01` へ引き継ぐ** | main 比 89 件のうち **58 件は `codex/legacy-maintenance-stage-chain-integration` と hash 一致**で判定済み。残る 31 件は分割 27 / file-size guard 3 / docs 1。分割の test 本体は全件 main にあり (ミス 42 名はすべて file-size guard / 分割機構 / main の後発設計に置き換わったもの)、live なのは**分割そのもの** — main が未分割のまま 800 行を超える file が 13 本ある。docs 1 件は doc-GREEN の規律で却下し `DOC-10` を起票 (下記) |
 
-残る未判定は 3 本。batch family の例外 1 本は上表で判定済み。
+残る未判定は 2 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -1133,3 +1134,120 @@ DocTools 側だけを projection に差し替えても、呼ばれるのは Form
 **「patch が正しくても、当てた先で発火するとは限らない」。** `67624ca7` の projection は
 それ単体では正しいが、main の module 名の並びでは負ける側に置かれる。
 patch の中身が正しいかと、当てて効くかは別に確かめる。
+
+### `codex/legacy-maintenance-docs-active-only` (86 件) の判定
+
+#### 89 commit のうち 58 件は判定済み branch と hash が一致する
+
+前節の教訓どおり、内容を読む前に判定済み branch との commit 集合を突き合わせた。
+
+```bash
+git log --oneline codex/legacy-maintenance-docs-active-only \
+  --not codex/legacy-maintenance-stage-chain-integration
+```
+
+main 比 89 件のうち、`codex/legacy-maintenance-stage-chain-integration` (56 件、判定済み) に
+無いのは **31 件**。判定対象はこの 31 件である。内訳は
+**分割 27 件 / file-size guard 3 件 / docs 1 件**。merge commit は 0。
+
+branch tip は 2026-07-24、merge-base は `80b2d91a` (2026-07-20) で **main から 1514 behind**。
+
+#### 分割 27 件 -- 中身は main にあるが、分割そのものが live
+
+27 commit が追加した関数名を main の**全定義名集合**へ突き合わせた
+(取得方法は後述の「triage script の突き合わせ方」)。ミスは全 30 commit 合計で 42 名あり、
+その内訳は次のとおりで、**test 本体は 1 件残らず main にある**。
+
+| ミスの種別 | 件数 | 判定 |
+|---|---|---|
+| `*_is_composed_of_bounded_fragments` / `*_are_composed_of_bounded_fragments` | 21 | 分割を検査する file-size guard。`RUST-FILE-SIZE-GATE-01` が引き取る範囲 |
+| `crate_root` | 8 | 上記 guard が使う helper。同上 |
+| `native_stage_chain_{source,template_part_00..07}` / `test_native_stage_chain_source_manifest_contains_split_probe_items` | 10 | `49054e89` の分割機構そのもの (62990 行を template 分割する足場) |
+| `unify_with_subst` | 1 | `33b5e020` 内での移動。main は `infer/unify.rs` へ**別の軸で**分割済みで、この中間関数を持たない |
+| `cmd_test` / `test_test_command_is_selfhost_shadow_command` | 2 | main は `cmd_test_with_format` (format 引数つき) へ**後発の設計で置き換え済み**。`is_selfhost_shadow_command` は `main.rs:802` に現存し `main_tests.rs:371` が検査する |
+
+つまり **branch は挙動を何も足しておらず、live なのは分割だけ**である。
+最後の 3 名は「main が同じ意図を別の、より後発の設計で解いている」形であり、
+本 ADR で繰り返し現れているパターンと同じである。
+
+分割先を main の現在の行数と突き合わせると、**main が未分割のまま 800 行を超えている file が
+13 本**あり、branch はそのすべてに分割軸を設計済みだった。
+
+| main の file | main の行数 | branch が設計した分割軸 | commit |
+|---|---|---|---|
+| `tests/e2e/selfhost_native_stage_chain.rs` | 62990 | (`49054e89`。姉妹 branch の `c82b5389` と同じ対象) | `49054e89` |
+| `tests/e2e/strings_patterns_compiler_integration.rs` | 5354 | `bootstrap_parser` / `compiler_builtins_{core,io}` / `compiler_mode_{maps,misc,records}` / `compiler_recursion` / `source_lowering` / `strings_patterns` / `wasi_gc` / `wasm_emit{,_tail}` の 12 module | `37287097` |
+| `src/main.rs` (driver) | 3254 | `main/{cli,delegation,entry,install,project,repl,test_command}.rs` + `main/tests/{cli,commands,imports,package}.rs` | `7b5cb795` |
+| `tests/e2e/runtime_allocator_closures.rs` | 3061 | `allocator_collector` / `handles_metrics` / `rooting_diagnostics` / `runtime_semantics` の 4 module | `75fbc274` |
+| `tests/e2e/selfhost_cli_actual_main_args.rs` | 1793 | `command_coverage` / `compile_and_assurance` / `helpers` / `lifecycle_commands` | `52d94840` |
+| `tests/e2e/selfhost_doctools_cli_diagnostics.rs` | 1660 | `cli_template_diagnostics` / `doctools_payloads` / `html_rendering` | `03f8f079` |
+| `tests/doctools_parity.rs` | 1149 | `core` / `html_and_metadata` / `snapshots` | `52fa6098` |
+| `tests/e2e/selfhost_bootstrap_contracts.rs` | 1065 | `type_metadata_contracts` | `9e9e35c1` |
+| `tests/e2e/selfhost_stage0_scripts.rs` | 1024 | `dev_runner` / `helpers` / `materializer` / `stage0_package` | `cd7e53f1` |
+| `tests/e2e/selfhost_typeinfer_pipeline_bootstrap.rs` | 975 | `typeinfer_smoke` | `1cf674f1` |
+| `tests/native_cli_output.rs` | 895 | `app_core` / `app_reports` / `embedded_reports` | `e5860053` |
+| `tests/e2e/selfhost_gc_runtime_bootstrap.rs` | 851 | `cli_contracts` | `1cf7e72f` |
+| `tests/e2e/selfhost_gc_stateful_soak.rs` | 840 | `lsp_stateful` / `repl` / `stability` | `5fac11c4` |
+
+残る 14 commit の対象は **main が既に別の形で分割済み** (`selfhost_native_stage23_gap.rs` 4 行、
+`selfhost_bootstrap_acceptance.rs` 4 行、`selfhost_lexer_parser.rs` 5 行、
+`selfhost_bootstrap_four_layer.rs` 17 行、`selfhost_native_differential.rs` 19 行、
+`metadata_check.rs` 125 行、`mcp_server.rs` 160 行、`wasi.rs` 305 行、`infer.rs` 533 行、
+`selfhost_type_parser_parity` / `stdlib_modules_selfhost_lexer` /
+`selfhost_main_module_determinism` / `selfhost_rooting_parity` /
+`bootstrap_selfhost_lsp_integration` は `mod.rs` 化済み)。**取り込み済み**。
+
+**1514 commit 越しに分割 diff は当てない** — 姉妹 branch と同じ理由で、分割は当てる先の
+行構成に完全に依存する。ただし**分割軸そのものは設計成果として live** なので、
+上表を `LEGACY-MAINT-01` へ移し、branch を参照実装として残す。
+
+#### file-size guard 3 件 -- `RUST-FILE-SIZE-GATE-01` が引き取り済み
+
+`5af76ad3` / `6a13e066` / `d2734667` はいずれも
+`crates/lsharp-wasm/tests/rust_file_size_contract.rs` へ per-file guard を足し、
+`tests/rust-test-file-size-allowlist.txt` から 1 行ずつ削る形をとる。
+main には `rust_file_size_contract.rs` が無いので live だが、
+`RUST-FILE-SIZE-GATE-01` が既に引き取っている範囲そのものである。
+
+ただし **参照実装としてはこの branch の tip の方が姉妹 branch より進んでいる**。
+姉妹 branch の `e6ae428e` / `3c37f574` は allowlist 1 本だったが、この branch は
+`tests/rust-file-size-allowlist.txt` (src 用) と `tests/rust-test-file-size-allowlist.txt`
+(tests 用) の **2 本立て**で、`crates/**/src/**` と `crates/**/tests/**` を別々に走査する。
+main の超過は src 6 / tests 33 と非対称なので、2 本立ての方が main の実態に合う。
+`TODO.md` の参照実装をこちらへ差し替えた。
+
+#### `5348570e docs: keep large-file plan active-only` は却下
+
+`imp-06-large-file-decomposition.md` の分割案表を「残り 2 件」へ縮め、
+ステータスを「source allowlist は 0 件、test allowlist は 2 件」へ書き換える commit。
+
+**main の実測と一致しない。** 2026-08-22 実測で main の 800 行超過は
+**src 6 / tests 33 の計 39 件**、最大は 62990 行である。branch の 2026-07-24 時点の
+code state で測った値を main の設計ドキュメントへ現在値として書くことになるので、
+姉妹 branch の `1d96c691` / `b4bc2db9` と同じ doc-GREEN の規律で却下する。
+
+なお **「完了済み項目を分割案や allowlist へ戻さない」という方針自体は正しい**。
+main の `imp-06` はステータス節が完了 module の列挙で肥大しており、
+この branch が指摘した問題は main にも当てはまる。`DOC-10` として起票した。
+
+#### triage script の突き合わせ方 (2 つの落とし穴)
+
+**1. shell。** 素朴な triage は `for f in $names` で関数名を回すが、**zsh は unquoted な
+変数展開で word splitting をしない**ため、zsh で直接実行すると `$names` が 1 語として
+扱われ、hit 数が常に 0 か 1 になる。**必ず `bash -c` で回すこと。**
+本セッションで一度この形で誤った出力 (全 commit が hit 率 1% 前後) を得ている。
+
+**2. 突き合わせの粒度。** `grep -rqF "fn $name" crates` は**前方一致で誤ヒットする**。
+`fn foo` は `fn foobar` の定義にも当たるので、hit 率が実際より高く出る。
+本節の判定は前方一致ではなく、**main 側の定義名を一度だけ集合として取り出し、
+集合の差で判定した**。
+
+```bash
+grep -rhoE 'fn [a-z0-9_]+' crates scripts | sed 's/^fn //' | sort -u > mainfns.txt   # 7997 名
+git show --format= --unified=0 "$c" | grep '^+' | grep -oE 'fn [a-z0-9_]+' \
+  | sed 's/^fn //' | sort -u > names.txt
+comm -23 names.txt mainfns.txt                                                       # = ミス
+```
+
+集合差は N 回の `grep -r` より速くもある (本 branch の 31 commit 分が数秒で終わる)。
+前節の判定はこの厳密版で取り直した結果に基づく。

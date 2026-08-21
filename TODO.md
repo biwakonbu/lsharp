@@ -954,10 +954,14 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: size-class allocator 自体の変更。
 
 - [ ] `RUST-FILE-SIZE-GATE-01` workspace 全域の 800 行 gate を入れる — Issue `I-01`。
-  main は per-file の targeted guard 7 本 (`*_file_size.rs`) しか持たず、`crates/**/src/**` と
-  `crates/**/tests/**` を走査する gate が無い。参照実装は
-  `codex/legacy-maintenance-stage-chain-integration` の `e6ae428e` / `3c37f574`
-  (`crates/lsharp-wasm/tests/rust_file_size_contract.rs` + allowlist 2 本)。
+  main は per-file の targeted guard 8 本 (`*_file_size.rs`) しか持たず、`crates/**/src/**` と
+  `crates/**/tests/**` を走査する gate が無い。**参照実装は
+  `codex/legacy-maintenance-docs-active-only` の tip** (`5af76ad3` / `6a13e066` / `d2734667` 系)。
+  `crates/lsharp-wasm/tests/rust_file_size_contract.rs` に per-file guard を足しつつ
+  `tests/rust-file-size-allowlist.txt` (src 用) と `tests/rust-test-file-size-allowlist.txt`
+  (tests 用) の **2 本立て**で src / tests を別走査する。
+  `codex/legacy-maintenance-stage-chain-integration` の `e6ae428e` / `3c37f574` は
+  allowlist 1 本の旧版なので、そちらは使わない (main の超過は src 6 / tests 33 と非対称)。
   **2026-08-22 実測で main の allowlist は 39 件必要** (src 6 / tests 33)。最大は
   `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の 62990 行、次が
   `selfhost_cli_core.rs` 19412 行。branch の allowlist は 28 件だった。
@@ -2922,6 +2926,38 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   production split と `lsharp-ir/src/lib.rs` の `Instruction` / `IrType` および
   `Module` / `Function` / GC model、linker seam、compile surface seam、compile/incremental orchestration seam、`validation_source` node/evidence/typed edge seam、validation source adapter test seam、selfhost evidence registry runtime/validation test seam、selfhost evidence parser duplicate-field seam、selfhost native differential test seam、selfhost bootstrap four-layer test seam、selfhost bootstrap acceptance test seam、selfhost typeinfer E2E test seam、selfhost lexer/parser parity E2E test seam、WasmGC probe test seam、selfhost native stage23 gap test seam、validation input manifest/reference seam、native emitter memory seam、atomic/durable writer cleanup test seam、validation output manifest wire seam、native selfhost transport strict payload-length seam、WASI runner Preview1/Preview2 mode seam は verified。`wasi.rs`、`lsharp-ir/src/lib.rs`、`lsharp-tooling/src/compile.rs`、
   `infer.rs`、parser/lower/driver/LSP の責務分割を、型・focused test・snapshot parity を保って完了する。WasmGC emitter の instruction lowering / Component output seam / Preview2・CLI runner seam、WASI HTTP handler core seam、WASI GC collector seam、WASI tests core seam も verified とし、残る責務分割を続ける。
+  **残っている超過 13 file と、既に設計済みの分割軸** (2026-08-22 実測 / 軸は
+  `codex/legacy-maintenance-docs-active-only` (2026-07-24) が実施済み。
+  追加された test 本体は全件 main にあり、ミスは file-size guard 関数 1 個のみだった。
+  **1514 commit 越しに分割 diff は当てず、軸だけ参照して main の現行内容の上でやり直す**):
+
+  | file | 行数 | 分割軸 | 参照 commit |
+  |---|---|---|---|
+  | `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` | 62990 | 姉妹 branch の `c82b5389` が `part_000..087.rs` の 88 分割 | `49054e89` |
+  | `crates/lsharp-wasm/tests/e2e/strings_patterns_compiler_integration.rs` | 5354 | `bootstrap_parser` / `compiler_builtins_{core,io}` / `compiler_mode_{maps,misc,records}` / `compiler_recursion` / `source_lowering` / `strings_patterns` / `wasi_gc` / `wasm_emit{,_tail}` | `37287097` |
+  | `crates/lsharp-driver/src/main.rs` | 3254 | `main/{cli,delegation,entry,install,project,repl,test_command}.rs` + `main/tests/{cli,commands,imports,package}.rs` | `7b5cb795` |
+  | `crates/lsharp-wasm/tests/e2e/runtime_allocator_closures.rs` | 3061 | `allocator_collector` / `handles_metrics` / `rooting_diagnostics` / `runtime_semantics` | `75fbc274` |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs` | 1793 | `command_coverage` / `compile_and_assurance` / `helpers` / `lifecycle_commands` | `52d94840` |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_doctools_cli_diagnostics.rs` | 1660 | `cli_template_diagnostics` / `doctools_payloads` / `html_rendering` | `03f8f079` |
+  | `crates/lsharp-wasm/tests/doctools_parity.rs` | 1149 | `core` / `html_and_metadata` / `snapshots` | `52fa6098` |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_contracts.rs` | 1065 | `type_metadata_contracts` | `9e9e35c1` |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_stage0_scripts.rs` | 1024 | `dev_runner` / `helpers` / `materializer` / `stage0_package` | `cd7e53f1` |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_typeinfer_pipeline_bootstrap.rs` | 975 | `typeinfer_smoke` | `1cf674f1` |
+  | `crates/lsharp-wasm/tests/native_cli_output.rs` | 895 | `app_core` / `app_reports` / `embedded_reports` | `e5860053` |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_gc_runtime_bootstrap.rs` | 851 | `cli_contracts` | `1cf7e72f` |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs` | 840 | `lsp_stateful` / `repl` / `stability` | `5fac11c4` |
+
+  **この項目本文の完了済み seam 列挙が読めなくなっている件は `DOC-10`。**
+- [ ] `DOC-ACTIVE-ONLY-01` `imp-06` と `LEGACY-MAINT-01` から完了済み項目を落とす — Issue `DOC-10`。
+  `docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md` は
+  全 299 行のうちステータス節が 20,594 バイトで、完了済み module 名の列挙 (`infer.rs` が 8 回) に
+  なっている。`TODO.md` の `LEGACY-MAINT-01` 本文も同じ形。
+  受入条件: 完了記録を ADR / 運用記録へ移したうえで、両方から**残作業だけが読める**状態にすること。
+  **数値は必ず main の現行 checkout で測り直す** — `codex/legacy-maintenance-docs-active-only` の
+  `5348570e` は方針は同じだが 2026-07-24 の branch 実測値を現在値として書いたため却下した。
+  **含めない範囲**: 分割そのもの (`LEGACY-MAINT-01`)、gate (`RUST-FILE-SIZE-GATE-01`)、
+  `TODO.md` 全体の再編。
+
 - [ ] `RUNNER-SCANNER-01` selfhost TestRunner の legacy scanner を canonical inventory へ収束させる —
   Issue `I-30`。`TestRunner.ls` に `collect-defn-metadata-loop` / `extract-test-cases-loop` の
   旧 scanner 2 本と `extract-parser-contract-suites` の canonical inventory が並存している。
@@ -2965,28 +3001,28 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 3 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 2 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
   `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
   tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
-  20 本は ADR で判定済み。ここの対象は残る **3 本**。
+  21 本は ADR で判定済み。ここの対象は残る **2 本**。
   **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
   patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
   判定は `git cherry` の commit 数ではなく **touched file の content diff** で行う
   (whole-file take / hand-merge で入れた分は patch-id が一致しないため)。
   commit 数の多い順に:
-  - `codex/legacy-module-cache-format-identity` (120) / `codex/v0.2-ec-m1-02-integration` (119) /
-    `codex/legacy-maintenance-docs-active-only` (86) —
-    いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)。
+  - `codex/legacy-module-cache-format-identity` (120) / `codex/v0.2-ec-m1-02-integration` (119) —
+    いずれも **origin に無い local のみ**。
+    `codex/legacy-maintenance-docs-active-only` (86) /
     `codex/legacy-maintenance-stage-chain-integration` (56) /
     `codex/legacy-maint-native-stage-chain-split` (67) /
     `codex/legacy-maint-native-differential-split-audit` (65) は 2026-08-22 に判定済みで、
     live な残りは `FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `RUST-FILE-SIZE-GATE-01` / `I-35` /
     `MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` /
-    `DOCTOOLS-META-SLOT-01` へ引き取った
+    `DOCTOOLS-META-SLOT-01` / `LEGACY-MAINT-01` / `DOC-ACTIVE-ONLY-01` へ引き取った
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
   **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。
