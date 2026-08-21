@@ -494,8 +494,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-maint-native-differential-split-audit` | 65 件 | **却下 (新規判定は 1 件のみ)** | 65 commit のうち **64 件は `codex/legacy-maint-native-stage-chain-split` と hash が一致**し判定済み。新規は `b4bc2db9` の imp-06 進捗記録 1 件で、doc-GREEN の規律により却下。あわせて前節で group 扱いだった fix 6 件を個別判定し、`67624ca7` から `I-40` を起票した (下記) |
 | `codex/legacy-maintenance-docs-active-only` | 86 件 | **一部が live。`LEGACY-MAINT-01` / `RUST-FILE-SIZE-GATE-01` / `DOC-ACTIVE-ONLY-01` へ引き継ぐ** | main 比 89 件のうち **58 件は `codex/legacy-maintenance-stage-chain-integration` と hash 一致**で判定済み。残る 31 件は分割 27 / file-size guard 3 / docs 1。分割の test 本体は全件 main にあり (ミス 42 名はすべて file-size guard / 分割機構 / main の後発設計に置き換わったもの)、live なのは**分割そのもの** — main が未分割のまま 800 行を超える file が 13 本ある。docs 1 件は doc-GREEN の規律で却下し `DOC-10` を起票 (下記) |
 | `codex/legacy-module-cache-format-identity` | 120 件 | **ほぼ却下。live は telemetry 1 件のみで `I-41` / `CACHE-TELEMETRY-01` へ引き継ぐ** | main 比 123 件のうち **58 件は判定済み branch と hash 一致**。残る 65 件は分割 52 / SCC + persistent cache の feature lane 13。分割は 26 commit 中 24 件が hit 率 100% で完全に吸収済み。feature lane は SCC を main が 13 本の ADR 込みで別実装済み、persistent cache は main の `ArtifactCache` (envelope + fingerprint + atomic rename) が writer lock 無しで同じ保証を出しているため不要。cycle の暗黙推論は `decisions-legacy-formatter-scc-imports.md` が明示 import を採る決定済み |
+| `codex/v0.2-ec-m1-02-integration` | 121 件 | **主要部は取り込み済み。live は 3 群で `I-42` / `I-43` / `I-44` へ、先送り済み lane は `PROP-GEN-01` へ引き継ぐ** | 判定済みのどの branch とも hash の重なりが 0。主題で 9 群に分け、群ごとに main を実際に走らせて判定した。群 1〜5 の 50 件 (contract inventory / selfhost 形保持 / canonical assert・case / migration + MCP / assurance report) は main が別名で全て持つ。live は静的判定が `if`・`let`・`do`・`match` を貫通しない件、`:example`・`:invariant`・`:doc` の識別子検査が ADT constructor・trait method・quote・builtin で false positive を出す件、未定義 computation builder が型検査を通る件の 3 つ。property generator lane 11 件は main 自身が「別 slice」と明記した先送りで、branch はその参照実装 (下記) |
 
-残る未判定は 1 本。batch family の例外 1 本は上表で判定済み。
+**非 batch 23 本の判定はこれで完了した。** batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -1322,3 +1323,151 @@ singleton は main の既存 fixture の `Base` / `Consumer` が既に覆って�
 `ArtifactCache` と `PersistentCompileCache`、`--artifact-cache-dir` と branch の cache opt-in は
 名前が 1 つも重ならない。**triage の hit 率は「読む順番」を決めるためだけに使い、
 判定は必ず main 側の対応物を名指しできるまで探してから下す。**
+
+## `codex/v0.2-ec-m1-02-integration` (121 件) の判定
+
+母集団は非 merge 121 件 + merge 1 件。base は `16d9dec5` (2026-07-17)、tip は `acd75035`
+(2026-07-19)。main はこの base から **1713 commit ahead**。
+**判定済みのどの branch とも hash の重なりが 0** なので、全件を内容で見る必要があった。
+
+### triage の分布と、それが役に立たなかったこと
+
+Rust の `fn` 名と L# の `defn` 名の両方で strict set-membership triage をかけた
+(`comm -23` 方式。前節参照)。
+
+| hit 率 | commit 数 |
+|---|---|
+| 100% | 0 |
+| 80〜99% | 6 |
+| 80% 未満 | 112 |
+| 抽出 0 | 3 |
+
+**この分布は判定にほとんど使えなかった。** 前節で得た教訓「hit 率の低さは live の証拠ではない」が
+ここでは逆向きにも効く — main はこの lane を**構造ごと持っている**のに、
+`metadata_free_vars.rs` / `metadata_sampling/` といった branch 側の file 名が main に 1 つも無く、
+入口の名前も `check_metadata_from_contract_inventory` (branch) と `check_metadata` (main) で
+食い違うため、名前ベースの一致はほぼ生じない。
+main が lane を持っていることは file 名ではなく**振る舞い**でしか確かめられなかった。
+
+そこで 121 件を主題で 8 群に分け、群ごとに **main を実際に走らせて**判定した。
+probe は `check_metadata(&parse(src))` と `Infer::infer_program(&program)` を直接呼ぶ
+一時 integration test で、判定後に削除した。
+
+### 群ごとの判定
+
+| # | 主題 | 件数 | 判定 | main 側の対応物 |
+|---|---|---|---|---|
+| 1 | contract inventory を単一正本にする | 7 | 取り込み済み | `crates/lsharp-types/src/metadata_contract.rs` (565 行)、`inventory_contract_suites()` (`metadata_check.rs:106`)、`crates/lsharp-tooling/tests/metadata_frontend_semantics_inventory.rs` |
+| 2 | selfhost の parser / formatter / docs で contract 形を保つ | 6 | 取り込み済み | `selfhost/src/Syntax/Parser.ls` / `AST.ls` が contract 形を持ち、`App/Cli.ls` が投影する |
+| 3 | canonical assert / case の parse → typecheck → execute | 7 | 取り込み済み | `check_assertion_types` / `check_case_types` (`metadata_check.rs:107-108`)、`tests/metadata_contract_assert.rs` / `_case.rs` |
+| 4 | legacy metadata migration の分類と MCP 露出 | 4 | 取り込み済み | `crates/lsharp-types/src/metadata_migration.rs` (244 行)、`crates/lsharp-driver/src/mcp_language.rs:50` が `classify_legacy_contracts` を呼ぶ |
+| 5 | selfhost runner の contract 実行と assurance report | 26 | 取り込み済み | `selfhost/src/App/Cli.ls:899-980` の `assurance-*` 群 (coverage / diagnostics / provenance / intent / conformance の JSON、`assurance-method` / `assurance-generator` / `assurance-status`) |
+| 6 | vacuity / reflexivity の拒否 | 約 25 | **部分取り込み。live** | `canonical_contract_check/non_vacuity.rs` — literal / `not` / `and` / `or` / Int 比較まで。`if` / `let` / `do` / `match` を貫通しない → `I-42` |
+| 7 | property generator lane | 約 15 | **main が明示的に先送り。参照実装として残す** | `metadata_check/test_generation.rs:44-49` — 「type-directed sampling、seed、shrink は別 slice」と明記 → `PROP-GEN-01` |
+| 8 | contract scope 解決 | 16 | **半分は到達しない、半分は live** | `metadata_check.rs:64` の `all_names` → `I-43` |
+| 9 | computation builder の検証 | 4 | **live** | main に対応物なし → `I-44` |
+
+### 群 6: 静的判定が制御構造を貫通しない (`I-42`)
+
+main の `static_boolean_result` (`non_vacuity.rs:321`) は Ann の unwrap、Bool literal、単項 `not`、
+二項 `and` / `or` (negation pair の短絡込み)、Int literal 比較を扱う。`if` / `let` / `do` / `match`
+の扱いは無い。
+
+実測 (control と並べたときにだけ意味が出るので、control を同じ probe に入れてある):
+
+```
+PROBE assert/true_ctl: diags=1 msgs=[":assert predicate は静的に true で検査を識別できず vacuous です"]
+PROBE assert/int_ctl:  diags=1 msgs=[":assert predicate は静的に true で検査を識別できず vacuous です"]
+PROBE assert/if:       diags=0 msgs=[]
+PROBE assert/let:      diags=0 msgs=[]
+PROBE assert/do:       diags=0 msgs=[]
+PROBE assert/match:    diags=0 msgs=[]
+PROBE prop/int_ctl:    diags=1 msgs=[":property の precondition は到達不能で vacuous です"]
+PROBE prop/if:         diags=0 msgs=[]
+PROBE prop/let:        diags=0 msgs=[]
+PROBE prop/do:         diags=0 msgs=[]
+PROBE prop/match:      diags=0 msgs=[]
+```
+
+**String 版は却下 (到達しない)。** branch の `8f12109a` / `badf2181` は
+`(= "a" "b")` のような静的 String 比較を拒否するが、main では非空虚性の判定より先に
+型推論が `[E0004] 型の不一致: expected Int, found String` で落ちる。main で穴になっていない。
+
+### 群 7: main 自身が「別 slice」と書いている lane (`PROP-GEN-01`)
+
+`test_generation.rs:44-49` の doc comment を逐語で引く。
+
+> `:property` のうち、移行期 runner が実行できる narrow profile を返す。
+> type-directed sampling、seed、shrink は別 slice のため、ここで暗黙に既定値へ
+> 丸めず、明示的に profile 外として扱う。
+
+`PropertySmokeTestSpec` は binder を Int / Bool / String に限り、cases を 1〜5 に限り、
+`seed()` / `shrink()` が付いていれば `None` を返す。selfhost 側も
+`assurance-generator` が `sampled-property` に対して `"legacy-deterministic-smoke"` を返す
+(`Cli.ls:927-930`) ので、Rust と selfhost で同じ移行期状態が一貫して記録されている。
+
+**これは欠陥ではなく設計上の先送りである。** 判定としては「却下」でも「取り込み済み」でもなく、
+**branch が先送りされた slice の参照実装になっている**が正しい。ID を持たせないと
+main のコメントの中にしか残らないので `PROP-GEN-01` で引き取る。
+branch 側の該当は `9912482e` / `27cb0e19` / `48a988ac` / `c2758724` / `2ea64d25` /
+`db4f1577` / `2aaa33ef` / `f311a0d8` / `c5061192` / `58ec8513` / `7e450c98` の 11 件。
+
+### 群 8: scope 解決は 2 つに割れる (`I-43`)
+
+16 件のうち **module / nested owner 側の 9 件は却下 (到達しない)**。
+main の `check_metadata` は `program.decls` の top-level しか走査せず `(module ...)` 本体へ
+降りないため、module 内の contract は**検査自体が走らない**。false positive も出ないが
+検査もされない。これは `I-39` (`MODULE-BODY-FORM-01`) の側の問題で、
+scope 解決を先に直しても発火しない。実測:
+
+```
+PROBE constrained-member: diags=0 msgs=[]   # (module Domain (type-constrained ...) (defn ...))
+PROBE module-qualified:   diags=0 msgs=[]   # (module Domain (type Color Red Green) (defn ...))
+```
+
+**残る 7 件のうち 4 形は live。** top-level では `check_invariant` (`diagnostics.rs:105`) と
+`check_example` (`:139`) が `all_names` に無い識別子を **Error** で拒否する。
+
+```
+PROBE ctl/known-fn:        diags=0 msgs=[]
+PROBE adt-ctor/example:    diags=1 msgs=[":example 内で未定義の識別子 'Red' が参照されています"]
+PROBE adt-ctor/invariant:  diags=1 msgs=[":invariant 内で未定義の識別子 'Red' が参照されています"]
+PROBE trait-method:        diags=1 msgs=[":example 内で未定義の識別子 'show' が参照されています"]
+PROBE quote-sym/invariant: diags=2 msgs=[":invariant 内で未定義の識別子 'sym' が参照されています", ...]
+PROBE quote-sym/example:   diags=1 msgs=[":example 内で未定義の識別子 'sym' が参照されています"]
+PROBE doc-builtin:         diags=2 msgs=[":doc 内の識別子 `println` がプログラム中に見つかりません", ...]
+PROBE record-ctor:         diags=0 msgs=[]
+```
+
+quote が 2 件出るのは `references.rs:108` / `:209` が `Expr::Quote` の内部へそのまま降りるため。
+`5da4d83c` の「quote 深度を追う」がそのまま処方箋になる。
+record constructor が 0 件なのは、record 型名が `all_names` に入っているという偶然による。
+
+**branch の patch はそのままでは当たらない。** branch は
+`check_metadata_from_contract_inventory` という別の入口へ実装しており、
+main は `check_metadata` から `all_names` を渡している。移すのは設計であって diff ではない。
+
+### 群 9: 未定義の computation builder が通る (`I-44`)
+
+```
+INFER unknown-builder: OK (no error)   # (defn main [] (computation missing (return 42)))
+```
+
+`missing` はどこにも定義されていないが `Infer::infer_program` が `Ok` を返す。
+builder 名に fresh type variable が割り当てられ `UndefinedVar` にならない。
+main には `computation_builder_diagnostics.rs` に相当する test が無い。
+branch の `2d116f69` は `TypeError::UndefinedVar { name: "missing" }` (code `LS1001`) と、
+span が `(computation missing (return 42))` 全体を指すことまで固定している。
+
+### この branch から得た教訓
+
+**「main がその lane を持っているか」と「main がその commit の内容を持っているか」は別の問いである。**
+この branch では前者が Yes、後者が No の commit が大量にあった。
+lane を持っていることを確認して満足すると、群 6 / 8 / 9 の穴を見落とす。
+逆に個々の commit だけを見ると、群 1〜5 の 50 件を「main に無い」と誤読する。
+
+**判定に効いたのは probe の control である。** 「診断 0 件」は単独では
+「穴がある」とも「そもそも検査対象でない」とも読めて判別できない。
+同じ probe に control (`:assert [true]` / `(defn helper ...)` を参照する `:example`) を
+並べて初めて、0 件が異常なのか正常なのかが決まった。群 8 で
+「module 本体は到達しない / top-level は live」に割れたのも control のおかげである。

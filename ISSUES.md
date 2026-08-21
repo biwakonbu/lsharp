@@ -173,6 +173,9 @@
 | [I-39](#i-39) | block 形式の module body が parse されるだけで名前解決されず、誤診断で落ちる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-40](#i-40) | DocTools の metadata 契約が parser の出力 slot 数と食い違う | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-41](#i-41) | compile cache の hit/miss を集計する手段が無い | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ### ドキュメント (DOC)
 
@@ -2148,6 +2151,102 @@
   `note_link_full_build` / `reset_stats`)。ただし branch の counter は
   同 branch の `PersistentCompileCache` に載っており、**main にその型は無い**ので
   API 面はそのままでは移植できない。`CACHE-TELEMETRY-01` (`TODO.md`) が引き取る。
+  判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-42"></a>
+### I-42: 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **内容**: `crates/lsharp-types/src/canonical_contract_check/non_vacuity.rs` の
+  `static_boolean_result` (`:321`) が扱うのは Ann の unwrap / Bool literal / 単項 `not` /
+  二項 `and` `or` / Int literal 比較だけである。`if` / `let` / `do` / `match` で包むと
+  静的判定が届かず、**何も検査しない contract が gate を通過する**。
+
+  ```lisp
+  (defn checked [] :assert [(if true true false)] true)   ; 診断 0 件で通る
+  (defn checked [] :assert [true] true)                   ; 「静的に true」で拒否される
+  ```
+
+  `:assert` と `:property` の precondition の両方で同じ穴が開く。
+- **根拠**: 2026-08-22、`check_metadata(&parse(src))` を直接呼ぶ一時 integration test で実測。
+  CLI (`lsharp test`) は selfhost runner を経由するため、vacuous な fixture と正当な fixture の
+  両方が `firstErrorCode:3002` を返して判別できない。**probe は Rust API を直接叩くこと。**
+
+  | 入力 | 診断 |
+  |---|---|
+  | `:assert [true]` (control) | 1 件 「:assert predicate は静的に true で検査を識別できず vacuous です」 |
+  | `:assert [(= 1 1)]` (control) | 1 件 同上 |
+  | `:assert [(if true true false)]` | **0 件** |
+  | `:assert [(let [a true] a)]` | **0 件** |
+  | `:assert [(do true)]` | **0 件** |
+  | `:assert [(match true (true true))]` | **0 件** |
+  | `:property` の precondition (Int 比較, control) | 1 件 「:property の precondition は到達不能で vacuous です」 |
+  | `:property` の precondition (`if` / `let` / `do` / `match`) | **各 0 件** |
+- **範囲外**: String 比較版は main では再現しない。`(= "a" "b")` は非空虚性の判定より先に
+  型推論が `[E0004] 型の不一致: expected Int, found String` で落ちるため、
+  branch の `8f12109a` / `badf2181` に対応する穴は main には無い。
+- **関連**: 参照実装は `codex/v0.2-ec-m1-02-integration` の `17685bab` (conditional) /
+  `6771ca26` (sequenced) / `0593e1a6` (let) / `acd75035` (match) / `60a7e736` (checked
+  static predicates)、および先行する `550f1851` / `b102e4f7` / `41ab5e44` / `ce5563bc`。
+  `STATIC-CONTRACT-01` (`TODO.md`) が引き取る。
+  判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-43"></a>
+### I-43: `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **内容**: `crates/lsharp-types/src/metadata_check.rs:64` が組み立てる `all_names` は
+  top-level の `Defn` / `TypeDef` / `RecordDef` / `TypeAlias` / `TraitDef` の**宣言名だけ**で、
+  ADT の variant 名・trait の method 名・quote されたシンボルを含まない。
+  `metadata_check/diagnostics.rs` の `check_invariant` (`:105`) と `check_example` (`:139`) は
+  この集合に無い識別子を **Error** で拒否するため、**正当なプログラムが弾かれる**。
+  `:doc` のバッククォート識別子検査 (`:62`) は `is_builtin` を通さないので builtin も警告になる。
+- **根拠**: 2026-08-22、`check_metadata(&parse(src))` を直接呼ぶ一時 integration test で実測。
+
+  | 入力 | main の診断 | 期待 |
+  |---|---|---|
+  | `(defn helper [x] x)` + `:example [(helper 1)]` (control) | 0 件 | 0 件 |
+  | `(type Color Red Green)` + `:example [(f Red)]` | 1 件 Error 「未定義の識別子 'Red'」 | 0 件 |
+  | `(type Color Red Green)` + `:invariant (= c Red)` | 1 件 Error 同上 | 0 件 |
+  | `(trait (Show a) (defn show [self] 0))` + `:example [(show x)]` | 1 件 Error 「未定義の識別子 'show'」 | 0 件 |
+  | `:invariant (= 'sym 'sym)` | **2 件** Error 「未定義の識別子 'sym'」 | 0 件 |
+  | `:example [(f 'sym)]` | 1 件 Error 同上 | 0 件 |
+  | `:doc "uses \`println\` and \`+\`"` | 2 件 Warning 「プログラム中に見つかりません」 | 0 件 |
+  | `(type Point (record ...))` + `:example [(f (Point 1 2))]` | 0 件 | 0 件 |
+
+  quote が 2 件になるのは `references.rs:108` / `:209` が `Expr::Quote` の内部式へ
+  そのまま降りるためで、quote 深度を持たない構造上の帰結である。
+- **範囲外**: `(module ...)` 本体の contract。main の `check_metadata` は `program.decls` の
+  top-level しか走査せず module 本体へ降りないので、module 内の `:example` は**検査自体が走らない**。
+  false positive も出ないが検査もされない。ここは `MODULE-BODY-FORM-01` (`I-39`) の側の問題であり、
+  本 issue では扱わない。
+- **関連**: 参照実装は `codex/v0.2-ec-m1-02-integration` の `e4fab504` (ADT constructor) /
+  `95bcfc53` (trait method) / `5da4d83c` (quote 境界) / `3ac2227a` (builtin doc 参照) /
+  `420b2eaa` (macro / builder symbol) / `971840ac` (constrained type member)。
+  ただし branch 側はこれらを `check_metadata_from_contract_inventory` という**別の入口**へ
+  実装しており、main の `check_metadata` へはそのままでは当たらない。
+  `CONTRACT-SCOPE-01` (`TODO.md`) が引き取る。
+  判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-44"></a>
+### I-44: 未定義の computation builder が型検査を通る
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **内容**: `(computation missing (return 42))` の `missing` がどこにも定義されていなくても
+  `Infer::infer_program` が `Ok` を返す。builder 名に fresh type variable が割り当てられ、
+  `UndefinedVar` にならない。**typo した builder 名が compile を通り、実行時まで残る。**
+- **根拠**: 2026-08-22 実測。
+
+  ```
+  INFER unknown-builder: OK (no error)   # (defn main [] (computation missing (return 42)))
+  ```
+
+  期待は `TypeError::UndefinedVar { name: "missing" }` (code `LS1001`) で、
+  span は `(computation missing (return 42))` 全体を指すべきである。
+- **関連**: 参照実装は `codex/v0.2-ec-m1-02-integration` の `2d116f69` (unknown builder) /
+  `5730cfe2` (incomplete builder) / `e8f7ba83` (computation expression の結果型保持)。
+  test は同 branch の `crates/lsharp-types/tests/computation_builder_diagnostics.rs`。
+  `COMP-BUILDER-01` (`TODO.md`) が引き取る。
   判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 <a id="doc-01"></a>

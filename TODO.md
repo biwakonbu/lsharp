@@ -2971,6 +2971,59 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
   eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
+- [ ] `STATIC-CONTRACT-01` 静的 contract 判定を `if` / `let` / `do` / `match` へ届かせる — Issue `I-42`。
+  `crates/lsharp-types/src/canonical_contract_check/non_vacuity.rs` の `static_boolean_result`
+  (`:321`) が literal / `not` / `and` / `or` / Int 比較しか見ないため、
+  `(defn checked [] :assert [(if true true false)] true)` が診断 0 件で通る。
+  受入条件: `:assert` と `:property` の precondition の両方で、`if` / `let` / `do` / `match` に
+  包まれた静的 predicate が control (`:assert [true]`) と同じ診断を出すこと。
+  4 形すべてに RED test を先に書く。**probe は CLI ではなく `check_metadata` を直接叩くこと**
+  (`lsharp test` は selfhost runner 経由で vacuous と正当を判別できない)。
+  参照実装は `codex/v0.2-ec-m1-02-integration` の `17685bab` / `6771ca26` / `0593e1a6` /
+  `acd75035` / `60a7e736`。
+  **含めない範囲**: String 比較版 (main では型推論が先に落ちるため再現しない)、
+  selfhost 側の同判定、shrink / seed。
+
+- [ ] `CONTRACT-SCOPE-01` `:example` / `:invariant` / `:doc` の識別子検査の false positive を潰す — Issue `I-43`。
+  `metadata_check.rs:64` の `all_names` が top-level 宣言名しか持たず、ADT variant 名 /
+  trait method 名 / quote されたシンボル / builtin を知らないため、正当なプログラムが
+  **Error** で弾かれる (`:doc` は Warning)。
+  受入条件: ADT constructor / trait method / quote / builtin doc 参照の 4 形で診断 0 件になり、
+  かつ本当に未定義の識別子は従来どおり Error のままであること (後者の回帰 test も要る)。
+  参照実装は `codex/v0.2-ec-m1-02-integration` の `e4fab504` / `95bcfc53` / `5da4d83c` /
+  `3ac2227a` / `420b2eaa` / `971840ac`。ただし branch はこれを
+  `check_metadata_from_contract_inventory` という別入口へ実装しており、
+  main の `check_metadata` へはそのままでは当たらない。
+  **含めない範囲**: `(module ...)` 本体の contract 検査 (main はそもそも module 本体へ降りない。
+  `MODULE-BODY-FORM-01` / `I-39` の側)、nested owner の qualified 名解決。
+
+- [ ] `COMP-BUILDER-01` 未定義 computation builder を型エラーにする — Issue `I-44`。
+  `(computation missing (return 42))` が `Infer::infer_program` で `Ok` になり、
+  builder 名に fresh type variable が割り当てられている。
+  受入条件: `TypeError::UndefinedVar { name: "missing" }` (code `LS1001`) を返し、
+  span が `(computation missing (return 42))` 全体を指すこと。
+  builder が一部の member だけ持つ incomplete な場合も別診断で拒否すること。
+  参照実装は `codex/v0.2-ec-m1-02-integration` の `2d116f69` / `5730cfe2` / `e8f7ba83`、
+  test は同 branch の `crates/lsharp-types/tests/computation_builder_diagnostics.rs`。
+  **含めない範囲**: computation expression の lowering / codegen (別 slice)。
+
+- [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
+  `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が
+  「type-directed sampling、seed、shrink は別 slice」と明記したうえで、
+  binder を Int / Bool / String、cases 1〜5 の narrow profile に絞っている。
+  その「別 slice」がこれである。
+  受入条件: parametric / record / GADT (result type で filter) / 再帰 (深さ上限つき) /
+  constrained type / type alias 解決の各 generator について、
+  wasm runner で実際に case が実行されたことを **coverage の executed 数で**示すこと。
+  形ごとに RED test を先に書く。
+  参照実装は `codex/v0.2-ec-m1-02-integration` の `9912482e` (reproducible type-directed
+  sampling) / `27cb0e19` (parametric) / `48a988ac` (parametric record) / `c2758724` (GADT) /
+  `2ea64d25` (recursion bound) / `db4f1577` (constrained) / `2aaa33ef` (type alias) /
+  `f311a0d8` (nested constrained) / `c5061192` (String `matches` witness) /
+  `58ec8513` (multi-binder shrink) / `7e450c98` (composite sample の wasm 実行)。
+  **含めない範囲**: selfhost 側の sampling (`bbffedac` 相当。Rust 側が固まってから)、
+  counterexample の shrink 品質の閾値化。
+
 - [ ] `RUNNER-SCANNER-01` selfhost TestRunner の legacy scanner を canonical inventory へ収束させる —
   Issue `I-30`。`TestRunner.ls` に `collect-defn-metadata-loop` / `extract-test-cases-loop` の
   旧 scanner 2 本と `extract-parser-contract-suites` の canonical inventory が並存している。
@@ -3014,33 +3067,22 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 1 本の取り込み判断 —
+- [BLOCKED: branch ref の削除にユーザー確認が要る] `WORKTREE-ABSORB-02` 未取り込み branch の後片付け —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
-  母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
-  `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
-  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
-  tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
-  22 本は ADR で判定済み。ここの対象は残る **1 本**。
-  **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
-  patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
+  **取り込み判断そのものは 2026-08-22 に完了した。** 母集団は全 local branch 129 本、
+  `git cherry main <branch>` が `+` を返す 49 本のうち batch family 26 本は
+  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない)。
+  残る非 batch **23 本は全て ADR で判定済み**。live な残りは
+  `FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `RUST-FILE-SIZE-GATE-01` / `I-35` /
+  `MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` /
+  `DOCTOOLS-META-SLOT-01` / `LEGACY-MAINT-01` / `DOC-ACTIVE-ONLY-01` / `CACHE-TELEMETRY-01` /
+  `STATIC-CONTRACT-01` / `CONTRACT-SCOPE-01` / `COMP-BUILDER-01` / `PROP-GEN-01` へ引き取った。
+  **残っているのは ref の削除だけ。** 取り込み済み 80 本のうち main の祖先 25 本は削除済み、
+  patch-id 一致のみの **46 本が未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
-  判定は `git cherry` の commit 数ではなく **touched file の content diff** で行う
-  (whole-file take / hand-merge で入れた分は patch-id が一致しないため)。
-  commit 数の多い順に:
-  - `codex/v0.2-ec-m1-02-integration` (119) — **origin に無い local のみ**。
-    `codex/legacy-module-cache-format-identity` (120) /
-    `codex/legacy-maintenance-docs-active-only` (86) /
-    `codex/legacy-maintenance-stage-chain-integration` (56) /
-    `codex/legacy-maint-native-stage-chain-split` (67) /
-    `codex/legacy-maint-native-differential-split-audit` (65) は 2026-08-22 に判定済みで、
-    live な残りは `FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `RUST-FILE-SIZE-GATE-01` / `I-35` /
-    `MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` /
-    `DOCTOOLS-META-SLOT-01` / `LEGACY-MAINT-01` / `DOC-ACTIVE-ONLY-01` /
-    `CACHE-TELEMETRY-01` へ引き取った
-  受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
-  この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
-  **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。
-  **含めない範囲**: branch ref の削除 (判断が全部終わるまでしない)、CI 設定。
+  7 worktree の未 commit 内容は main と突き合わせ済みで **salvage すべき内容は 0 件**だった。
+  受入条件: 台帳 B 表の 46 本を削除し、`git branch --list 'codex/*'` の残数を台帳へ戻すこと。
+  **含めない範囲**: batch family 26 本 (`BOUNDED-SCAN-01`)、worktree 固定の 9 本、CI 設定。
 - [ ] `LINT-CLIPPY-01` `lsharp-types` の clippy gate 復旧 — Issue `I-31`。
   `crates/lsharp-types/src/review_trust_store.rs:120` の nested `if` が `collapsible_if` に当たり、
   `cargo clippy -p lsharp-types -- -D warnings` が lib / lib test / all-targets の 3 経路で
