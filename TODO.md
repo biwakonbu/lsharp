@@ -2827,35 +2827,32 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 23 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 11 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
-  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない)。残る 23 本がここの対象。
-  **branch ref は消さないこと。** 取り込み済み 80 本の ref 削除は完了しており、台帳は
+  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない)。残る非 batch 23 本のうち
+  12 本は ADR で判定済み。ここの対象は残る **11 本**。
+  **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
+  patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
   判定は `git cherry` の commit 数ではなく **touched file の content diff** で行う
   (whole-file take / hand-merge で入れた分は patch-id が一致しないため)。
   commit 数の多い順に:
-  - `codex/v0.2-ec-m1-02-integration` (121) — **origin に無い local のみ**。main に無いファイル 66 件を持つ
-  - `codex/legacy-module-cache-format-identity` (120) / `codex/legacy-maintenance-docs-active-only` (86) /
+  - `codex/legacy-module-cache-format-identity` (120) / `codex/v0.2-ec-m1-02-integration` (119) /
+    `codex/legacy-maintenance-docs-active-only` (86) /
     `codex/legacy-maint-native-stage-chain-split` (67) /
     `codex/legacy-maint-native-differential-split-audit` (65) /
-    `codex/legacy-maintenance-stage-chain-integration` (56) /
-    `codex/legacy-module-scc-cache-contract` (7) / `codex/legacy-test-01-limits` (4) —
+    `codex/legacy-maintenance-stage-chain-integration` (56) —
     いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)
   - `codex/lsharp-wasmgc-atomic-artifact` (37) / `codex/v0.2-ec-m1-06-all-form-differential` (25) /
-    `codex/v0.2-diag-api-doc-forwarding-rebased` (12)
+    `codex/v0.2-diag-api-doc-forwarding-rebased` (12) / `codex/legacy-module-scc-cache-contract` (7) /
+    `codex/legacy-test-01-formatter-blocker` (2)
   - batch family の唯一の例外 `codex/lsharp-type-record-ops-batch` @ `a5bb397a`
     (`docs: record Linux evidence for Type record operations`、`TODO.md` +
     `docs/development/operations/rust-boundary-reduction.md` の docs-only 2 file)。
     batch tip `3b5dbef5` に含まれない唯一の commit で、bounded scan の実装差分ではないため
     `BOUNDED-SCAN-01` の対象外。Linux 実測値の取り扱いをここで判断する
-  - 1〜2 commit の 14 本: `codex/v0.2-ec-m1-02-{frontend-snapshot,generator-gate,inventory,selfhost-generator}` /
-    `codex/legacy-test-01-{formatter-blocker,recursion-runtime,occur-check}` / `codex/legacy-module-scc` /
-    `codex/gc-soak-telemetry-lane` / `codex/todo-active-backlog` / `codex/lsharp-qualified-record-literal` /
-    `codex/lsharp-qualified-record-accessor` / `codex/lsharp-open-unqualified` /
-    `backup/dev-loop-speedup-pre-rebase`
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。**未 commit の実内容がある 7 worktree は salvage を先に行う。**
   **含めない範囲**: branch ref の削除 (判断が全部終わるまでしない)、CI 設定。

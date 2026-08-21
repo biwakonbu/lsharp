@@ -451,7 +451,26 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/v0.2-ec-m1-02-selfhost-generator` | `986ac1e3` | 却下済み | main は `extract-parser-contract-suites` という別の canonical 経路を採った。予告されていた問題は `I-31` ではなく **`I-30`** へ移してある |
 | `codex/todo-active-backlog` | `3ca483e9` | 却下 | 唯一残る差分は `improvement-roadmap.md` の B-2 行で、branch 側は main が足した verified slice 注記を**消す**方向。main が新しい |
 | `backup/dev-loop-speedup-pre-rebase` | 2 件 | 取り込み済み | rebase 前の退避 ref。main に同題の `9203de68` / `43d3b905` がある |
+| `codex/legacy-test-01-limits` | 4 件 | 却下 | 4 commit すべて main が別形で持つか、main の方が新しい (下記) |
 
 残る未判定は `codex/legacy-test-01-formatter-blocker` (2) /
-`codex/legacy-test-01-limits` (4) / `codex/legacy-module-scc-cache-contract` (7) と、
+`codex/legacy-module-scc-cache-contract` (7) と、
 25 commit 以上の大きい 10 本 (batch family を除く)。
+
+#### `codex/legacy-test-01-limits` の 4 commit を却下した根拠
+
+commit 単位で見ると 4 件とも main に patch-id が無い。しかし内容で見ると、
+main はすべて**別の形で既に持っている**か、**branch より新しい**。
+
+| commit | branch が持つもの | main の状態 |
+|---|---|---|
+| `4b03182f` parser property contracts | 非 ASCII escape の lexer 修正 + parser property test | 修正は `lexer/` 分割後の `lexer/tokenization.rs:53-70` に `ch.len_utf8()` を消費する形で入っている。test は `property_tests::parser_never_panics_for_bounded_arbitrary_bytes` / `roundtrip_property_tests::pretty_printed_ast_reparses_to_the_same_source` / `lexer::tests::test_invalid_utf8_after_escape_returns_error_without_panic` が同じ契約を張る |
+| `6bc274a0` inference property contracts | unify 対称性 / bounded inference の property test | `infer::unify_property_tests::unify_success_is_symmetric` / `infer::inference_property_tests::bounded_expression_inference_never_panics` が main にある |
+| `f93d067c` test distribution report | `scripts/test-distribution-report.sh` + その契約 test (bash) | main は `scripts/test-distribution.py` + `scripts/test-test-distribution.sh` を持ち、判断は [ADR](decisions-legacy-test-distribution.md) に記録済み |
+| `3bdf6b1c` allocator limit evidence | imp-03 / imp-07 への 2026-07-24 の実測追記 | main の imp-03 は **2026-07-25 の size-class verified slice** を持ち、imp-07 は `test-distribution` / property 4096-case lane / GC soak telemetry まで載っている。branch の記録は main に上書きされている |
+
+**実際に取り込みを試して撤回した。** `4b03182f` / `6bc274a0` の property test を
+`crates/lsharp-types/src/infer/property_tests.rs` と
+`crates/lsharp-syntax/tests/parser_properties.rs` へ移植して実行したところ、
+上記の main 側 test 名がすべて既に pass していた。同じ契約の二重管理になるので revert した。
+「commit が残っているから未取り込み」ではないことの実例である。
