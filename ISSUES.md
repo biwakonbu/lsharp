@@ -163,6 +163,7 @@
 | [I-28](#i-28) | x86 native の int-to-string import 呼び出しが rdi を書かない (harness が import placeholder の param-count を 0 で種まきするため) | 中 | open | -- |
 | [I-29](#i-29) | aarch64 native の文字列表現が bit 32 を判別子に使うため、heap offset が 4 GiB を越えると base 相対 offset が絶対番地として strlen される | 中 | open | -- |
 | [I-30](#i-30) | selfhost TestRunner に legacy scanner 2 本と canonical inventory が並存し、実行対象の正本が二つある | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 3 件) | 低 | open | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
 
 ### ドキュメント (DOC)
 
@@ -2031,6 +2032,23 @@
 ---
 
 <a id="doc-01"></a>
+<a id="i-31"></a>
+### I-31: `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`INFER-DEPTH-01` の検証中)
+- **内容**: `crates/lsharp-types/src/review_trust_store.rs:120` の nested `if` が
+  `clippy::collapsible_if` に当たる。`-D warnings` を付けると **lib / lib test / all-targets の
+  3 経路で compile error になる**ため、この crate では clippy を gate として使えない。
+- **根拠**: 2026-08-22 実測。変更を `git stash` した状態でも同じ 3 件が出る。
+  したがって `INFER-DEPTH-01` の変更が持ち込んだものではない。
+- **経緯**: `fix-clippy-collapsible-match` という branch が存在したが `main` の祖先で、
+  当該箇所は覆っていない。lint 債務として残っていた。
+- **含めない範囲**: 修正そのもの。`collapsible_if` の潰し方 (let chain へ畳む) は
+  clippy の suggest どおりで済むが、**gate が落ちている事実の記録が先**である。
+  修正を入れるなら、同時に `-D warnings` を CI で常時要求するかを決める必要がある
+  (CI の扱いは本 slice のスコープ外)。
+- **関連**: `INFER-DEPTH-01`。
+
 ### DOC-01: ユーザーガイドの主要範囲不足
 
 - **影響度**: 高 / **状態**: resolved

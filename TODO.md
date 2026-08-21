@@ -2859,6 +2859,20 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。**未 commit の実内容がある 7 worktree は salvage を先に行う。**
   **含めない範囲**: branch ref の削除 (判断が全部終わるまでしない)、CI 設定。
+- [ ] `LINT-CLIPPY-01` `lsharp-types` の clippy gate 復旧 — Issue `I-31`。
+  `crates/lsharp-types/src/review_trust_store.rs:120` の nested `if` が `collapsible_if` に当たり、
+  `cargo clippy -p lsharp-types -- -D warnings` が lib / lib test / all-targets の 3 経路で
+  compile error になる。`INFER-DEPTH-01` の変更以前から出ている。
+  受入条件: 当該 3 経路が exit 0 になること。
+  **含めない範囲**: `-D warnings` を CI で常時要求するかの判断 (CI の扱いは別 slice)。
+- [ ] `INFER-DEPTH-01` 深い occur-check の診断可能化 — `codex/legacy-test-01-occur-check` の
+  `59c7dbba` から。main は入れ子の深い self-application で LS1003 を返す前に stack overflow で
+  abort する。ADR [`decisions-infer-occur-check-depth-bound.md`](docs/adr/decisions-infer-occur-check-depth-bound.md)。
+  受入条件: `crates/lsharp-types/tests/infer_limits.rs` の occur-check depth 32/64/128 が
+  LS1003 / `InfiniteType` を返すこと。多引数適用の substitution 伝播 (LS1004) が pin されること。
+  **含めない範囲**: branch の `inference_limits.rs` / `inference_limit_fixture.rs` /
+  `benches/inference_limits.rs` (main の既存 `infer_limits` と二重になる)、native / selfhost 側の
+  同等境界。
 - [~] `LEGACY-TEST-01` property/fuzz/limit coverage — Issues `I-06` / `I-08`。syntax/types
   property test と複数の GC/type/runtime limit lane、bounded regex repeat の 64-case property
   lane は verified。再利用可能な generator、leak/rooting stress、performance threshold、

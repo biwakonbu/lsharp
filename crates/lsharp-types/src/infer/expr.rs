@@ -3,9 +3,29 @@ use crate::types::*;
 use lsharp_syntax::ast::*;
 use lsharp_syntax::span::Span;
 
+/// segmented stack を掘り足す残量しきい値。推論の frame は parser より大きいので
+/// parser 側 (64 KiB) より広く取る。
+const INFER_STACK_RED_ZONE: usize = 256 * 1024;
+/// 掘り足す 1 segment の大きさ。parser 側 (1 MiB) より広く取る。
+const INFER_STACK_SEGMENT_SIZE: usize = 2 * 1024 * 1024;
+
 impl Infer {
     /// 式の型推論 (Algorithm W)
+    ///
+    /// 深く入れ子になった式でも診断を返す前に process が stack overflow で abort しないよう、
+    /// parser と同じ segmented stack 方式で再帰入口を包む。浅い式では残量チェックだけが走り、
+    /// 通常の再帰経路のまま通る。
     pub(super) fn infer_expr(
+        &mut self,
+        env: &TypeEnv,
+        expr: &Expr,
+    ) -> Result<(Substitution, Type), TypeError> {
+        stacker::maybe_grow(INFER_STACK_RED_ZONE, INFER_STACK_SEGMENT_SIZE, || {
+            self.infer_expr_inner(env, expr)
+        })
+    }
+
+    fn infer_expr_inner(
         &mut self,
         env: &TypeEnv,
         expr: &Expr,
@@ -126,12 +146,21 @@ impl Infer {
 
                 let mut subst = s1;
                 let mut arg_types = Vec::new();
-                let mut current_env = env.apply_subst(&subst);
+                // 置換が空なら環境は変わらないので、TypeEnv の複製を作らず env を借りる。
+                let mut current_env = if subst.is_empty() {
+                    None
+                } else {
+                    Some(env.apply_subst(&subst))
+                };
 
-                for arg in args {
-                    let (s, arg_ty) = self.infer_expr(&current_env, arg)?;
+                for (index, arg) in args.iter().enumerate() {
+                    let arg_env = current_env.as_ref().unwrap_or(env);
+                    let (s, arg_ty) = self.infer_expr(arg_env, arg)?;
                     subst = subst.compose(&s);
-                    current_env = current_env.apply_subst(&s);
+                    // 最後の引数の後の更新は誰も読まないので省く。
+                    if index + 1 < args.len() && !s.is_empty() {
+                        current_env = Some(arg_env.apply_subst(&s));
+                    }
                     arg_types.push(arg_ty);
                 }
 

@@ -316,6 +316,15 @@ impl Substitution {
 
     /// 2つの置換を合成 (self の後に other を適用)
     pub fn compose(&self, other: &Substitution) -> Substitution {
+        // 片方が空なら結果はもう片方そのもの。深い再帰では frame ごとに呼ばれるため、
+        // BTreeMap の再構築を省く効果が深さ方向にそのまま効く。
+        if self.is_empty() {
+            return other.clone();
+        }
+        if other.is_empty() {
+            return self.clone();
+        }
+
         let mut result = Substitution::new();
         // other の置換に self を適用
         for (var, ty) in &other.map {

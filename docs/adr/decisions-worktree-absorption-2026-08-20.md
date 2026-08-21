@@ -431,3 +431,27 @@ worktree が占有する 9 本を除いた 71 本が削除対象。うち **`mai
 [`../development/operations/absorbed-branch-refs-2026-08-22.md`](../development/operations/absorbed-branch-refs-2026-08-22.md)
 に残す。この台帳が保証するのは sha からの復元ではなく **patch-id としての内容等価性** である
 (reflog は約 30 日で expire する)。
+
+### 未取り込み 23 本のうち、小さいものの判定 (2026-08-22)
+
+判定は `git cherry` の commit 数ではなく **touched file の content diff** で行った。
+whole-file take や hand-merge で入れた分は patch-id が一致しないため、commit 数は
+「取り込むものが残っているか」を答えない。
+
+| branch | commit | 判定 | 根拠 |
+|---|---|---|---|
+| `codex/legacy-test-01-occur-check` | `59c7dbba` | **取り込む** | main は深い occur-check で LS1003 を返す前に abort する。`INFER-DEPTH-01` / [ADR](decisions-infer-occur-check-depth-bound.md) |
+| `codex/lsharp-qualified-record-literal` | `46b3643e` | 取り込み済み | `test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal` が main にある |
+| `codex/lsharp-qualified-record-accessor` | `d99aafe6` | 取り込み済み | `..._resolves_import_qualified_record_accessor` / `..._filters_import_alias_only_record_accessor` が main にある |
+| `codex/lsharp-open-unqualified` | `f6dbd448` | 取り込み済み | `..._filters_import_open_unqualified_definition` が main にある |
+| `codex/legacy-test-01-recursion-runtime` | `18170467` | 取り込み済み | main は `runtime_recursion_limits.rs` + [ADR](decisions-legacy-test-runtime-recursion-limit.md) + `validation/runtime-recursion-limit.md` + CI script 2 本を持つ |
+| `codex/legacy-module-scc` | `97a9130a` | 取り込み済み | `ModuleGraph::scc_groups()` が main にある (`module_graph.rs:230`) |
+| `codex/v0.2-ec-m1-02-inventory` | `0dbc5d11` | 取り込み済み | `33a1e547` で hand-merge 済み。残る `metadata_contract.rs` 差分は **main が branch より進んでいる** (intent module / property defaults / `Binder::source_span` / `inventory_decl_tree`) |
+| `codex/v0.2-ec-m1-02-generator-gate` | `84ca54fd` | 却下済み | main は `run_metadata_tests` が `inventory_contract_suites` を併走させる別経路を採った。判断は `crates/lsharp-types/tests/metadata_contract_generation.rs` 冒頭に記録済み |
+| `codex/v0.2-ec-m1-02-selfhost-generator` | `986ac1e3` | 却下済み | main は `extract-parser-contract-suites` という別の canonical 経路を採った。予告されていた問題は `I-31` ではなく **`I-30`** へ移してある |
+| `codex/todo-active-backlog` | `3ca483e9` | 却下 | 唯一残る差分は `improvement-roadmap.md` の B-2 行で、branch 側は main が足した verified slice 注記を**消す**方向。main が新しい |
+| `backup/dev-loop-speedup-pre-rebase` | 2 件 | 取り込み済み | rebase 前の退避 ref。main に同題の `9203de68` / `43d3b905` がある |
+
+残る未判定は `codex/legacy-test-01-formatter-blocker` (2) /
+`codex/legacy-test-01-limits` (4) / `codex/legacy-module-scc-cache-contract` (7) と、
+25 commit 以上の大きい 10 本 (batch family を除く)。

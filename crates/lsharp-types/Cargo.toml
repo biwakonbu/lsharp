@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 lsharp-syntax = { path = "../lsharp-syntax" }
+stacker = "0.1"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
