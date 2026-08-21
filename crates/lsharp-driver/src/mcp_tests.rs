@@ -49,6 +49,66 @@ mod tests {
     }
 
     #[test]
+    fn test_every_declared_output_schema_is_closed_world() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tools = response["result"]["tools"]
+            .as_array()
+            .expect("tools/list は tools 配列を返す");
+
+        // outputSchema を宣言する tool は例外なく closed-world でなければならない。
+        // 1 つでも開いていると、その tool の structuredContent に余分な field が
+        // 混ざっても schema 検証で検出できず、契約の強さが tool ごとに食い違う。
+        let mut checked = 0;
+        for tool in tools {
+            let schema = &tool["outputSchema"];
+            if schema.is_null() {
+                continue;
+            }
+            checked += 1;
+            assert_eq!(
+                schema["additionalProperties"],
+                json!(false),
+                "{} の outputSchema が closed-world ではない",
+                tool["name"]
+            );
+        }
+        assert!(
+            checked >= 5,
+            "outputSchema を宣言する tool は 5 件以上あるはず (実測 {checked})"
+        );
+    }
+
+    #[test]
+    fn test_check_tool_payload_matches_its_closed_world_schema() {
+        // closed-world 宣言は、producer が実際にその key しか出さない場合にだけ正しい。
+        // schema だけ閉じて payload が余分な key を出すと、宣言が嘘になる。
+        let payload = call_tool("lsharp_check", &json!({"source": "(defn f [x] x)"}))
+            .expect("lsharp_check は structuredContent を返すべき");
+        let schema = tool_output_schema("lsharp_check");
+
+        let mut actual = payload
+            .as_object()
+            .expect("check の structuredContent は object")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut declared = schema["properties"]
+            .as_object()
+            .expect("outputSchema は properties を持つ")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        actual.sort();
+        declared.sort();
+
+        assert_eq!(actual, declared);
+    }
+
+    #[test]
     fn test_search_tool_schema_is_closed_world() {
         let input = tool_input_schema("lsharp_search");
         assert_eq!(input["additionalProperties"], json!(false));

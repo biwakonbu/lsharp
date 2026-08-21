@@ -92,6 +92,7 @@ fn tool_output_schema(name: &str) -> Value {
         "lsharp_check" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
+            "additionalProperties": false,
             "required": ["ok", "diagnostics", "migrationDiagnostics"],
             "properties": {
                 "ok": { "type": "boolean" },

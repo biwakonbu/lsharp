@@ -1361,9 +1361,9 @@ probe は `check_metadata(&parse(src))` と `Infer::infer_program(&program)` を
 | 2 | selfhost の parser / formatter / docs で contract 形を保つ | 6 | 取り込み済み | `selfhost/src/Syntax/Parser.ls` / `AST.ls` が contract 形を持ち、`App/Cli.ls` が投影する |
 | 3 | canonical assert / case の parse → typecheck → execute | 7 | **parse / typecheck は取り込み済み。execute に穴** | `check_assertion_types` / `check_case_types` (`metadata_check.rs:107-108`)、`tests/metadata_contract_assert.rs` / `_case.rs`。ただし `:case` の実行が 0 引数呼び出しで落ちる → `I-45` |
 | 4 | legacy metadata migration の分類と MCP 露出 | 4 | 取り込み済み | `crates/lsharp-types/src/metadata_migration.rs` (244 行)、`crates/lsharp-driver/src/mcp_language.rs:50` が `classify_legacy_contracts` を呼ぶ |
-| 5 | selfhost runner の contract 実行と assurance report | 26 | 取り込み済み (exit code の整合を追検証) | `selfhost/src/App/Cli.ls:899-980` の `assurance-*` 群 (coverage / diagnostics / provenance / intent / conformance の JSON、`assurance-method` / `assurance-generator` / `assurance-status`)。`status` と exit code の対応は下記「追検証」で実測 |
+| 5 | selfhost runner の contract 実行と assurance report | 26 → 24 | 取り込み済み (exit code の整合を追検証) | `selfhost/src/App/Cli.ls:899-980` の `assurance-*` 群 (coverage / diagnostics / provenance / intent / conformance の JSON、`assurance-method` / `assurance-generator` / `assurance-status`)。`status` と exit code の対応は下記「追検証 1」で実測。**件数を 26 → 24 へ訂正した** — `58065c62` / `75235456` を下記「判定粒度についての明示」で群 7 へ移したため |
 | 6 | vacuity / reflexivity の拒否 | 約 25 | **部分取り込み。live** | `canonical_contract_check/non_vacuity.rs` — literal / `not` / `and` / `or` / Int 比較まで。`if` / `let` / `do` / `match` を貫通しない → `I-42` |
-| 7 | property generator lane | 約 15 | **main が明示的に先送り。参照実装として残す** | `metadata_check/test_generation.rs:44-49` — 「type-directed sampling、seed、shrink は別 slice」と明記。selfhost 側も `PropertyRunner.ls:11` が seed / shrink を拒否し、assurance JSON の `"seed"` は常に 0、`"shrinks"` は常に空 → `PROP-GEN-01` |
+| 7 | property generator lane | 約 15 → 約 17 | **main が明示的に先送り。参照実装として残す** | `metadata_check/test_generation.rs:44-49` — 「type-directed sampling、seed、shrink は別 slice」と明記。selfhost 側も `PropertyRunner.ls:11` が seed / shrink を拒否し、assurance JSON の `"seed"` は常に 0、`"shrinks"` は常に空 → `PROP-GEN-01`。**件数を 約 15 → 約 17 へ訂正した** (群 5 からの移動分) |
 | 8 | contract scope 解決 | 16 | **半分は到達しない、半分は live** | `metadata_check.rs:64` の `all_names` → `I-43` |
 | 9 | computation builder の検証 | 4 | **live** | main に対応物なし → `I-44` |
 
@@ -1524,10 +1524,55 @@ lane 全体ではなく `:case` の evaluator に固有である。`ISSUES.md` �
 
 | commit | 主題 | main 側の対応物 |
 |---|---|---|
-| `cb375e92` | MCP check の output schema 宣言 | `crates/lsharp-driver/src/mcp_schema.rs`、`mcp_tests.rs:28` の `test_error_tool_output_schema_is_closed_world` が `additionalProperties: false` を固定 |
+| `cb375e92` | MCP check の output schema 宣言 | **取り込み漏れがあり、本 slice で埋めた。**`crates/lsharp-driver/src/mcp_schema.rs:92-` に `lsharp_check` の outputSchema 自体はあり、`required` / `$defs/position` / `selectedSemantics` と `disposition` の enum は branch と一致していた (`mcp_tests.rs` の `test_check_tool_declares_legacy_migration_output_schema` が enum を固定)。だが branch が置いた top-level の `additionalProperties: false` が落ちており、outputSchema を宣言する 5 tool のうち `lsharp_check` だけが open-world だった → 下記「追検証 4」 |
 | `729d85d0` | worktree lifecycle の docs | `AGENTS.md:253-258` に逐語 |
 | `58065c62` | property counterexample index | **無し。`PROP-GEN-01` へ移した** |
 | `75235456` | selfhost counterexample 保存 | **無し。`PROP-GEN-01` へ移した** |
+
+### 追検証 4: `cb375e92` の取り込み漏れ (MCP output schema の closed-world 化)
+
+`cb375e92` を「取り込み済み」と書いた根拠は `mcp_schema.rs` の存在と、closed-world を固定する
+test が別 tool にあることだった。**これは「同じ lane がある」ことの確認であって、
+「同じ強さの契約がある」ことの確認ではない。** 個別に突き合わせたところ、branch の
+`mcp_server_schema.rs` が置いていた top-level の `additionalProperties: false` が
+main の `lsharp_check` には無かった。
+
+outputSchema を宣言する tool を全部数えると偏りがはっきりする (2026-08-22 実測)。
+
+| tool | outputSchema | closed-world |
+|---|---|---|
+| `lsharp_check` | あり | **無し** |
+| `lsharp_validate` | あり | あり |
+| `lsharp_project_context` | あり | あり |
+| `lsharp_errors` | あり | あり |
+| `lsharp_search` | あり | あり |
+
+5 件中 1 件だけ開いている。MCP client から見ると `lsharp_check` の `structuredContent` にだけは
+余分な field が混ざっても schema 検証を通ってしまい、契約の強さが tool ごとに食い違う。
+
+**本 slice で埋めた。** TDD で入れた test は 2 本。
+
+- `test_every_declared_output_schema_is_closed_world` — `tools/list` を舐めて、
+  outputSchema を宣言する全 tool が `additionalProperties: false` を持つことを要求する。
+  1 tool 固定ではなく全 tool 走査にしたのは、同じ漏れが次の tool 追加で再発するのを
+  防ぐため。RED で `"lsharp_check" の outputSchema が closed-world ではない` を確認した
+- `test_check_tool_payload_matches_its_closed_world_schema` — **closed-world 宣言は
+  producer が実際にその key しか出さない場合にだけ正しい**ので、`lsharp_check` を実際に
+  呼び、返る object の key 集合が schema の `properties` の key 集合と一致することを要求する。
+  この test は書いた時点で GREEN なので、schema へ `zzMutant` を 1 個足す mutation で
+  実際に落ちること (`left: [diagnostics, migrationDiagnostics, ok]` /
+  `right: [..., zzMutant]`) を確認してから残した
+
+`mcp_language.rs:22-43` の `check_tool` が返す top-level key は `ok` / `diagnostics` /
+`migrationDiagnostics` の 3 つだけなので、閉じても宣言が嘘にならない。
+`cargo test -p lsharp-driver` は 244 passed / 0 failed。別 binary の 11 FAIL は
+`workspace-expected-failures.txt:120-131` の `default_path_delegation` と同一集合で、本変更とは無関係。
+
+**規律 11: 「対応物がある」ことと「対応物が同じ強さである」ことは別の問いである。**
+規律 7 (lane を持つか / 内容を持つか) をさらに一段細かくしたもの。file が存在し、
+関数が存在し、test すら存在していても、**契約の 1 行が落ちていれば取り込みは完了していない**。
+群単位の判定 (上記「判定粒度についての明示」) がこの粒度を見られないのは構造上の限界であり、
+埋めるには個別突き合わせしかない。
 
 ### この branch から得た教訓
 
