@@ -381,9 +381,17 @@
     `analyze_multi_file_incremental_with_overrides` が `Result<(), String>` を返すため、
     `ModuleGraphError` が `code()` (`module_graph.rs:85`) と `span()` (`:94`) を持っているのに
     LSP へ渡る時点で構造が捨てられている (`util.rs:616` / `:640`)
-  - 参照実装が `codex/v0.2-diag-api-doc-forwarding-rebased` の
-    `feat: forward ... diagnostics` 6 commit にある (cli source / module / lowering / codegen / io、
-    repl、lsp、api-doc)。branch 単位では取り込まず、本 issue の設計に沿って経路ごとに閉じる
+  - `crates/lsharp-ir/src/module_graph.rs:94-98 ModuleGraphError::span()` は
+    `ModuleNotFoundAt` にしか `Some` を返さない。**`CyclicDependency` (`LS3101`) と
+    `ModuleNotExported` (`LS3103`) は span を持てない。** つまり循環依存と package 非公開 import は
+    code こそ安定しているが、surface で位置を指せない
+  - 参照実装が `codex/v0.2-diag-api-doc-forwarding-rebased` の 10 commit にある
+    -- `feat: forward ... diagnostics` 8 件 (cli source / module graph / lowering / codegen / io、
+    repl、lsp、api-doc) と、cycle / export の span を埋める 2 件
+    (`be65dcce` / `2e94896c`)。branch 単位では取り込まず、本 issue の設計に沿って経路ごとに閉じる
+  - ただし後者 2 件は `import_spans: HashMap<(String,String), Span>` を graph に持たせる方式で、
+    main が採った `ModuleNotFoundAt` + `find_import_span` 方式と競合する。**どちらに寄せるかは
+    本 issue で決める必要がある** (`imp-02` の設計判断)
   - なお `module_graph/resolve.rs:314 extract_imports` が span を捨てるのは defect ではない。
     error 時にだけ `find_import_span` で読み直す設計 (`:260`) で、hot path に span を載せない取捨選択
 - **関連**: DOC-06 は error-reference と MCP lookup まで解消済み。残る貫通作業は

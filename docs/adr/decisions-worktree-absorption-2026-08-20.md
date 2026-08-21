@@ -486,7 +486,7 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-test-01-formatter-blocker` | 2 件 | **部分取り込み** | fixture 修正 (1 hunk) は取り込み、`.ls` の module 再構成と docs は却下 (下記) |
 | `codex/legacy-module-scc-cache-contract` | 7 件 | **部分取り込み** | 6 commit は main が別形で持つか main の方が新しい。`265a42c5` の指摘だけ移植した (下記) |
 | `codex/lsharp-type-record-ops-batch` | `a5bb397a` | 却下 | main は同じ slice を **別の Linux 実測 (`77f177ab`)** で既に持つ。branch の `be55ac33` 実測は main の履歴に対応しない (下記) |
-| `codex/v0.2-diag-api-doc-forwarding-rebased` | 21 件 | **一部が live。`I-02` へ引き継ぐ** | 15 件は取り込み済み。残る 6 件の `feat: forward ... diagnostics` は main に無く、その範囲は `I-02` の未解消部分と一致する (下記) |
+| `codex/v0.2-diag-api-doc-forwarding-rebased` | 21 件 | **一部が live。`I-02` へ引き継ぐ** | 10 件は取り込み済み、1 件は main が別実装を採用済み。残る **10 件** (`feat: forward ... diagnostics` 8 + cycle/export span 2) は main に無く、その範囲は `I-02` の未解消部分と一致する (下記) |
 
 残る未判定は 8 本。batch family の例外 1 本は上表で判定済み。
 
@@ -518,14 +518,40 @@ branch 全体を却下する誘惑があったが、内容で 1 件ずつ当た�
 
 #### `codex/v0.2-diag-api-doc-forwarding-rebased` の 21 commit を分けた根拠
 
-`git cherry` は 12 を返すが、実際の commit は 21。**種別で綺麗に割れた。**
+`git cherry` は 12 を返すが、実際の commit は 21。
 
-| 種別 | 件数 | 判定 | 根拠 |
+**2026-08-22 訂正。** 初版はこの 21 件を「7 / 4 / 6 / 4」に割り、module graph の span 4 件を
+まとめて取り込み済みとした。**これが誤りだった。** 割り方が subject の見た目 (テーマ) に
+引きずられており、commit ごとに main の中身を見ていない。`I-32` で一度やった失敗と同型なので、
+下表は **1 commit ずつ main の tree を確認して**組み直したものに差し替える。
+
+| 群 | 件数 | 判定 | 根拠 |
 |---|---|---|---|
-| `test(selfhost)` / `fix(selfhost)` (property precondition span、assertion oracle、root slot guard) | 7 | 取り込み済み | 各 commit が足す test 名を main へ grep して全件ヒット。`eval-property-precondition-with-index` (`TestRunner.ls:4235`)、`materialize-property-with-span` (`:4631`)、`property-runner-precondition-span-from-flat` (`PropertyRunner.ls:934`) など |
-| module graph の stable code と import span (`f9c147bf` / `23ef8edd` / `be65dcce` / `2e94896c`) | 4 | 取り込み済み | main の `ModuleGraphError::code()` は同じ `LS3101`〜`LS3104` を返し (`module_graph.rs:87-90`)、さらに **branch に無い `ModuleNotFoundAt` variant と `span()` を持つ** (`:64` / `:96`) |
-| `feat: forward ... diagnostics` (cli source / module / lowering / codegen / io、repl、lsp、api-doc) | 6 | **main に無い** | 追加される 15 の test 名を main へ grep して**全件ミス**。実装も無い |
-| その他 (docs / ADR 12 本 / 統合) | 4 | 却下 | 上の判定に従属する |
+| `test(selfhost)` / `fix(selfhost)` (property precondition span、assertion oracle、root slot guard) | 8 | 取り込み済み | 各 commit が足す fn / `defn` 名を main へ grep して全件ヒット。`eval-property-precondition-with-index` (`TestRunner.ls:4235`)、`materialize-property-with-span` (`:4631`)、`test_assertion_execution_reports_each_predicate` (`test_runner.rs:505`) など |
+| `09b1e154 test(selfhost): promote canonical assert CLI gate` | 1 | **半分だけ取り込み済み** | docs 側 (`rust-boundary-reduction.md:121` の 429.35s 実測と昇格記述) は main に一字一句ある。一方 code 側の `#[ignore]` 解除は main に無い — main は 2026-08-19 `939e4ec9` (TESTGATE-03、heavy e2e 164 件) で**同じ属性を意図的に付け直している**。後の判断が勝つので取り込まない |
+| `f9c147bf fix: add stable module graph diagnostic codes` | 1 | 取り込み済み | main の `ModuleGraphError::code()` は同じ `LS3101`〜`LS3104` を返す (`module_graph.rs:85-92`) |
+| `23ef8edd feat: preserve module graph import spans` | 1 | 却下 (main が別実装) | branch は `import_spans: HashMap<(String,String), Span>` を graph に持たせて全 variant に `span: Option<Span>` を足す。main は**別解**を採っており、`ModuleNotFoundAt` variant を分けて error 時にだけ `find_import_span` で読み直す (`resolve.rs:260`)。意図は満たされているので branch 実装は入れない |
+| `be65dcce feat: preserve module cycle import spans` / `2e94896c feat: preserve package export import spans` | 2 | **main に無い** | main の `span()` は `ModuleNotFoundAt` にしか `Some` を返さず、`CyclicDependency` と `ModuleNotExported` は `None` (`module_graph.rs:94-98`)。`cycle_span` / `import_spans` / `test_build_from_entry_cycle_preserves_closing_import_span` はいずれも main の `crates/` に存在しない |
+| `feat: forward ... diagnostics` (cli source / module graph / lowering / codegen / io、repl、lsp、api-doc) | 8 | **main に無い** | 各 commit が足す test 名を main へ grep して全件ミス。実装関数 (`source_diagnostic` / `codegen_diagnostic` / `io_diagnostic` / `module_graph_diagnostic` / `repl_source_diagnostic` / `api_doc_source_diagnostic`) も無い |
+
+**この訂正で live は 6 件から 10 件へ増えた。** 内訳は `feat: forward` 8 + cycle/export span 2。
+
+##### 初版が誤った理由と、以後の判定規則
+
+初版は main に `code()` と `span()` があることを確認し、しかも branch に無い `ModuleNotFoundAt`
+variant まで見つけたので、「main の方が進んでいる」と読んだ。**`span()` の match 腕を読んでいなかった。**
+`ModuleNotFoundAt` 以外は `None` を返すので、cycle と export の span は main に無い。
+branch の該当 2 commit がまさにその 2 variant を埋めるものだった。
+
+以後、この作業では次を規則とする。
+
+- **test 名 grep は triage であって判定ではない。** ヒット 0 件、または 1 件でもミスがある commit は、
+  取り込み済みへ入れる前に必ず内容を直接見る。`09b1e154` (抽出名 0)、`2e94896c` (抽出名 0)、
+  `be65dcce` (ミス 1) の 3 件は、この規則があれば初版で捕まえられた
+- **subject でグルーピングしない。** 「module graph の span 系 4 件」のようなテーマ単位の束ねが
+  今回の誤りを生んだ。判定単位は常に commit 1 件
+
+**未取り込みの 10 件は、branch 単位で判断すべきものではなかった。**
 
 **未取り込みの 6 件は、branch 単位で判断すべきものではなかった。**
 
@@ -533,11 +559,15 @@ branch 全体を却下する誘惑があったが、内容で 1 件ずつ当た�
 構造のまま運ぶ」ことで、これは既に `I-02` (診断 code/span が全 surface に未貫通、状態 in-design)
 の未解消部分そのものである。`I-02` は「multi-file / REPL / doc / metadata / native linker /
 incremental module・codegen の経路で**文字列化や span 消失が残る**」と書いており、
-branch が触る 6 経路と一致する。`DOC-06` も「CLI / LSP / MCP の全診断へ `LS####` を
+branch が触る 8 経路と一致する。`DOC-06` も「CLI / LSP / MCP の全診断へ `LS####` を
 貫通させる作業は引き続き `I-02` / `imp-02` の範囲に残す」と明示している。
 
 したがって **branch を単位に取り込むのではなく、`I-02` / `imp-02` の設計に沿って
 経路ごとに閉じる**。branch は参照実装として残す。
+
+cycle / export span の 2 件も同じ扱いにする。`ModuleGraphError` の全 variant へ span を載せる形は
+`23ef8edd` で却下した `import_spans` 方式と不可分なので、main の `ModuleNotFoundAt` +
+`find_import_span` 方式へどう寄せるかは `imp-02` の設計判断が要る。
 
 ##### この判定の過程で main 側に確認した具体箇所 (`I-02` の証拠として本文へ移した)
 
