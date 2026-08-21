@@ -168,6 +168,9 @@
 | [I-34](#i-34) | `cargo fmt --check -p lsharp-ir` が main で既に落ちる (`lower/mod.rs` の mod 宣言順 8 箇所) | 低 | open | -- |
 | [I-35](#i-35) | allocator の到達不能 free-list search に誤った `Br(0)` が残り、path を再有効化すると無限 loop する | 低 | open | -- |
 | [I-36](#i-36) | AST / token の Display が string escape と型注釈・`:where` を落とし、pretty-print が re-parse できない | 中 | open | -- |
+| [I-37](#i-37) | 別 module の同名 top-level function が診断なしに衝突し、誤った wasm を出す (silent miscompilation) | 高 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-38](#i-38) | import した module の `type-alias` が展開されず `expected String, found Text` になる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-39](#i-39) | block 形式の module body が parse されるだけで名前解決されず、誤診断で落ちる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ### ドキュメント (DOC)
 
@@ -2193,6 +2196,110 @@
 - **関連**: `FMT-ROUNDTRIP-01` (`TODO.md`)。判定は
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   公開 CLI では `fmt` は LSP / MCP の内部 API 扱いなので、影響面は IDE 経路である。
+
+<a id="i-37"></a>
+### I-37: 別 module の同名 top-level function が衝突し、診断なしに誤った wasm を出す
+
+- **影響度**: 高 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maint-native-stage-chain-split` の判定中)
+- **内容**: 複数 module を import して build したとき、**module をまたいで同名の top-level
+  function があると後勝ちで 1 つに潰れる**。診断は出ず、コンパイルは成功し、
+  出力された wasm が黙って誤った値を返す。silent miscompilation であり、
+  本台帳で最も影響度が高い種類の欠陥である。
+- **根拠**: 2026-08-22 実測。`target/debug/lsharp` (main `12a351ce` を含む build) で再現する。
+
+  ```
+  A.ls    (module A)
+          (defn helper [] : Int 1)
+          (defn a [] : Int (helper))
+  B.ls    (module B)
+          (defn helper [] : Int 20)
+          (defn b [] : Int (helper))
+  Main.ls (module Main)
+          (import A)
+          (import B)
+          (defn main [] (print (+ (a) (b))))
+  ```
+
+  ```bash
+  lsharp compile Main.ls -o Main.wasm && wasmtime Main.wasm
+  ```
+
+  | fixture | 期待 | 実測 |
+  |---|---|---|
+  | `helper` を `hA` / `hB` と別名にする | 21 | **21** |
+  | 両方 `helper` (`import A` → `import B` の順) | 21 | **40** |
+  | 両方 `helper` (`import B` → `import A` の順) | 21 | **40** |
+
+  `1 + 20` が `20 + 20` になっている。つまり `A.helper` の定義が失われ、
+  `a()` も `B.helper` を呼んでいる。**import 順を入れ替えても 40 なので、
+  「後から register した方が勝つ」ではなく登録先の key が module で修飾されていない**。
+- **含めない範囲**: 修正方法の選択 (呼び出し側を module 修飾するか、
+  lowering 時に function 名を qualify するか) は `MODULE-DUP-FN-01` (`TODO.md`) で決める。
+  block 形式 module body での同種の衝突は `I-39` の範囲。
+- **関連**: `MODULE-DUP-FN-01` (`TODO.md`)、`I-38` / `I-39` (同じ module 名前解決の欠落)。
+  参照実装は `codex/legacy-maint-native-stage-chain-split` の `f5a343a8`
+  (`scoped_visibility` による root body function の qualify)。判定は
+  [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-38"></a>
+### I-38: import した module の `type-alias` が展開されず型不一致になる
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maint-native-stage-chain-split` の判定中)
+- **内容**: `type-alias` は**同一 file 内でしか展開されない**。別 module で定義された alias を
+  import 先の signature で使うと、alias 名が未展開の `Type::Con` のまま残り
+  `型の不一致: expected String, found Text` になる。修飾しても同じで、
+  `A.Text` と書けば `found A.Text` になるだけである。
+  型名としては受理されるので、**「そんな型は無い」という診断は出ない**。
+- **根拠**: 2026-08-22 実測。`target/debug/lsharp` で再現する。
+
+  | fixture | 実測 |
+  |---|---|
+  | 同一 file の `(type-alias Text String)` を signature で使う | **成功** |
+  | `A.ls` で定義し、`A` 内部の関数だけが使う (import 側は触れない) | **成功** |
+  | `A.ls` で定義し、import 側の signature で `Text` と書く | `expected String, found Text` |
+  | 同上、`A.Text` と修飾して書く | `expected String, found A.Text` |
+
+  実装側では `crates/lsharp-types/src/infer.rs:86` の `type_aliases` が単一 map で、
+  multi-file 経路 (`infer/decl.rs:160`) は `{module_name}.{name}` で register する一方、
+  展開側 (`infer.rs:262` / `:276` / `:293`) は解決した名前をそのまま lookup している。
+  main に **cross-module の type-alias を張る test は 1 件も無い**
+  (`fn test.*alias` の hit はすべて import alias (`:as`) か同一 file の alias)。
+- **含めない範囲**: alias を module 越しに公開するか (公開するなら `:only` / `:open` の
+  可視性とどう組むか) は設計判断で、`MODULE-ALIAS-EXPORT-01` (`TODO.md`) で決める。
+  「公開しない」に倒す場合も、**現状の型不一致診断は誤りなので直す対象は残る**。
+- **関連**: `MODULE-ALIAS-EXPORT-01` (`TODO.md`)、`I-37` / `I-39`。
+  参照実装は `codex/legacy-maint-native-stage-chain-split` の `cfcb19a7`
+  (`incremental/scoped_type_alias.rs`)。判定は
+  [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-39"></a>
+### I-39: block 形式の module body が parse されるだけで、名前解決されない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maint-native-stage-chain-split` の判定中)
+- **内容**: `(module M (defn f ...) (defn g ...))` という **body を括弧内に持つ形**は
+  parser が受理し (`Decl::ModuleDecl { name, body }`)、
+  `crates/lsharp-ir/src/compile_pipeline.rs:209` の `collect_private_surface_names` も
+  body を再帰する。しかし**型推論と lowering は body 内の宣言を登録しない**ため、
+  同じ body にある sibling 関数も type-alias も見えない。
+  診断は「未実装の構文」ではなく **`未定義の変数` / `型の不一致`** になるので、
+  利用者からは自分のコードの誤りに見える。
+- **根拠**: 2026-08-22 実測。`target/debug/lsharp` で再現する。
+
+  | fixture | 実測 |
+  |---|---|
+  | `(module Main (defn helper [] : Int 1) (defn main [] (print (helper))))` | `[LS1001] [E0001] 未定義の変数 (undefined): helper` |
+  | 同じ内容を flat 形 (`(module Main)` + top-level 宣言) で書く | **成功** |
+  | `(module Main (type-alias Text String) (defn wrap [(: v Text)] ...) ...)` | `[LS1004] [E0004] 型の不一致: expected String, found Text` |
+
+  **この形を使っている `.ls` は repo 内に 1 件も無い** (`selfhost/` / `examples/` 含め 0 件)。
+  つまり live な regression ではなく、**parser だけが先行して受理している未搭載 surface**である。
+- **含めない範囲**: block 形式を実装するか、parser 側で明示的に reject するかは設計判断で、
+  `MODULE-BODY-FORM-01` (`TODO.md`) で決める。どちらへ倒すにせよ
+  「受理して誤診断で落ちる」現状は解消する。
+- **関連**: `MODULE-BODY-FORM-01` (`TODO.md`)、`I-37` / `I-38`。
+  参照実装は `codex/legacy-maint-native-stage-chain-split` の `a5e5929c` / `fa7b4c51`
+  (`incremental/root_module_body.rs`) と `68849d55` (nested alias target scope)。判定は
+  [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 ### DOC-01: ユーザーガイドの主要範囲不足
 

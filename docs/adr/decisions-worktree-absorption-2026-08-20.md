@@ -491,7 +491,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/lsharp-wasmgc-atomic-artifact` | 37 件 | **全件取り込み済み** | `git cherry` の `+` は main が後から入れた file 分割 (`wasmgc.rs` -> `wasmgc/` 3 module、`wasmgc_runner.rs` -> 5 module、`wasmgc_probe.rs` -> `part_000..015.rs`) で patch-id が崩れただけ。追加関数 208 個はミス 0、ADR 79 本と `wit/` 2 本も main にある (下記) |
 | `codex/legacy-maintenance-stage-chain-integration` | 56 件 | **一部が live。`FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `I-01` / `I-35` へ引き継ぐ** | 18 件の file 分割は main が独自に実施済み、10 件の imp-06 進捗記録は却下、型推論 limit の src fix は逐語で main にある。live は string literal / typed signature の Display 欠落 2 件、GC 強制回収 live=0 契約 1 件、workspace 全域 800 行 gate 1 件、occur-check bench 1 件 (下記) |
 
-残る未判定は 5 本。batch family の例外 1 本は上表で判定済み。
+| `codex/legacy-maint-native-stage-chain-split` | 67 件 | **一部が live。`MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` へ引き継ぐ** | 約 18 件の test 分割は姉妹 branch で判定済みの同一 family、約 11 件は merge。imp-04 の feature lane 18 件のうち SCC 系 4 群は main が別設計で持ち、`CompileSession` も別配置で持つ。live は同名 function の衝突 (silent miscompilation)、cross-module type-alias、block 形式 module body の 3 件 (下記) |
+
+残る未判定は 4 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -952,3 +954,88 @@ patch が当たらない理由が「別設計」でも「先へ進んだ」で�
 **「その path をもう通らないから直す必要が無かった」**という第 3 の形である。
 この形は却下でよいが、**dead code に残ったバグを台帳へ載せないと消える**。
 ADR の却下表に書くだけでは足りず、`ISSUES.md` に起票する。
+
+### `codex/legacy-maint-native-stage-chain-split` の 67 commit を判定した
+
+**判定日**: 2026-08-22。branch は main に対して **1540 commit behind**、
+`git cherry main <branch>` の `+` が 78 中 **67 件**。
+
+67 件は 3 つに割れる。
+
+| 群 | 件数 | 判定 |
+|---|---|---|
+| test file の分割 (imp-06 系) | 約 18 | **取り込み済み** — 姉妹 branch `codex/legacy-maintenance-stage-chain-integration` で判定済みの同一 family |
+| merge commit | 約 11 | 判定対象外 |
+| **imp-04 module system の feature lane** | 約 18 | **main に無い。下記で個別判定** |
+
+#### feature lane が main に無いことの確認
+
+branch は `crates/lsharp-ir/src/incremental/` 以下に `scc.rs` / `scoped_visibility.rs` /
+`scoped_type_alias.rs` / `root_module_body.rs` を足しているが、**main には `incremental/`
+ディレクトリ自体が無い**。main は同じ責務を `compile_incremental.rs` /
+`compile_pipeline.rs` / `compile_surface.rs` の 3 file で持つ。
+`infer/definition_groups.rs` も `lsharp-tooling/src/compile/session.rs` も main には無い。
+
+**ここで file 名の不在を「未取り込み」の根拠にはしない。** 本 ADR が繰り返し踏んだ罠
+(main が同じ intent を後から別設計で満たす) を避けるため、
+**実際に program を compile して挙動で判定した**。
+
+#### 実測 — main が何を通し、何を落とすか
+
+`target/debug/lsharp` (main `12a351ce` を含む build。`find crates -name '*.rs' -newer` が 0 件で
+source と一致することを確認済み) に fixture を食わせた。
+
+| # | fixture | 結果 |
+|---|---|---|
+| 1 | 同一 file の `type-alias` を signature で使う | 成功 |
+| 2 | flat 形の 2 module を import し、**別名**の内部関数を呼ぶ | 成功 (21) |
+| 3 | flat 形の 2 module を import し、**同名**の内部関数を呼ぶ | **成功するが 40 を返す (期待 21)** |
+| 4 | `A.ls` の `type-alias` を import 先の signature で使う | `expected String, found Text` |
+| 5 | 同上を `A.Text` と修飾する | `expected String, found A.Text` |
+| 6 | `(module M (defn f ...) (defn main ... (f)))` | `未定義の変数 (undefined): f` |
+| 7 | 6 と同じ内容を flat 形で書く | 成功 |
+| 8 | `(import A :open)` で unqualified 参照 | 成功 |
+
+**3 が決定的である。** compile は成功し、診断も出ず、**wasm が黙って誤った値を返す**。
+import 順を入れ替えても 40 なので「後勝ち」ではなく、登録先の key が module で
+修飾されていない。これは flat 形という **CLAUDE.md / AGENTS.md が公開 surface として
+挙げている書き方**で起きる。`ISSUES.md` `I-37` へ起票した (影響度 高)。
+
+4 / 5 は `I-38`、6 は `I-39`。6 については **repo 内の `.ls` で block 形式 module body を
+使っているものが 0 件**であることも確認した (`selfhost/` / `examples/` 含む)。
+したがって 6 は regression ではなく **parser だけが先行して受理している未搭載 surface** で、
+「実装する」も「parse 時点で reject する」も選べる。どちらを選ぶかは main が
+まだ下していない設計判断なので、ADR ではなく `MODULE-BODY-FORM-01` (`TODO.md`) の
+決定事項として残した。**判断せずに branch の実装を当てて既成事実にするのは避ける。**
+
+8 は副産物として **CLAUDE.md:147 / AGENTS.md:361 の `(open Module)` という記述が誤り**である
+ことを示した。parser は `open` を `import` の修飾子としてしか持たない
+(`parser/decl.rs:463`)。正しくは `(import Module :open)` なので、両 file を訂正した。
+
+#### commit ごとの判定
+
+| commit | 内容 | 判定 |
+|---|---|---|
+| `230fa341` | `module_graph/scc.rs` の `scc_groups()` | **取り込み済み (別形)** — main は `module_graph/scc.rs:15` `compute_groups()` で同じ Tarjan を持つ |
+| `17c0147c` | SCC 単位の multifile compile + import dedup | **取り込み済み (別形)** — main の `lib_tests/multifile_compile.rs` が 55 fn で同じ契約を張る (`test_merged_scc_declarations_deduplicate_identical_imports` ほか)。ADR は [`decisions-legacy-module-scc-import-dedup.md`](decisions-legacy-module-scc-import-dedup.md) |
+| `1f203ebe` | `incremental/scc.rs` + `infer/definition_groups.rs` | **取り込み済み (別形)** — `test_compile_multi_file_incremental_scc_reuses_clean_ir_segments_after_dirty_module` / `..._clean_type_surfaces_after_impl_change` が main にある |
+| `97041e21` | 単一 file の incremental | **取り込み済み (別形)** |
+| `fb098d11` / `f5a343a8` | `scoped_visibility.rs` (644 行) | **live。`MODULE-DUP-FN-01` / `I-37` へ引き継ぐ** — 実測 3 の silent miscompilation がこれ |
+| `cfcb19a7` ほか 5 件 | `scoped_type_alias.rs` (563+ 行) と alias surface test | **live。`MODULE-ALIAS-EXPORT-01` / `I-38` へ引き継ぐ** — 実測 4 / 5 |
+| `68849d55` / `a5e5929c` / `fa7b4c51` | `root_module_body.rs` と nested alias target scope | **live だが設計判断が先。`MODULE-BODY-FORM-01` / `I-39` へ引き継ぐ** — 実測 6 |
+| `024bd645` | formatter 固有の推論特例を消す | **却下** — main は `module_graph/mutation.rs:148` `is_formatter_trio_module` を**意図的に残す**方向を [`decisions-legacy-formatter-scc-imports.md`](decisions-legacy-formatter-scc-imports.md) で選んだ。姉妹 branch の `57e32f8a` で同じ判断を下しており、これはその再提出である。SCC 一般化とセットなので単独では当たらない |
+| `464a205c` | `lsharp-tooling/src/compile/session.rs` | **取り込み済み (別配置)** — main は `lsharp-tooling/src/compile.rs:134` に `CompileSession` を持ち、`with_artifact_cache` / `cache_len` / `compile_file_with_backend` を備える |
+| `1d96c691` | `benches/compile_session.rs` + validation doc | **却下** — main に `lsharp-tooling/benches/` は無く、2026-07 の branch code state の Criterion 実測を main の正本へ現在値として書くのは doc-GREEN の規律に反する (姉妹 branch の `type-inference-limits.md` と同じ理由) |
+| `a288ade4` (tip) | `selfhost_native_stage_chain.rs` 62990 行の分割 | **branch 単位では当てない** — 姉妹 branch の `c82b5389` と同じ file が対象。1540 commit 越しに分割 diff は当てられないので `LEGACY-MAINT-01` / `I-01` で main の現行内容の上からやり直す。**姉妹 branch の節で「同 branch の判定と合わせて決める」と保留していた件は、これで閉じる** |
+
+#### この branch から学んだこと -- 不在を live の証拠にせず、実際に走らせる
+
+これまでの判定は「main に同名 test / 同名関数があるか」を軸にしていた。それは
+**取り込み済みを見落とさない**ためには有効だが、**live を過大評価する**。
+本 branch では file もディレクトリも丸ごと無かったので、その軸だけなら
+「18 commit 全部 live」と読めた。実際に compile してみると、
+SCC 系 4 群は main が別設計で解いており、live なのは 3 群だけだった。
+
+逆に、走らせたからこそ **`I-37` の silent miscompilation** が見つかった。
+これは test 名 grep でも file 比較でも出てこない。**compile が成功する欠陥は、
+実行して値を見るまで存在が観測できない。**

@@ -144,7 +144,7 @@ hooks やスキルに問題が発生した場合は `.claude/rules/hook-troubles
 - S 式構文 (Clojure 風)
 - ADT + パターンマッチ → リニアメモリ上の struct (タグによる判別)
 - レコード型 → リニアメモリ上の struct
-- モジュールシステム: `(module Name)`, `(import Module)`, `(open Module)`
+- モジュールシステム: `(module Name)`, `(import Module)`, `(import Module :only [..])`, `(import Module :as Alias)`, `(import Module :open)`
 - トレイト: 辞書引数による静的ディスパッチ
 - 計算式: `let!` によるモナディックバインド
 - メタデータ: `:doc`, `:example`, `:invariant`, `:transitions`
