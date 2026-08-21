@@ -2827,13 +2827,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 9 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 8 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
   `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
   tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
-  14 本は ADR で判定済み。ここの対象は残る **9 本**。
+  15 本は ADR で判定済み。ここの対象は残る **8 本**。
   **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
   patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
@@ -2846,8 +2846,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     `codex/legacy-maint-native-differential-split-audit` (65) /
     `codex/legacy-maintenance-stage-chain-integration` (56) —
     いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)
-  - `codex/lsharp-wasmgc-atomic-artifact` (37) / `codex/v0.2-ec-m1-06-all-form-differential` (25) /
-    `codex/v0.2-diag-api-doc-forwarding-rebased` (12)
+  - `codex/lsharp-wasmgc-atomic-artifact` (37) / `codex/v0.2-ec-m1-06-all-form-differential` (25)
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
   **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。

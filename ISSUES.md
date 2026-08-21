@@ -368,8 +368,27 @@
   - `syntax_diagnostics_expose_stable_code_and_source_range`
   - `type_diagnostics_expose_stable_code_and_non_empty_source_range`
   - `incremental_module_diagnostics_forward_stable_code`
+- **未解消部分の具体箇所** (2026-08-22 に `WORKTREE-ABSORB-02` の branch 判定中に特定):
+  - `crates/lsharp-tooling/src/api_doc.rs:188-193` -- `build_api_doc_for_file` は
+    `miette::miette!("[{}] ... {e}", e.code())` で code を文字列へ埋めるだけで、
+    `NamedSource` も `LabeledSpan` も添えない。同 workspace の
+    `crates/lsharp-driver/src/main.rs:1739` / `:1776` は添えており、方式が揃っていない
+  - `crates/lsharp-lsp/src/util.rs:515 diagnostic_span_from_message` -- LSP は `LS3102` の
+    span を診断メッセージの日本語文言 (`"モジュール '"` / `"' が見つかりません"`) を文字列検索して
+    復元している。`:493 stable_code_from_message` も `[LSxxxx]` を文字列から抜き出す。
+    **文言を変えると span 復元が黙って壊れる**
+  - 上の直接原因は API 境界にある。`analyze_single_file_incremental` /
+    `analyze_multi_file_incremental_with_overrides` が `Result<(), String>` を返すため、
+    `ModuleGraphError` が `code()` (`module_graph.rs:85`) と `span()` (`:94`) を持っているのに
+    LSP へ渡る時点で構造が捨てられている (`util.rs:616` / `:640`)
+  - 参照実装が `codex/v0.2-diag-api-doc-forwarding-rebased` の
+    `feat: forward ... diagnostics` 6 commit にある (cli source / module / lowering / codegen / io、
+    repl、lsp、api-doc)。branch 単位では取り込まず、本 issue の設計に沿って経路ごとに閉じる
+  - なお `module_graph/resolve.rs:314 extract_imports` が span を捨てるのは defect ではない。
+    error 時にだけ `find_import_span` で読み直す設計 (`:260`) で、hot path に span を載せない取捨選択
 - **関連**: DOC-06 は error-reference と MCP lookup まで解消済み。残る貫通作業は
   [imp-02](docs/development/planning/improvement-designs/imp-02-error-handling-unification.md) を参照。
+  branch 判定は [decisions-worktree-absorption-2026-08-20.md](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 <a id="i-03"></a>
 ### I-03: GC 容量 grow が全 runtime/backend に未貫通

@@ -486,8 +486,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-test-01-formatter-blocker` | 2 件 | **部分取り込み** | fixture 修正 (1 hunk) は取り込み、`.ls` の module 再構成と docs は却下 (下記) |
 | `codex/legacy-module-scc-cache-contract` | 7 件 | **部分取り込み** | 6 commit は main が別形で持つか main の方が新しい。`265a42c5` の指摘だけ移植した (下記) |
 | `codex/lsharp-type-record-ops-batch` | `a5bb397a` | 却下 | main は同じ slice を **別の Linux 実測 (`77f177ab`)** で既に持つ。branch の `be55ac33` 実測は main の履歴に対応しない (下記) |
+| `codex/v0.2-diag-api-doc-forwarding-rebased` | 21 件 | **一部が live。`I-02` へ引き継ぐ** | 15 件は取り込み済み。残る 6 件の `feat: forward ... diagnostics` は main に無く、その範囲は `I-02` の未解消部分と一致する (下記) |
 
-残る未判定は 12 commit 以上の大きい 9 本 (batch family を除く)。batch family の例外 1 本は上表で判定済み。
+残る未判定は 8 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -514,6 +515,47 @@ RED を書いて再現し、main の分割後の構造へ移植した。詳細�
 
 **commit 数で判定していたら見落としていた。** 7 件中 6 件が「main が別形で持つ」ため、
 branch 全体を却下する誘惑があったが、内容で 1 件ずつ当たった結果 1 件だけ生きていた。
+
+#### `codex/v0.2-diag-api-doc-forwarding-rebased` の 21 commit を分けた根拠
+
+`git cherry` は 12 を返すが、実際の commit は 21。**種別で綺麗に割れた。**
+
+| 種別 | 件数 | 判定 | 根拠 |
+|---|---|---|---|
+| `test(selfhost)` / `fix(selfhost)` (property precondition span、assertion oracle、root slot guard) | 7 | 取り込み済み | 各 commit が足す test 名を main へ grep して全件ヒット。`eval-property-precondition-with-index` (`TestRunner.ls:4235`)、`materialize-property-with-span` (`:4631`)、`property-runner-precondition-span-from-flat` (`PropertyRunner.ls:934`) など |
+| module graph の stable code と import span (`f9c147bf` / `23ef8edd` / `be65dcce` / `2e94896c`) | 4 | 取り込み済み | main の `ModuleGraphError::code()` は同じ `LS3101`〜`LS3104` を返し (`module_graph.rs:87-90`)、さらに **branch に無い `ModuleNotFoundAt` variant と `span()` を持つ** (`:64` / `:96`) |
+| `feat: forward ... diagnostics` (cli source / module / lowering / codegen / io、repl、lsp、api-doc) | 6 | **main に無い** | 追加される 15 の test 名を main へ grep して**全件ミス**。実装も無い |
+| その他 (docs / ADR 12 本 / 統合) | 4 | 却下 | 上の判定に従属する |
+
+**未取り込みの 6 件は、branch 単位で判断すべきものではなかった。**
+
+その中身は「診断へ `NamedSource` と `LabeledSpan` を添えて、code と span を surface まで
+構造のまま運ぶ」ことで、これは既に `I-02` (診断 code/span が全 surface に未貫通、状態 in-design)
+の未解消部分そのものである。`I-02` は「multi-file / REPL / doc / metadata / native linker /
+incremental module・codegen の経路で**文字列化や span 消失が残る**」と書いており、
+branch が触る 6 経路と一致する。`DOC-06` も「CLI / LSP / MCP の全診断へ `LS####` を
+貫通させる作業は引き続き `I-02` / `imp-02` の範囲に残す」と明示している。
+
+したがって **branch を単位に取り込むのではなく、`I-02` / `imp-02` の設計に沿って
+経路ごとに閉じる**。branch は参照実装として残す。
+
+##### この判定の過程で main 側に確認した具体箇所 (`I-02` の証拠として本文へ移した)
+
+- `crates/lsharp-tooling/src/api_doc.rs:188-193` — `build_api_doc_for_file` は
+  `miette::miette!("[{}] ... {e}", e.code())` で code を**文字列へ埋めるだけ**で、
+  `NamedSource` も `LabeledSpan` も添えない。同 workspace の
+  `crates/lsharp-driver/src/main.rs:1739` / `:1776` は添えているので、方式が揃っていない
+- `crates/lsharp-lsp/src/util.rs:515 diagnostic_span_from_message` — LSP は
+  `LS3102` の span を **診断メッセージの日本語文言 (`"モジュール '"` / `"' が見つかりません"`) を
+  文字列検索して**復元している。同 `:493 stable_code_from_message` も `[LSxxxx]` を
+  文字列から抜き出す。**文言を変えると span 復元が黙って壊れる**
+- 原因は API 境界。`analyze_single_file_incremental` /
+  `analyze_multi_file_incremental_with_overrides` は `Result<(), String>` を返すので、
+  `ModuleGraphError` が `code()` と `span()` を持っているのに、LSP へ渡る時点で
+  構造が捨てられている (`util.rs:616` / `:640`)
+- なお `module_graph/resolve.rs:314 extract_imports` が span を捨てるのは **defect ではない**。
+  main は error 時にだけ `find_import_span` で読み直す (`:260`) 設計を採っており、
+  hot path に span を載せないという取捨選択になっている
 
 #### batch family の例外 `a5bb397a` を却下した根拠
 
