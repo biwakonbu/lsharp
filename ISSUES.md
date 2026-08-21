@@ -172,6 +172,7 @@
 | [I-38](#i-38) | import した module の `type-alias` が展開されず `expected String, found Text` になる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-39](#i-39) | block 形式の module body が parse されるだけで名前解決されず、誤診断で落ちる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-40](#i-40) | DocTools の metadata 契約が parser の出力 slot 数と食い違う | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-41](#i-41) | compile cache の hit/miss を集計する手段が無い | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ### ドキュメント (DOC)
 
@@ -2120,6 +2121,33 @@
 - **関連**: 参照実装は `codex/legacy-maint-native-differential-split-audit` の `67624ca7`
   (`extract-defn-metadata-raw` への rename + `project-doc-defn-metadata` による slot 5 の切り落とし)。
   **この patch は main には当てない** — 上記のとおり衝突に負けて projection が発火しないため。
+  判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-41"></a>
+### I-41: compile cache の hit/miss を集計する手段が無い
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-module-cache-format-identity` の判定中)
+- **内容**: main の compile cache は 2 層ある。`lsharp-ir` の in-memory `ModuleCache`
+  (`crates/lsharp-ir/src/cache.rs`) と、process 間で共有する
+  `ArtifactCache` (`crates/lsharp-tooling/src/artifact_cache.rs`) である。
+  **どちらも累積 counter を持たない。** 1 回の compile が cache から来たかは
+  `CompileArtifacts::from_cache` で分かるが、**module 単位の hit/miss、link を
+  full build したか、cache が何回無効化されたかは観測できない**。
+- **根拠**: 2026-08-22 実測。`grep -rn "note_module_hit\|CompileStats\|cache_hits" crates/*/src/`
+  が 0 件。`crates/lsharp-ir/src/cache.rs` の `pub fn` は
+  `fingerprint` / `deps_key` / `ast` / `imports` / `ir` / `has_ir` / `type_result_len` /
+  `len` / `prepare_for_entry` / `get` / `remove_module` のみで counter は無い。
+- **なぜ問題か**: dev-loop 高速化の評価が壁時計でしかできない。
+  「速くなったのは cache が効いたからか、単に対象が減ったからか」を切り分けられないため、
+  `LEGACY-MODULE-01` の残作業 (segment reuse、自動 eviction) の効果測定が
+  **測定条件の作り込みに依存してしまう**。
+- **含めない範囲**: cache 実装そのものの変更。counter を足すだけで、
+  `ArtifactCache` の envelope 形式や `ModuleCache` の invalidation 規則は変えない。
+- **関連**: 参照実装は `codex/legacy-module-cache-format-identity` の `bd7d540b`
+  (`note_compile_call` / `note_module_hit` / `note_module_miss` / `note_link_cache_hit` /
+  `note_link_full_build` / `reset_stats`)。ただし branch の counter は
+  同 branch の `PersistentCompileCache` に載っており、**main にその型は無い**ので
+  API 面はそのままでは移植できない。`CACHE-TELEMETRY-01` (`TODO.md`) が引き取る。
   判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 <a id="doc-01"></a>

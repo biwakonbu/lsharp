@@ -493,8 +493,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-maint-native-stage-chain-split` | 67 件 | **一部が live。`MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` へ引き継ぐ** | 約 18 件の test 分割は姉妹 branch で判定済みの同一 family、約 11 件は merge。imp-04 の feature lane 18 件のうち SCC 系 4 群は main が別設計で持ち、`CompileSession` も別配置で持つ。live は同名 function の衝突 (silent miscompilation)、cross-module type-alias、block 形式 module body の 3 件 (下記) |
 | `codex/legacy-maint-native-differential-split-audit` | 65 件 | **却下 (新規判定は 1 件のみ)** | 65 commit のうち **64 件は `codex/legacy-maint-native-stage-chain-split` と hash が一致**し判定済み。新規は `b4bc2db9` の imp-06 進捗記録 1 件で、doc-GREEN の規律により却下。あわせて前節で group 扱いだった fix 6 件を個別判定し、`67624ca7` から `I-40` を起票した (下記) |
 | `codex/legacy-maintenance-docs-active-only` | 86 件 | **一部が live。`LEGACY-MAINT-01` / `RUST-FILE-SIZE-GATE-01` / `DOC-ACTIVE-ONLY-01` へ引き継ぐ** | main 比 89 件のうち **58 件は `codex/legacy-maintenance-stage-chain-integration` と hash 一致**で判定済み。残る 31 件は分割 27 / file-size guard 3 / docs 1。分割の test 本体は全件 main にあり (ミス 42 名はすべて file-size guard / 分割機構 / main の後発設計に置き換わったもの)、live なのは**分割そのもの** — main が未分割のまま 800 行を超える file が 13 本ある。docs 1 件は doc-GREEN の規律で却下し `DOC-10` を起票 (下記) |
+| `codex/legacy-module-cache-format-identity` | 120 件 | **ほぼ却下。live は telemetry 1 件のみで `I-41` / `CACHE-TELEMETRY-01` へ引き継ぐ** | main 比 123 件のうち **58 件は判定済み branch と hash 一致**。残る 65 件は分割 52 / SCC + persistent cache の feature lane 13。分割は 26 commit 中 24 件が hit 率 100% で完全に吸収済み。feature lane は SCC を main が 13 本の ADR 込みで別実装済み、persistent cache は main の `ArtifactCache` (envelope + fingerprint + atomic rename) が writer lock 無しで同じ保証を出しているため不要。cycle の暗黙推論は `decisions-legacy-formatter-scc-imports.md` が明示 import を採る決定済み |
 
-残る未判定は 2 本。batch family の例外 1 本は上表で判定済み。
+残る未判定は 1 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -1251,3 +1252,73 @@ comm -23 names.txt mainfns.txt                                                  
 
 集合差は N 回の `grep -r` より速くもある (本 branch の 31 commit 分が数秒で終わる)。
 前節の判定はこの厳密版で取り直した結果に基づく。
+
+### `codex/legacy-module-cache-format-identity` (120 件) の判定
+
+#### 123 commit のうち 58 件は判定済み branch と hash が一致する
+
+main 比 123 件のうち、判定済みの 3 branch
+(`legacy-maintenance-{stage-chain-integration,docs-active-only}` /
+`legacy-maint-native-differential-split-audit`) のいずれにも無いのは **65 件**。
+merge commit は 0。branch tip は 2026-07-23、**main から 1514 behind**。
+
+65 件は性格がはっきり 2 つに割れる。
+
+| 群 | 件数 | 内容 |
+|---|---|---|
+| test/source の分割 + その記録 docs | 52 | 既判定 branch と同じ lane。`docs:` 側は関数を足さないので `EXTRACT0` |
+| module graph SCC と persistent compile cache の feature lane | 13 | この branch にしか無い実装 |
+
+#### 分割 52 件 -- **全件 100% 取り込み済み**
+
+追加された関数名を main の定義名集合へ突き合わせた結果、
+**分割 commit 26 件のうち 24 件が hit 率 100%**。残る 2 件のミスも既判定分と同一だった。
+
+| commit | ミス | 判定 |
+|---|---|---|
+| `20ff9495 refactor: split driver main source module` | `cmd_test` / `test_test_command_is_selfhost_shadow_command` | main は `cmd_test_with_format` (format 引数つき) へ**後発設計で置き換え済み**。`is_selfhost_shadow_command` は `main.rs:802` に現存 |
+| `72fc0bd8 refactor: split type inference source module` | `unify_with_subst` | main は `infer/unify.rs` へ**別の軸で**分割済みで、この中間関数を持たない |
+
+姉妹 branch と違い **file-size guard (`*_composed_of_bounded_fragments`) を一切足していない**ため、
+ミスが 2 件しか出ていない。この branch の分割は main に完全に吸収されている。
+
+#### feature lane 13 件 -- 意図はすべて main が別実装で満たしている
+
+hit 率だけ見ると 0〜55% で「ほぼ live」に見えるが、**関数名が一致しないのは
+main が同じ意図を別の型・別の API で解いているから**である。1 件ずつ突き合わせた。
+
+| commit | main の対応物 | 判定 |
+|---|---|---|
+| `93821d16 feat: detect module graph strongly connected components` | `ModuleGraph::scc_groups()` (`module_graph.rs:230`)、`module_graph/scc_tests.rs` | **取り込み済み** |
+| `1ebda587 feat: infer module cycles by scc` | `infer_scc_type_surfaces` (`compile_pipeline.rs:418`) + **明示 import** | **却下**。[`decisions-legacy-formatter-scc-imports.md`](decisions-legacy-formatter-scc-imports.md) (Accepted 2026-07-24) が「FormatterExpr / FormatterDecl は `Tools.Text.Formatter` を明示 import する」と決めており、branch の暗黙 cycle 推論 (`import_binding_matches_prefix` / `push_private_names` など) は**採らない方針が確定している** |
+| `47ec3320` / `5e3bca04` (docs) | `docs/adr/` に SCC 系 ADR が **13 本** | **取り込み済み** |
+| `76357dd3 feat(ir): key incremental cache entries by dependency surface` | `dependency_surface_key` / `ModuleCacheEntry::deps_key()` / `export_surface_eq` (`compile_incremental.rs`, `cache.rs:161`) | **取り込み済み** |
+| `987a685c feat(tooling): persist validated compile artifacts` | `ArtifactCache::{load,store}` (`artifact_cache.rs`)。schema + key envelope + payload fingerprint 検証つき | **取り込み済み**。checksum 破損を miss として扱う点まで同じ |
+| `d21b816e feat(tooling): serialize persistent cache writers per artifact key` | writer lock は無く、`write_wasm_artifact` の **pid + nonce + sequence の temp file → rename** で置き換え | **却下 (別設計で不要)**。atomic rename なので同時書き込みは last-writer-wins で壊れない |
+| `ba4235c3 feat(tooling): add lock-aware persistent cache eviction` | `trim_to_entries` / `trim_to_bytes` | **却下 (別設計で不要)**。lock が無いので「locked entry を飛ばす」概念自体が無く、読み手と競合しても `load` が `Ok(None)` を返して miss に落ちるだけ |
+| `eba6a495 feat(tooling): recover stale persistent cache locks safely` | 同上 | **却下 (別設計で不要)**。lock file が無いので stale lock も無い |
+| `9b7e2315 fix(tooling): preserve executable mode on native cache hits` | `compile.rs:366` が `target != CompileTarget::Native` のときだけ artifact key を作る | **却下 (到達しない)**。main は native artifact を cache しないので実行 bit の復元問題が起きない |
+| `00580693 feat(driver): add explicit persistent cache opt-in` | `--artifact-cache-dir` + env var + `--artifact-cache-max-entries` / `--artifact-cache-max-bytes` (`artifact_cache_options.rs`) | **取り込み済み (main の方が広い)** |
+| `f89f6766 fix(tooling): normalize source before persistent cache identity` | `compile.rs:365` が `prepare_source_for_compile` を **`CompileCacheKey::from_entry` より前**に呼び、`formatted` を cache hit 側の `CompileArtifacts` にも伝播している | **取り込み済み**。branch の fix と同じ順序である |
+| `bd7d540b feat(tooling): expose cached compile telemetry` | **無い** | **live**。`I-41` / `CACHE-TELEMETRY-01` へ引き取る |
+
+#### live な残りは telemetry 1 件だけ
+
+`grep -rn "note_module_hit\|CompileStats\|cache_hits" crates/*/src/` は 0 件で、
+main の 2 層 cache はどちらも累積 counter を持たない。1 回の compile については
+`CompileArtifacts::from_cache` で hit を見られるが、**module 単位の hit/miss と
+link の cache hit / full build は観測できない**。`I-41` として起票した。
+
+なお `93821d16` の 4 test のうち `test_scc_groups_empty_and_singleton_graphs` だけは
+main に対応が無いが、**空 graph は `build_from_entry` からは作れず** (entry は必ず存在する)、
+singleton は main の既存 fixture の `Base` / `Consumer` が既に覆っている。
+起票しない。
+
+#### この branch から得た教訓
+
+**hit 率の低さは live の証拠ではない。** feature lane 13 件の hit 率は 0〜55% で、
+機械的な triage なら「ほぼ全部 live」と読める。実際に live なのは 1 件だった。
+名前が一致しないのは main が**別の型に別の API で**同じ意図を実装しているためで、
+`ArtifactCache` と `PersistentCompileCache`、`--artifact-cache-dir` と branch の cache opt-in は
+名前が 1 つも重ならない。**triage の hit 率は「読む順番」を決めるためだけに使い、
+判定は必ず main 側の対応物を名指しできるまで探してから下す。**

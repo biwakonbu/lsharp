@@ -2928,7 +2928,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `infer.rs`、parser/lower/driver/LSP の責務分割を、型・focused test・snapshot parity を保って完了する。WasmGC emitter の instruction lowering / Component output seam / Preview2・CLI runner seam、WASI HTTP handler core seam、WASI GC collector seam、WASI tests core seam も verified とし、残る責務分割を続ける。
   **残っている超過 13 file と、既に設計済みの分割軸** (2026-08-22 実測 / 軸は
   `codex/legacy-maintenance-docs-active-only` (2026-07-24) が実施済み。
-  追加された test 本体は全件 main にあり、ミスは file-size guard 関数 1 個のみだった。
+  追加された test 本体は全件 main にあり、ミス 42 名は file-size guard / 分割機構 / main が
+  後発設計で置き換えたものだけだった。
   **1514 commit 越しに分割 diff は当てず、軸だけ参照して main の現行内容の上でやり直す**):
 
   | file | 行数 | 分割軸 | 参照 commit |
@@ -2957,6 +2958,18 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `5348570e` は方針は同じだが 2026-07-24 の branch 実測値を現在値として書いたため却下した。
   **含めない範囲**: 分割そのもの (`LEGACY-MAINT-01`)、gate (`RUST-FILE-SIZE-GATE-01`)、
   `TODO.md` 全体の再編。
+
+- [ ] `CACHE-TELEMETRY-01` compile cache に hit/miss の集計 counter を足す — Issue `I-41`。
+  main の 2 層 cache (`lsharp-ir` の `ModuleCache`、`lsharp-tooling` の `ArtifactCache`) は
+  どちらも累積 counter を持たず、1 回の compile が cache から来たかを
+  `CompileArtifacts::from_cache` で見られるだけである。
+  受入条件: module 単位の hit/miss と link の cache hit / full build を数えられること。
+  数え方の test を RED から書き、`LEGACY-MODULE-01` の残作業の効果を
+  **壁時計ではなく counter で**示せる状態にすること。
+  参照実装は `codex/legacy-module-cache-format-identity` の `bd7d540b` だが、
+  counter が載っている `PersistentCompileCache` は main に無いので API はそのまま移せない。
+  **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
+  eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
 - [ ] `RUNNER-SCANNER-01` selfhost TestRunner の legacy scanner を canonical inventory へ収束させる —
   Issue `I-30`。`TestRunner.ls` に `collect-defn-metadata-loop` / `extract-test-cases-loop` の
@@ -3001,28 +3014,29 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 2 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 1 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
   `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
   tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
-  21 本は ADR で判定済み。ここの対象は残る **2 本**。
+  22 本は ADR で判定済み。ここの対象は残る **1 本**。
   **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
   patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
   判定は `git cherry` の commit 数ではなく **touched file の content diff** で行う
   (whole-file take / hand-merge で入れた分は patch-id が一致しないため)。
   commit 数の多い順に:
-  - `codex/legacy-module-cache-format-identity` (120) / `codex/v0.2-ec-m1-02-integration` (119) —
-    いずれも **origin に無い local のみ**。
+  - `codex/v0.2-ec-m1-02-integration` (119) — **origin に無い local のみ**。
+    `codex/legacy-module-cache-format-identity` (120) /
     `codex/legacy-maintenance-docs-active-only` (86) /
     `codex/legacy-maintenance-stage-chain-integration` (56) /
     `codex/legacy-maint-native-stage-chain-split` (67) /
     `codex/legacy-maint-native-differential-split-audit` (65) は 2026-08-22 に判定済みで、
     live な残りは `FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `RUST-FILE-SIZE-GATE-01` / `I-35` /
     `MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` /
-    `DOCTOOLS-META-SLOT-01` / `LEGACY-MAINT-01` / `DOC-ACTIVE-ONLY-01` へ引き取った
+    `DOCTOOLS-META-SLOT-01` / `LEGACY-MAINT-01` / `DOC-ACTIVE-ONLY-01` /
+    `CACHE-TELEMETRY-01` へ引き取った
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
   **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。
