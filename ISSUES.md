@@ -164,6 +164,7 @@
 | [I-29](#i-29) | aarch64 native の文字列表現が bit 32 を判別子に使うため、heap offset が 4 GiB を越えると base 相対 offset が絶対番地として strlen される | 中 | open | -- |
 | [I-30](#i-30) | selfhost TestRunner に legacy scanner 2 本と canonical inventory が並存し、実行対象の正本が二つある | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 3 件) | 低 | open | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
+| [I-33](#i-33) | analysis-only cache の直後に compile すると空の IR が返る (clean-hit が IR readiness を見ていない) | 中 | resolved | [analysis/compile cache 境界](docs/adr/decisions-legacy-module-analysis-compile-cache-boundary.md) |
 
 ### ドキュメント (DOC)
 
@@ -2048,6 +2049,27 @@
   修正を入れるなら、同時に `-D warnings` を CI で常時要求するかを決める必要がある
   (CI の扱いは本 slice のスコープ外)。
 - **関連**: `INFER-DEPTH-01`。
+
+<a id="i-33"></a>
+### I-33: analysis-only cache の直後に compile すると空の IR が返る
+
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の
+  `codex/legacy-module-scc-cache-contract` 判定中)
+- **内容**: `analyze_multi_file_incremental_with_overrides` は AST と型 surface だけを cache へ入れ、
+  IR は `build_module_cache_entry` (`compile_support.rs:108`) が全 field 空の placeholder を置く。
+  compile 側の clean-hit 判定は fingerprint 一致だけを見ていたため、**analyze の直後に
+  `compile_multi_file_with_cache` を呼ぶと空 module がそのまま返る**。
+  `crates/lsharp-tooling/src/compile.rs:259` から呼ばれる公開経路である。
+- **根拠**: RED test `test_compile_multi_file_with_cache_materializes_ir_after_analyze_only_cache`
+  が `compiled.functions` 空で落ちた (2026-08-22 実測)。
+- **解決** (2026-08-22): `ModuleCacheEntry` に `ir_ready` を持たせ、`set_ir` 時のみ true にする。
+  compile 側の clean-hit 2 箇所 (`compile_incremental.rs:486` / `:540`) に `has_ir()` を足した。
+  analysis 側の判定と SCC 経路の `linked_module` guard は変更していない。
+  判断は [analysis/compile cache 境界 ADR](docs/adr/decisions-legacy-module-analysis-compile-cache-boundary.md)。
+- **経緯**: `codex/legacy-module-scc-cache-contract` @ `265a42c5` (2026-07-24) が同じ問題を
+  branch 側で直していた。main は `lib.rs` を分割済みで diff は当たらないため、
+  指摘だけを取り込んで main の構造へ移植した。
+- **関連**: `LEGACY-MODULE-01`、[worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 ### DOC-01: ユーザーガイドの主要範囲不足
 

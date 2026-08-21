@@ -483,7 +483,7 @@ pub fn compile_multi_file_incremental(
         let fingerprint = SourceFingerprint::from_source(&source);
         let clean_hit = cache
             .get(mod_name)
-            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+            .is_some_and(|entry| entry.fingerprint() == fingerprint && entry.has_ir());
         if clean_hit {
             return Ok(cache
                 .get(mod_name)
@@ -537,7 +537,7 @@ pub fn compile_multi_file_incremental(
         let fingerprint = SourceFingerprint::from_source(&source);
         let clean_hit = cache
             .get(mod_name)
-            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+            .is_some_and(|entry| entry.fingerprint() == fingerprint && entry.has_ir());
         if !clean_hit {
             changed_modules.push(mod_name.clone());
         }

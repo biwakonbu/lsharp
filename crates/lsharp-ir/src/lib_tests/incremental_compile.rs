@@ -424,3 +424,76 @@ fn test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit() 
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn test_compile_multi_file_with_cache_materializes_ir_after_analyze_only_cache() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_compile_multi_file_cache_after_analyze_{}",
+        std::process::id()
+    ));
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+
+    std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+    std::fs::write(
+        dir.join("Main.ls"),
+        "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+    )
+    .unwrap();
+
+    let entry = dir.join("Main.ls");
+    let mut cache = CompilationCache::new();
+    // analysis-only cache は型 surface と AST だけを持ち、IR は空 placeholder になる
+    analyze_multi_file_incremental_with_overrides(&entry, &HashMap::new(), &mut cache)
+        .expect("analysis-only cache should be populated");
+
+    let compiled = compile_multi_file_with_cache(&entry, &mut cache)
+        .expect("compile should materialize IR from an analysis-only cache");
+    let fresh = compile_multi_file(&entry).expect("fresh compile should succeed");
+
+    assert!(
+        !compiled.functions.is_empty(),
+        "analysis-only cache hit must not return an empty IR module"
+    );
+    assert_eq!(
+        compiled.dump(),
+        fresh.dump(),
+        "compile after analysis-only cache must match a fresh compile"
+    );
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn test_compile_single_module_with_cache_materializes_ir_after_analyze_only_cache() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_compile_single_module_cache_after_analyze_{}",
+        std::process::id()
+    ));
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let entry = dir.join("Main.ls");
+    std::fs::write(&entry, "(module Main)\n(defn main [] 7)\n").unwrap();
+
+    let mut cache = CompilationCache::new();
+    // import を持たない単一 module は sorted_files.len() == 1 の経路を通る
+    analyze_multi_file_incremental_with_overrides(&entry, &HashMap::new(), &mut cache)
+        .expect("analysis-only cache should be populated");
+
+    let compiled = compile_multi_file_with_cache(&entry, &mut cache)
+        .expect("compile should materialize IR from an analysis-only cache");
+    let fresh = compile_multi_file(&entry).expect("fresh compile should succeed");
+
+    assert!(
+        !compiled.functions.is_empty(),
+        "analysis-only cache hit must not return an empty IR module"
+    );
+    assert_eq!(compiled.dump(), fresh.dump());
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}

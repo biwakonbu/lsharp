@@ -453,9 +453,35 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `backup/dev-loop-speedup-pre-rebase` | 2 件 | 取り込み済み | rebase 前の退避 ref。main に同題の `9203de68` / `43d3b905` がある |
 | `codex/legacy-test-01-limits` | 4 件 | 却下 | 4 commit すべて main が別形で持つか、main の方が新しい (下記) |
 | `codex/legacy-test-01-formatter-blocker` | 2 件 | **部分取り込み** | fixture 修正 (1 hunk) は取り込み、`.ls` の module 再構成と docs は却下 (下記) |
+| `codex/legacy-module-scc-cache-contract` | 7 件 | **部分取り込み** | 6 commit は main が別形で持つか main の方が新しい。`265a42c5` の指摘だけ移植した (下記) |
 
-残る未判定は `codex/legacy-module-scc-cache-contract` (7) と、
-12 commit 以上の大きい 9 本 (batch family を除く)。
+残る未判定は 12 commit 以上の大きい 9 本 (batch family を除く) と、batch family の例外 1 本。
+
+#### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
+
+7 commit のうち **6 件は main が既に別形で持つか、main の方が先へ進んでいる**。
+main は当時の `lib.rs` を `compile_incremental.rs` / `compile_entrypoints.rs` /
+`compile_pipeline.rs` / `compile_support.rs` へ分割し、`module_graph_scc.rs` を
+`module_graph/scc.rs` へ移しているので、branch の diff はそのままでは当たらない。
+
+| commit | branch が持つもの | main の状態 |
+|---|---|---|
+| `605539a9` SCC grouping foundation | `module_graph_scc.rs` + `scc_groups()` | `module_graph/scc.rs` の `compute_groups` + `ModuleGraph::scc_groups()` (`module_graph.rs:230`)。test は `module_graph/scc_tests.rs` と `module_graph/tests.rs:251` |
+| `f412c141` SCC mutual recursion inference | `module_scc_infer.rs` | `compile_pipeline.rs:418` の `infer_scc_type_surfaces`。`compile_entrypoints.rs:55` / `compile_incremental.rs:83` から呼ばれる |
+| `723825a8` formatter を acyclic 化 | facade から式 dispatcher を移す | **明示的に却下**。上記 `codex/legacy-test-01-formatter-blocker` の節を参照 |
+| `160d7d19` block 推論を stack-safe に | `TypeInferBlock.ls` を 293 → 139 行へ縮める | main の同ファイルは **660 行**で、branch 版とは 18+/539- の差。branch が回避したかった stack overflow は main では起きない -- `test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds` が main で pass する (2026-08-22 実測、66.9s の suite 内) |
+| `69f580ef` incremental を SCC group へ一般化 | `lib.rs` の 666 行改修 | `compile_incremental.rs:528` が `group.len() > 1` を見て `compile_multi_file_incremental_scc` へ分岐する |
+| `ae24949c` dependency surface で cache を keying | `ModuleCacheEntry::deps_key` + `compile_multi_file_with_cache` | 両方 main にある (`cache.rs:158` / `compile_entrypoints.rs:116`)。ADR は `decisions-legacy-module-*` 30 本の族へ発展済み |
+| `265a42c5` analysis/compile cache の readiness 分離 | `ir_ready` / `has_ir()` | **main に無かった。取り込んだ** |
+
+**`265a42c5` は本物の bug 指摘だった。** main の `analyze_multi_file_incremental_with_overrides` は
+空の placeholder IR を cache へ入れるのに、compile 側の clean-hit は fingerprint しか見ていない。
+`crates/lsharp-tooling/src/compile.rs:259` から呼ばれる公開経路で空 module が返る。
+RED を書いて再現し、main の分割後の構造へ移植した。詳細は
+[analysis/compile cache 境界 ADR](decisions-legacy-module-analysis-compile-cache-boundary.md) と `I-33`。
+
+**commit 数で判定していたら見落としていた。** 7 件中 6 件が「main が別形で持つ」ため、
+branch 全体を却下する誘惑があったが、内容で 1 件ずつ当たった結果 1 件だけ生きていた。
 
 #### `codex/legacy-test-01-formatter-blocker` を fixture だけ取り込んだ根拠
 

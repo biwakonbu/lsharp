@@ -125,6 +125,8 @@ pub struct ModuleCacheEntry {
     ast: Arc<Program>,
     type_surface: ModuleTypeSurface,
     ir: Module,
+    /// IR が compile 経路で materialize 済みか。analysis-only cache では false のまま。
+    ir_ready: bool,
     ir_segments: ModuleIrSegments,
     imports: Vec<String>,
 }
@@ -145,6 +147,7 @@ impl ModuleCacheEntry {
             ast,
             type_surface,
             ir,
+            ir_ready: false,
             ir_segments,
             imports,
         }
@@ -175,6 +178,16 @@ impl ModuleCacheEntry {
         &self.ir
     }
 
+    /// この entry の IR が compile 経路で materialize 済みかを返す。
+    ///
+    /// analysis-only cache は型 surface と AST だけを保持し、空の placeholder IR を
+    /// 持つため、`ir()` の中身だけで compile 済みかを判定してはならない。
+    /// 空の IR は有効なプログラムでも起こり得るので、関数数や segment の空非空ではなく
+    /// 明示フラグで判定する。
+    pub fn has_ir(&self) -> bool {
+        self.ir_ready
+    }
+
     pub(crate) fn ir_segments(&self) -> &ModuleIrSegments {
         &self.ir_segments
     }
@@ -189,6 +202,7 @@ impl ModuleCacheEntry {
 
     pub(crate) fn set_ir(&mut self, ir: Module) {
         self.ir = ir;
+        self.ir_ready = true;
     }
 
     pub(crate) fn set_ir_segments(&mut self, ir_segments: ModuleIrSegments) {
