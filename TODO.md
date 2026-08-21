@@ -3007,6 +3007,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   test は同 branch の `crates/lsharp-types/tests/computation_builder_diagnostics.rs`。
   **含めない範囲**: computation expression の lowering / codegen (別 slice)。
 
+- [ ] `CASE-ZERO-ARITY-01` canonical `:case` で 0 引数関数を呼べるようにする — Issue `I-45`。
+  `:case [(expect (zero) 1)]` が `LS1001` (`UndefinedVar`) で `cases:0` / `executed:0` の
+  `fail` になる。`:assert` と legacy `:example` は同じ呼び出しを解決できるので、
+  `:case` の evaluator 側の穴である。
+  受入条件: 0 引数の `defn` を `expect` の左右どちらに置いても `executed` が 1 以上になり、
+  期待値が一致すれば `status:"pass"` / exit 0、外れれば `status:"fail"` / exit 1 に割れること。
+  RED は `lsharp test` の exit code と `coverage.executed` の**両方**を見る e2e とし、
+  arity 1 の control を同じ fixture 群に置いて対比できる形にする。
+  **含めない範囲**: `(module ...)` 本体に置いた `:case` (`I-39` / `MODULE-BODY-FORM-01` 側)。
+  `:example` から `:case` への一括移行そのもの。
+
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が
   「type-directed sampling、seed、shrink は別 slice」と明記したうえで、
@@ -3021,6 +3032,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `2ea64d25` (recursion bound) / `db4f1577` (constrained) / `2aaa33ef` (type alias) /
   `f311a0d8` (nested constrained) / `c5061192` (String `matches` witness) /
   `58ec8513` (multi-binder shrink) / `7e450c98` (composite sample の wasm 実行)。
+  counterexample の保存は `58065c62` (`metadata_report.rs` に property index) と
+  `75235456` (`AssuranceReport.ls` / `TestProtocol.ls`) が参照実装。main は
+  `PropertyRunner.ls:11` で「seed / shrink / 未知 option は TestRunner へ渡す前に拒否する」と
+  明記し、`make-property-sampling-plan` (`:511`) が seed を 0、coverage-count を 0 に固定するため、
+  assurance JSON の `"seed"` は常に 0、`"shrinks"` は常に空である (2026-08-22 実測)。
   **含めない範囲**: selfhost 側の sampling (`bbffedac` 相当。Rust 側が固まってから)、
   counterexample の shrink 品質の閾値化。
 

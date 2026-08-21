@@ -176,6 +176,7 @@
 | [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-45](#i-45) | canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ### ドキュメント (DOC)
 
@@ -2248,6 +2249,36 @@
   test は同 branch の `crates/lsharp-types/tests/computation_builder_diagnostics.rs`。
   `COMP-BUILDER-01` (`TODO.md`) が引き取る。
   判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
+<a id="i-45"></a>
+### I-45: canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **内容**: `:case [(expect (zero) 1)]` のように **引数を取らない関数**を `expect` 内で呼ぶと、
+  selfhost runner が `LS1001` (`UndefinedVar`) を出して `cases:0` / `executed:0` のまま
+  `status:"fail"` を返す。**期待値が正しいか誤っているかに関係なく同じ結果になる。**
+  同じ 0 引数呼び出しを `:assert` と legacy `:example` は解決できるので、
+  canonical `:case` の evaluator に固有の穴である。
+- **根拠**: 2026-08-22 実測。`./target/debug/lsharp test <fixture>` の
+  `implementation_conformance` を読んだもの。arity を唯一の変数にした対比:
+
+  | fixture | metadata | 呼び先の arity | 結果 |
+  |---|---|---|---|
+  | `(defn zero [] 1)` + `:case [(expect (zero) 1)]` | canonical case | 0 | `status=fail cases=0 exec=0 code=1001` |
+  | `(defn incr [x] ...)` + `:case [(expect (incr 1) 2)]` | canonical case | 1 | `status=pass cases=2 exec=2 code=0` |
+  | `(defn zero [] 1)` + `:assert [(> (zero) 0)]` | canonical assert | 0 | `status=pass cases=1 exec=1 code=0` |
+  | `(defn one [] ...)` + `:example [(= (one) 1)]` | legacy example | 0 | `status=pass cases=1 exec=1 code=0` |
+
+  literal だけの `:case [(expect 1 1)]` / `[(expect 1 2)]` は pass / fail を正しく割る
+  (`cases=1 exec=1`) ので、`:case` lane 全体が死んでいるわけではない。
+- **CI を素通りしない**: 失敗側へ倒れる (`status:"fail"` / exit 1) ので、
+  誤った contract が緑で通ることはない。**危険なのは逆向き** — 正しい contract が
+  永久に赤のままになり、`:example` から `:case` への移行が機械的にはできない。
+- **範囲外**: `(module ...)` 本体に置いた場合。main は module 本体へ降りないため
+  そもそも検査が走らない (`I-39` / `MODULE-BODY-FORM-01`)。
+- **関連**: `CASE-ZERO-ARITY-01` (`TODO.md`) が引き取る。
+  canonical case lane の取り込み判定は
+  [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) の群 3。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

@@ -494,7 +494,7 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-maint-native-differential-split-audit` | 65 件 | **却下 (新規判定は 1 件のみ)** | 65 commit のうち **64 件は `codex/legacy-maint-native-stage-chain-split` と hash が一致**し判定済み。新規は `b4bc2db9` の imp-06 進捗記録 1 件で、doc-GREEN の規律により却下。あわせて前節で group 扱いだった fix 6 件を個別判定し、`67624ca7` から `I-40` を起票した (下記) |
 | `codex/legacy-maintenance-docs-active-only` | 86 件 | **一部が live。`LEGACY-MAINT-01` / `RUST-FILE-SIZE-GATE-01` / `DOC-ACTIVE-ONLY-01` へ引き継ぐ** | main 比 89 件のうち **58 件は `codex/legacy-maintenance-stage-chain-integration` と hash 一致**で判定済み。残る 31 件は分割 27 / file-size guard 3 / docs 1。分割の test 本体は全件 main にあり (ミス 42 名はすべて file-size guard / 分割機構 / main の後発設計に置き換わったもの)、live なのは**分割そのもの** — main が未分割のまま 800 行を超える file が 13 本ある。docs 1 件は doc-GREEN の規律で却下し `DOC-10` を起票 (下記) |
 | `codex/legacy-module-cache-format-identity` | 120 件 | **ほぼ却下。live は telemetry 1 件のみで `I-41` / `CACHE-TELEMETRY-01` へ引き継ぐ** | main 比 123 件のうち **58 件は判定済み branch と hash 一致**。残る 65 件は分割 52 / SCC + persistent cache の feature lane 13。分割は 26 commit 中 24 件が hit 率 100% で完全に吸収済み。feature lane は SCC を main が 13 本の ADR 込みで別実装済み、persistent cache は main の `ArtifactCache` (envelope + fingerprint + atomic rename) が writer lock 無しで同じ保証を出しているため不要。cycle の暗黙推論は `decisions-legacy-formatter-scc-imports.md` が明示 import を採る決定済み |
-| `codex/v0.2-ec-m1-02-integration` | 121 件 | **主要部は取り込み済み。live は 3 群で `I-42` / `I-43` / `I-44` へ、先送り済み lane は `PROP-GEN-01` へ引き継ぐ** | 判定済みのどの branch とも hash の重なりが 0。主題で 9 群に分け、群ごとに main を実際に走らせて判定した。群 1〜5 の 50 件 (contract inventory / selfhost 形保持 / canonical assert・case / migration + MCP / assurance report) は main が別名で全て持つ。live は静的判定が `if`・`let`・`do`・`match` を貫通しない件、`:example`・`:invariant`・`:doc` の識別子検査が ADT constructor・trait method・quote・builtin で false positive を出す件、未定義 computation builder が型検査を通る件の 3 つ。property generator lane 11 件は main 自身が「別 slice」と明記した先送りで、branch はその参照実装 (下記) |
+| `codex/v0.2-ec-m1-02-integration` | 121 件 | **主要部は取り込み済み。live は `I-42` / `I-43` / `I-44` / `I-45` へ、先送り済み lane は `PROP-GEN-01` へ引き継ぐ** | 判定済みのどの branch とも hash の重なりが 0。主題で 9 群に分け、群ごとに main を実際に走らせて判定した。群 1〜5 の 50 件 (contract inventory / selfhost 形保持 / canonical assert・case / migration + MCP / assurance report) は main が別名で全て持つ。live は静的判定が `if`・`let`・`do`・`match` を貫通しない件、`:example`・`:invariant`・`:doc` の識別子検査が ADT constructor・trait method・quote・builtin で false positive を出す件、未定義 computation builder が型検査を通る件、canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない件の 4 つ。assurance の `status` と exit code は 3 lane すべてで整合していることを追検証した。property generator lane 11 件は main 自身が「別 slice」と明記した先送りで、branch はその参照実装 (下記) |
 
 **非 batch 23 本の判定はこれで完了した。** batch family の例外 1 本は上表で判定済み。
 
@@ -1349,7 +1349,7 @@ Rust の `fn` 名と L# の `defn` 名の両方で strict set-membership triage 
 食い違うため、名前ベースの一致はほぼ生じない。
 main が lane を持っていることは file 名ではなく**振る舞い**でしか確かめられなかった。
 
-そこで 121 件を主題で 8 群に分け、群ごとに **main を実際に走らせて**判定した。
+そこで 121 件を主題で 9 群に分け、群ごとに **main を実際に走らせて**判定した。
 probe は `check_metadata(&parse(src))` と `Infer::infer_program(&program)` を直接呼ぶ
 一時 integration test で、判定後に削除した。
 
@@ -1359,11 +1359,11 @@ probe は `check_metadata(&parse(src))` と `Infer::infer_program(&program)` を
 |---|---|---|---|---|
 | 1 | contract inventory を単一正本にする | 7 | 取り込み済み | `crates/lsharp-types/src/metadata_contract.rs` (565 行)、`inventory_contract_suites()` (`metadata_check.rs:106`)、`crates/lsharp-tooling/tests/metadata_frontend_semantics_inventory.rs` |
 | 2 | selfhost の parser / formatter / docs で contract 形を保つ | 6 | 取り込み済み | `selfhost/src/Syntax/Parser.ls` / `AST.ls` が contract 形を持ち、`App/Cli.ls` が投影する |
-| 3 | canonical assert / case の parse → typecheck → execute | 7 | 取り込み済み | `check_assertion_types` / `check_case_types` (`metadata_check.rs:107-108`)、`tests/metadata_contract_assert.rs` / `_case.rs` |
+| 3 | canonical assert / case の parse → typecheck → execute | 7 | **parse / typecheck は取り込み済み。execute に穴** | `check_assertion_types` / `check_case_types` (`metadata_check.rs:107-108`)、`tests/metadata_contract_assert.rs` / `_case.rs`。ただし `:case` の実行が 0 引数呼び出しで落ちる → `I-45` |
 | 4 | legacy metadata migration の分類と MCP 露出 | 4 | 取り込み済み | `crates/lsharp-types/src/metadata_migration.rs` (244 行)、`crates/lsharp-driver/src/mcp_language.rs:50` が `classify_legacy_contracts` を呼ぶ |
-| 5 | selfhost runner の contract 実行と assurance report | 26 | 取り込み済み | `selfhost/src/App/Cli.ls:899-980` の `assurance-*` 群 (coverage / diagnostics / provenance / intent / conformance の JSON、`assurance-method` / `assurance-generator` / `assurance-status`) |
+| 5 | selfhost runner の contract 実行と assurance report | 26 | 取り込み済み (exit code の整合を追検証) | `selfhost/src/App/Cli.ls:899-980` の `assurance-*` 群 (coverage / diagnostics / provenance / intent / conformance の JSON、`assurance-method` / `assurance-generator` / `assurance-status`)。`status` と exit code の対応は下記「追検証」で実測 |
 | 6 | vacuity / reflexivity の拒否 | 約 25 | **部分取り込み。live** | `canonical_contract_check/non_vacuity.rs` — literal / `not` / `and` / `or` / Int 比較まで。`if` / `let` / `do` / `match` を貫通しない → `I-42` |
-| 7 | property generator lane | 約 15 | **main が明示的に先送り。参照実装として残す** | `metadata_check/test_generation.rs:44-49` — 「type-directed sampling、seed、shrink は別 slice」と明記 → `PROP-GEN-01` |
+| 7 | property generator lane | 約 15 | **main が明示的に先送り。参照実装として残す** | `metadata_check/test_generation.rs:44-49` — 「type-directed sampling、seed、shrink は別 slice」と明記。selfhost 側も `PropertyRunner.ls:11` が seed / shrink を拒否し、assurance JSON の `"seed"` は常に 0、`"shrinks"` は常に空 → `PROP-GEN-01` |
 | 8 | contract scope 解決 | 16 | **半分は到達しない、半分は live** | `metadata_check.rs:64` の `all_names` → `I-43` |
 | 9 | computation builder の検証 | 4 | **live** | main に対応物なし → `I-44` |
 
@@ -1458,6 +1458,76 @@ builder 名に fresh type variable が割り当てられ `UndefinedVar` にな�
 main には `computation_builder_diagnostics.rs` に相当する test が無い。
 branch の `2d116f69` は `TypeError::UndefinedVar { name: "missing" }` (code `LS1001`) と、
 span が `(computation missing (return 42))` 全体を指すことまで固定している。
+
+
+### 追検証 1: assurance の `status` と exit code は整合している (群 5)
+
+群 5 を「取り込み済み」と書いた時点では、`assurance-*` が **出力される**ことしか見ていなかった。
+出力が正しくても exit code が常に 0 なら CI は無言で緑になる。これは本監査が探している
+失敗の形そのものなので、`status` と exit code の対応を実測した。
+
+```
+examples/fib.ls                        status=pass  method=none                       exit=0
+examples/metadata.ls                   status=pass  method=legacy-deterministic-smoke  exit=0  (cases=6)
+:example [(= (one) 1)]                 status=pass  method=legacy-deterministic-smoke  exit=0
+:example [(= (one) 2)]                 status=fail  method=legacy-deterministic-smoke  exit=1
+:assert  [(> 1 0)]                     status=pass  method=assert                      exit=0
+:assert  [(> 0 1)]                     status=fail  method=assert                      exit=1
+:case    [(expect 1 1)]                status=pass  method=explicit-case               exit=0
+:case    [(expect 1 2)]                status=fail  method=explicit-case               exit=1
+```
+
+**3 lane すべてで `pass` → 0 / `fail` → 1 に割れる。** 無言の緑は起きない。
+
+`method=none` (`fib.ls`) は「contract が 1 つも無い」を意味し、これも exit 0 になる。
+contract の**不在**と contract の**成功**が exit code では区別できないので、
+gate として使うなら `coverage.executed` を併せて見る必要がある。
+
+### 追検証 2: `:case` だけが 0 引数呼び出しで落ちる (`I-45`)
+
+追検証 1 の fixture を arity で振ったところ、canonical `:case` にだけ穴が出た。
+
+```
+:case  [(expect (zero) 1)]  ; (defn zero [] 1)      status=fail cases=0 exec=0 code=1001
+:case  [(expect (incr 1) 2)]; (defn incr [x] ...)   status=pass cases=2 exec=2 code=0
+:assert[(> (zero) 0)]       ; 同じ 0 引数呼び出し    status=pass cases=1 exec=1 code=0
+:example[(= (one) 1)]       ; 同じ 0 引数呼び出し    status=pass cases=1 exec=1 code=0
+```
+
+`:assert` と legacy `:example` は同じ 0 引数呼び出しを解決できるので、
+lane 全体ではなく `:case` の evaluator に固有である。`ISSUES.md` の `I-45` /
+`TODO.md` の `CASE-ZERO-ARITY-01` が引き取る。
+
+**群 3 の判定を「取り込み済み」から「parse / typecheck は取り込み済み、execute に穴」へ改めた。**
+`check_case_types` と `tests/metadata_contract_case.rs` が main にあることを確認した時点で
+止めたのが誤りで、静的な検査経路の存在は**実行経路の健全性を含意しない**。
+
+### 追検証 3: `729d85d0` (docs) の判定
+
+`729d85d0` "docs: define worktree lifecycle" は 9 群のどれにも属さない AGENTS.md 単独の commit
+(+7 行) だが、追加された 4 行は **main の `AGENTS.md:253-258` に逐語で存在する**。取り込み済み。
+
+### 判定粒度についての明示
+
+**群 1〜5 の 50 件は、群単位の対応物確認で判定した。** 「判定単位は常に commit 1 件」という
+本 ADR の規律に対して、ここは粒度を粗くしている。粗くしてよいと判断した根拠は、
+群 1〜5 が「main が同じ機能を別名で実装しているか」という単一の問いに還元でき、
+その問いは群単位で決着するからである。
+
+ただし粒度を粗くした以上、**群の判定は個々の commit の確認を含意しない**。
+実際、群 5 に入れていた `58065c62` (property counterexample index) と
+`75235456` (selfhost counterexample) は、個別に見ると main に対応物が無く、
+**群 7 (`PROP-GEN-01`) の先送り lane に属する**。主題が「assurance report」で似ていたために
+群 5 へ寄せていたもので、この 2 件は群 5 の「取り込み済み」に含めない。
+
+個別に対応物を名指しできたものは以下。
+
+| commit | 主題 | main 側の対応物 |
+|---|---|---|
+| `cb375e92` | MCP check の output schema 宣言 | `crates/lsharp-driver/src/mcp_schema.rs`、`mcp_tests.rs:28` の `test_error_tool_output_schema_is_closed_world` が `additionalProperties: false` を固定 |
+| `729d85d0` | worktree lifecycle の docs | `AGENTS.md:253-258` に逐語 |
+| `58065c62` | property counterexample index | **無し。`PROP-GEN-01` へ移した** |
+| `75235456` | selfhost counterexample 保存 | **無し。`PROP-GEN-01` へ移した** |
 
 ### この branch から得た教訓
 
