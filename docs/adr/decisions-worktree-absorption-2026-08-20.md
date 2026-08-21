@@ -425,7 +425,9 @@ tip に無く、docs のみの commit である。4 本とも origin にある�
 
 ### 取り込み済み 80 本の処置
 
-worktree が占有する 9 本を除いた **71 本の ref を削除した**。名前と sha は
+worktree が占有する 9 本を除いた 71 本が削除対象。うち **`main` の祖先 25 本は削除済み**。
+残る **patch-id 一致のみの 46 本は未削除** — `git branch -D` が auto mode classifier に
+拒否されたため。内容の等価性は確認済みなので、承認が下りれば実行できる。名前と sha は
 [`../development/operations/absorbed-branch-refs-2026-08-22.md`](../development/operations/absorbed-branch-refs-2026-08-22.md)
 に残す。この台帳が保証するのは sha からの復元ではなく **patch-id としての内容等価性** である
 (reflog は約 30 日で expire する)。

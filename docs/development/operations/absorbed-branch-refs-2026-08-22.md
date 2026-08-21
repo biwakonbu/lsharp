@@ -2,7 +2,9 @@
 
 `main` = `13a3786b` 時点。全 local branch **129 本** を `git cherry main <branch>` で分類し、
 `+` (main に patch-id が無い commit) が **0 本** の branch を「取り込み済み」とした。
-そのうち worktree が checkout していない **71 本** を削除する。その名前と sha をここに残す。
+そのうち worktree が checkout していない **71 本** が削除対象。**A の 25 本は削除済み、
+B の 46 本は未削除** (`git branch -D` が auto mode classifier に拒否された)。
+名前と sha をここに残す。
 
 ## この台帳が保証するもの / しないもの
 
@@ -31,9 +33,9 @@
 - `codex/v2-16c-native-selfhost-repl`
 - `codex/worktree-absorb-2026-08-20`
 
-## A. `main` の祖先 (25 本)
+## A. `main` の祖先 (25 本) — 削除済み
 
-`git merge-base --is-ancestor <branch> main` が真。`git branch -d` が受理する。
+`git merge-base --is-ancestor <branch> main` が真。`git branch -d` が受理した。
 
 | branch | sha | origin |
 |---|---|---|
@@ -63,7 +65,7 @@
 | `release/v0.1.0-native-rc1` | `e72c9e82b292` | origin |
 | `worktree-agbullet-fire-todo-tasks` | `47e5d3e63266` | local |
 
-## B. patch-id 一致のみ (46 本)
+## B. patch-id 一致のみ (46 本) — **未削除**
 
 祖先ではないが `git cherry main <branch>` が `+` を出さない。`-d` は拒否するので `-D` が要る。
 **この 46 本がこの台帳の本体である。**
