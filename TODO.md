@@ -954,7 +954,7 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **含めない範囲**: size-class allocator 自体の変更。
 
 - [ ] `RUST-FILE-SIZE-GATE-01` workspace 全域の 800 行 gate を入れる — Issue `I-01`。
-  main は per-file の targeted guard 8 本しか持たず、`crates/**/src/**` と
+  main は per-file の targeted guard 7 本 (`*_file_size.rs`) しか持たず、`crates/**/src/**` と
   `crates/**/tests/**` を走査する gate が無い。参照実装は
   `codex/legacy-maintenance-stage-chain-integration` の `e6ae428e` / `3c37f574`
   (`crates/lsharp-wasm/tests/rust_file_size_contract.rs` + allowlist 2 本)。

@@ -133,7 +133,7 @@
 
 | ID | 問題 | 影響度 | 状態 | 設計 doc |
 |----|------|--------|------|----------|
-| [I-01](#i-01) | ファイルサイズ規約 (500-800 行) を 16 ファイルが超過 | 高 | in-design | [imp-06](docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md) |
+| [I-01](#i-01) | ファイルサイズ規約 (500-800 行) を 39 ファイルが超過 (src 6 / tests 33) | 高 | in-design | [imp-06](docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md) |
 | [I-02](#i-02) | 診断 code/span が全 surface に未貫通 | 高 | in-design | [imp-02](docs/development/planning/improvement-designs/imp-02-error-handling-unification.md) |
 | [I-03](#i-03) | GC 容量 grow が全 runtime/backend に未貫通 | 高 | in-design | imp-03 |
 | [I-04](#i-04) | GC フリーリストが線形探索 | 中 | in-design | imp-03 |
@@ -332,28 +332,52 @@
 ### I-01: ファイルサイズ規約 (500-800 行) の大幅超過
 
 - **影響度**: 高 / **状態**: in-design
-- **内容**: CLAUDE.md のファイルサイズ規約 (1 ファイル 500-800 行) を大幅に超えるソースが
-  16 ファイルあり、エージェント解析精度・レビュー容易性・責務分離を損なっている。
-  主要超過ファイル (src のみ、2026-07-25 実測):
+- **内容**: CLAUDE.md のファイルサイズ規約 (1 ファイル 500-800 行) を超えるソースが
+  **39 ファイル** (`src/` 6 / `tests/` 33) あり、エージェント解析精度・レビュー容易性・
+  責務分離を損なっている。
+
+  `src/` 超過 (2026-08-22 実測):
 
   | ファイル | 行数 | 規約比 |
   |---------|------|--------|
-  | `crates/lsharp-wasm/src/wasi.rs` | 4568 | 5.7x |
-  | `crates/lsharp-ir/src/lib.rs` | 3080 | 3.9x |
-  | `crates/lsharp-tooling/src/compile.rs` | 2870 | 3.6x |
-  | `crates/lsharp-ir/src/lower/expr.rs` | 2833 | 3.5x |
-  | `crates/lsharp-types/src/infer.rs` | 2789 | 3.5x |
-  | `crates/lsharp-driver/src/main.rs` | 2568 | 3.2x |
-  | `crates/lsharp-syntax/src/parser.rs` | 2259 | 2.8x |
-  | `crates/lsharp-lsp/src/lib.rs` | 1397 | 1.7x |
+  | `crates/lsharp-driver/src/main.rs` | 3254 | 4.1x |
+  | `crates/lsharp-driver/src/main_tests.rs` | 3086 | 3.9x |
+  | `crates/lsharp-driver/src/mcp_tests.rs` | 1889 | 2.4x |
+  | `crates/lsharp-types/src/infer_tests.rs` | 1384 | 1.7x |
+  | `crates/lsharp-driver/src/mcp_review_registry_tests.rs` | 1223 | 1.5x |
+  | `crates/lsharp-types/src/validation.rs` | 825 | 1.0x |
 
-  残り 8 件は `src/` 配下の test module と driver/tooling/wasmgc surface。`constraints.rs`、
-  `macro_expand.rs`、`module_graph.rs`、`host_bridge.rs`、`wasi_runner.rs`、`lower/tests.rs` は
-  分割により 800 行以下へ縮小済み。
-- **根拠**: `find crates -path '*/src/*.rs' -type f -print0 | xargs -0 wc -l`。
+  `tests/` 超過の上位 (同実測、全 33 件):
+
+  | ファイル | 行数 | 規約比 |
+  |---------|------|--------|
+  | `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` | 62990 | 78.7x |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs` | 19412 | 24.3x |
+  | `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` | 6334 | 7.9x |
+  | `crates/lsharp-wasm/tests/e2e/strings_patterns_compiler_integration.rs` | 5354 | 6.7x |
+  | `crates/lsharp-wasm/tests/e2e/runtime_allocator_closures.rs` | 3061 | 3.8x |
+
+  **2026-07-25 実測の 16 件からの変化。** 当時の表に挙げた 8 ファイルのうち
+  `wasi.rs` (4568) / `lsharp-ir/src/lib.rs` (3080) / `compile.rs` (2870) /
+  `lower/expr.rs` (2833) / `infer.rs` (2789) / `parser.rs` (2259) / `lsp/lib.rs` (1397) の
+  **7 件は分割で解消した**。残る `main.rs` は **2568 → 3254 行へ増えている**。
+  現在の `src/` 超過 6 件のうち **4 件は `*_tests.rs`**、つまり production から test を
+  切り出した先が今度は超過している。**重心は `src/` から `tests/` へ移った** ので、
+  以後の分割対象は `crates/**/tests/**` である。
+- **根拠**: 2026-08-22 実測。比較可能性のため取得条件を固定する。
+
+  ```bash
+  find crates -path "*/src/*" -name "*.rs" | xargs wc -l | grep -v total | awk '$1>800' | sort -rn
+  find crates -path "*/tests/*" -name "*.rs" | xargs wc -l | grep -v total | awk '$1>800' | sort -rn
+  ```
+
   規約は AGENTS.md のファイルサイズ制限。
+- **gate の不在**: workspace 全域を走査する行数 gate は無く、per-file の targeted guard が
+  7 本あるだけである (`*_file_size.rs`)。`RUST-FILE-SIZE-GATE-01` (`TODO.md`) が引き取る。
+  gate を入れると allowlist が初期 39 件になる。
 - **関連**: selfhost 側は ADR-168 (STR-01〜03) で分割実績あり (TypeInfer.ls 1093 → 290 行など)。
   Rust 側の分割設計は [imp-06](docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md)。
+  分割そのものは `LEGACY-MAINT-01`、gate は `RUST-FILE-SIZE-GATE-01`。
 
 <a id="i-02"></a>
 ### I-02: 診断 code/span が全 surface に未貫通
