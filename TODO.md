@@ -2831,7 +2831,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
-  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない)。残る非 batch 23 本のうち
+  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
+  tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
   14 本は ADR で判定済み。ここの対象は残る **9 本**。
   **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
   patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
@@ -2847,11 +2848,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)
   - `codex/lsharp-wasmgc-atomic-artifact` (37) / `codex/v0.2-ec-m1-06-all-form-differential` (25) /
     `codex/v0.2-diag-api-doc-forwarding-rebased` (12)
-  - batch family の唯一の例外 `codex/lsharp-type-record-ops-batch` @ `a5bb397a`
-    (`docs: record Linux evidence for Type record operations`、`TODO.md` +
-    `docs/development/operations/rust-boundary-reduction.md` の docs-only 2 file)。
-    batch tip `3b5dbef5` に含まれない唯一の commit で、bounded scan の実装差分ではないため
-    `BOUNDED-SCAN-01` の対象外。Linux 実測値の取り扱いをここで判断する
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。**未 commit の実内容がある 7 worktree は salvage を先に行う。**
   **含めない範囲**: branch ref の削除 (判断が全部終わるまでしない)、CI 設定。

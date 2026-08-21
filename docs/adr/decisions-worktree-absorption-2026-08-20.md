@@ -454,8 +454,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-test-01-limits` | 4 件 | 却下 | 4 commit すべて main が別形で持つか、main の方が新しい (下記) |
 | `codex/legacy-test-01-formatter-blocker` | 2 件 | **部分取り込み** | fixture 修正 (1 hunk) は取り込み、`.ls` の module 再構成と docs は却下 (下記) |
 | `codex/legacy-module-scc-cache-contract` | 7 件 | **部分取り込み** | 6 commit は main が別形で持つか main の方が新しい。`265a42c5` の指摘だけ移植した (下記) |
+| `codex/lsharp-type-record-ops-batch` | `a5bb397a` | 却下 | main は同じ slice を **別の Linux 実測 (`77f177ab`)** で既に持つ。branch の `be55ac33` 実測は main の履歴に対応しない (下記) |
 
-残る未判定は 12 commit 以上の大きい 9 本 (batch family を除く) と、batch family の例外 1 本。
+残る未判定は 12 commit 以上の大きい 9 本 (batch family を除く)。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -483,6 +484,40 @@ RED を書いて再現し、main の分割後の構造へ移植した。詳細�
 **commit 数で判定していたら見落としていた。** 7 件中 6 件が「main が別形で持つ」ため、
 branch 全体を却下する誘惑があったが、内容で 1 件ずつ当たった結果 1 件だけ生きていた。
 
+#### batch family の例外 `a5bb397a` を却下した根拠
+
+`codex/lsharp-type-record-ops-batch` は tip `3b5dbef5` に含まれない commit を 1 つ持つ
+(`a5bb397a docs: record Linux evidence for Type record operations`)。docs 2 ファイル、13 行追加のみ。
+
+**実装側は main に既にある。** `type-record-field-type` / `type-record-fields-eq` の 64 要素
+bounded/rooted chunk は `selfhost/src/Types/Type.ls:261-301` にあり、branch が根拠に挙げる 2 test
+(`test_e2e_selfhost_type_record_ops_use_bounded_chunks` /
+`test_e2e_selfhost_large_record_type_operations_preserve_results`) も
+`crates/lsharp-wasm/tests/e2e/selfhost_type_record_ops.rs` にある。**docs だけが未取り込みだった。**
+
+| branch の追記先 | 判定 | 根拠 |
+|---|---|---|
+| `TODO.md` に `V2-16` の独立 `[~]` 項目を新設 | 却下 | main は同じ内容を `LEGACY-LANG-01` の本文へ畳み込んで持つ (`TODO.md:2140`)。足すと二重計上になる |
+| `rust-boundary-reduction.md` に Linux 実測節を追加 | 却下 | main は `### LEGACY-LANG-01 selfhost bounded record type lookup/equality slice (2026-07-31)` を同じ日付で既に持つ |
+
+**却下の決め手は「重複」ではなく「数字が main のものではない」こと。** 両者は同じ変更に対する
+独立した Linux x86_64 fixed-point run で、source commit も測定値も違う。
+
+| | branch (`a5bb397a`) | main (`:3213`) |
+|---|---|---|
+| source commit | `be55ac33` (**main の祖先ではない**) | `77f177ab` |
+| stage2/stage3 code length | `11421747` | `11168596` |
+| stdout SHA-256 | `2f6eeb64...` | `dad391cd...` |
+| artifact id | `be55ac33-type-record-ops` | `77f177ab-type-record-ops` |
+
+branch の節を取り込むと、**main の履歴に存在しない commit の実測値**が main の運用記録に載る。
+`docs/development/operations/` は「実測値とその取得条件」の正本なので、取得条件が main で
+再現できない値を置いてはならない。なお両 artifact とも作業ツリーには残っていない
+(`ci-artifacts/` は空) ため、どちらの数字も再取得はできない。main 側の記録を正とする。
+
+これで batch family 26 本の未判定は 0 になった。family 本体 (bounded scan の実装差分) は
+`BOUNDED-SCAN-01` の対象として別に残る。
+
 #### `codex/legacy-test-01-formatter-blocker` を fixture だけ取り込んだ根拠
 
 branch は 2 commit。`632695bf` が docs、`49588db3` が fix。**同じ e2e 2 件を緑にする解が
@@ -492,7 +527,7 @@ main と branch で違う**ので、fix を 2 つに割って別々に判定し�
 |---|---|---|
 | e2e fixture へ `selfhost_module("AST.ls")` を足す (2 hunk) | **取り込み** | main の RED を実測で再現し、修正で緑になった (下記) |
 | `Formatter.ls` から `format-expr` と式 dispatcher を `FormatterExpr.ls` へ移して acyclic 化 (237+/238-) | 却下 | main は循環を許容する SCC 経路を採った。前提 commit `723825a8` (`fix(selfhost): make formatter modules acyclic`) は main の祖先ではない |
-| `632695bf` の imp-03 / imp-07 追記 | 却下 | `codex/legacy-test-01-limits` の `3bdf6b1c` と同じ 2026-07-24 の記録で、main 側が新しい記録で上書き済み |
+| `632695bf` の imp-03 / imp-07 追記 | 却下 | 内容で確認した。imp-03 の 4097 object / 32769 root stack / `memory.grow` 失敗契約は main の imp-07 `:102-104` が **CI lane 名 (`test-runtime-limits.sh` の 8 exact E2E) つきの新しい形**で持つ。imp-07 追記のうち「`FormatterExpr -> FormatterDecl -> Formatter` の一方向 module graph に修正した」は **main では偽** — main は逆方向の循環を明示的に採っている (上の行と同じ根拠) |
 
 **台帳の診断が誤っていた。** `docs/development/validation/workspace-expected-failures.txt` は
 この 2 件を「`ast-defn-signature` が未定義。未実装への RED」と記録していたが、
