@@ -904,6 +904,21 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   (`emit-native-bundle` 経路の別個の欠陥として `I-28` に記録済み)。
   **cargo と native 実行が要る。**
 
+- [ ] `ROOT-SLOT-PROBE-01` selfhost bundle 実行後の root slot 残留を検査する regression guard —
+  main の `crates/lsharp-wasm/tests/e2e/selfhost_rooting_parity.rs` は **codegen が `root_push` を
+  出すか**を 24 test で見ているが、**bundle を実行し終えた後に caller が積んだ root slot が
+  そのまま残っているか**は見ていない。`root_top` が caller-owned slot を食い潰す種類の
+  imbalance は、現状どの test 経路でも落ちない。
+  参照実装が `codex/v0.2-ec-m1-06-all-form-differential` の `b415f8cb` にある
+  (`crates/lsharp-wasm/tests/root_slot_probe.rs`、179 行)。型推論 20 module の MODULES 列を
+  Wasm harness で回し、nested allocation 後の `root_top` を突き合わせる。
+  同 commit が直した `TypeInfer.ls` / `TypeInferFunctions.ls` の余分な `root_pop` 2 箇所は
+  **main では既に balance 済み**なので、移植対象は probe だけである
+  (ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md))。
+  受入条件: 意図的に `root_pop` を 1 個増減させた fixture で非 0 になること。
+  **含めない範囲**: native lane の root API 実装 (`NATIVE-ROOT-02`)、
+  root stack の動的容量 (`NATIVE-ROOT-03`)。**cargo が要る。**
+
 - [ ] `STALE-HARNESS-01` `function_size_matches_generated_length` 診断の埋め込み harness を
   bundle 分割後の emitter へ寄せる — Issue `I-23` の `STALE-PIN-03` 裁定 [B]。
   `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:43891` の `check-instr-sizes` は
@@ -2123,9 +2138,27 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   混同しない text/JSON report の slice は verified。Rust driver の `test --format json` にも
   canonical `:case`/`:assert` の pass/fail と preflight failure、exit `0/2` を接続した。全 form、
   EmbeddedCli、Rust/selfhost report field differential、provenance、2 target evidence を閉じる。
+  参照実装が `codex/v0.2-ec-m1-06-all-form-differential` にある (ADR
+  [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)
+  で 25 commit を判定済み)。live なのは次の 4 点で、**branch 単位では取り込まない**
+  (main と 1454 commit 乖離しており、`mcp_server.rs` の分割前を前提にしている)。
+  - JSON provenance の field 集合 — main は `Cli.ls:954` の 3 field、branch は 7 field。
+    ただし **branch の 4 field はすべて literal 定数**で、commit hash / digest の注入はしていない。
+    7 field という shape が正しいか、`runner` を `"selfhost"` から `"selfhost-cli"` へ変えて
+    Rust report との differential 相手を動かしてよいかは、**ここで決める設計判断**
+  - JSON の `contracts` field (form 別の内訳) — main に無い
+  - mixed case+property の JSON report と、CLI `--format text` の e2e —
+    main の e2e に `test_format_text_*` は 1 件も無い
+  - canonical `:case` の failure message — main の selfhost `run-cases-loop` は message を持たず、
+    `crates/lsharp-wasm/src/test_runner.rs:297` の Rust oracle 側にしか無い
 - [~] `EC-M1-07` native parity and migration closure — current-source native fixed-point と
   source-file smoke は両 target の verified slice を持つ。Rust oracle、standalone Wasm、
   full public surface、guide/schema/MCP/migration docs を同じ observable contract へ揃える。
+  migration enum の契約自体は既に閉じている (selfhost の fail-closed validator
+  `legacy-migration-row-schema-valid?` + [ADR](docs/adr/decisions-v0.2-selfhost-migration-enum-schema.md)
+  + `crates/lsharp-driver/src/mcp_tests.rs:1756`)。残るのは **機械可読な契約文書が無い**一点で、
+  参照実装が `codex/v0.2-ec-m1-06-all-form-differential` の `806929ff`
+  (`docs/schemas/legacy-migration.schema.json`、100 行) にある。
 
 ## V2-16 — Rust dependency boundary reduction
 
@@ -2827,13 +2860,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 8 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 7 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
   `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
   tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
-  15 本は ADR で判定済み。ここの対象は残る **8 本**。
+  16 本は ADR で判定済み。ここの対象は残る **7 本**。
   **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
   patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
@@ -2846,7 +2879,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     `codex/legacy-maint-native-differential-split-audit` (65) /
     `codex/legacy-maintenance-stage-chain-integration` (56) —
     いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)
-  - `codex/lsharp-wasmgc-atomic-artifact` (37) / `codex/v0.2-ec-m1-06-all-form-differential` (25)
+  - `codex/lsharp-wasmgc-atomic-artifact` (37)
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
   **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。

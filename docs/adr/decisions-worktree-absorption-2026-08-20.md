@@ -487,8 +487,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/legacy-module-scc-cache-contract` | 7 件 | **部分取り込み** | 6 commit は main が別形で持つか main の方が新しい。`265a42c5` の指摘だけ移植した (下記) |
 | `codex/lsharp-type-record-ops-batch` | `a5bb397a` | 却下 | main は同じ slice を **別の Linux 実測 (`77f177ab`)** で既に持つ。branch の `be55ac33` 実測は main の履歴に対応しない (下記) |
 | `codex/v0.2-diag-api-doc-forwarding-rebased` | 21 件 | **一部が live。`I-02` へ引き継ぐ** | 10 件は取り込み済み、1 件は main が別実装を採用済み。残る **10 件** (`feat: forward ... diagnostics` 8 + cycle/export span 2) は main に無く、その範囲は `I-02` の未解消部分と一致する (下記) |
+| `codex/v0.2-ec-m1-06-all-form-differential` | 25 件 | **一部が live。`EC-M1-06` / `EC-M1-07` / `ROOT-SLOT-PROBE-01` へ引き継ぐ** | 7 件は main が別設計で達成済み、1 件は修正の実体だけ取り込み済み。残るのは provenance の field 集合、JSON `contracts` field、mixed JSON と text の CLI coverage、canonical case failure message、schema 文書、root slot probe (下記) |
 
-残る未判定は 8 本。batch family の例外 1 本は上表で判定済み。
+残る未判定は 7 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -685,3 +686,71 @@ main はすべて**別の形で既に持っている**か、**branch より新�
 `crates/lsharp-syntax/tests/parser_properties.rs` へ移植して実行したところ、
 上記の main 側 test 名がすべて既に pass していた。同じ契約の二重管理になるので revert した。
 「commit が残っているから未取り込み」ではないことの実例である。
+
+#### `codex/v0.2-ec-m1-06-all-form-differential` の 25 commit を分けた根拠
+
+merge-base は `941920a4` (2026-07-21)、tip は `60ed461a` (2026-07-23)。
+main に対して **1454 commit behind**。`git merge-tree` は conflict を
+`docs/adr/decisions-004.jsonl` と `TODO.md` の 7 箇所しか報告しないが、
+**これを安全性の根拠にはしない。** branch は `crates/lsharp-driver/src/mcp_server.rs` を
+1280 行の単一ファイルとして触るのに対し、main は同ファイルを 160 行まで削って
+`mcp_*.rs` へ分割済みである。file 構成が入れ替わった先で code merge が clean に通ること自体が
+むしろ危険信号であって、意味の一致を意味しない。**branch 単位の merge はしない。**
+
+25 commit を `test 名 grep` にかけると **ヒット 0 件** (追加された 18 の test 関数名がどれも
+main に無い)。しかし前節で定めたとおり grep は triage であって判定ではないので、
+1 件ずつ内容を main と突き合わせた。結果は「main が同じ意図を**後から別設計で**満たしている」が
+大半で、live な残りは 3 種類に絞れた。
+
+| commit | branch が持つもの | main の状態 | 判定 |
+|---|---|---|---|
+| `806929ff` migration enum contract | `docs/schemas/legacy-migration.schema.json` (100 行) + `mcp_server.rs` の検証 | enum 契約は **selfhost 側の fail-closed validator** (`legacy-migration-row-schema-valid?`) と [ADR](decisions-v0.2-selfhost-migration-enum-schema.md)、Rust 側 `crates/lsharp-driver/src/mcp_tests.rs:1756` にある。**schema 文書そのものは無い** | 契約は却下、**schema 文書だけ live** |
+| `b9cfd0b0` MCP migration row shape | `mcp_server.rs` へ 53 行 | 同上。main の `mcp_server.rs` は分割済みで、行の当たり先が存在しない | 却下 |
+| `50a80ad9` schema closure の記録 | `rust-boundary-reduction.md` へ 8 行 | 同ファイルは main 側が先へ進んでいる | 却下 |
+| `0ded1928` canonical case failure message | selfhost `TestRunner.ls` が actual/expected span から Rust oracle と同じ message を再構築 | main の `run-cases-loop` は `make-test-result-with-diagnostic` / `-span` しか呼ばず、**message を持たない**。message は Rust oracle (`crates/lsharp-wasm/src/test_runner.rs:297`) 側にしか無い | **live** |
+| `b415f8cb` root slot balance | `TypeInfer.ls` / `TypeInferFunctions.ls` の余分な `root_pop` 2 箇所を削除 + `root_slot_probe.rs` (179 行) | **実体の 2 箇所は main で既に balance している** -- `infer-var` は 3 push / 3 pop、`typeinfer-finalize-defn-result-with-env-vars` は 7 push / 7 pop。probe harness だけが無い | fix は取り込み済み、**probe は coverage 残** |
+| `2510b108` canonical case を assurance に数える | `Cli.ls` / `EmbeddedCli.ls` に case 計上を追加 | main は `assurance-suite-executed` + `run-test-source-json-suite` という **suite accessor 経由の別設計**で数える | 却下 (別実装) |
+| `f233fadd` / `2e5d2050` / `3bba67f0` mixed case+property の JSON report | e2e 3 件 | main は `test_format_json_file` / `..._non_bool_invariant` / `..._property_precondition_span` を持つが、**case と property を混在させた組み合わせは無い** | **coverage 残** |
+| `846db44b` text assurance report contract | `selfhost/src/Tools/Test/AssuranceText.ls` (84 行) を新設し Cli/EmbeddedCli で共有 | main は `run-test-source-text` を `Cli.ls:1198` と `EmbeddedCli.ls:1125` へ **それぞれ inline** で持ち、共有 module は作らなかった | 実装は却下 (別実装) |
+| `4b80ae15` / `d294f662` / `e0fb42df` text 経路の e2e | e2e 3 件 | main の e2e には `test_format_text_*` が **1 件も無い** (`test_format_json_*` のみ) | **coverage 残** |
+| `0ce5da87` text assurance を preflight へ通す | `AssuranceText.ls` 経由で text を preflight 化 | main の `run-test-source-text` は `run-test-source-case-preflight` を通り、`metadata-test-runner-boundary-code` と canonical case 診断の両方で早期 exit する | 却下 (別実装で達成済み) |
+| `34e6cdd1` JSON/text preflight sentinel の一致 | 1 行 | main は両経路とも `exit-runtime-error` を返す | 却下 (達成済み) |
+| `8b126354` / `d315bce8` / `b79c6394` / `bcc10e03` / `fd516945` / `948b06fc` / `c7f395c1` JSON provenance | `assurance-provenance-json` を 3 fields → **7 fields** へ広げ、`runner` を `"selfhost"` → `(assurance-json-runner)` = `"selfhost-cli"`、`target` を `"unknown"` → `"runtime-selected"` にする + e2e 7 件 | main は `Cli.ls:954` の 3 fields (`runner` / `source_commit` / `artifact_digest`) のまま、`target` も `"unknown"` | **live** (下記の但し書きあり) |
+| `27b8ce3a` / `7d1d1dad` / `60ed461a` 全 form の計上と JSON contract counts | `contracts` field 追加 + 全 form の text failure accounting + e2e 6 件 | text 側の全 form accounting は **main が `run-test-source-text` に inline で持つ** (example / invariant / assertion / case / property の 5 種を数え `count-failed-results` を合算する)。**JSON 側の `contracts` field は main に無い** | accounting は却下、`contracts` field は **live** |
+
+25 件の内訳: 却下 (main が別設計で達成済み) **7 件**、実体は取り込み済みで probe だけ残る **1 件**、
+live **17 件** (schema 文書 1 / case message 1 / mixed JSON coverage 3 / text coverage 3 /
+provenance 7 / `contracts` field を含む all-form 3 -- ただし後述のとおり中身は 3 種類に畳める)。
+
+##### provenance 7 件についての但し書き -- branch も「注入」はしていない
+
+`TODO.md` の `EC-M1-06` と `rust-boundary-reduction.md` の 3 箇所は残件として
+「provenance **注入**」と書いている。branch が足す 4 field は
+`producer "lsharp-selfhost"` / `tool_version "0.1.0"` / `source_digest "unknown"` /
+`timestamp "unknown"` で、**すべて literal 定数**である。つまり branch がやったのは
+field 集合を広げる shape の変更であって、実際の commit hash や digest の注入ではない。
+
+したがって「branch を移植すれば `EC-M1-06` の provenance が閉じる」は成り立たない。
+7 field という shape が正しいか、`runner` を `"selfhost-cli"` に変えてよいか
+(main の Rust 側 report と differential を取る相手が変わる) は `EC-M1-06` の設計判断であり、
+**branch を参照実装として引き継ぐが、shape をそのまま採るとは決めない。**
+
+##### live な残りの引き取り先
+
+branch 単位では取り込まない。1454 commit の乖離を跨いで 17 commit を順に当てるより、
+main の現行設計の上で書き直す方が安い。内容ごとに正本を分けて引き継ぐ。
+
+| 残るもの | 引き取り先 | 理由 |
+|---|---|---|
+| provenance の field 集合 / `runner` / `target` ラベル、JSON `contracts` field、mixed JSON と text の CLI coverage、canonical case failure message | `EC-M1-06` | `TODO.md` の受入条件が「全 form、EmbeddedCli、Rust/selfhost report field differential、provenance、2 target evidence を閉じる」と、そのまま同じ範囲を指している |
+| `docs/schemas/legacy-migration.schema.json` | `EC-M1-07` | 受入条件が「guide/**schema**/MCP/migration docs を同じ observable contract へ揃える」と schema を名指ししている。enum 契約自体は既に閉じているので、残るのは**機械可読な契約文書が無い**という一点 |
+| `root_slot_probe.rs` の regression guard | `ROOT-SLOT-PROBE-01` (新規) | main の `selfhost_rooting_parity.rs` は **codegen が root_push を出すか**を見る test 群で、**bundle 実行後に caller の root slot が残っているか**は見ていない。`NATIVE-ROOT-02/03` は native root API の実装が対象で、ここの持ち主ではない |
+
+##### この branch から学んだこと -- 「後から別設計」は test 名 grep では見えない
+
+25 件のうち 7 件は、main が同じ意図を**別の名前の関数で**満たしていた
+(`assurance-result-executed-loop` → `assurance-suite-executed`、
+`AssuranceText.ls` → `run-test-source-text` の inline 実装)。
+test 名 grep は 25 件すべてを「main に無い」と答えたが、内容で見ると 7 件は取り込む必要が無い。
+逆に `b415f8cb` は「main に無い」と答えられた commit だが、**修正の実体は main にあり**、
+無いのは probe だけだった。**grep の答えは両方向に間違う。**
