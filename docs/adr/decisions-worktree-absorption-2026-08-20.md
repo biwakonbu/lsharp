@@ -330,8 +330,39 @@ work を patch-id で完全に含む**。`-type-record-ops-batch` だけ tip に
 `codex/v2-16c-native-selfhost-{doc,install,repl}` (各 2) /
 `codex/lsharp-next-type-expression` (5) / `codex/lsharp-typeinfer-record-next` (6)
 
-このうち `codex/lsharp-typeinfer-record-next` の未 commit 分は本 ADR の
-「取り込んだもの」で既に main へ landing 済みだが、salvage の突き合わせが済むまで残す。
+#### 突き合わせの結果 (2026-08-22): salvage すべき内容は 0 件
+
+7 本すべての未 commit 内容を **main の該当ファイルと 1 つずつ突き合わせた**。
+結果、**取り込むべきものは 1 つも無かった。** 内訳:
+
+| worktree | 未 commit の中身 | 判定 | 根拠 |
+|---|---|---|---|
+| `codex/lsharp-typeinfer-record-next` | 998+/114- (`Type.ls` / `TypeInferRecord.ls` / e2e 3 file) | 取り込み済み | 6 file 中 5 file が main と **byte 一致**。`e2e/mod.rs` は main の `mod` 宣言集合の真部分集合 |
+| `codex/lsharp-next-type-expression` | 885+/885- (`Cli.ls` / `EmbeddedCli.ls` / `TypeInfer*.ls` 5 file) | 内容ではない | `git diff -w` が**空**。全量が selfhost formatter の再インデント出力で、`let` 継続行の字下げしか変わっていない |
+| `codex/v0.2-ec-m1-01` | 113+/11- (invariant scope への引数 bind) | 取り込み済み | `.ls` は `TestRunner.ls:4831` に同じ `bind-params-loop` 行。Rust 生成器は main が **nested `let` の fold** という別解を採っており (`test_runner.rs:90-102`)、branch の flat `let` が依存する逐次束縛を前提にしない分だけ強い。test 3 件も main にある (下記) |
+| `codex/release-input-bundle` | 14+/7- (`tar -czf` → producer script 呼び出し) | 取り込み済み | main は呼び出し側 2 本とも変換済み (`native-macos-aarch64-selfhost-release.sh:134` / `native-linux-x86-hostgen-vm-exec.sh:2507`)、contract test も `scripts/ci/test-native-release-input-bundle.py` にある。main 版の producer は未使用の `import os` を落としている |
+| `codex/v2-16c-native-selfhost-doc` | 未追跡 `.py` 2 件 | 取り込み済み | 2 件とも main と byte 一致 |
+| `codex/v2-16c-native-selfhost-repl` | 未追跡 `.py` 2 件 | 取り込み済み | 差分は docstring 1 行のみで、main 側が日本語へ訳した後 |
+| `codex/v2-16c-native-selfhost-install` | 未追跡 `.py` 2 件 | main が先行 | main は 707→957 行 / 351→883 行。worktree 固有に見える 53 行は `install_path_dependency` の**旧形**で、main は staging + rollback + 非 symlink 拒否へ作り替えてある (`89de3680` / `d4250465` / `4c61d68b`) |
+
+`codex/v0.2-ec-m1-01` の test 3 件の所在: `test_invariant_execution_binds_parameter_scope`
+(`crates/lsharp-wasm/src/test_runner.rs:486`)、
+`test_e2e_selfhost_test_runner_binds_invariant_parameters`
+(`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:12375`)、
+`test_run_metadata_tests_allows_local_let_binding_in_invariant`
+(`crates/lsharp-tooling/src/metadata_test_tests/basic.rs:160`、fixture が
+`:invariant (let [delta 1] (= result (+ x delta)))` で引数 `x` を参照する)。
+運用記録は `rust-boundary-reduction.md` の
+`### EC-M1-01 invariant parameter scope parity (2026-07-17)`。
+
+**唯一 main に無いもの**は `codex/release-input-bundle` が `.github/workflows/ci.yml` へ足す
+`test-native-release-input-bundle.py` の実行 step 1 つだが、これは **CI 設定なのでスコープ外**。
+producer / contract test の実体はどちらも main にあるので、CI 方針を決めるときに
+`SMOKE-GATE-03` / `LINT-CLIPPY-01` / `LINT-FMT-01` と併せて判断すればよい。
+
+**「未 commit だから貴重」ではなかった。** 7 本の dirty は、その branch が main へ landing した
+**後**に残った残骸 (formatter 出力 / 旧形 / 訳す前の docstring) が大半で、
+landing 前の作業中断ではなかった。これで 7 本の worktree は破棄可能になる。
 
 ### merge 前に閉じた 2 つの穴 (2026-08-20)
 

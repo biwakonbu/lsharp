@@ -2849,7 +2849,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - `codex/lsharp-wasmgc-atomic-artifact` (37) / `codex/v0.2-ec-m1-06-all-form-differential` (25) /
     `codex/v0.2-diag-api-doc-forwarding-rebased` (12)
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
-  この一覧から削除すること。**未 commit の実内容がある 7 worktree は salvage を先に行う。**
+  この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
+  **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。
   **含めない範囲**: branch ref の削除 (判断が全部終わるまでしない)、CI 設定。
 - [ ] `LINT-CLIPPY-01` `lsharp-types` の clippy gate 復旧 — Issue `I-31`。
   `crates/lsharp-types/src/review_trust_store.rs:120` の nested `if` が `collapsible_if` に当たり、
