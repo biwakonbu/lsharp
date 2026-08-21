@@ -65,3 +65,7 @@ selfhost/src/Backend/Native/NativeCodegen.mini*.ls
 /STRING_ESCAPE_EXAMPLES.md
 /TEST_CREATION_SUMMARY.md
 /test_escape_sequences.ls
+
+# macOS が全 worktree に撒く Finder メタデータ。2026-08-22 に repo 内 1 件 +
+# /Users/biwakonbu/github/tmp 配下 5 件を退避した
+.DS_Store
