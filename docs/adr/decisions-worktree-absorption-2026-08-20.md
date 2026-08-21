@@ -490,10 +490,10 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/v0.2-ec-m1-06-all-form-differential` | 25 件 | **一部が live。`EC-M1-06` / `EC-M1-07` / `ROOT-SLOT-PROBE-01` へ引き継ぐ** | 7 件は main が別設計で達成済み、1 件は修正の実体だけ取り込み済み。残るのは provenance の field 集合、JSON `contracts` field、mixed JSON と text の CLI coverage、canonical case failure message、schema 文書、root slot probe (下記) |
 | `codex/lsharp-wasmgc-atomic-artifact` | 37 件 | **全件取り込み済み** | `git cherry` の `+` は main が後から入れた file 分割 (`wasmgc.rs` -> `wasmgc/` 3 module、`wasmgc_runner.rs` -> 5 module、`wasmgc_probe.rs` -> `part_000..015.rs`) で patch-id が崩れただけ。追加関数 208 個はミス 0、ADR 79 本と `wit/` 2 本も main にある (下記) |
 | `codex/legacy-maintenance-stage-chain-integration` | 56 件 | **一部が live。`FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `I-01` / `I-35` へ引き継ぐ** | 18 件の file 分割は main が独自に実施済み、10 件の imp-06 進捗記録は却下、型推論 limit の src fix は逐語で main にある。live は string literal / typed signature の Display 欠落 2 件、GC 強制回収 live=0 契約 1 件、workspace 全域 800 行 gate 1 件、occur-check bench 1 件 (下記) |
-
 | `codex/legacy-maint-native-stage-chain-split` | 67 件 | **一部が live。`MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` へ引き継ぐ** | 約 18 件の test 分割は姉妹 branch で判定済みの同一 family、約 11 件は merge。imp-04 の feature lane 18 件のうち SCC 系 4 群は main が別設計で持ち、`CompileSession` も別配置で持つ。live は同名 function の衝突 (silent miscompilation)、cross-module type-alias、block 形式 module body の 3 件 (下記) |
+| `codex/legacy-maint-native-differential-split-audit` | 65 件 | **却下 (新規判定は 1 件のみ)** | 65 commit のうち **64 件は `codex/legacy-maint-native-stage-chain-split` と hash が一致**し判定済み。新規は `b4bc2db9` の imp-06 進捗記録 1 件で、doc-GREEN の規律により却下。あわせて前節で group 扱いだった fix 6 件を個別判定し、`67624ca7` から `I-40` を起票した (下記) |
 
-残る未判定は 4 本。batch family の例外 1 本は上表で判定済み。
+残る未判定は 3 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -1039,3 +1039,97 @@ SCC 系 4 群は main が別設計で解いており、live なのは 3 群だ�
 逆に、走らせたからこそ **`I-37` の silent miscompilation** が見つかった。
 これは test 名 grep でも file 比較でも出てこない。**compile が成功する欠陥は、
 実行して値を見るまで存在が観測できない。**
+
+### `codex/legacy-maint-native-differential-split-audit` (65 件) の判定
+
+#### 64/65 は姉妹 branch と hash が一致する
+
+判定に入る前に、先に判定した `codex/legacy-maint-native-stage-chain-split` との
+commit 集合を突き合わせた。
+
+```bash
+git log --oneline codex/legacy-maint-native-differential-split-audit \
+  --not codex/legacy-maint-native-stage-chain-split
+```
+
+**B のみ 1 件 / A のみ 5 件 / 共通 64 件。** つまりこの branch の 65 commit のうち
+64 件は前節で判定済みであり、新規に判定を要するのは B のみの
+`b4bc2db9 docs(maintenance): record native differential split evidence` だけである。
+
+同時に、前節でまとめて「test 分割 family」として扱った非分割の fix commit 6 件を
+ここで個別に判定する。**この節をもって前節の group 判定を遡って補完する。**
+
+| commit | 内容 | 判定 | 根拠 |
+|---|---|---|---|
+| `32d65d6d` fix(types): preflight legacy invariant Bool metadata | metadata_check の preflight | **取り込み済み** | main は `crates/lsharp-types/src/metadata_check/legacy.rs:19` に `check_legacy_invariant_types` を持ち、`metadata_check.rs:25` で import・`:105` で呼ぶ。span helper も `metadata_check/references.rs:6` にあり、test は `metadata_check/legacy_tests.rs:7` |
+| `38f3e8a9` fix(test): include parser in TypeInfer runtime bundle | bundle へ Syntax 4 module を追加 | **取り込み済み (main が上位版)** | main の `selfhost_typeinfer_runtime_bundle` (`support.rs:1498`) は `Token.ls` / `Lexer.ls` / `LexerCompat.ls` / `Parser.ls` を含む。branch が足した 4 assert は無いが、main は `bundle_expectation()` で正規化差そのものを吸収する形へ変えており、branch の `selfhost_module(..).trim()` 逐語比較より広い。coverage 差だけなので live としない |
+| `67624ca7` fix(selfhost): preserve DocTools metadata contract | slot 5 を公開 accessor から落とす | **却下 (ただし `I-40` を起票)** | 下記 |
+| `f3453f5b` fix(selfhost): make formatter modules acyclic | Formatter 3 module の循環解消 | **却下** | main は循環を残す方を意図して選んでいる。[`decisions-legacy-formatter-scc-imports.md`](decisions-legacy-formatter-scc-imports.md) が「FormatterExpr と FormatterDecl は `Tools.Text.Formatter` を明示 import する」と決め、batch 特例の除去だけを行った。branch は逆に import を消して非循環化する方向で、採択済みの決定と正面から衝突する |
+| `85e8e8d1` chore: record application lowering validation | — | **却下 (no-op)** | `git show --stat` が空。file 変更を持たない |
+| `2c7bfe4f` test(maintenance): guard Rust source file sizes | 800 行 gate | **live。`RUST-FILE-SIZE-GATE-01` が既に引き取り済み** | 姉妹 branch の `e6ae428e` / `3c37f574` と同じ内容。allowlist 22 件は main の実測 39 件と合わない |
+| `b4bc2db9` docs(maintenance): record native differential split evidence | imp-06 へ分割実績を追記 | **却下** | 2026-07 時点の branch code state での分割実績を main の設計ドキュメントへ現在値として書くことになる。姉妹 branch の `1d96c691` と同じ doc-GREEN の規律による却下 |
+
+#### `67624ca7` を却下した根拠
+
+この commit は 2 つのことを同時にやっている。
+
+1. `DocTools.ls` の `extract-defn-metadata` を `extract-defn-metadata-raw` へ rename する
+2. slot 5 (`ordered-forms`) を切り落とす `project-doc-defn-metadata` を新設し、
+   公開 accessor `extract-defn-metadata` をその projection にする
+
+1 は結果として `I-37` の衝突を 1 件消すが、**衝突している 2 つの本文は補助関数名
+(`doc-defn-signature-node?` / `formatter-defn-signature-node?`) が違うだけで、
+その補助関数自体が逐語同一**なので、消しても挙動は変わらない。`I-37` の一部として扱う。
+
+2 は **main へ当てても発火しない**。`Tools.Doc.DocTools` < `Tools.Text.FormatterDecl` なので、
+`I-37` の勝敗規則により FormatterDecl 側の `extract-defn-metadata` が勝つ。
+DocTools 側だけを projection に差し替えても、呼ばれるのは FormatterDecl の raw 版のままである。
+さらに `FormatterDecl.ls:323` / `:414` は slot 5 を実際に読むので、
+仮に projection 側が勝つ順序になれば **formatter が壊れる**。
+
+契約の食い違い自体は実在する (`Parser.ls:1140` は 6 slot、`DocTools.ls:120` のコメントは 5 slot)。
+**スコープ外だが気づいたこと**として `I-40` へ起票し、`DOCTOOLS-META-SLOT-01` で受ける。
+実害が無い (consumer 4 件はすべて index guard 済み) ので影響度は低とした。
+
+#### `I-37` の勝敗規則を fixture で確定させた
+
+前節では「import 順に依らない」までしか言えていなかった。追加 fixture 5 本で規則を切り分けた。
+
+| fixture | 期待 | 実測 | 読み方 |
+|---|---|---|---|
+| `Zeta.dup`=1 / `Alpha.dup`=20 を `Main` が両方呼ぶ | 21 | **2** | 辞書順で後ろの `Zeta` が両方を奪う |
+| 同上、`import` 順を反転 | 21 | **2** | 順序非依存 |
+| `Alpha`/`Mid`/`Zeta` があり `Mid.viaM` が**自 module の** `dup`(100) を呼ぶ | 100 | **1** | 自 module 内の呼び出しすら奪われる |
+| 上に加え `Zeta` も `main` を持つ | — | `Main` の `main` が生存 | entry は奪われない |
+| entry `Main` 自身が `dup`(100) を定義 | 100 | **100** | entry の定義は常に勝つ |
+
+**規則: import を module 名の辞書順に merge し、entry module を最後に merge する。**
+`crates/lsharp-ir/src/compile_surface.rs:34` の
+`results.sort_by(|left, right| left.0.cmp(&right.0));` が観測どおりである。
+
+#### selfhost がこの欠陥に依存していることを確認した
+
+`selfhost/src` の top-level `defn` 6748 件のうち **310 名が複数 file に重複**する
+(すべて file 跨ぎ)。entry の import 閉包ごとでは `App.Cli` 65 / `App.Main` 62 /
+`App.PipelineSmoke` 62 / `App.EmbeddedCli` 61 / `App.SmokeCli` 56 / `App.CompilerMode` 21 /
+`App.ModuleResolver` 0 件。`App.Cli` 閉包の 65 件は本文一致 38 / 相違 27。
+
+相違 27 件の `infer-*` 一族は**意図的な上書き**で、`selfhost/src/Types/TypeInfer.ls:219-225` に
+`;; --- Block グループ (TypeInferBlock.ls が上書き) ---` と明記されている。
+`Types.TypeInfer` < `Types.TypeInferApply` なので実体が勝つ。
+**selfhost の現在の正しさは「sub module 名が親より後ろへ並ぶ」という命名規約の偶然に乗っている。**
+
+これは `MODULE-DUP-FN-01` の設計自由度を実際に制約する。qualify に倒せば
+`TypeInfer.ls` 内部の呼び出しが自 module の stub へ解決して型推論が黙って劣化し、
+重複を診断で reject に倒せば 65 件が一斉に落ちる。
+どちらも **selfhost 側の重複整理が前提**になるので、`TODO.md` の受入条件へ前提として書き足した。
+
+#### この branch から得た教訓
+
+**「同じ hash の commit 集合を持つ branch は、判定も同じ」を先に確かめる。**
+65 commit を一から読み直す前に `git log --not <判定済み branch>` を 1 回打てば、
+新規判定の対象は 1 commit だと分かった。branch 名が違うことと、判定が違うことは別である。
+
+**「patch が正しくても、当てた先で発火するとは限らない」。** `67624ca7` の projection は
+それ単体では正しいが、main の module 名の並びでは負ける側に置かれる。
+patch の中身が正しいかと、当てて効くかは別に確かめる。

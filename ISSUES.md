@@ -171,6 +171,7 @@
 | [I-37](#i-37) | 別 module の同名 top-level function が診断なしに衝突し、誤った wasm を出す (silent miscompilation) | 高 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-38](#i-38) | import した module の `type-alias` が展開されず `expected String, found Text` になる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-39](#i-39) | block 形式の module body が parse されるだけで名前解決されず、誤診断で落ちる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-40](#i-40) | DocTools の metadata 契約が parser の出力 slot 数と食い違う | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ### ドキュメント (DOC)
 
@@ -2089,6 +2090,32 @@
 
 ---
 
+<a id="i-40"></a>
+### I-40: DocTools の metadata 契約が parser の出力 slot 数と食い違う
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maint-native-differential-split-audit` の判定中)
+- **内容**: `selfhost/src/Syntax/Parser.ls:1140` は defn metadata を **6 slot**
+  (`[doc-string, example-text, params-vector, returns-string, invariant-expr, ordered-forms]`) で返すが、
+  `selfhost/src/Tools/Doc/DocTools.ls:120` のコメントは **5 slot** を契約として宣言したままで、
+  `extract-defn-metadata` は raw vector をそのまま返す。**公開 accessor から slot 5 が漏れる**。
+- **根拠**: 現状は観測可能な破綻を起こさない。DocTools の consumer 4 件
+  (`:135` / `:144` / `:153` / `:162`) はいずれも `(> (vector-length meta) N)` で
+  index guard しており、余分な slot を読まない。したがって**契約文書と実装の不一致**であって
+  実害はまだ無い。「気づいたがスコープ外」として捨てないために起票する。
+- **`I-37` との絡み**: `Tools.Doc.DocTools` と `Tools.Text.FormatterDecl` は
+  **どちらも `extract-defn-metadata` を定義していて衝突している**。
+  辞書順で `Tools.Text.FormatterDecl` が勝つため、DocTools の consumer が実際に呼ぶのは
+  FormatterDecl 側である。両者の本文は補助関数名 (`doc-defn-signature-node?` /
+  `formatter-defn-signature-node?`) が違うだけで、その補助関数自体が逐語同一なので
+  **現状この衝突は無害**。ただし **DocTools 側だけを 5 slot へ切り詰める修正は効かない** —
+  切り詰めた定義は衝突に負けて呼ばれない。さらに `FormatterDecl.ls:323` / `:414` は
+  slot 5 を実際に読むので、切り詰めた側が勝つ順序になれば formatter が壊れる。
+- **含めない範囲**: 重複名そのものの解消は `MODULE-DUP-FN-01` / `I-37`。
+- **関連**: 参照実装は `codex/legacy-maint-native-differential-split-audit` の `67624ca7`
+  (`extract-defn-metadata-raw` への rename + `project-doc-defn-metadata` による slot 5 の切り落とし)。
+  **この patch は main には当てない** — 上記のとおり衝突に負けて projection が発火しないため。
+  判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+
 <a id="doc-01"></a>
 <a id="i-31"></a>
 ### I-31: `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる
@@ -2202,9 +2229,15 @@
 
 - **影響度**: 高 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maint-native-stage-chain-split` の判定中)
 - **内容**: 複数 module を import して build したとき、**module をまたいで同名の top-level
-  function があると後勝ちで 1 つに潰れる**。診断は出ず、コンパイルは成功し、
+  function があると 1 つに潰れる**。診断は出ず、コンパイルは成功し、
   出力された wasm が黙って誤った値を返す。silent miscompilation であり、
   本台帳で最も影響度が高い種類の欠陥である。
+
+  勝者は import 順ではなく **module 名の辞書順で決まり、後ろの名前が勝つ**。
+  ただし **entry module だけは最後に merge され、常に勝つ**。
+  `crates/lsharp-ir/src/compile_surface.rs:34` の
+  `results.sort_by(|left, right| left.0.cmp(&right.0));` が module 名で並べ替え、
+  entry をその後ろへ置く構造がそのまま観測されている。
 - **根拠**: 2026-08-22 実測。`target/debug/lsharp` (main `12a351ce` を含む build) で再現する。
 
   ```
@@ -2230,13 +2263,49 @@
   | 両方 `helper` (`import A` → `import B` の順) | 21 | **40** |
   | 両方 `helper` (`import B` → `import A` の順) | 21 | **40** |
 
-  `1 + 20` が `20 + 20` になっている。つまり `A.helper` の定義が失われ、
-  `a()` も `B.helper` を呼んでいる。**import 順を入れ替えても 40 なので、
-  「後から register した方が勝つ」ではなく登録先の key が module で修飾されていない**。
+  `1 + 20` が `20 + 20` になっている。**import 順を入れ替えても 40** なので
+  「後から register した方が勝つ」ではない。勝敗規則は追加 fixture で切り分けた。
+  以下はいずれも `dup` を複数 module が定義し、呼び出し側だけを変えたもの。
+
+  | fixture | 呼び出し元 | 期待 | 実測 | 読み方 |
+  |---|---|---|---|---|
+  | `Zeta.dup`=1 / `Alpha.dup`=20、`Main` が両方を呼ぶ | `Main` | 21 | **2** | 辞書順で後ろの `Zeta` が両方を奪う |
+  | 同上で `import` 順を反転 | `Main` | 21 | **2** | 順序非依存 |
+  | `Alpha.dup`=20 / `Mid.dup`=100 / `Zeta.dup`=1、`Mid.viaM` が自 module の `dup` を呼ぶ | `Mid` | 100 | **1** | **自 module 内の呼び出しすら奪われる** |
+  | 上に加えて `Zeta` も `main` を持つ | `Main` (entry) | — | `Main` の `main` が生存 | entry は奪われない |
+  | `Main` (entry) 自身が `dup`=100 を定義、`Zeta.dup`=1 | `Main` | 100 | **100** | entry の定義は常に勝つ |
+
+  つまり **登録先の key が module で修飾されておらず、merge 順の最後が勝つ**。
+- **selfhost がこの挙動に依存している**: 2026-08-22 の走査で、`selfhost/src` の top-level `defn`
+  6748 件のうち **310 個の名前が複数 file に重複**している (すべて file をまたぐ重複)。
+  entry ごとの import 閉包で数えると `App.Cli` 65 / `App.Main` 62 / `App.PipelineSmoke` 62 /
+  `App.EmbeddedCli` 61 / `App.SmokeCli` 56 / `App.CompilerMode` 21 / `App.ModuleResolver` 0 件。
+  `App.Cli` 閉包の 65 件は **本文一致 38 / 本文相違 27**。
+
+  ```bash
+  # 重複名の総数
+  grep -rhoE '^\(defn [a-z0-9?!*<>=+/-]+' selfhost/src --include=*.ls |
+    awk '{print $2}' | sort | uniq -d | wc -l
+  ```
+
+  相違する 27 件のうち `infer-*` 一族は **意図的な上書き**である。
+  `selfhost/src/Types/TypeInfer.ls:219-225` は
+  `;; --- Block グループ (TypeInferBlock.ls が上書き) ---` というコメント付きで
+  `(defn infer-apply [node env subst counter] (make-result subst (fresh-type-var counter)))` のような
+  stub を置き、実体は `TypeInferApply.ls:731` などにある。
+  `Types.TypeInfer` < `Types.TypeInferApply` / `TypeInferBlock` なので辞書順で実体が勝つ。
+  **現状の正しさは命名規約の偶然** — sub module が親より後ろへ並ぶという規約に依存している。
+
+  したがって `MODULE-DUP-FN-01` の修正は selfhost を巻き込む。
+  qualify する設計では `TypeInfer.ls` 内部の呼び出しが自 module の stub へ解決して
+  **型推論が黙って劣化**し、重複を診断で reject する設計では 65 件が一斉に落ちる。
+  どちらへ倒すにせよ **selfhost 側の重複整理が前提**になる。
 - **含めない範囲**: 修正方法の選択 (呼び出し側を module 修飾するか、
   lowering 時に function 名を qualify するか) は `MODULE-DUP-FN-01` (`TODO.md`) で決める。
   block 形式 module body での同種の衝突は `I-39` の範囲。
-- **関連**: `MODULE-DUP-FN-01` (`TODO.md`)、`I-38` / `I-39` (同じ module 名前解決の欠落)。
+  selfhost の重複整理そのものは `TYPEINFER-SPLIT-01` / `LEGACY-MAINT-01` の範囲。
+- **関連**: `MODULE-DUP-FN-01` (`TODO.md`)、`I-38` / `I-39` (同じ module 名前解決の欠落)、
+  `I-40` (この衝突の上に載っている DocTools の契約ずれ)。
   参照実装は `codex/legacy-maint-native-stage-chain-split` の `f5a343a8`
   (`scoped_visibility` による root body function の qualify)。判定は
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。

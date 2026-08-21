@@ -976,8 +976,16 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **(a) 正しい値を返すか (b) 曖昧参照として診断で落ちるか**のどちらかへ倒れること。
   どちらへ倒すかを ADR に書いたうえで、その契約を e2e (wasmtime 実行して値を assert) で張る。
   **compile が成功して誤った値を返す状態は、どちらの設計でも不合格。**
+  **前提**: 勝敗は import 順ではなく **module 名の辞書順で最後が勝ち、entry module は常に勝つ**
+  (`compile_surface.rs:34`)。selfhost はこの上書きに**意図的に依存している** —
+  `selfhost/src/Types/TypeInfer.ls:219-225` は `TypeInferBlock.ls が上書き` と書いた stub を置き、
+  `App.Cli` 閉包だけで 65 件の衝突 (本文一致 38 / 相違 27) がある。
+  qualify に倒せば `TypeInfer.ls` 内部の呼び出しが stub へ落ちて**型推論が黙って劣化**し、
+  reject に倒せば 65 件が一斉に落ちる。**どちらでも selfhost 側の重複整理が先**で、
+  `TYPEINFER-SPLIT-01` と順序を組むこと。selfhost を直さずに Rust 側だけ倒すのは不可。
   **含めない範囲**: `type-alias` の module 越し可視性 (`MODULE-ALIAS-EXPORT-01`)、
-  block 形式 module body (`MODULE-BODY-FORM-01`)。
+  block 形式 module body (`MODULE-BODY-FORM-01`)、selfhost の重複整理そのもの
+  (`TYPEINFER-SPLIT-01` / `LEGACY-MAINT-01`)。
 
 - [ ] `MODULE-ALIAS-EXPORT-01` `type-alias` の module 越しの扱いを決める — Issue `I-38`。
   現状 alias は同一 file 内でしか展開されず、import 先で使うと
@@ -1002,6 +1010,19 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   reject するなら **parse 時点で「未対応の構文」と分かる診断**を、どちらかを ADR に書いて張ること。
   **含めない範囲**: 入れ子 module (`(module A (module B ...))`) の可視性設計。
   まず 1 段の body を決めてからにする。
+
+- [ ] `DOCTOOLS-META-SLOT-01` DocTools の metadata 契約を parser の 6 slot に合わせる —
+  Issue `I-40`。`selfhost/src/Syntax/Parser.ls:1140` は 6 slot を返すが
+  `selfhost/src/Tools/Doc/DocTools.ls:120` のコメントは 5 slot を宣言したままで、
+  `extract-defn-metadata` が raw vector をそのまま返している。consumer 4 件は
+  index guard 済みなので**現状の実害は無く、契約文書と実装の不一致だけ**である。
+  受入条件: コメントを 6 slot へ直すか、accessor 側で slot 5 を落とすかを決めて test で張ること。
+  **`MODULE-DUP-FN-01` より先には倒せない** — `Tools.Text.FormatterDecl` が同名 accessor を
+  持っていて辞書順で勝つため、DocTools 側だけ切り詰めても発火しない。さらに
+  `FormatterDecl.ls:323` / `:414` は slot 5 を実際に読むので、切り詰めた側が勝てば formatter が壊れる。
+  参照実装 `67624ca7` (`codex/legacy-maint-native-differential-split-audit`) は
+  **この理由で却下済み** (ADR)。
+  **含めない範囲**: 重複名そのものの解消 (`MODULE-DUP-FN-01`)。
 
 - [ ] `STALE-HARNESS-01` `function_size_matches_generated_length` 診断の埋め込み harness を
   bundle 分割後の emitter へ寄せる — Issue `I-23` の `STALE-PIN-03` 裁定 [B]。
@@ -2944,13 +2965,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 4 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 3 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
   母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
   `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
   `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない。
   tip に無い唯一の例外 `a5bb397a` は 2026-08-22 に却下判定済み)。残る非 batch 23 本のうち
-  19 本は ADR で判定済み。ここの対象は残る **4 本**。
+  20 本は ADR で判定済み。ここの対象は残る **3 本**。
   **branch ref は消さないこと。** 取り込み済み 80 本のうち、main の祖先 25 本は削除済み、
   patch-id 一致のみの 46 本は **未削除** (worktree 固定の 9 本は対象外)。台帳は
   [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
@@ -2958,13 +2979,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   (whole-file take / hand-merge で入れた分は patch-id が一致しないため)。
   commit 数の多い順に:
   - `codex/legacy-module-cache-format-identity` (120) / `codex/v0.2-ec-m1-02-integration` (119) /
-    `codex/legacy-maintenance-docs-active-only` (86) /
-    `codex/legacy-maint-native-differential-split-audit` (65) —
+    `codex/legacy-maintenance-docs-active-only` (86) —
     いずれも **origin に無い local のみ**。相互に包含関係は無く独立 (`git cherry` で確認済み)。
-    `codex/legacy-maintenance-stage-chain-integration` (56) と
-    `codex/legacy-maint-native-stage-chain-split` (67) は 2026-08-22 に判定済みで、
+    `codex/legacy-maintenance-stage-chain-integration` (56) /
+    `codex/legacy-maint-native-stage-chain-split` (67) /
+    `codex/legacy-maint-native-differential-split-audit` (65) は 2026-08-22 に判定済みで、
     live な残りは `FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `RUST-FILE-SIZE-GATE-01` / `I-35` /
-    `MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` へ引き取った
+    `MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` /
+    `DOCTOOLS-META-SLOT-01` へ引き取った
   受入条件: 1 本ごとに「取り込む / 却下 (理由付き)」を ADR へ記録し、判断済みの branch を
   この一覧から削除すること。7 worktree の未 commit 内容は 2026-08-22 に main と突き合わせ済みで、
   **salvage すべき内容は 0 件**だった (ADR)。worktree 自体は branch ref を固定するために残す。
