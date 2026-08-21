@@ -19,7 +19,7 @@ B の 46 本は未削除** (`git branch -D` が auto mode classifier に拒否�
 | 分類 | 件数 | 理由 |
 |---|---|---|
 | worktree が checkout 中 | 9 | patch-id は commit 済みの内容しか見ない。未 commit の作業内容には何も言えないので、salvage が済むまで触らない |
-| `+` を 1 本以上持つ | 49 | 未取り込みの commit がある。判断は `docs/adr/decisions-worktree-absorption-2026-08-20.md` |
+| `+` を 1 本以上持つ | 49 | 未取り込みの commit がある。判断は `docs/adr/decisions-worktree-absorption-2026-08-20.md`。**うち 1 本 (`codex/lsharp-wasmgc-atomic-artifact`) は 2026-08-22 に内容で取り込み済みと判定した。下記 C** |
 
 除外した 9 本:
 
@@ -118,6 +118,20 @@ B の 46 本は未削除** (`git branch -D` が auto mode classifier に拒否�
 | `codex/v0.2-ec-m2-02-evidence-field-contract` | `d6fe3f43d423` | local |
 | `copilot/cp05-selfhost-user-call-rooting` | `c0c13af347ae` | origin |
 | `v2-08-native-proxy-loop` | `552b6e8453b2` | origin |
+
+## C. `git cherry` は `+` だが内容は取り込み済み (2026-08-22 追記)
+
+**この分類は A / B と根拠が違う。** `git cherry` の patch-id 一致ではなく、
+**関数名・file 内容・docs の突き合わせ**で等価と判定したものを置く。
+main が後から file を分割すると hunk の当たり先が変わって patch-id が崩れるため、
+`+` の件数だけでは「取り込むものが残っている」と言えない。
+
+| branch | sha | origin | `+` | 判定根拠 |
+|---|---|---|---|---|
+| `codex/lsharp-wasmgc-atomic-artifact` | `35f59fe5` | local | 37 | 追加関数 208 個ミス 0、WasmGC ADR 79 本と `wit/` 2 本が main にある、probe は main の方が大きい (10769 行 vs 10300 行)。ADR [`decisions-worktree-absorption-2026-08-20.md`](../../adr/decisions-worktree-absorption-2026-08-20.md) |
+
+削除は **`WORKTREE-ABSORB-02` の判定が全部終わるまでしない** (TODO の「含めない範囲」)。
+この行は「削除してよい根拠が揃った」という記録であって、削除の実行記録ではない。
 
 ## 再検証の手順
 

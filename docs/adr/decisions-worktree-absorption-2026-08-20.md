@@ -488,8 +488,9 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/lsharp-type-record-ops-batch` | `a5bb397a` | 却下 | main は同じ slice を **別の Linux 実測 (`77f177ab`)** で既に持つ。branch の `be55ac33` 実測は main の履歴に対応しない (下記) |
 | `codex/v0.2-diag-api-doc-forwarding-rebased` | 21 件 | **一部が live。`I-02` へ引き継ぐ** | 10 件は取り込み済み、1 件は main が別実装を採用済み。残る **10 件** (`feat: forward ... diagnostics` 8 + cycle/export span 2) は main に無く、その範囲は `I-02` の未解消部分と一致する (下記) |
 | `codex/v0.2-ec-m1-06-all-form-differential` | 25 件 | **一部が live。`EC-M1-06` / `EC-M1-07` / `ROOT-SLOT-PROBE-01` へ引き継ぐ** | 7 件は main が別設計で達成済み、1 件は修正の実体だけ取り込み済み。残るのは provenance の field 集合、JSON `contracts` field、mixed JSON と text の CLI coverage、canonical case failure message、schema 文書、root slot probe (下記) |
+| `codex/lsharp-wasmgc-atomic-artifact` | 37 件 | **全件取り込み済み** | `git cherry` の `+` は main が後から入れた file 分割 (`wasmgc.rs` -> `wasmgc/` 3 module、`wasmgc_runner.rs` -> 5 module、`wasmgc_probe.rs` -> `part_000..015.rs`) で patch-id が崩れただけ。追加関数 208 個はミス 0、ADR 79 本と `wit/` 2 本も main にある (下記) |
 
-残る未判定は 7 本。batch family の例外 1 本は上表で判定済み。
+残る未判定は 6 本。batch family の例外 1 本は上表で判定済み。
 
 #### `codex/legacy-module-scc-cache-contract` を 1 commit だけ取り込んだ根拠
 
@@ -754,3 +755,54 @@ main の現行設計の上で書き直す方が安い。内容ごとに正本を
 test 名 grep は 25 件すべてを「main に無い」と答えたが、内容で見ると 7 件は取り込む必要が無い。
 逆に `b415f8cb` は「main に無い」と答えられた commit だが、**修正の実体は main にあり**、
 無いのは probe だけだった。**grep の答えは両方向に間違う。**
+
+#### `codex/lsharp-wasmgc-atomic-artifact` の 37 commit を全件取り込み済みと判定した根拠
+
+merge-base は `0b63ff9f` (2026-07-24)、tip は `35f59fe5`。main に対して **1368 commit behind**。
+`git cherry main` が `+` を返すのは 82 commit 中 **37 件**だが、内容で見ると
+**37 件すべてが main にある**。`+` の原因は main が後から入れた **file 分割**である。
+
+| branch | main | 分割 |
+|---|---|---|
+| `crates/lsharp-wasm/src/wasmgc.rs` 731 行 | 429 行 + `wasmgc/instructions.rs` 206 + `wasmgc/validation.rs` 389 + `wasmgc/validation_tests.rs` 11 | `f3b00b49` 系 |
+| `crates/lsharp-wasm/src/wasmgc_runner.rs` 733 行 | 121 行 + `_output_writer.rs` 110 + `_component_output.rs` 189 + `_component_preview2.rs` 375 + `_tests.rs` 38 | 同上 |
+| `crates/lsharp-wasm/tests/wasmgc_probe.rs` 10300 行 | `include!` 16 行 + `wasmgc_probe/part_000..015.rs` **10769 行** | `f3b00b49` |
+
+分割後は hunk の当たり先が変わるため patch-id が一致しない。**commit 数は「取り込むものが
+残っているか」を答えない**という、本 ADR で繰り返し確認してきた事象がここでも起きている。
+
+内容の確認は 3 方向で行った。
+
+1. **37 commit が追加した関数名 208 個を main へ突き合わせ、ミス 0 件。**
+   `test_` 接頭辞に限らず `fn` 宣言をすべて拾った (この branch の probe test は
+   `wasm_gc_component_cli_fs_runner_*` 命名で `test_` を持たないため、
+   `test_` だけを見ると 24 commit が「関数 0 個」に見えて triage が空振りする)
+2. **file 内容の包含チェック。** 空白と行コメントを落として一意行を突き合わせると、
+   probe は branch 1872 行に対し main 2047 行で **branch 側だけにある行は 4 行**、
+   src 3 ファイルは branch 842 行に対し main 1026 行で **54 行**。
+   いずれも長い関数シグネチャと `use` の折り返し位置が module 分割で変わっただけで、
+   名前 (`wasm_gc_valtype` / `validate_module` / `module_uses_print_string` /
+   `string_array_type_index` / `emit_wasm_gc_instructions` / `validate_gc_type_index` /
+   `WasmGcEmitOptions` / `ComponentOutputLocals` / `decode_wasmgc_component_run_result`) は
+   すべて main の分割先に存在する
+3. **docs / wit 側。** branch が足した WasmGC ADR **79 本はすべて main にある**。
+   `wit/lsharp-wasmgc-output.wit` は **byte 単位で同一**、`wit/README.md` は差分 0。
+   `imp-01-wasmgc-full-migration.md` は branch 1106 行に対し main 1280 行で、
+   branch 側だけにある 4 行はいずれも折り返し位置の違い (`Stage 2q の custom CLI` /
+   `IrType::FuncRef` / `supported target` はすべて main 側にも含まれる)
+
+branch の名前になっている atomic artifact 化 (`35f59fe5`) は `git cherry` の `+` に入っていない
+= patch-id が一致しており、main では
+`crates/lsharp-tooling/src/compile_tests_wasmgc_a.rs:66`
+`test_compile_file_wasmgc_backend_uses_atomic_artifact_boundary` が張っている。
+
+**判定: 全 37 件取り込み済み。live な残りは無い。** branch ref は削除対象へ回さず据え置く
+(`WORKTREE-ABSORB-02` の「branch ref は消さないこと」に従う)。
+
+##### triage 手順への追記 -- `test_` 接頭辞を仮定しない
+
+この branch は probe test を `wasm_gc_component_cli_fs_runner_*` と命名しており、
+`test_` で始まらない。`grep -oE '^\+\s*fn (test_[a-z0-9_]+)'` で triage すると
+37 件中 24 件が「追加関数 0 個」と出て、**ヒット率 0/0 を「判定不能」ではなく
+「取り込み済み」と読み違える**危険がある。triage の抽出は `fn [a-z0-9_]+` で行い、
+**抽出数が 0 の commit は triage 失敗として扱って内容を見る。**
