@@ -485,8 +485,24 @@ e2e fixture が `AST.ls` を連結していなかった **fixture の欠落**で
 循環を消す方向へ倒したが、main はそれを取っていない。同じ 2 件がどちらの道でも緑になる以上、
 main が既に持ち test も通っている側を残すのが筋である。
 
-ただし branch の指摘そのものは有効で、**循環を契約として張る test が main に 1 本も無い**。
-これは `I-32` / `FORMATTER-CYCLE-01` として台帳へ登録した。却下は「問題が無い」ではない。
+**当初この却下に「循環を契約として張る test が main に無い」という残件を付けて `I-32` を
+起票したが、誤りだったので撤回した。** main の循環は事故ではなく
+[`decisions-legacy-formatter-scc-imports.md`](decisions-legacy-formatter-scc-imports.md)
+(2026-07-24) が**意図して入れたもの**である。同 ADR は `Formatter.ls` 固有の
+`try_infer_formatter_trio_batch` 特例を消して generic な `infer_scc_type_surfaces` に寄せる
+判断を記録しており、そのために両 module へ `(import Tools.Text.Formatter)` を明示させている。
+契約は以下で張られている:
+
+- `lib_tests/incremental_analysis.rs:634` `test_formatter_modules_declare_cross_module_dispatch_imports`
+  -- `FormatterExpr.ls` / `FormatterDecl.ls` の source に `(import Tools.Text.Formatter)` 行が
+  あることを直接 assert する。循環辺が消えたら落ちる
+- `module_graph/tests.rs:251` `test_scc_groups_are_stable_and_dependency_first` /
+  `module_graph/scc_tests.rs:6` -- 2 頂点 SCC (`CycleA` / `CycleB`) を作って group 順を固定する
+- `lib_tests/multifile_compile.rs` の `test_compile_multi_file_infers_mutual_recursive_scc` ほか
+  相互再帰 SCC の compile / incremental / import visibility を覆う 8 本
+
+したがって branch の acyclic 化は「main が別の道を採った」だけでなく、
+**main が明示的に却下した方向**である。却下理由は当初の想定より強い。
 
 #### `codex/legacy-test-01-limits` の 4 commit を却下した根拠
 

@@ -2861,15 +2861,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   compile error になる。`INFER-DEPTH-01` の変更以前から出ている。
   受入条件: 当該 3 経路が exit 0 になること。
   **含めない範囲**: `-D warnings` を CI で常時要求するかの判断 (CI の扱いは別 slice)。
-- [ ] `FORMATTER-CYCLE-01` selfhost formatter の循環 import を契約として張る — Issue `I-32`。
-  `FormatterExpr.ls` <-> `Formatter.ls` の 2 頂点 SCC は `ModuleGraph::scc_groups()` が
-  扱う設計だが、循環そのものを検査する test が 1 本も無い。e2e は連結ソースなので
-  module graph を作らず、`selfhost_main_module_determinism.rs:786-793` の `expected_imports` は
-  部分一致なので循環辺が消えても落ちない。
-  受入条件: (1) `module_graph/scc_tests.rs` に `group.len() > 1` を作る test を足すこと
-  (2) formatter 2 モジュールの import 集合を **完全一致**で張る test を足すこと。
-  **含めない範囲**: `.ls` の module 再構成 (`codex/legacy-test-01-formatter-blocker` の
-  acyclic 案は却下済み。循環は SCC 経路で許容される仕様である)。
 - [~] `LEGACY-TEST-01` property/fuzz/limit coverage — Issues `I-06` / `I-08`。syntax/types
   property test と複数の GC/type/runtime limit lane、bounded regex repeat の 64-case property
   lane は verified。再利用可能な generator、leak/rooting stress、performance threshold、
