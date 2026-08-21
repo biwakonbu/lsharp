@@ -164,6 +164,7 @@
 | [I-29](#i-29) | aarch64 native の文字列表現が bit 32 を判別子に使うため、heap offset が 4 GiB を越えると base 相対 offset が絶対番地として strlen される | 中 | open | -- |
 | [I-30](#i-30) | selfhost TestRunner に legacy scanner 2 本と canonical inventory が並存し、実行対象の正本が二つある | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 3 件) | 低 | open | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
+| [I-32](#i-32) | selfhost formatter の facade <-> Expr 循環 import を契約として張る test が 1 本も無い (SCC 経路は通るが壊れても気付けない) | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ### ドキュメント (DOC)
 
@@ -612,7 +613,7 @@
   | `selfhost_lsp_docs_ops` | 5 | 4 要因。`TESTGATE-01` / `DIAG-DEDUP-01` (2 件) / 標準 LSP Diagnostic 配列投影の未実装 / release-smoke.sh の boundary 未検証。うち `DIAG-DEDUP-01` の 2 件は **2026-08-18 に解消** (`I-24`)、`TESTGATE-01` 由来の 1 件 (`ops03c`) は **2026-08-19 に解消** (`TESTGATE-03`)。現在は 2 件 / 2 要因 |
   | `strings_patterns_compiler_integration` | 5 | codegen が host `alloc` へ**負の size** を渡す 4 件 (`RootLifetime` とも I-13 の heap 枯渇とも別) + WasmEmit が native 専用 opcode 88 を黙って破棄する 1 件 |
   | `selfhost_cli_core` | 4 | selfhost CLI の未実装挙動への RED。contract suite の canonical/legacy 分離 / unsupported type の実行前報告 / contradicting evidence / import 先 helper の診断。後ろ 3 件は **2026-08-19 の `TESTGATE-03` で当該 test が `#[ignore]` へ移り** default lane から外れたため expected FAIL から削除した (**挙動が直ったわけではない**。phase11 lane で走る)。現在は 1 件 / 1 要因 |
-  | `bootstrap_selfhost_lsp_integration` | 2 | selfhost formatter の compile が `UndefinedVar { name: "ast-defn-signature" }`。2 件とも同一 span |
+  | `bootstrap_selfhost_lsp_integration` | 2 | selfhost formatter の compile が `UndefinedVar { name: "ast-defn-signature" }`。2 件とも同一 span。**2026-08-22 解消** -- 「未実装」は誤診断で、fixture が `AST.ls` を連結していなかっただけだった。fixture へ足して GREEN、expected FAIL から削除した。現在は 0 件 |
   | `LS0102` | 2 | `lsharp-lsp` と `lsharp-tooling` に跨る |
   | `support` | 6 | 上記の陳腐化 -- `TESTGATE-02`。`mod` 共有により非 e2e 5 binary + e2e の計 6 binary で同一に落ちる (**2026-08-18 解消**) |
   | その他 e2e 単発 | 3 | module graph の topological sort 未達 / preview1 import 後の user call が不正な Wasm / nested module decl の body-count |
@@ -2048,6 +2049,32 @@
   修正を入れるなら、同時に `-D warnings` を CI で常時要求するかを決める必要がある
   (CI の扱いは本 slice のスコープ外)。
 - **関連**: `INFER-DEPTH-01`。
+
+<a id="i-32"></a>
+### I-32: selfhost formatter の facade <-> Expr 循環 import が per-file check で一度も踏まれていない
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の
+  `codex/legacy-test-01-formatter-blocker` 判定中)
+- **内容**: `selfhost/src/Tools/Text/FormatterExpr.ls:3` が `(import Tools.Text.Formatter)` を持ち、
+  facade 側の `Formatter.ls:34` が `format-expr` を定義したまま `FormatterExpr.ls` を import する。
+  module graph としては **facade <-> Expr の 2 頂点 SCC** になる。
+- **根拠**: main はこの循環を `ModuleGraph::scc_groups()` (Tarjan) で扱う設計を採っており、
+  `compile_incremental.rs:370` は `group.len() > 1` を見て SCC 経路へ分岐する。**設計としては
+  循環を許容している**ので compile は通る。問題は検査側で、
+  - e2e は `selfhost_module(...)` を連結した **単一ソース**を compile するため module graph を作らない
+  - `selfhost_main_module_determinism.rs:786-793` の `expected_imports` は
+    `source.contains("(import X)")` の **部分一致**で、`FormatterExpr.ls` の期待は `["Syntax.AST"]` のみ。
+    循環辺 `Tools.Text.Formatter` は書かれておらず、増えても減っても落ちない
+  - `crates/lsharp-ir/src/module_graph/scc_tests.rs` に `len() > 1` の group を作る test は無い
+
+  つまり **循環そのものを契約として張っている test が 1 本も無い**。壊れても気付けない。
+- **経緯**: `codex/legacy-test-01-formatter-blocker` @ `723825a8` は逆向きの解 (facade から
+  `format-expr` と式 dispatcher を `FormatterExpr.ls` へ移して acyclic にする) を採ったが、
+  main はその commit を持たず SCC 側の道を選んだ。**どちらの道でも当該 e2e は緑になる**ため
+  branch の再構成は却下したが、循環が無検査である事実は branch 側の指摘として残る。
+- **含めない範囲**: `.ls` の module 再構成。SCC 経路が正しいなら循環は仕様であり、
+  必要なのは **循環を宣言する test** であって再構成ではない。
+- **関連**: [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)、`I-11`。
 
 ### DOC-01: ユーザーガイドの主要範囲不足
 

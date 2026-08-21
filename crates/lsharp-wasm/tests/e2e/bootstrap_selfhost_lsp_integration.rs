@@ -518,7 +518,8 @@ fn test_e2e_selfhost_linter() {
 #[test]
 fn test_e2e_selfhost_formatter() {
     let source = format!(
-        "{}\n{}\n{}",
+        "{}\n{}\n{}\n{}",
+        selfhost_module("AST.ls"),
         selfhost_module("FormatterExpr.ls"),
         selfhost_module("FormatterDecl.ls"),
         selfhost_module("Formatter.ls"),
@@ -618,7 +619,8 @@ fn test_e2e_selfhost_linter_lsp_integration() {
 #[test]
 fn test_e2e_selfhost_formatter_lsp_integration() {
     let source = format!(
-        "{}\n{}\n{}",
+        "{}\n{}\n{}\n{}",
+        selfhost_module("AST.ls"),
         selfhost_module("FormatterExpr.ls"),
         selfhost_module("FormatterDecl.ls"),
         selfhost_module("Formatter.ls"),

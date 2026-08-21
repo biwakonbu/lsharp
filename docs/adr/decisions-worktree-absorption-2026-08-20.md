@@ -452,10 +452,41 @@ whole-file take や hand-merge で入れた分は patch-id が一致しないた
 | `codex/todo-active-backlog` | `3ca483e9` | 却下 | 唯一残る差分は `improvement-roadmap.md` の B-2 行で、branch 側は main が足した verified slice 注記を**消す**方向。main が新しい |
 | `backup/dev-loop-speedup-pre-rebase` | 2 件 | 取り込み済み | rebase 前の退避 ref。main に同題の `9203de68` / `43d3b905` がある |
 | `codex/legacy-test-01-limits` | 4 件 | 却下 | 4 commit すべて main が別形で持つか、main の方が新しい (下記) |
+| `codex/legacy-test-01-formatter-blocker` | 2 件 | **部分取り込み** | fixture 修正 (1 hunk) は取り込み、`.ls` の module 再構成と docs は却下 (下記) |
 
-残る未判定は `codex/legacy-test-01-formatter-blocker` (2) /
-`codex/legacy-module-scc-cache-contract` (7) と、
-25 commit 以上の大きい 10 本 (batch family を除く)。
+残る未判定は `codex/legacy-module-scc-cache-contract` (7) と、
+12 commit 以上の大きい 9 本 (batch family を除く)。
+
+#### `codex/legacy-test-01-formatter-blocker` を fixture だけ取り込んだ根拠
+
+branch は 2 commit。`632695bf` が docs、`49588db3` が fix。**同じ e2e 2 件を緑にする解が
+main と branch で違う**ので、fix を 2 つに割って別々に判定した。
+
+| branch の変更 | 判定 | 根拠 |
+|---|---|---|
+| e2e fixture へ `selfhost_module("AST.ls")` を足す (2 hunk) | **取り込み** | main の RED を実測で再現し、修正で緑になった (下記) |
+| `Formatter.ls` から `format-expr` と式 dispatcher を `FormatterExpr.ls` へ移して acyclic 化 (237+/238-) | 却下 | main は循環を許容する SCC 経路を採った。前提 commit `723825a8` (`fix(selfhost): make formatter modules acyclic`) は main の祖先ではない |
+| `632695bf` の imp-03 / imp-07 追記 | 却下 | `codex/legacy-test-01-limits` の `3bdf6b1c` と同じ 2026-07-24 の記録で、main 側が新しい記録で上書き済み |
+
+**台帳の診断が誤っていた。** `docs/development/validation/workspace-expected-failures.txt` は
+この 2 件を「`ast-defn-signature` が未定義。未実装への RED」と記録していたが、
+`ast-defn-signature` は `selfhost/src/Syntax/AST.ls:44` に存在する。実際の原因は
+e2e fixture が `AST.ls` を連結していなかった **fixture の欠落**で、未実装ではない。
+
+- RED: `cargo test -q -p lsharp-wasm --test e2e test_e2e_selfhost_formatter` →
+  `test result: FAILED. 14 passed; 2 failed`。2 件とも
+  `UndefinedVar { name: "ast-defn-signature", span: Span { start: 24644, end: 24662 } }`
+- GREEN: 同コマンドで `test result: ok. 16 passed; 0 failed`
+- 台帳から 2 行を削除し、誤診断だった旨を同ファイルへ注記した
+
+**acyclic 化を却下した根拠。** main は `ModuleGraph::scc_groups()` (Tarjan) を持ち、
+`compile_incremental.rs:370` が `group.len() > 1` を見て SCC 専用経路へ分岐する。
+循環は**バグではなく許容される入力**という設計である。branch はその前段 `723825a8` で
+循環を消す方向へ倒したが、main はそれを取っていない。同じ 2 件がどちらの道でも緑になる以上、
+main が既に持ち test も通っている側を残すのが筋である。
+
+ただし branch の指摘そのものは有効で、**循環を契約として張る test が main に 1 本も無い**。
+これは `I-32` / `FORMATTER-CYCLE-01` として台帳へ登録した。却下は「問題が無い」ではない。
 
 #### `codex/legacy-test-01-limits` の 4 commit を却下した根拠
 

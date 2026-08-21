@@ -45,10 +45,12 @@
 #       (1 プロセスで回すと 5〜6 時間かかり途中で中断されるため分割した)
 #       cargo nextest list の run 集合 1799 と過不足 0 / 重複 0 で一致することを確認済み
 #       (残り 1260 は #[ignore]。1799 + 1260 = #[test] 総数 3059)
+#     2026-08-22: bootstrap_selfhost_lsp_integration の 2 件
+#     (test_e2e_selfhost_formatter / _lsp_integration) を削除した。旧注記は
+#     「ast-defn-signature が未実装」と書いていたが誤診断で、実際は fixture が
+#     selfhost_module("AST.ls") を連結していなかっただけ。AST.ls を先頭に足して GREEN
+#     (16 passed / 0 failed)。判断は docs/adr/decisions-worktree-absorption-2026-08-20.md。
 
-# [bootstrap_selfhost_lsp_integration] selfhost formatter の compile が UndefinedVar { name: "ast-defn-signature" } で失敗する。2 件とも同一 span (24644..24662) なので単一の未定義シンボル。未実装への RED
-lsharp-wasm::e2e e2e::bootstrap_selfhost_lsp_integration::test_e2e_selfhost_formatter
-lsharp-wasm::e2e e2e::bootstrap_selfhost_lsp_integration::test_e2e_selfhost_formatter_lsp_integration
 # [runtime_allocator_closures] LEGACY-ROOT-01 / I-14 の 17 件は 2026-08-18 に全て解消した。
 #     第 1 段が { ImbalancedExit } 13 件 (main exit 免除 ADR の案 E)、
 #     第 2 段が残り 4 件 ({ RootPopUnderflow } / { BranchDepthMismatch }) で、
