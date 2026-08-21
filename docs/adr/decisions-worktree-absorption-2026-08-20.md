@@ -371,3 +371,61 @@ batch family を除外対象としていたため、**この 1 commit だけが�
 `535Gi used / 337Gi avail`)。main repo 自身の `target` と、取り込み作業で使用中の
 共有 build dir は除外している。commit / branch / 未 commit の編集はいずれも失っていない
 (編集は事前に patch として salvage 済み)。
+
+## 全 local branch への棚卸しの拡張 (2026-08-22)
+
+上の「片付け」節は **worktree が checkout していた branch** だけを見ていた。`main` が
+`13a3786b` になった時点で、対象を **全 local branch 129 本** へ広げて `git cherry` を回し直した。
+
+| 分類 | 件数 |
+|---|---|
+| `+` が 0 本 = 取り込み済み | 80 |
+| `+` を 1 本以上持つ = 未取り込み | 49 |
+
+**この 49 という数字が、以後の未取り込み branch の唯一の正本である。** 上の節の
+「真に未取り込み 29」は worktree に載っていた branch だけを分母にした数で、母集団が違う。
+両者を足したり引いたりしてはいけない。
+
+49 本の内訳:
+
+| 系列 | 件数 | 扱い |
+|---|---|---|
+| batch family (`3b5dbef5` を tip とするスタック) | 26 | `BOUNDED-SCAN-01` の family 単位 hand-port のみ。**merge はしない** |
+| 単独系列で 25 commit 以上 | 10 | 個別に content diff で判定する |
+| 12 commit 以下 | 13 | 個別に content diff で判定する |
+
+batch family 26 本のうち 2 本 (`codex/lsharp-typeinfer-declaration-scans` /
+`codex/lsharp-next-type-expression`) は名前に `batch` を含まないが、同一スタック上にある
+(それぞれ base から 113 / 107 commit)。名前で family を判定してはいけない。
+
+### batch family を merge できない根拠 (実測)
+
+```
+git diff --stat main..3b5dbef5
+  => 1209 files changed, 93307 insertions(+), 202114 deletions(-)
+```
+
+削除が挿入の 2 倍以上ある。branch 側が消そうとしているのは main が意図的に移設・整理した
+ファイル群で、root の `tests/meta_validation.rs` (main が `crates/lsharp-wasm/tests/` へ
+移設済み) を復活させる差分まで含む。**lineage が古すぎて、merge は main の整理を巻き戻す。**
+
+### fork の構造 (ledger の正確さのため)
+
+tip `3b5dbef5` に対して 4 本が祖先ではない。それぞれ 1 commit だけ先行する。
+
+| branch | tip からの commit | `git cherry` の `+` |
+|---|---|---|
+| `codex/lsharp-type-record-check-batch` | 1 | 0 |
+| `codex/lsharp-typeinfer-apply-batch` | 1 | 0 |
+| `codex/lsharp-typescheme-batch` | 1 | 0 |
+| `codex/lsharp-type-record-ops-batch` | 1 | **1** (`a5bb397a` docs: record Linux evidence for Type record operations) |
+
+「tip が family 全部を覆う」は patch-id では真だが **ancestry では偽**。`a5bb397a` だけは
+tip に無く、docs のみの commit である。4 本とも origin にあるので ref が消える危険は無い。
+
+### 取り込み済み 80 本の処置
+
+worktree が占有する 9 本を除いた **71 本の ref を削除した**。名前と sha は
+[`../development/operations/absorbed-branch-refs-2026-08-22.md`](../development/operations/absorbed-branch-refs-2026-08-22.md)
+に残す。この台帳が保証するのは sha からの復元ではなく **patch-id としての内容等価性** である
+(reflog は約 30 日で expire する)。

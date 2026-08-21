@@ -2827,10 +2827,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 26 本の取り込み判断 —
+- [ ] `WORKTREE-ABSORB-02` 未取り込み branch 23 本の取り込み判断 —
   ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
-  `git cherry main <branch>` が `+` を返す 29 本のうち、bounded scan 実装を持つ batch family 3 本
-  (`BOUNDED-SCAN-01` が正本) を除いた 26 本。**branch ref は消さないこと。**
+  母集団は **全 local branch 129 本** (2026-08-22 に worktree 限定から広げ直した)。
+  `git cherry main <branch>` が `+` を返すのは **49 本**で、そのうち batch family 26 本は
+  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない)。残る 23 本がここの対象。
+  **branch ref は消さないこと。** 取り込み済み 80 本の ref 削除は完了しており、台帳は
+  [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
+  判定は `git cherry` の commit 数ではなく **touched file の content diff** で行う
+  (whole-file take / hand-merge で入れた分は patch-id が一致しないため)。
   commit 数の多い順に:
   - `codex/v0.2-ec-m1-02-integration` (121) — **origin に無い local のみ**。main に無いファイル 66 件を持つ
   - `codex/legacy-module-cache-format-identity` (120) / `codex/legacy-maintenance-docs-active-only` (86) /
