@@ -70,6 +70,23 @@ B の 46 本は未削除** (`git branch -D` が auto mode classifier に拒否�
 祖先ではないが `git cherry main <branch>` が `+` を出さない。`-d` は拒否するので `-D` が要る。
 **この 46 本がこの台帳の本体である。**
 
+**2026-08-22 に再検証済み** (`main` = `8f9cd510` 時点)。46 本すべてについて
+`git cherry main <branch>` の `+` が 0 本であること、および `git worktree list` の
+どれもこの 46 本を checkout していないことを確認した。削除の前提は今も成り立っている。
+
+削除は下表の branch 名を強制削除するだけだが、**強制削除は auto mode classifier に
+拒否されるため、ユーザーが実行する必要がある**。名前の抽出は次で行える。
+
+```bash
+sed -n '/^## B\./,/^## C\./p' docs/development/operations/absorbed-branch-refs-2026-08-22.md \
+  | grep -oE '^\| `[^`]+`' | sed -E 's/^\| `//; s/`$//'
+```
+
+なお **judging 対象だった非 batch 23 本と batch family 26 本は削除しない**。
+前者は `ISSUES.md` の `I-35` / `I-40` / `I-42` / `I-43` / `I-44` などが
+参照実装を commit hash で名指ししているため、ref を消すと参照先が到達不能になる。
+後者は `BOUNDED-SCAN-01` の hand-port 元である。
+
 | branch | sha | origin |
 |---|---|---|
 | `codex/lsharp-agents-batch-contract` | `06755d650bc8` | local |
