@@ -777,6 +777,19 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   必要があり、`LS1002` の span 決定規則 (実測では if 式全体) の調査が先に要る。
   **含めない範囲**: dedup 規則そのものの是非 (`I-24` で裁定済み)、span の範囲決定 (`LINT-SPAN-01`)。
   **着手順**: `LINT-SPAN-01` の後。前に置くと今の fixture でしか通らない pin をもう 1 本作ることになる。
+- [ ] `INFER-ZERO-ARITY-PIN-01` 0 引数 defn の型を pin する e2e 3 本を新契約へ張り直す — Issue `I-60`。
+  `914bd9f1` (`I-45`) が 0 引数 `defn` を `Unit -> body` として登録するよう変えたあと、
+  変更前の型を pin していた 3 本が赤のまま残っている
+  (`..._gadt_constructor_registers_refined_return_type` /
+  `..._program_analysis_preserves_first_defn_type` / `..._pipeline_complete_stages`)。
+  **受入条件**: 3 本が新契約 (`Fun` = tag 3) の期待値で緑になること。かつ
+  [0 引数 defn の型 ADR](docs/adr/decisions-selfhost-zero-arity-defn-type.md) の Evidence 節へ
+  「この 3 本を追随させた」事実と実測値を戻すこと。
+  **含めない範囲**: `workspace-expected-failures.txt` への追記 (同ファイルの正本は
+  2026-08-16/17 の計測で、その時点では 3 本とも緑。追記すると baseline の意味が壊れる)。
+  0 引数 defn の契約そのものの是非 (`I-45` で裁定済み)。前方参照経由の穴 (`I-46` / `I-48`)。
+  **3 本は下限である**: sweep が覆ったのは e2e 約 3,075 本のうち 511 本で、`914bd9f1` 以降
+  full lane は一度も回っていない。全数確定は次の full lane に委ねる。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
   `SMOKE-GATE-03` `default-path-smoke` job が緑になることの 1 run 観測 — Issue `I-15` / `I-19`。
   受入条件 (a) skipped の原因特定は **2026-08-18 に達成**した。原因は job 側の条件ではなく

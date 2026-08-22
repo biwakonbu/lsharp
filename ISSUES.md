@@ -191,6 +191,7 @@
 | [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | open | -- |
 | [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | open | -- |
 | [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | open | -- |
+| [I-60](#i-60) | 0 引数 defn の型を pin する e2e 3 本が `I-45` の契約変更で赤のまま放置されている | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -3618,6 +3619,45 @@
   (a) `:invariant` の型推論を quote 対応させる。(b) `:invariant` は `:example` と同じく
   型推論の対象外とする。**どちらが正しいかは本 issue では決めない。**
 - **関連**: `I-43` の解決節、`CONTRACT-INVARIANT-QUOTE-01` (`TODO.md`)。
+
+<a id="i-60"></a>
+### I-60: 0 引数 defn の型を pin する e2e 3 本が `I-45` の契約変更で赤のまま放置されている
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`LINT-SPAN-01` の広域 sweep 中)
+- **内容**: `914bd9f1` (`I-45`) が `infer-defn-predeclared` の param-count 0 分岐を
+  `(mk-fun (mk-unit) body-ty)` へ変え、0 引数 `defn` は `Unit -> body` として env へ登録される
+  ようになった。**これは意図した契約変更である**が、変更前の型を pin していた e2e 3 本が
+  赤に転じたまま、どの正本にも載っていない。
+
+  | test | left (実測) | right (期待) |
+  |---|---|---|
+  | `e2e::selfhost_lexer_parser::test_e2e_selfhost_gadt_constructor_registers_refined_return_type` | `["0","3","0","16777216","0"]` | `["0","5","1","1","100"]` |
+  | `e2e::selfhost_lexer_parser::test_e2e_selfhost_program_analysis_preserves_first_defn_type` | `["3","-9223372036853747496"]` | `["1","100"]` |
+  | `e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_selfhost_pipeline_complete_stages` | `3` | `1` |
+
+  3 本の fixture はいずれも 0 引数 defn (`(defn make-int [] (IntLit 1))` /
+  `(defn main [] 42)` ×2)。tag 3 は `Fun` (`selfhost/src/Types/Type.ls:52-57` の
+  `(vector-push base 3)`) で、`ty-name` / `type-app-arg` が Fun ノードの pointer slot を
+  読むため `16777216` / `-9223372036853747496` という値が出ている。
+- **根拠**: 2026-08-23、`LINT-SPAN-01` の広域 sweep (511 本, `507 passed; 4 failed`) で検出。
+  `.ls` 3 本を `HEAD` へ戻した再実行 (`/Users/biwakonbu/github/tmp/lint-span-01/base4.log`,
+  `0 passed; 4 failed; 80.07s`) でも左右の実測値まで一致したので、`LINT-SPAN-01` の回帰ではない。
+- **なぜ台帳に無いか**: `914bd9f1` のコミットメッセージ自身が
+  「**回していない**: stage chain の `#[ignore]` lane と workspace e2e lane (実測 5h38m)」と
+  記録している。`workspace-expected-failures.txt` は 2026-08-16/17 の計測が正本で、
+  その時点では 3 本とも緑だった。**したがって同ファイルへ追記してはならない** —
+  baseline の意味 (「その計測時点で赤だった集合」) が壊れる。
+- **`I-11` との違い**: `I-11` は「計測はしたが台帳に写していない」欠落。本件は
+  「契約を変えたあと計測していない」欠落で、原因も直し方も別である。
+- **直し方**: 3 本の期待値を `Unit -> body` の新契約へ張り直す。
+  `decisions-selfhost-zero-arity-defn-type.md` が契約の正本なので、これは
+  「実装に合わせて期待値を変える」禁止則の例外 (契約変更に追随する書き換え) に当たる。
+  ADR の Evidence 節へ、この 3 本を追随させた事実を戻すこと。
+- **これは下限である**: sweep が覆ったのは e2e 約 3,075 本のうち 511 本にすぎず、
+  `914bd9f1` 以降 full lane は一度も回っていない。**3 本は確定した下限で、全数は未了**。
+  次に full lane を回したときに確定させる。
+- **関連**: `I-45`、`docs/adr/decisions-selfhost-zero-arity-defn-type.md`、
+  `INFER-ZERO-ARITY-PIN-01` (`TODO.md`)。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>
