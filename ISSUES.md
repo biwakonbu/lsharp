@@ -184,7 +184,7 @@
 | [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | resolved | -- |
 | [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | resolved | -- |
 | [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | resolved | -- |
-| [I-53](#i-53) | `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない | 中 | open | -- |
+| [I-53](#i-53) | `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない | 中 | resolved | -- |
 | [I-54](#i-54) | LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている | 中 | resolved | -- |
 | [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | resolved | -- |
 | [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | resolved | -- |
@@ -3180,7 +3180,7 @@
 
 ### I-53: `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-52` の「未監査」を潰すための lane 全体監査)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-23 (`I-52` の「未監査」を潰すための lane 全体監査)
 - **実測**: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio`
   (filter は lane 全体。`nohup` 切り離しで実行、2026-08-23)
 
@@ -3222,6 +3222,22 @@
 - **関連**: `I-52` (機構 A / B)、`I-54` (D)、`I-55` (C)。
   引き取り先は `TODO.md` の `LSP-COL-CONV-03` / `LSP-COL-CONV-04` / `LSP-NAV-DEGRADE-01`。
   B のうち転記だけで解決する 9 本は 2026-08-23 に完了した (`I-52` の第一〜第三段)。
+- **解決** (2026-08-23、`LSP-LANE-REVERIFY-01`): lane 全体を同じ filter で再計測し、
+  **93 passed / 0 failed** を実測した。64 FAIL は 4 issue への分解と個別修正で全て消えている。
+
+  ```
+  cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio
+  test result: ok. 93 passed; 0 failed; 0 ignored; 0 measured; 2981 filtered out;
+  finished in 5076.88s
+  ```
+
+  ログは `/Users/biwakonbu/github/tmp/lsp-stdio-lane-reverify/lane.log` (`EXIT=0`)。
+  **計測したのは HEAD `94f54bb7` 時点の code state である。** run 中に landed した
+  `3216ace2` は docs のみで test binary に影響しない。一方、run 中に working tree へ入れた
+  `LINT-SPAN-01` の未 commit 変更 (`selfhost_cli_core.rs` の期待値 7 箇所 + `.ls` 3 本) は
+  **この lane の結果には含まれない** — test binary は launch 時点で build 済みだったため。
+  したがって本 lane は `LINT-SPAN-01` 適用後の状態に対する保証ではない。
+  所要は 4346.02s → 5076.88s に伸びたが、これは同時に走っていた別 job の CPU 競合による。
 
 <a id="i-54"></a>
 

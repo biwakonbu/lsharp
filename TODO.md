@@ -2978,18 +2978,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
 
-- [ ] `LSP-LANE-REVERIFY-01` `lsp_stdio` lane 93 本を再計測して `I-53` を閉じる — Issue `I-53`。
-  2026-08-23 の lane 監査は **29 passed / 64 failed** (`4346.02s`)。その後 64 本の内訳は
-  `I-52` (facet A / B)、`I-54`、`I-55`、`I-56` の 4 issue へ分解し、いずれも解決済みとして
-  記録した。ただし**個々の解決は部分 filter でしか検証していない**ため、
-  「lane 全体が緑になった」ことは一度も実測していない。
-  受入条件: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio` が
-  **93 passed / 0 failed** になること。緑にならない test が残った場合は、
-  それが既知 4 issue のどれにも属さない新規系統かどうかを判別して台帳へ起こす。
-  **含めない範囲**: `I-57` (`LSP-NAV-LOCATION-01`) — fixture と実装が一致しているので
-  この lane は緑のまま通る。lane の緑は `I-57` の解決を意味しない。
-  所要は 72 分。切り離しプロセスで回す。
-
 - [ ] `LSP-NAV-LOCATION-01` `definition` / `references` の response の line / col を wire 規約へ揃える —
   Issue `I-57`。1 行の文書に対して `[uri, 1, 50]` を返しており、**line も col も内部の
   1 始まりが無変換で漏れている** (同じ snapshot の rename TextEdit が返す wire 値と
