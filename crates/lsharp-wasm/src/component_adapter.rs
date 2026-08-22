@@ -264,10 +264,20 @@ pub fn sync_artifact_file(path: &Path) -> Result<()> {
     })
 }
 
+/// artifact path の親 directory を解決する。
+///
+/// `Path::parent()` はディレクトリ成分の無い path に対して `None` ではなく `Some("")` を返すため、
+/// 空文字列も cwd (`.`) へ正規化しないと `File::open("")` / `join()` が破綻する (I-51)。
+pub fn artifact_parent_dir(path: &Path) -> &Path {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
 /// artifact の rename を含む親 directory metadata を durable storage へ flush する。
 #[cfg(unix)]
 pub fn sync_artifact_parent(path: &Path) -> Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = artifact_parent_dir(path);
     let directory = fs::File::open(parent).map_err(|err| ComponentAdapterError::Error {
         msg: format!(
             "artifact parent directory の同期対象を開けません ({}): {err:#}",
@@ -301,7 +311,7 @@ pub fn write_wasm_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
                 path.display()
             ),
         })?;
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = artifact_parent_dir(path);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| ComponentAdapterError::Error {

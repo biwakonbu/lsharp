@@ -2720,3 +2720,63 @@ fn test_driver_delegates_to_wasm_artifact_and_inherits_stdin() {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+/// host lane の compile は `git` リポジトリを前提にするので temp dir を最小構成で初期化する。
+fn init_git_repository(dir: &Path) {
+    let status = Command::new("git")
+        .arg("init")
+        .arg("--quiet")
+        .current_dir(dir)
+        .status()
+        .expect("git init execution failed");
+    assert!(status.success(), "temp dir の git init に失敗した");
+}
+
+/// host lane で `-o` の 3 形を順に走らせ、生成された artifact の bytes を返す。
+fn compile_host_lane_output_bytes(temp_dir: &Path, output_argument: &str) -> Vec<u8> {
+    let written_path = temp_dir.join("out.wasm");
+    let _ = fs::remove_file(&written_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("compile")
+        .arg("input.ls")
+        .arg("-o")
+        .arg(output_argument)
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .current_dir(temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "`-o {output_argument}` の compile は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    fs::read(&written_path).expect("compile output read failed")
+}
+
+#[test]
+fn test_compile_output_path_accepts_bare_dotted_and_absolute_forms_identically() {
+    // `Path::parent()` はディレクトリ成分の無い path に対して `Some("")` を返すため、
+    // 空文字列を `.` へ正規化しないと bare 形だけが parent directory の同期で落ちる (I-51)。
+    let temp_dir = unique_temp_dir("compile_output_parent_forms");
+    init_git_repository(&temp_dir);
+    write_source_file(&temp_dir.join("input.ls"), "(defn main [] (print 42))\n");
+
+    let absolute_argument = temp_dir.join("out.wasm").display().to_string();
+    let bare = compile_host_lane_output_bytes(&temp_dir, "out.wasm");
+    let dotted = compile_host_lane_output_bytes(&temp_dir, "./out.wasm");
+    let absolute = compile_host_lane_output_bytes(&temp_dir, &absolute_argument);
+
+    assert!(
+        bare.starts_with(b"\0asm"),
+        "bare 形の出力は Wasm binary であるべき"
+    );
+    assert_eq!(bare, dotted, "bare 形と `./` 形は同一 artifact を生むべき");
+    assert_eq!(bare, absolute, "bare 形と絶対 path 形は同一 artifact を生むべき");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

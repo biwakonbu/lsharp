@@ -280,3 +280,27 @@ world app {
 
     let _ = fs::remove_dir_all(&wit_dir);
 }
+
+#[test]
+fn test_sync_artifact_parent_accepts_bare_file_name_without_directory_component() {
+    // ディレクトリ成分の無い path の `Path::parent()` は `None` ではなく `Some("")` を返す。
+    // 空文字列を `.` へ正規化していないと `File::open("")` が ENOENT で落ちる (I-51)。
+    let result = sync_artifact_parent(Path::new("out.wasm"));
+
+    assert!(
+        result.is_ok(),
+        "bare file name の親 directory は cwd として同期できるべき: {result:?}"
+    );
+}
+
+
+#[test]
+fn test_artifact_parent_dir_normalizes_bare_and_dotted_and_absolute_forms() {
+    // 3 形が同じ artifact を生むための前提: 親 directory の解決が一致すること。
+    assert_eq!(artifact_parent_dir(Path::new("out.wasm")), Path::new("."));
+    assert_eq!(artifact_parent_dir(Path::new("./out.wasm")), Path::new("."));
+    assert_eq!(
+        artifact_parent_dir(Path::new("/tmp/lsharp/out.wasm")),
+        Path::new("/tmp/lsharp")
+    );
+}

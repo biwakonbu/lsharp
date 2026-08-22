@@ -3003,13 +3003,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   却下した** — 契約テストの削除と ADR による設計反転を伴うため、この slice の自律範囲を越える。
   formatter 出力そのものの是非 (`FMT-ROUNDTRIP-01`)。`fmt --write` の明示的な書き込み。
 
-- [ ] `COMPILE-OUT-PARENT-01` `-o` にディレクトリ成分の無いファイル名を渡せるようにする —
-  Issue `I-51`。`compile x.ls -o out.wasm` が
-  `artifact parent directory の同期対象を開けません ()` で落ちる。`Path::parent()` の
-  空文字列を `.` へ正規化していないため。
-  受入条件: `-o out.wasm` / `-o ./out.wasm` / 絶対パスの 3 形が同じ artifact を生むこと。
-  **含めない範囲**: 書き込み順序 (`I-50`)。存在しない親ディレクトリの自動作成。
-
 - [ ] `LSP-COL-CONV-01` LSP stdio の位置規約を fixture と実装で一致させる — Issue `I-52` の facet A。
   `lsp-stdio-nav-params` (`selfhost/src/App/Cli.ls:2010-2020`) が wire の `line`/`col` を
   0-indexed とみなして `+1` する一方、`--ignored` lane の補完 e2e fixture は 1-indexed のまま

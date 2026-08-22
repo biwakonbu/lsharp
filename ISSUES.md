@@ -182,7 +182,7 @@
 | [I-48](#i-48) | selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている | 高 | open | -- |
 | [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | resolved | -- |
 | [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | open | -- |
-| [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | open | -- |
+| [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | resolved | -- |
 | [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open | -- |
 
 ### ドキュメント (DOC)
@@ -2769,7 +2769,7 @@
 <a id="i-51"></a>
 ### I-51: `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`I-50` の経路別切り分け中)
+- **影響度**: 低 / **状態**: resolved / **発見**: 2026-08-22 (`I-50` の経路別切り分け中)
 - **内容**: `-o` にディレクトリ成分を持たないファイル名 (`out.wasm`) を渡すと、
   component adapter が親ディレクトリを空文字列として開こうとして失敗する。
   `-o ./out.wasm` や絶対パスでは起きない。
@@ -2784,7 +2784,37 @@
   エラーメッセージ中の `()` が空のパスで、`Path::parent()` が `""` を返すケースを
   そのまま open している形。`I-50` の書き戻しはこの失敗の**前**に済んでいるため、
   入力は書き換わったうえで rc=1 になる。
-- **関連**: `I-50` (書き込み順序)。引き取り先は未登録。
+- **再現条件は host lane に限られる**: 既定の embedded component lane は WASI guest 側が
+  出力を書くのでこの経路を通らず、bare `-o` でも成功する。落ちるのは
+  `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` (Rust host codegen) と native lane
+  (`lsharp-tooling/src/native.rs:68`) の 2 つ。**artifact 自体は書けており
+  (rename まで成功)、rc だけが 1 になる**ため「出力はあるのに失敗した」形に見える。
+- **解決** (2026-08-22): `component_adapter::artifact_parent_dir()` を追加し、
+  `None` と空文字列の両方を `.` へ正規化する 1 箇所へ集約した。
+  `sync_artifact_parent()` (`component_adapter.rs:280`) と
+  `write_wasm_artifact()` (`:314`) の 2 箇所が同じ直書きを持っていたので、
+  個別に直さず choke point 経由へ寄せた。同型の正しい実装は
+  `lsharp-driver/src/atomic_write.rs:14-16` に既にあり、そちらへ形を合わせている。
+
+  検証 (2026-08-22 実測):
+
+  | test | 位置 | RED | GREEN |
+  |---|---|---|---|
+  | `test_sync_artifact_parent_accepts_bare_file_name_without_directory_component` | `component_adapter_tests.rs` | 本文と同一メッセージで FAIL | pass |
+  | `test_artifact_parent_dir_normalizes_bare_and_dotted_and_absolute_forms` | 同上 | (GREEN 期で追加) | pass |
+  | `test_compile_output_path_accepts_bare_dotted_and_absolute_forms_identically` | `lsharp-driver/tests/default_path_delegation.rs` | 本文と同一メッセージで FAIL | pass |
+
+  driver test は host lane を `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` で強制する。
+  **既定 lane のままでは fix 前から pass する偽 RED になる**ので、lane の固定が受入の前提である。
+  なお `default_path_delegation` の embedded lane 系 11 件は
+  `workspace-expected-failures.txt:120-131` にある恒常 FAIL で、本 test はそれとは別 lane。
+- **直していない同型**: `lsharp-driver/src/atomic_write.rs:70` の `sync_path()` が symlink 分岐で
+  同じ直書きを持つ。唯一の呼び出し元 `main.rs:2506` の `sync_install_path()` は
+  package root 配下の path しか渡さないので**実行経路上の失敗にならない**。
+  test を書くには process 全体の cwd を書き換える必要があり並列実行と両立しないため、
+  無検証の修正は避けて記録に留める。`lsharp-tooling/src/native.rs:290` も直書きだが、
+  空 parent の `join()` は相対 temp path として機能するので失敗経路ではない。
+- **関連**: `I-50` (書き込み順序 -- 未解決)。
 
 <a id="i-52"></a>
 ### I-52: LSP stdio 補完の e2e が 2 系統の理由で全滅している (位置規約の食い違い / snapshot 形式のドリフト)
