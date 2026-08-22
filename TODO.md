@@ -3006,6 +3006,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   1 文字ずれる)。hover / rename / formatting / publishDiagnostics は
   すべて 0 始まりの LSP object なので、この 2 method だけが外れている。
   修正は実装側 — fixture は実測どおりなので、実装を直したあとに snapshot を転記し直す。
+  変換を入れる場所は `lsp-render-location-json` (`LspServerNav.ls:55-65`) と
+  `lsp-render-location-frame` (`LspServerCore.ls:505-506`) の **render 境界**。
+  `make-location` 側では直せない — `handle-rename` が同じ vector の line / col を
+  内部値として読むため、生成時に変換すると rename が壊れる (`I-57` の「修正の切り分け」)。
   受入条件: `definition-*.json` / `references-*.json` / `filesystem-document-sequence.json` の
   当該 frame が **line / col の双方とも wire 規約 (0 始まり) へ変換された値**になり、
   `lsp_stdio_definition` / `lsp_stdio_references` /

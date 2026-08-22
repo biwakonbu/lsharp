@@ -3426,10 +3426,35 @@
 - **`I-54` と何が違うか**: `I-54` は「fixture が内部値のまま陳腐化している」= 実装は正しい。
   本 issue は逆で、**fixture は実測どおりだが実装の出力が規約に反している**。
   したがって修正対象は実装であり、fixture は実装修正後に転記し直す。
-- **判断が要る点**: 縮約 array を LSP `Location` object へ寄せるかどうかは
-  互換性の判断を含む。`definition` / `references` の consumer は現状 test しかないが、
+- **原因** (2026-08-23、source を読んで確定。cargo は回していない):
+  **`Location` object を出す経路は既にあり、しかも正しい。** 分岐しているのは
+  `uri-text` (client が送った URI 文字列) の有無である。
+
+  | 条件 | 経路 | 出力 |
+  |---|---|---|
+  | `server-state-uri-text-for-uri` が非空 | `lsp-render-location-json-with-uri` (`LspServerNav.ls:85-93`) | `{"uri":"..","range":{..}}`。`lsp-render-wire-range-json` を通るので **0 始まり** |
+  | 同 が空 (uri が int のまま) | `lsp-render-location-frame` / `lsp-render-locations-frame` (`:76-83`, `LspServerCore.ls:505-506`) | `[uri, line, col]`。**変換なし = 内部 1 始まり** |
+
+  snapshot の request は `"uri":42` / `"uri":200` のように **int を送る**ので、
+  常に後者へ落ちる。`lsp-render-location-frame` は汎用の
+  `render-rpc-int-vector-response-frame` (`JsonRpc.ls:200`) をそのまま呼んでおり、
+  location という意味を持たない int vector として出力する。
+  `lsp-render-location-json` (`:55-65`) も `vector-get` の値を素通しする。
+
+  **したがって「wire 形式が client の送り方で変わる」という、より重い問題が下にある。**
+  同じ document / 同じ token に対して、URI を文字列で送れば 0 始まりの `Location`、
+  int で送れば 1 始まりの縮約 array が返る。座標系が request の書き方に依存する。
+- **修正の切り分け**: 座標の漏れは `lsp-render-location-json` と `lsp-render-location-frame` の
+  2 箇所で wire 変換 (`- 1`) を入れれば閉じる。**`make-location` 側では直せない** —
+  `handle-rename` (`LspServerNav.ls:993-1000`) が同じ location vector の
+  line / col を内部値として読んで TextEdit を組み立てるため、生成時に変換すると
+  rename が壊れる。**変換は render 境界に置く**。
+- **判断が要る点**: 縮約 array を廃して `Location` object へ一本化するかどうかは
+  互換性の判断を含む。上記のとおり object 経路は既に実装されているので、
+  「新形式の追加」ではなく「fallback の廃止」である。
+  `definition` / `references` の consumer は現状 test しかないが、
   `lsp-offset-from-line-col` 等の内部 helper がこの形を前提にしていないかを先に見る必要がある。
-  **本 issue では形式変更まで決めない。** line の 1 始まり漏れは規約違反として確定させ、
+  **本 issue では形式変更まで決めない。** 座標の 1 始まり漏れは規約違反として確定させ、
   形式は ADR で決める。
 - **関連**: `I-52` (request 側の同型問題)、`I-54` (逆向きの不一致)、`I-55` (nav 系の座標)。
   引き取り先は `TODO.md` の `LSP-NAV-LOCATION-01`。
