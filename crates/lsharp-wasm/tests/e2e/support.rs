@@ -314,11 +314,11 @@ pub(crate) fn try_compile_and_run_with_wasm_stack_limit(
     let module = lower
         .lower_program(&program, &type_results)
         .map_err(|e| format!("IR変換エラー: {e:?}"))?;
-    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-        .map_err(|e| format!("Wasm生成エラー: {e:?}"))?;
+    let wasm_bytes =
+        lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| format!("Wasm生成エラー: {e:?}"))?;
 
     use wasmtime::{Config, Engine, Linker, Module, Store};
-    use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
     let mut config = Config::new();
     config.max_wasm_stack(max_wasm_stack);

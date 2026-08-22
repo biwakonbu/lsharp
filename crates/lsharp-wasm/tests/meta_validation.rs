@@ -389,9 +389,12 @@ fn test_meta_02_completion_marker_3_states() {
 
     for (section_id, section_name) in &sections {
         // セクション内に状態マーカーが存在すること
-        let section_start = criteria_source
-            .find(section_id)
-            .unwrap_or_else(|| panic!("セクション {} ({}) が見つからない", section_id, section_name));
+        let section_start = criteria_source.find(section_id).unwrap_or_else(|| {
+            panic!(
+                "セクション {} ({}) が見つからない",
+                section_id, section_name
+            )
+        });
 
         // セクション末尾を次のセクション or EOF で区切る
         let section_end = criteria_source[section_start + section_id.len()..]
@@ -418,8 +421,8 @@ fn test_meta_02_completion_marker_3_states() {
     }
 
     // 全条件数が 0 でないこと (条件が定義されていることの検証)
-    let condition_count = criteria_source.matches("### 条件").count()
-        + criteria_source.matches("### ゲート").count();
+    let condition_count =
+        criteria_source.matches("### 条件").count() + criteria_source.matches("### ゲート").count();
     assert!(
         condition_count >= 7,
         "docs/development/planning/completion-criteria.md の条件数が不足: {} (7以上必要)",

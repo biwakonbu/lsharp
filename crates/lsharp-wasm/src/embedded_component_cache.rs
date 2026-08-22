@@ -58,7 +58,10 @@ impl EmbeddedComponentKey {
     /// key 導出の純関数。`sources` は `(label 相対 path, 内容 fingerprint)` の列。
     ///
     /// caller が渡す順序に依存しないよう、ここで必ず name 順に整列してから hash する。
-    pub fn from_parts(sources: &[(String, SourceFingerprint)], emitter: &SourceFingerprint) -> Self {
+    pub fn from_parts(
+        sources: &[(String, SourceFingerprint)],
+        emitter: &SourceFingerprint,
+    ) -> Self {
         let mut sorted: Vec<&(String, SourceFingerprint)> = sources.iter().collect();
         sorted.sort_by(|left, right| left.0.as_bytes().cmp(right.0.as_bytes()));
 
@@ -186,8 +189,8 @@ fn collect_into(
 ///
 /// `lsharp-ir` / `lsharp-wasm` を書き換えると build script が再リンクされ、この値が変わる。
 pub fn current_executable_fingerprint() -> Result<SourceFingerprint> {
-    let path = std::env::current_exe()
-        .map_err(|error| io_error(PathBuf::from("<current_exe>"), error))?;
+    let path =
+        std::env::current_exe().map_err(|error| io_error(PathBuf::from("<current_exe>"), error))?;
     let bytes = std::fs::read(&path).map_err(|error| io_error(path.clone(), error))?;
     Ok(SourceFingerprint::from_bytes(&bytes))
 }

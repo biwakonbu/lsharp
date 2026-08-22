@@ -586,7 +586,8 @@ fn test_e2e_selfhost_jsonrpc_lsp_handlers() {
     assert_eq!(lines[25], "30", "method: publish-diagnostics");
     // deterministic JSON-RPC text rendering
     assert_eq!(
-        lines[26], r#"{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#,
+        lines[26],
+        r#"{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{},"definitionProvider":true,"referencesProvider":true,"renameProvider":true,"documentFormattingProvider":true}}}"#,
         "initialize response text"
     );
     assert_eq!(

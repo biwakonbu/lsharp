@@ -1,8 +1,8 @@
 use super::support::*;
 use serde_json::Value;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 static CLI_TEST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static SELFHOST_CLI_VALIDATION_WASM: OnceLock<Vec<u8>> = OnceLock::new();
@@ -1025,14 +1025,13 @@ fn test_e2e_selfhost_cli_check_file_blocks_imported_private_definition() {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let lib_source =
-        "(module Lib)\n(private (defn secret [value] (+ value 1)))\n";
+    let lib_source = "(module Lib)\n(private (defn secret [value] (+ value 1)))\n";
     let main_source = "(module Main)\n(import Lib)\n(defn main [] (secret 42))\n";
     std::fs::write(dir.join("Lib.ls"), lib_source).unwrap();
     std::fs::write(dir.join("Main.ls"), main_source).unwrap();
 
-    let main_program = lsharp_syntax::parse(main_source)
-        .expect("Main private import fixture は parse できるべき");
+    let main_program =
+        lsharp_syntax::parse(main_source).expect("Main private import fixture は parse できるべき");
     let mut oracle = Infer::new();
     assert!(
         oracle.infer_program(&main_program).is_err(),
@@ -1071,11 +1070,7 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let lib_source = "(module Lib)\n(defn helper [] missing)\n";
-    std::fs::write(
-        dir.join("Lib.ls"),
-        lib_source,
-    )
-    .unwrap();
+    std::fs::write(dir.join("Lib.ls"), lib_source).unwrap();
     std::fs::write(
         dir.join("Main.ls"),
         "(module Main)\n(import Lib)\n(defn main [] 42)\n",
@@ -1083,7 +1078,9 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
     .unwrap();
     // 既存 resolver は相対 entry path の表現を保ったまま依存 path を返す。
     let expected_lib_path = "./Lib.ls".to_string();
-    let missing_start = lib_source.find("missing").expect("fixture must contain missing");
+    let missing_start = lib_source
+        .find("missing")
+        .expect("fixture must contain missing");
     let expected_span_line = format!(
         "first-error-span:{}:{}",
         missing_start,
@@ -1389,8 +1386,8 @@ fn test_e2e_selfhost_cli_check_source_type_error_summary() {
 #[ignore]
 fn test_e2e_selfhost_cli_check_source_recursive_alias_summary() {
     let source = "(type-alias Rec Rec) (defn ok [] : Int 42)\n";
-    let program = lsharp_syntax::parse(source)
-        .expect("recursive alias check fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("recursive alias check fixture は parse できるべき");
     let mut oracle = Infer::new();
     let error = oracle
         .infer_program(&program)
@@ -1418,7 +1415,10 @@ fn test_e2e_selfhost_cli_check_source_recursive_alias_summary() {
     )
     .unwrap();
     let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(output.exit_code, 1, "recursive alias check は compile error を返すべき");
+    assert_eq!(
+        output.exit_code, 1,
+        "recursive alias check は compile error を返すべき"
+    );
     let lines: Vec<&str> = output.stdout.trim().lines().collect();
 
     assert!(
@@ -4973,8 +4973,7 @@ fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
-    let body =
-        r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":2,"character":16},"end":{"line":2,"character":22}},"contents":"defn square"}}"#;
+    let body = r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":2,"character":16},"end":{"line":2,"character":22}},"contents":"defn square"}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
     let harness = format!(
@@ -5099,7 +5098,11 @@ fn test_e2e_selfhost_cli_lsp_stdio_zero_based_position_contract() {
     );
     let frames = parse_lsp_stdio_frames(&output);
 
-    assert_eq!(frames.len(), 2, "hover/formatting の2 responseが必要: {output}");
+    assert_eq!(
+        frames.len(),
+        2,
+        "hover/formatting の2 responseが必要: {output}"
+    );
     assert_eq!(
         frames[0],
         serde_json::json!({
@@ -5243,8 +5246,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_standard_uri_navigation_contract() {
         }
     ]);
     assert_eq!(
-        rename,
-        &expected_rename,
+        rename, &expected_rename,
         "rename は URI keyed WorkspaceEdit を返すべき: {output}"
     );
 }
@@ -6863,8 +6865,20 @@ fn test_e2e_selfhost_parser_projects_typed_property_sampling_contract() {
     assert_eq!(
         lines,
         vec![
-            "1", "1", "1", "1", "1", "1", "0", "5", "3", "0",
-            "type-directed-splitmix64-v1", "1", "0", "0",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1",
+            "0",
+            "5",
+            "3",
+            "0",
+            "type-directed-splitmix64-v1",
+            "1",
+            "0",
+            "0",
         ],
         "selfhost property は owner/binder/predicate/sampling の typed contract shape を Rust canonical IR に対応付けるべき"
     );
@@ -7798,8 +7812,15 @@ fn test_e2e_selfhost_runner_executes_string_property_binder() {
 fn test_e2e_selfhost_runner_matches_rust_oracle_for_string_property_literal() {
     let source = "(defn constant [sample] :property [(for-all [sample String] :cases 1 :postcondition (string-eq result \"ok\"))] \"ok\")";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は String literal property 1 件を生成するべき");
-    assert!(oracle[0].passed, "Rust oracle の String literal property は pass するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は String literal property 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の String literal property は pass するべき"
+    );
 
     let harness = r#"
 (defn main []
@@ -7832,8 +7853,15 @@ fn test_e2e_selfhost_runner_matches_rust_oracle_for_string_property_literal() {
 fn test_e2e_selfhost_runner_matches_rust_oracle_for_string_property_precondition_literal() {
     let source = "(defn constant [input] :property [(for-all [sample String] :cases 2 :precondition [(string-eq sample \"a\")] :postcondition (string-eq result \"ok\"))] \"ok\")";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は String precondition property 1 件を生成するべき");
-    assert!(oracle[0].passed, "Rust oracle の String precondition property は pass するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は String precondition property 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の String precondition property は pass するべき"
+    );
 
     let harness = r#"
 (defn main []
@@ -7866,8 +7894,15 @@ fn test_e2e_selfhost_runner_matches_rust_oracle_for_string_property_precondition
 fn test_e2e_selfhost_runner_matches_rust_oracle_for_string_bool_int_property_binders() {
     let source = "(defn choose [input enabled offset] :property [(for-all [sample String flag Bool right Int] :cases 2 :postcondition (and (string-eq sample \"\") (or flag (not flag))))] enabled)";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は String + Bool + Int property 1 件を生成するべき");
-    assert!(oracle[0].passed, "Rust oracle の String + Bool + Int property は pass するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は String + Bool + Int property 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の String + Bool + Int property は pass するべき"
+    );
 
     let harness = r#"
 (defn main []
@@ -7914,7 +7949,13 @@ fn test_e2e_selfhost_cli_reports_deterministic_property_smoke() {
 
     assert_eq!(
         lines,
-        vec!["examples:0", "invariants:0", "properties:1", "failures:0", "0"],
+        vec![
+            "examples:0",
+            "invariants:0",
+            "properties:1",
+            "failures:0",
+            "0"
+        ],
         "selfhost CLI は deterministic property を properties:1 として集計すべき"
     );
 }
@@ -7938,7 +7979,13 @@ fn test_e2e_selfhost_cli_reports_two_int_property_binders() {
 
     assert_eq!(
         lines,
-        vec!["examples:0", "invariants:0", "properties:1", "failures:0", "0"],
+        vec![
+            "examples:0",
+            "invariants:0",
+            "properties:1",
+            "failures:0",
+            "0"
+        ],
         "selfhost CLI は二つの Int binder と precondition conjunction を実行すべき"
     );
 }
@@ -8218,7 +8265,11 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 5, "selfhost check は migration detail 行を返すべき");
+    assert_eq!(
+        lines.len(),
+        5,
+        "selfhost check は migration detail 行を返すべき"
+    );
     assert_eq!(lines[0], "Fn");
     assert_eq!(lines[1], "diagnostics:0");
     assert_eq!(
@@ -8226,12 +8277,21 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
         "migration:3,LS2001:docs-only-example,LS2001:assertion,LS2002:property-postcondition"
     );
     assert!(lines[3].starts_with("migration-detail:LS2001|owner="));
-    assert!(lines[3].contains("|selected=legacy-example-truthiness|disposition=docs-only-example|"));
+    assert!(
+        lines[3].contains("|selected=legacy-example-truthiness|disposition=docs-only-example|")
+    );
     assert!(lines[3].contains("|selected=legacy-example-truthiness|disposition=assertion|"));
-    assert!(lines[3].contains("|selected=legacy-invariant-deterministic-smoke|disposition=property-postcondition|"));
-    assert!(lines[3].contains("|message=non-Bool (Int) legacy :example は docs-only :example として保持する候補です"));
+    assert!(lines[3].contains(
+        "|selected=legacy-invariant-deterministic-smoke|disposition=property-postcondition|"
+    ));
+    assert!(lines[3].contains(
+        "|message=non-Bool (Int) legacy :example は docs-only :example として保持する候補です"
+    ));
     assert!(lines[3].contains("|message=Bool legacy :example は strict :assert への移行候補です"));
-    assert!(lines[3].contains("|message=legacy :invariant は :property / :postcondition への移行候補です"));
+    assert!(
+        lines[3]
+            .contains("|message=legacy :invariant は :property / :postcondition への移行候補です")
+    );
     assert_eq!(lines[4], "0");
 }
 
@@ -8253,9 +8313,13 @@ fn test_e2e_selfhost_cli_check_source_json_returns_structured_migration_report()
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "check --json は JSON report と終了コードだけを返すべき");
-    let report: Value = serde_json::from_str(lines[0])
-        .expect("check --json の report は valid JSON であるべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "check --json は JSON report と終了コードだけを返すべき"
+    );
+    let report: Value =
+        serde_json::from_str(lines[0]).expect("check --json の report は valid JSON であるべき");
     assert_eq!(report["command"], "check");
     assert_eq!(report["type"], "Fn");
     assert_eq!(report["diagnostics"]["count"], 0);
@@ -8283,12 +8347,21 @@ fn test_e2e_selfhost_cli_check_source_json_returns_diagnostic_exit() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "診断付き check --json は report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "診断付き check --json は report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("診断付き check --json の report は valid JSON であるべき");
     assert!(report["diagnostics"]["count"].as_i64().unwrap() > 0);
     assert!(report["diagnostics"]["firstErrorCode"].as_i64().unwrap() > 0);
-    assert!(!report["diagnostics"]["message"].as_str().unwrap().is_empty());
+    assert!(
+        !report["diagnostics"]["message"]
+            .as_str()
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(lines[1], "1");
 }
 
@@ -8310,7 +8383,11 @@ fn test_e2e_selfhost_cli_check_source_json_reports_definition_failure_kinds() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "definition failure JSON は report と終了コードを返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "definition failure JSON は report と終了コードを返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("definition failure JSON report は valid JSON であるべき");
     assert_eq!(report["failureKinds"], serde_json::json!([1, 2, 1]));
@@ -8379,9 +8456,14 @@ fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant() {
 #[ignore]
 fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant_message() {
     let source = "(defn succ [x] :invariant (+ x 1) (+ x 1))";
-    let program = lsharp_syntax::parse(source).expect("non-Bool invariant fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("non-Bool invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は non-Bool invariant を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は non-Bool invariant を 1 件診断するべき"
+    );
     let oracle_message = diagnostics[0].message.clone();
 
     let harness = r#"
@@ -8396,12 +8478,15 @@ fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant_message() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "non-Bool invariant の test JSON は report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "non-Bool invariant の test JSON は report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("non-Bool invariant の selfhost test JSON は valid JSON であるべき");
     assert_eq!(
-        report["implementation_conformance"]["diagnostics"]["message"],
-        oracle_message,
+        report["implementation_conformance"]["diagnostics"]["message"], oracle_message,
         "selfhost test JSON は Rust oracle と同じ invariant 診断 message を返すべき"
     );
     assert_eq!(lines[1], "2");
@@ -8411,9 +8496,9 @@ fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant_message() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_test_source_json_reports_compound_match_guard_message() {
-    let source =
-        "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("compound match guard JSON fixture は parse できるべき");
+    let source = "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
+    let program = lsharp_syntax::parse(source)
+        .expect("compound match guard JSON fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -8434,12 +8519,15 @@ fn test_e2e_selfhost_cli_test_source_json_reports_compound_match_guard_message()
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.len(), 2, "compound match guardのtest JSONはreportとexit codeを返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "compound match guardのtest JSONはreportとexit codeを返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("compound match guardのselfhost test JSONはvalid JSONであるべき");
     assert_eq!(
-        report["implementation_conformance"]["diagnostics"]["message"],
-        oracle_message,
+        report["implementation_conformance"]["diagnostics"]["message"], oracle_message,
         "selfhost test JSON は Rust oracle と同じ compound guard message を返すべき"
     );
     assert_eq!(
@@ -8462,9 +8550,14 @@ fn test_e2e_selfhost_cli_test_source_json_reports_compound_match_guard_message()
 #[ignore]
 fn test_e2e_selfhost_cli_test_source_json_reports_literal_non_bool_invariant_message() {
     let source = "(defn succ [x] :invariant 1 (+ x 1))";
-    let program = lsharp_syntax::parse(source).expect("literal non-Bool invariant fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("literal non-Bool invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は literal non-Bool invariant を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は literal non-Bool invariant を 1 件診断するべき"
+    );
     let oracle_message = diagnostics[0].message.clone();
 
     let harness = r#"
@@ -8479,12 +8572,15 @@ fn test_e2e_selfhost_cli_test_source_json_reports_literal_non_bool_invariant_mes
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "literal non-Bool invariant の test JSON は report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "literal non-Bool invariant の test JSON は report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("literal non-Bool invariant の selfhost test JSON は valid JSON であるべき");
     assert_eq!(
-        report["implementation_conformance"]["diagnostics"]["message"],
-        oracle_message,
+        report["implementation_conformance"]["diagnostics"]["message"], oracle_message,
         "selfhost test JSON は Rust oracle と同じ literal invariant 診断 message を返すべき"
     );
     assert_eq!(lines[1], "2");
@@ -8495,9 +8591,14 @@ fn test_e2e_selfhost_cli_test_source_json_reports_literal_non_bool_invariant_mes
 #[ignore]
 fn test_e2e_selfhost_cli_test_source_json_reports_string_non_bool_invariant_message() {
     let source = "(defn text [x] :invariant \"bad\" (+ x 1))";
-    let program = lsharp_syntax::parse(source).expect("String literal non-Bool invariant fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("String literal non-Bool invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は String literal non-Bool invariant を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は String literal non-Bool invariant を 1 件診断するべき"
+    );
     let oracle_message = diagnostics[0].message.clone();
 
     let harness = r#"
@@ -8512,12 +8613,15 @@ fn test_e2e_selfhost_cli_test_source_json_reports_string_non_bool_invariant_mess
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "String literal non-Bool invariant の test JSON は report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "String literal non-Bool invariant の test JSON は report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("String literal non-Bool invariant の selfhost test JSON は valid JSON であるべき");
     assert_eq!(
-        report["implementation_conformance"]["diagnostics"]["message"],
-        oracle_message,
+        report["implementation_conformance"]["diagnostics"]["message"], oracle_message,
         "selfhost test JSON は Rust oracle と同じ String literal invariant 診断 message を返すべき"
     );
     assert_eq!(lines[1], "2");
@@ -8528,9 +8632,14 @@ fn test_e2e_selfhost_cli_test_source_json_reports_string_non_bool_invariant_mess
 #[ignore]
 fn test_e2e_selfhost_cli_test_source_json_reports_float_non_bool_invariant_message() {
     let source = "(defn floaty [x] :invariant 3.14 (+ x 1))";
-    let program = lsharp_syntax::parse(source).expect("Float literal non-Bool invariant fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("Float literal non-Bool invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は Float literal non-Bool invariant を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は Float literal non-Bool invariant を 1 件診断するべき"
+    );
     let oracle_message = diagnostics[0].message.clone();
 
     let harness = r#"
@@ -8545,12 +8654,15 @@ fn test_e2e_selfhost_cli_test_source_json_reports_float_non_bool_invariant_messa
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "Float literal non-Bool invariant の test JSON は report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "Float literal non-Bool invariant の test JSON は report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("Float literal non-Bool invariant の selfhost test JSON は valid JSON であるべき");
     assert_eq!(
-        report["implementation_conformance"]["diagnostics"]["message"],
-        oracle_message,
+        report["implementation_conformance"]["diagnostics"]["message"], oracle_message,
         "selfhost test JSON は Rust oracle と同じ Float literal invariant 診断 message を返すべき"
     );
     assert_eq!(lines[1], "2");
@@ -8561,9 +8673,14 @@ fn test_e2e_selfhost_cli_test_source_json_reports_float_non_bool_invariant_messa
 #[ignore]
 fn test_e2e_selfhost_cli_test_source_json_reports_unit_non_bool_invariant_message() {
     let source = "(defn unit [x] :invariant () (+ x 1))";
-    let program = lsharp_syntax::parse(source).expect("Unit literal non-Bool invariant fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("Unit literal non-Bool invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は Unit literal non-Bool invariant を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は Unit literal non-Bool invariant を 1 件診断するべき"
+    );
     let oracle_message = diagnostics[0].message.clone();
 
     let harness = r#"
@@ -8578,12 +8695,15 @@ fn test_e2e_selfhost_cli_test_source_json_reports_unit_non_bool_invariant_messag
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "Unit literal non-Bool invariant の test JSON は report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "Unit literal non-Bool invariant の test JSON は report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("Unit literal non-Bool invariant の selfhost test JSON は valid JSON であるべき");
     assert_eq!(
-        report["implementation_conformance"]["diagnostics"]["message"],
-        oracle_message,
+        report["implementation_conformance"]["diagnostics"]["message"], oracle_message,
         "selfhost test JSON は Rust oracle と同じ Unit literal invariant 診断 message を返すべき"
     );
     assert_eq!(lines[1], "2");
@@ -8619,9 +8739,18 @@ fn test_e2e_selfhost_cli_test_source_json_reports_assertion_failure_coverage() {
         report["implementation_conformance"]["coverage"]["executed"],
         2
     );
-    assert_eq!(report["implementation_conformance"]["coverage"]["failed"], 1);
-    assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
-    assert_eq!(report["implementation_conformance"]["diagnostics"]["firstErrorCode"], 0);
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["failed"],
+        1
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["count"],
+        0
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+        0
+    );
     assert_eq!(lines[1], "2");
 }
 
@@ -8641,7 +8770,11 @@ fn test_e2e_selfhost_cli_test_source_json_reports_unknown_invariant_span() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "unknown invariant の test JSON は report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "unknown invariant の test JSON は report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("unknown invariant の selfhost test JSON は valid JSON であるべき");
     assert_eq!(report["implementation_conformance"]["status"], "fail");
@@ -8858,7 +8991,8 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     let lines: Vec<&str> = output.trim().lines().collect();
 
     let expected_check_lines = vec![
-        "3", "9", "9", "9", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+        "3", "9", "9", "9", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+        "1", "1", "1", "1", "1",
     ];
     assert_eq!(lines.len(), expected_check_lines.len() + 2);
     assert_eq!(
@@ -8869,7 +9003,10 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     let detail_json: Value = serde_json::from_str(lines[expected_check_lines.len()])
         .expect("selfhost migration detail は valid JSON であるべき");
     assert_eq!(detail_json["code"], "LS2001");
-    assert_eq!(detail_json["selectedSemantics"], "legacy-example-truthiness");
+    assert_eq!(
+        detail_json["selectedSemantics"],
+        "legacy-example-truthiness"
+    );
     assert_eq!(detail_json["disposition"], "docs-only-example");
     assert_eq!(
         detail_json["message"],
@@ -8922,11 +9059,12 @@ fn test_e2e_selfhost_migration_rows_preserve_expression_spans() {
         .map(std::string::ToString::to_string)
         .collect();
 
-    let expected_spans = ["(succ 0)", "(= (succ 1) 2)", "(= result (+ x 1))"]
-        .map(|expr| {
-            let start = source.find(expr).expect("expression span fixture が見つかる");
-            (start.to_string(), (start + expr.len()).to_string())
-        });
+    let expected_spans = ["(succ 0)", "(= (succ 1) 2)", "(= result (+ x 1))"].map(|expr| {
+        let start = source
+            .find(expr)
+            .expect("expression span fixture が見つかる");
+        (start.to_string(), (start + expr.len()).to_string())
+    });
     let expected = vec![
         "9".to_owned(),
         expected_spans[0].0.clone(),
@@ -9017,8 +9155,15 @@ fn test_e2e_selfhost_test_runner_projects_nested_invariant_forms() {
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_scope() {
     let source = "(defn succ [x] :invariant (= result (+ x 1)) (+ x 1))";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は invariant 1 件を生成するべき");
-    assert!(oracle[0].passed, "Rust oracle の invariant は全 sample で pass するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の invariant は全 sample で pass するべき"
+    );
 
     let harness = r#"
 (defn main []
@@ -9046,10 +9191,13 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_scope() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_local_let_scope() {
-    let source =
-        "(defn succ [x] :invariant (let [delta 1] (= result (+ x delta))) (+ x 1))";
+    let source = "(defn succ [x] :invariant (let [delta 1] (= result (+ x delta))) (+ x 1))";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は invariant 1 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は invariant 1 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle の local-let invariant は全 sample で pass するべき"
@@ -9086,7 +9234,8 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_local_let_sco
 #[ignore]
 fn test_e2e_selfhost_test_runner_reports_unknown_invariant_lambda_variable() {
     let source = "(defn succ [x] :invariant (let [check (fn [delta] (= result (+ x missing)))] true) (+ x 1))";
-    let program = lsharp_syntax::parse(source).expect("lambda を含む invariant fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("lambda を含む invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert!(
         diagnostics
@@ -9205,8 +9354,15 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computa
   (+ x 1))
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は computation invariant 1 件を生成するべき");
-    assert!(oracle[0].passed, "Rust oracle の computation invariant は pass するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は computation invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の computation invariant は pass するべき"
+    );
 
     let harness = r#"
 (defn main []
@@ -9237,7 +9393,8 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computa
 /// EC-M1-01: source-aware evaluator が computation step 内の String literal を評価すること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computation_string_literal() {
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computation_string_literal()
+ {
     let source = r#"
 (computation-builder maybe-builder mb identity)
 (defn identity [x] x)
@@ -9289,8 +9446,15 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computa
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_string_literal() {
     let source = "(defn label [] :invariant (string-eq result \"ok\") \"ok\")";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は String invariant 1 件を生成するべき");
-    assert!(oracle[0].passed, "Rust oracle の String invariant は pass するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は String invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の String invariant は pass するべき"
+    );
 
     let harness = r#"
 (defn main []
@@ -9324,7 +9488,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_string_
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match_string_literal() {
     let source = r#"(defn label [] :invariant (match true [true (string-eq result "ok")]) "ok")"#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は match String invariant 1 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は match String invariant 1 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle の match String invariant は pass するべき"
@@ -9366,8 +9534,15 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match()
   (+ x 1))
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は match invariant 1 件を生成するべき");
-    assert!(oracle[0].passed, "Rust oracle の match invariant は pass するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は match invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の match invariant は pass するべき"
+    );
 
     let harness = r#"
 (defn main []
@@ -9503,7 +9678,8 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_guarded
 #[ignore]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_unselected_match_arm() {
     let source = "(type (Maybe a) (Just a) Nothing) (defn make-just [x] (Just x)) (defn check [x] :invariant (match (make-just x) [(Just value) true] [Nothing (+ x 1)]) x)";
-    let program = lsharp_syntax::parse(source).expect("unselected match arm fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("unselected match arm fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -9511,8 +9687,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_unselected_match_arm() {
         "Rust oracle は選択されない non-Bool match arm も診断するべき: {diagnostics:?}"
     );
     assert!(
-        diagnostics[0].message.contains(":invariant")
-            || diagnostics[0].message.contains("Bool"),
+        diagnostics[0].message.contains(":invariant") || diagnostics[0].message.contains("Bool"),
         "Rust oracle は invariant の Bool 契約を診断するべき: {diagnostics:?}"
     );
     let oracle_span = diagnostics[0].span;
@@ -9536,7 +9711,11 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_unselected_match_arm() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("1"), "selfhost は invariant を 1 件生成するべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("1"),
+        "selfhost は invariant を 1 件生成するべき"
+    );
     assert_eq!(
         lines.get(1).copied(),
         Some("2"),
@@ -9558,8 +9737,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_unselected_match_arm() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_match_guard() {
-    let source =
-        "(defn check [] :invariant (match true [_ when (+ 1 2) true] [_ true]) true)";
+    let source = "(defn check [] :invariant (match true [_ when (+ 1 2) true] [_ true]) true)";
     let program = lsharp_syntax::parse(source).expect("non-Bool match guard は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
@@ -9568,8 +9746,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_match_guard() {
         "Rust oracle は non-Bool match guard を診断するべき: {diagnostics:?}"
     );
     assert!(
-        diagnostics[0].message.contains(":invariant")
-            || diagnostics[0].message.contains("Bool"),
+        diagnostics[0].message.contains(":invariant") || diagnostics[0].message.contains("Bool"),
         "Rust oracle は match guard の Bool 契約を診断するべき: {diagnostics:?}"
     );
     let oracle_span = diagnostics[0].span;
@@ -9611,11 +9788,15 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_match_guard() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_match_guard_diagnostic_message() {
-    let source =
-        "(defn check [] :invariant (match true [_ when (+ 1 2) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("match guard message fixture は parse できるべき");
+    let source = "(defn check [] :invariant (match true [_ when (+ 1 2) true] [_ true]) true)";
+    let program =
+        lsharp_syntax::parse(source).expect("match guard message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は non-Bool match guard を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は non-Bool match guard を 1 件診断するべき"
+    );
     let oracle_message = diagnostics[0].message.clone();
     let oracle_span = diagnostics[0].span;
 
@@ -9661,7 +9842,11 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_if_diagnostic_message() {
     let source = "(defn check [] :invariant (if true (+ 1 2) false) true)";
     let program = lsharp_syntax::parse(source).expect("if message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は non-Bool if を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は non-Bool if を 1 件診断するべき"
+    );
     let oracle_message = diagnostics[0].message.clone();
     let oracle_span = diagnostics[0].span;
 
@@ -9705,7 +9890,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_if_diagnostic_message() {
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_diagnostic_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (+ 1 delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation message fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("computation message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -9755,7 +9941,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_diagnostic_messa
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn always-int [] (+ 1 2)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (always-int))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -9805,7 +9992,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_user_function_me
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_one_arg_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn increment [x] (+ x 1)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (increment delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation one-arg message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation one-arg message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -9855,7 +10043,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_one_arg_function
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_one_arg_identity_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (identity 1))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation one-arg identity message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation one-arg identity message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -9905,7 +10094,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_one_arg_identity
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_two_arg_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn add [x y] (+ x y)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (add 1 2))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation two-arg message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation two-arg message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -9955,7 +10145,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_two_arg_function
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_identity_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (identity delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound identity message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound identity message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10005,7 +10196,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_identity_m
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_if_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn choose-int [x] (if true (+ x 1) 0)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (choose-int delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound if function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound if function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10055,7 +10247,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_if_functio
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_let_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn choose-int [x] (let [next (+ x 1)] next)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (choose-int delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound let function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound let function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10105,7 +10298,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_let_functi
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_match_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn choose-int [x] (match true [_ (+ x 1)] [_ 0])) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (choose-int delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound match function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound match function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10155,7 +10349,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_match_func
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_do_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn choose-int [x] (do 0 (+ x 1))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (choose-int delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound do function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound do function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10205,7 +10400,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_do_functio
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_lambda_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((fn [x] (+ x 1)) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound lambda message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound lambda message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10255,7 +10451,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_lambda_mes
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_lambda_control_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((fn [x] (if true x x)) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound lambda control message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound lambda control message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10303,9 +10500,11 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_lambda_con
 /// EC-M1-01: computation 内 let! bindingを通る user-defined control body の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_user_function_control_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_user_function_control_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn choose-int [x] (if true x x)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (choose-int delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound user function control message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound user function control message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10353,9 +10552,11 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_user_funct
 /// EC-M1-01: computation 内 let! bindingを通る higher-order user-defined body の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_higher_order_function_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_higher_order_function_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn increment [x] (+ x 1)) (defn apply-one [f x] (f x)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (apply-one increment delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound higher-order function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound higher-order function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10403,9 +10604,11 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_higher_ord
 /// EC-M1-01: computation 内 let! bindingを通る inline lambda higher-order body の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_inline_lambda_higher_order_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_inline_lambda_higher_order_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn apply-one [f x] (f x)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (apply-one (fn [x] (+ x 1)) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound inline lambda higher-order message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound inline lambda higher-order message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10453,9 +10656,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_inline_lam
 /// EC-M1-01: computation 内 let! bindingを通る factory closure capture の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_closure_capture_higher_order_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_closure_capture_higher_order_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant [delta] (fn [x] (if true delta delta))) (defn apply-one [f x] (f x)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (apply-one (make-constant delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound closure capture higher-order message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation bound closure capture higher-order message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10505,7 +10711,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_closure_ca
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_nested_closure_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (((fn [x] (fn [y] (+ x y))) delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation bound nested closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation bound nested closure message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10515,7 +10722,7 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_bound_nested_clo
     let oracle_message = diagnostics[0].message.clone();
     let oracle_span = diagnostics[0].span;
 
-let harness = r#"
+    let harness = r#"
 (defn main []
   (let [src "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (((fn [x] (fn [y] (+ x y))) delta) delta))) true)"
         suite (generate-tests src)
@@ -10555,7 +10762,8 @@ let harness = r#"
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_lambda_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((fn [x y z] (+ x (+ y z))) delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation three-arg lambda message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation three-arg lambda message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10605,7 +10813,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_lambda
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum3 [x y z] (+ x (+ y z))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum3 delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation three-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation three-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10655,7 +10864,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_user_f
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_four_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum4 [x y z q] (+ x (+ y (+ z q)))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum4 delta delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation four-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation four-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10705,7 +10915,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_four_arg_user_fu
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_five_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum5 [x y z q r] (+ x (+ y (+ z (+ q r))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum5 delta delta delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation five-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation five-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10755,7 +10966,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_five_arg_user_fu
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_six_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum6 [x y z q r s] (+ x (+ y (+ z (+ q (+ r s)))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum6 delta delta delta delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation six-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation six-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10805,7 +11017,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_six_arg_user_fun
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_seven_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum7 [x y z q r s t] (+ x (+ y (+ z (+ q (+ r (+ s t))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum7 delta delta delta delta delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation seven-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation seven-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10855,7 +11068,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_seven_arg_user_f
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_eight_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum8 [x y z q r s t u] (+ x (+ y (+ z (+ q (+ r (+ s (+ t u)))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum8 delta delta delta delta delta delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation eight-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation eight-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10905,7 +11119,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_eight_arg_user_f
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_nine_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum9 [x y z q r s t u v] (+ x (+ y (+ z (+ q (+ r (+ s (+ t (+ u v))))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum9 delta delta delta delta delta delta delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation nine-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation nine-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -10955,7 +11170,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_nine_arg_user_fu
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_ten_arg_user_function_message() {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum10 [x y z q r s t u v w] (+ (+ (+ (+ x y) (+ z q)) (+ (+ r s) (+ t u))) (+ v w))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum10 delta delta delta delta delta delta delta delta delta delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation ten-arg user function message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("computation ten-arg user function message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11003,9 +11219,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_ten_arg_user_fun
 /// EC-M1-01: computation 内 three-arg lambda-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_lambda_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_lambda_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (((fn [x y z] (fn [w] (+ x w))) delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation three-arg lambda returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation three-arg lambda returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11053,9 +11272,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_lambda
 /// EC-M1-01: computation 内 three-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant3 [x y z] (fn [w] (+ x w))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant3 delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation three-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation three-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11103,9 +11325,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_user_f
 /// EC-M1-01: computation 内 four-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_four_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_four_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant4 [x y z q] (fn [w] (+ x (+ y (+ z (+ q w)))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant4 delta delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation four-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation four-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11153,9 +11378,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_four_arg_user_fu
 /// EC-M1-01: computation 内 five-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_five_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_five_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant5 [x y z q r] (fn [w] (+ x (+ y (+ z (+ q (+ r w))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant5 delta delta delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation five-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation five-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11203,9 +11431,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_five_arg_user_fu
 /// EC-M1-01: computation 内 six-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_six_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_six_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant6 [x y z q r s] (fn [w] (+ x (+ y (+ z (+ q (+ r (+ s w)))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant6 delta delta delta delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation six-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation six-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11253,9 +11484,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_six_arg_user_fun
 /// EC-M1-01: computation 内 seven-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_seven_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_seven_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant7 [x y z q r s t] (fn [w] (+ x (+ y (+ z (+ q (+ r (+ s (+ t w))))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant7 delta delta delta delta delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation seven-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation seven-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11303,9 +11537,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_seven_arg_user_f
 /// EC-M1-01: computation 内 eight-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_eight_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_eight_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant8 [x y z q r s t u] (fn [w] (+ x (+ y (+ z (+ q (+ r (+ s (+ t (+ u w)))))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant8 delta delta delta delta delta delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation eight-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation eight-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11353,9 +11590,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_eight_arg_user_f
 /// EC-M1-01: computation 内 nine-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_nine_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_nine_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant9 [x y z q r s t u v] (fn [w] (+ x (+ y (+ z (+ q (+ r (+ s (+ t (+ u (+ v w))))))))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant9 delta delta delta delta delta delta delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation nine-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation nine-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11403,9 +11643,12 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_nine_arg_user_fu
 /// EC-M1-01: computation 内 ten-arg user function-returning closure の型本文を揃えること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_ten_arg_user_function_returning_closure_message() {
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_ten_arg_user_function_returning_closure_message()
+ {
     let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn make-constant10 [x y z q r s t u v w] (fn [k] (+ (+ (+ (+ x y) (+ z q)) (+ (+ r s) (+ t u))) (+ (+ v w) k)))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return ((make-constant10 delta delta delta delta delta delta delta delta delta delta) delta))) true)";
-    let program = lsharp_syntax::parse(source).expect("computation ten-arg user function returning closure message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source).expect(
+        "computation ten-arg user function returning closure message fixture は parse できるべき",
+    );
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11454,9 +11697,9 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_ten_arg_user_fun
 #[test]
 #[ignore]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_compound_match_guard_span() {
-    let source =
-        "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("compound match guard fixture は parse できるべき");
+    let source = "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
+    let program =
+        lsharp_syntax::parse(source).expect("compound match guard fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11464,8 +11707,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_compound_match_guard_span() {
         "Rust oracle は compound match guard を診断するべき: {diagnostics:?}"
     );
     assert!(
-        diagnostics[0].message.contains(":invariant")
-            || diagnostics[0].message.contains("Bool"),
+        diagnostics[0].message.contains(":invariant") || diagnostics[0].message.contains("Bool"),
         "Rust oracle は compound match guard の Bool 契約を診断するべき: {diagnostics:?}"
     );
     let oracle_span = diagnostics[0].span;
@@ -11512,9 +11754,9 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_compound_match_guard_span() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_compound_match_guard_message() {
-    let source =
-        "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("compound guard message fixture は parse できるべき");
+    let source = "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
+    let program =
+        lsharp_syntax::parse(source).expect("compound guard message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11568,7 +11810,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_compound_match_guard_message
 #[ignore]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_function_match_guard() {
     let source = "(defn always-int [] (+ 1 2)) (defn check [] :invariant (match true [_ when (always-int) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("function match guard fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("function match guard fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11576,8 +11819,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_function_match_guard() {
         "Rust oracle は user-defined function の non-Bool guard を診断するべき: {diagnostics:?}"
     );
     assert!(
-        diagnostics[0].message.contains(":invariant")
-            || diagnostics[0].message.contains("Bool"),
+        diagnostics[0].message.contains(":invariant") || diagnostics[0].message.contains("Bool"),
         "Rust oracle は function guard の Bool 契約を診断するべき: {diagnostics:?}"
     );
     let oracle_span = diagnostics[0].span;
@@ -11620,7 +11862,8 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_function_match_guard() {
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_three_arg_function_match_guard_message() {
     let source = "(defn sum3 [x y z] (+ x (+ y z))) (defn check [] :invariant (match true [_ when (sum3 1 2 3) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("three-argument function match guard fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("three-argument function match guard fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11674,7 +11917,8 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_three_arg_function_match_gua
 #[ignore]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_dynamic_function_match_guard() {
     let source = "(defn identity [x] x) (defn check [] :invariant (match true [_ when (identity 1) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("dynamic function match guard fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("dynamic function match guard fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11682,8 +11926,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_dynamic_function_match_guard()
         "Rust oracle は dynamic function の non-Bool guard を診断するべき: {diagnostics:?}"
     );
     assert!(
-        diagnostics[0].message.contains(":invariant")
-            || diagnostics[0].message.contains("Bool"),
+        diagnostics[0].message.contains(":invariant") || diagnostics[0].message.contains("Bool"),
         "Rust oracle は dynamic function guard の Bool 契約を診断するべき: {diagnostics:?}"
     );
     let oracle_span = diagnostics[0].span;
@@ -11730,7 +11973,8 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_dynamic_function_match_guard()
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_dynamic_function_match_guard_message() {
     let source = "(defn identity [x] x) (defn check [] :invariant (match true [_ when (identity 1) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("dynamic function guard message fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("dynamic function guard message fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11783,8 +12027,10 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_dynamic_function_match_guard
 #[test]
 #[ignore]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_lambda_match_guard() {
-    let source = "(defn check [] :invariant (match true [_ when ((fn [x] x) 1) true] [_ true]) true)";
-    let program = lsharp_syntax::parse(source).expect("lambda match guard fixture は parse できるべき");
+    let source =
+        "(defn check [] :invariant (match true [_ when ((fn [x] x) 1) true] [_ true]) true)";
+    let program =
+        lsharp_syntax::parse(source).expect("lambda match guard fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     assert_eq!(
         diagnostics.len(),
@@ -11792,8 +12038,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_lambda_match_guard() {
         "Rust oracle は higher-order lambda の non-Bool guard を診断するべき: {diagnostics:?}"
     );
     assert!(
-        diagnostics[0].message.contains(":invariant")
-            || diagnostics[0].message.contains("Bool"),
+        diagnostics[0].message.contains(":invariant") || diagnostics[0].message.contains("Bool"),
         "Rust oracle は lambda guard の Bool 契約を診断するべき: {diagnostics:?}"
     );
     let oracle_span = diagnostics[0].span;
@@ -11843,7 +12088,8 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_lambda_match_guard() {
 /// EC-M1-01: legacy invariant の nested ADT constructor pattern が payload を bind すること
 #[test]
 #[ignore]
-fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match() {
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match()
+{
     let source = r#"
 (type (Maybe a) (Just a) Nothing)
 (defn make-nested-just [x] (Just (Just x)))
@@ -11904,7 +12150,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match_g
   true)
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 2, "Rust oracle は guarded match invariant 2 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        2,
+        "Rust oracle は guarded match invariant 2 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle は false guard から wildcard arm へ fall-through するべき"
@@ -11951,7 +12201,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_
   true)
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は record invariant 1 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は record invariant 1 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle は record field binder の match invariant を pass するべき"
@@ -11997,7 +12251,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_
   true)
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は nested record invariant 1 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は nested record invariant 1 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle は nested record child field binder の match invariant を pass するべき"
@@ -12035,7 +12293,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_multiple_property_preconditions() {
     let source = "(defn sum [left right] :property [(for-all [a Int b Int] :cases 5 :precondition [(>= a 0) (< b 5)] :postcondition (= result (+ a b)))] (+ left right))";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は property 1 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は property 1 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle は複数 precondition を満たす property を pass するべき"
@@ -12078,7 +12340,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_
   true)
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は record field invariant 1 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は record field invariant 1 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle は record field access の invariant を pass するべき"
@@ -12121,7 +12387,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_
   true)
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 1, "Rust oracle は record update invariant 1 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は record update invariant 1 件を生成するべき"
+    );
     assert!(
         oracle[0].passed,
         "Rust oracle は更新後の record field invariant を pass するべき"
@@ -12166,7 +12436,11 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_literal_and_wildcard_ma
   (+ x 1))
 "#;
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 2, "Rust oracle は match invariant 2 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        2,
+        "Rust oracle は match invariant 2 件を生成するべき"
+    );
     assert!(oracle.iter().all(|result| result.passed));
 
     let harness = r#"
@@ -12203,8 +12477,7 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_literal_and_wildcard_ma
 #[test]
 #[ignore]
 fn test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable() {
-    let source =
-        "(defn succ [x] :invariant (match x [value (= result missing)] [_ true]) (+ x 1))";
+    let source = "(defn succ [x] :invariant (match x [value (= result missing)] [_ true]) (+ x 1))";
     let program =
         lsharp_syntax::parse(source).expect("match を含む invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
@@ -12437,7 +12710,11 @@ fn test_e2e_selfhost_test_runner_preserves_unknown_invariant_diagnostic_span() {
     let source = "(defn succ [x] :invariant (= result (+ missing 1)) (+ x 1))";
     let program = lsharp_syntax::parse(source).expect("invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は未知変数診断を 1 件返すべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は未知変数診断を 1 件返すべき"
+    );
     assert!(diagnostics[0].message.contains("未定義"));
     let oracle_span = diagnostics[0].span;
 
@@ -12459,7 +12736,11 @@ fn test_e2e_selfhost_test_runner_preserves_unknown_invariant_diagnostic_span() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("1"), "selfhost は LS1001 を保持するべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("1"),
+        "selfhost は LS1001 を保持するべき"
+    );
     assert_eq!(
         lines.get(1).and_then(|line| line.parse::<usize>().ok()),
         Some(oracle_span.start),
@@ -12477,9 +12758,14 @@ fn test_e2e_selfhost_test_runner_preserves_unknown_invariant_diagnostic_span() {
 #[ignore]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_invariant_diagnostic_span() {
     let source = "(defn succ [x] :invariant (+ x 1) (+ x 1))";
-    let program = lsharp_syntax::parse(source).expect("non-Bool invariant fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("non-Bool invariant fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は non-Bool invariant を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は non-Bool invariant を 1 件診断するべき"
+    );
     assert!(
         diagnostics[0].message.contains(":invariant は Bool 必須"),
         "Rust oracle は invariant の Bool 契約を診断するべき: {diagnostics:?}"
@@ -12524,7 +12810,11 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_not_operand() {
     let source = "(defn succ [x] :invariant (not 0) (+ x 1))";
     let program = lsharp_syntax::parse(source).expect("not operand fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は not の non-Bool operand を診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は not の non-Bool operand を診断するべき"
+    );
     let oracle_span = diagnostics[0].span;
 
     let harness = r#"
@@ -12545,7 +12835,11 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_not_operand() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("2"), "not の Int operand は LS1002 にするべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("2"),
+        "not の Int operand は LS1002 にするべき"
+    );
     assert_eq!(
         lines.get(1).and_then(|line| line.parse::<usize>().ok()),
         Some(oracle_span.start),
@@ -12564,8 +12858,10 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_not_operand() {
 fn test_e2e_selfhost_test_runner_rejects_non_bool_logic_operands() {
     let and_source = "(defn and-check [x] :invariant (and 1 true) (+ x 1))";
     let or_source = "(defn or-check [x] :invariant (or true 1) (+ x 1))";
-    let and_program = lsharp_syntax::parse(and_source).expect("and operand fixture は parse できるべき");
-    let or_program = lsharp_syntax::parse(or_source).expect("or operand fixture は parse できるべき");
+    let and_program =
+        lsharp_syntax::parse(and_source).expect("and operand fixture は parse できるべき");
+    let or_program =
+        lsharp_syntax::parse(or_source).expect("or operand fixture は parse できるべき");
     let and_diagnostics = lsharp_types::metadata_check::check_metadata(&and_program);
     let or_diagnostics = lsharp_types::metadata_check::check_metadata(&or_program);
     assert_eq!(
@@ -12604,7 +12900,11 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_logic_operands() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("2"), "and の Int operand は LS1002 にするべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("2"),
+        "and の Int operand は LS1002 にするべき"
+    );
     assert_eq!(
         lines.get(1).and_then(|line| line.parse::<usize>().ok()),
         Some(and_span.start),
@@ -12615,7 +12915,11 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_logic_operands() {
         Some(and_span.end),
         "selfhost and operand diagnostic span の終了位置は Rust oracle と一致するべき"
     );
-    assert_eq!(lines.get(3).copied(), Some("2"), "or の Int operand は LS1002 にするべき");
+    assert_eq!(
+        lines.get(3).copied(),
+        Some("2"),
+        "or の Int operand は LS1002 にするべき"
+    );
     assert_eq!(
         lines.get(4).and_then(|line| line.parse::<usize>().ok()),
         Some(or_span.start),
@@ -12639,7 +12943,11 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_if_condition() {
         lsharp_syntax::parse(valid_source).expect("Bool if condition fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
     let valid_diagnostics = lsharp_types::metadata_check::check_metadata(&valid_program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は if の non-Bool condition を診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は if の non-Bool condition を診断するべき"
+    );
     assert!(
         valid_diagnostics.is_empty(),
         "Rust oracle は Bool if condition を受理するべき: {valid_diagnostics:?}"
@@ -12667,7 +12975,11 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_if_condition() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("2"), "if の Int condition は LS1002 にするべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("2"),
+        "if の Int condition は LS1002 にするべき"
+    );
     assert_eq!(
         lines.get(1).and_then(|line| line.parse::<usize>().ok()),
         Some(oracle_span.start),
@@ -12777,11 +13089,7 @@ fn test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property() {
 
     assert_eq!(
         lines,
-        vec![
-            "BEGIN",
-            "1",
-            "1002",
-        ],
+        vec!["BEGIN", "1", "1002",],
         "selfhost property checker は non-Bool predicate を実行前に報告するべき"
     );
 }
@@ -12789,10 +13097,16 @@ fn test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property() {
 /// EC-M1-02: selfhost property 実行診断が non-Bool postcondition の source span を保持すること
 #[test]
 fn test_e2e_selfhost_property_runner_preserves_non_bool_postcondition_span() {
-    let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (+ result 1))] x)";
-    let program = lsharp_syntax::parse(source).expect("non-Bool property fixture は parse できるべき");
+    let source =
+        "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (+ result 1))] x)";
+    let program =
+        lsharp_syntax::parse(source).expect("non-Bool property fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は non-Bool property を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は non-Bool property を 1 件診断するべき"
+    );
     assert!(
         diagnostics[0].message.contains("Bool"),
         "Rust oracle は property predicate の Bool 契約を診断するべき: {diagnostics:?}"
@@ -12817,7 +13131,11 @@ fn test_e2e_selfhost_property_runner_preserves_non_bool_postcondition_span() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("2"), "selfhost は LS1002 を保持するべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("2"),
+        "selfhost は LS1002 を保持するべき"
+    );
     assert_eq!(
         lines.get(1).and_then(|line| line.parse::<usize>().ok()),
         Some(oracle_span.start),
@@ -12834,9 +13152,14 @@ fn test_e2e_selfhost_property_runner_preserves_non_bool_postcondition_span() {
 #[test]
 fn test_e2e_selfhost_property_runner_preserves_non_bool_precondition_span() {
     let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(+ x 1)] :postcondition (= result x))] x)";
-    let program = lsharp_syntax::parse(source).expect("non-Bool precondition fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("non-Bool precondition fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は non-Bool precondition を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は non-Bool precondition を 1 件診断するべき"
+    );
     assert!(
         diagnostics[0].message.contains("Bool"),
         "Rust oracle は property precondition の Bool 契約を診断するべき: {diagnostics:?}"
@@ -12861,7 +13184,11 @@ fn test_e2e_selfhost_property_runner_preserves_non_bool_precondition_span() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("2"), "selfhost は LS1002 を保持するべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("2"),
+        "selfhost は LS1002 を保持するべき"
+    );
     assert_eq!(
         lines.get(1).and_then(|line| line.parse::<usize>().ok()),
         Some(oracle_span.start),
@@ -12878,9 +13205,14 @@ fn test_e2e_selfhost_property_runner_preserves_non_bool_precondition_span() {
 #[test]
 fn test_e2e_selfhost_property_runner_preserves_second_non_bool_precondition_span() {
     let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(>= x 0) (+ x 1)] :postcondition (= result x))] x)";
-    let program = lsharp_syntax::parse(source).expect("second non-Bool precondition fixture は parse できるべき");
+    let program = lsharp_syntax::parse(source)
+        .expect("second non-Bool precondition fixture は parse できるべき");
     let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-    assert_eq!(diagnostics.len(), 1, "Rust oracle は second non-Bool precondition を 1 件診断するべき");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は second non-Bool precondition を 1 件診断するべき"
+    );
     assert!(
         diagnostics[0].message.contains("Bool"),
         "Rust oracle は second property precondition の Bool 契約を診断するべき: {diagnostics:?}"
@@ -12905,7 +13237,11 @@ fn test_e2e_selfhost_property_runner_preserves_second_non_bool_precondition_span
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.first().copied(), Some("2"), "selfhost は LS1002 を保持するべき");
+    assert_eq!(
+        lines.first().copied(),
+        Some("2"),
+        "selfhost は LS1002 を保持するべき"
+    );
     assert_eq!(
         lines.get(1).and_then(|line| line.parse::<usize>().ok()),
         Some(oracle_span.start),
@@ -13742,7 +14078,11 @@ fn test_e2e_selfhost_parser_delimiter_diagnostics_rejects_unclosed_property_expr
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["1", "1001"], "selfhost delimiter diagnostics は unclosed property expression を拒否するべき");
+    assert_eq!(
+        lines,
+        vec!["1", "1001"],
+        "selfhost delimiter diagnostics は unclosed property expression を拒否するべき"
+    );
 }
 
 /// EC-M1-02: selfhost test が canonical :case の型エラーを実行前に拒否すること
@@ -13815,7 +14155,9 @@ fn test_e2e_selfhost_test_runner_preserves_contract_form_order_and_spans() {
 
     assert_eq!(
         lines,
-        vec!["3", "1", "1", "15", "34", "2", "1", "35", "64", "1", "1", "65", "84"],
+        vec![
+            "3", "1", "1", "15", "34", "2", "1", "35", "64", "1", "1", "65", "84"
+        ],
         "selfhost contract inventory は legacy directive の順序・grouping・source span を保持すべき"
     );
 }
@@ -13985,8 +14327,20 @@ fn test_e2e_selfhost_parser_contract_suite_projects_typed_property_payload() {
     assert_eq!(
         lines,
         vec![
-            "1", "1", "5", "1", "1", "1", "1", "0", "5", "3", "0",
-            "type-directed-splitmix64-v1", "1", "0",
+            "1",
+            "1",
+            "5",
+            "1",
+            "1",
+            "1",
+            "1",
+            "0",
+            "5",
+            "3",
+            "0",
+            "type-directed-splitmix64-v1",
+            "1",
+            "0",
         ],
         "parser-owned ContractSuite は canonical property の typed binder/predicate/sampling を raw string のまま返すべきではない"
     );
@@ -14994,7 +15348,10 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_trace_gap() {
     .unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 2, "unknown validation は exit code 2 を返すべき");
+    assert_eq!(
+        output.exit_code, 2,
+        "unknown validation は exit code 2 を返すべき"
+    );
     let value: Value = serde_json::from_str(output.stdout.trim())
         .expect("selfhost validate --source は JSON report を返すべき");
     assert_eq!(value["status"], "unknown");
@@ -15002,7 +15359,10 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_trace_gap() {
         value["trace_gaps"][0]["code"],
         "trace-gap.claim-without-test"
     );
-    assert_eq!(value["trace_gaps"][0]["subject_id"], "claim:checkout/cancel-rejects-shipped");
+    assert_eq!(
+        value["trace_gaps"][0]["subject_id"],
+        "claim:checkout/cancel-rejects-shipped"
+    );
     assert_eq!(value["open_questions"], 0);
     assert_eq!(value["independent_reviews"], 0);
     assert_eq!(value["contradicting_observations"], 0);
@@ -15040,7 +15400,10 @@ fn test_e2e_selfhost_cli_validate_source_text_reports_trace_gap() {
     .unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 2, "unknown validation は exit code 2 を返すべき");
+    assert_eq!(
+        output.exit_code, 2,
+        "unknown validation は exit code 2 を返すべき"
+    );
     assert_eq!(
         output.stdout.trim_end(),
         "status: unknown\n\
@@ -15167,7 +15530,10 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {
     .unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 1, "contradictory evidence は fail code 1 を返すべき");
+    assert_eq!(
+        output.exit_code, 1,
+        "contradictory evidence は fail code 1 を返すべき"
+    );
     let value: Value = serde_json::from_str(output.stdout.trim())
         .expect("selfhost validate --source は evidence JSON report を返すべき");
     assert_eq!(value["status"], "fail");
@@ -15226,7 +15592,10 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_stale_review_and_evidence(
     .unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 2, "stale validation は unknown exit 2 を返すべき");
+    assert_eq!(
+        output.exit_code, 2,
+        "stale validation は unknown exit 2 を返すべき"
+    );
     let value: Value = serde_json::from_str(output.stdout.trim())
         .expect("selfhost stale report は JSON であるべき");
     assert_eq!(value["status"], "unknown");
@@ -15296,15 +15665,24 @@ fn test_e2e_selfhost_cli_validate_source_emits_manifest() {
     .expect("source manifest は valid JSON であるべき");
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 2, "未確定 validation は exit code 2 を返すべき");
+    assert_eq!(
+        output.exit_code, 2,
+        "未確定 validation は exit code 2 を返すべき"
+    );
     assert_eq!(report["status"], "unknown");
     assert_eq!(manifest["schema_version"], 1);
     assert_eq!(manifest["nodes"][0]["kind"], "claim");
     assert_eq!(manifest["nodes"][0]["namespace"], "checkout");
     assert_eq!(manifest["nodes"][0]["key"], "cancel-rejects-shipped");
     assert_eq!(manifest["evidence"][0]["method"], "property");
-    assert_eq!(manifest["evidence"][0]["execution"]["sampling"]["shrinks"], serde_json::json!([8, 3, 1]));
-    assert_eq!(manifest["evidence"][0]["execution"]["sampling"]["coverage"], serde_json::json!({"negative": 2, "positive": 1}));
+    assert_eq!(
+        manifest["evidence"][0]["execution"]["sampling"]["shrinks"],
+        serde_json::json!([8, 3, 1])
+    );
+    assert_eq!(
+        manifest["evidence"][0]["execution"]["sampling"]["coverage"],
+        serde_json::json!({"negative": 2, "positive": 1})
+    );
     assert_eq!(manifest["edges"][0]["relation"], "tested-by");
     assert_eq!(manifest["edges"][1]["relation"], "supports");
 }
@@ -15390,7 +15768,10 @@ fn test_e2e_selfhost_cli_validate_source_rejects_manifest_write_failure() {
     let manifest_exists = dir.join("missing/intent-graph.json").exists();
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 1, "manifest write failure は exit code 1 を返すべき");
+    assert_eq!(
+        output.exit_code, 1,
+        "manifest write failure は exit code 1 を返すべき"
+    );
     assert!(
         output
             .stdout
@@ -15403,7 +15784,10 @@ fn test_e2e_selfhost_cli_validate_source_rejects_manifest_write_failure() {
         "write failure では validation report を出さないべき: {}",
         output.stdout
     );
-    assert!(!manifest_exists, "write failure では manifest を残さないべき");
+    assert!(
+        !manifest_exists,
+        "write failure では manifest を残さないべき"
+    );
 }
 
 /// EC-M2-02/EC-M2-03: source validation の sampling error は report/manifest を漏らさず fail-closed にする。
@@ -15459,7 +15843,10 @@ fn test_e2e_selfhost_cli_validate_source_rejects_negative_sampling_without_repor
     let manifest_exists = dir.join("intent-graph.json").exists();
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 1, "invalid sampling は exit code 1 で拒否するべき");
+    assert_eq!(
+        output.exit_code, 1,
+        "invalid sampling は exit code 1 で拒否するべき"
+    );
     assert!(
         output.stdout.contains("source validation error:11"),
         "invalid sampling の入力診断を出すべき: {}",
@@ -15470,7 +15857,10 @@ fn test_e2e_selfhost_cli_validate_source_rejects_negative_sampling_without_repor
         "invalid sampling では report を出力しないべき: {}",
         output.stdout
     );
-    assert!(!manifest_exists, "invalid sampling では manifest を残さないべき");
+    assert!(
+        !manifest_exists,
+        "invalid sampling では manifest を残さないべき"
+    );
 }
 
 /// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること
@@ -16035,8 +16425,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover() {
         request_body.len(),
         request_body
     );
-    let response_body =
-        r#"{"jsonrpc":"2.0","id":62,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
+    let response_body = r#"{"jsonrpc":"2.0","id":62,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -16193,8 +16582,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document() {
     );
     let open_response =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":45}}"#;
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":66,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":66,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16230,8 +16618,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document_spec_param
     );
     let open_response =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":45}}"#;
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":66,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":66,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16583,7 +16970,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":71,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":71,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16625,7 +17013,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document_spec_
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":71,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":71,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16902,8 +17291,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_resolves_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":10,"sourceBytes":{}}}}}"#,
         main_source.len()
     );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":73,"result":{"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":8}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":73,"result":{"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":8}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_helper_response.len(),
@@ -16958,7 +17346,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() 
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         changed_source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":74,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":74,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -17190,7 +17579,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_repeated_didopen_keeps_latest_sourc
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         latest_source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":75,"result":[{"label":"beta","kind":3,"insertText":"beta"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":75,"result":[{"label":"beta","kind":3,"insertText":"beta"}]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_response.len(),
@@ -17245,8 +17635,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_changed_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         changed_source.len()
     );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":76,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":76,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -17522,8 +17911,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         latest_source.len()
     );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":79,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":79,"result":{"range":{"start":{"line":1,"character":36},"end":{"line":1,"character":42}},"contents":"defn helper"}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_response.len(),
@@ -18040,11 +18428,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_lint_diagnostic() 
     let open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"(defn main [] (let [unused 42] 0))\n"}}}}}}"##
     );
-    let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}",
-        open_body.len(),
-        open_body
-    );
+    let stdin = format!("Content-Length: {}\r\n\r\n{}", open_body.len(), open_body);
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),
@@ -18068,11 +18452,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_hyphenated_lint_name() {
     let open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"(defn main [] (let [unused-a 42] 0))\n"}}}}}}"##
     );
-    let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}",
-        open_body.len(),
-        open_body
-    );
+    let stdin = format!("Content-Length: {}\r\n\r\n{}", open_body.len(), open_body);
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),
@@ -18093,8 +18473,8 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_hyphenated_lint_name() {
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics() {
     let recursive_source = "(type-alias Rec Rec) (defn ok [] : Int 42)\n";
-    let recursive_program =
-        lsharp_syntax::parse(recursive_source).expect("recursive alias fixture は parse できるべき");
+    let recursive_program = lsharp_syntax::parse(recursive_source)
+        .expect("recursive alias fixture は parse できるべき");
     let mut oracle = Infer::new();
     let recursive_error = oracle
         .infer_program(&recursive_program)
@@ -18129,8 +18509,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_type_diagnostics()
     let recursive_open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{recursive_uri}","languageId":"lsharp","version":1,"text":"{recursive_source}"}}}}}}"##
     );
-    let initialize_body =
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
+    let initialize_body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         initialize_body.len(),
@@ -18207,11 +18586,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_multiple_diagnostics_in_sta
     let open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"{source}"}}}}}}"##
     );
-    let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}",
-        open_body.len(),
-        open_body
-    );
+    let stdin = format!("Content-Length: {}\r\n\r\n{}", open_body.len(), open_body);
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),
@@ -18236,11 +18611,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnos
     let open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"{source}"}}}}}}"##
     );
-    let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}",
-        open_body.len(),
-        open_body
-    );
+    let stdin = format!("Content-Length: {}\r\n\r\n{}", open_body.len(), open_body);
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),
@@ -18261,8 +18632,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnos
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_parse_diagnostic() {
     let uri = "file:///tmp/lsharp-lsp-parse-standard.ls";
-    let initialize_body =
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
+    let initialize_body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"rootUri":null}}"#;
     let open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":")"}}}}}}"##
     );
@@ -18387,11 +18757,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnosti
     let open_body = format!(
         r##"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"lsharp","version":1,"text":"(defn main [] (do))\n"}}}}}}"##
     );
-    let stdin = format!(
-        "Content-Length: {}\r\n\r\n{}",
-        open_body.len(),
-        open_body
-    );
+    let stdin = format!("Content-Length: {}\r\n\r\n{}", open_body.len(), open_body);
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),

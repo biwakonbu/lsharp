@@ -595,7 +595,10 @@ fn test_e2e_selfhost_lsp_hover_frame_projects_range_object() {
     let output = compile_and_run(&format!("{}\n{}", source, harness));
     let body = r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":0,"character":1},"end":{"line":2,"character":3}},"contents":"info"}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
-    assert_eq!(output, expected, "hover response は LSP range object を返すべき");
+    assert_eq!(
+        output, expected,
+        "hover response は LSP range object を返すべき"
+    );
 }
 
 /// TEST-LSP-10c: didOpen が wire URI を state に保持し、位置応答で再利用すること
@@ -639,7 +642,10 @@ fn test_e2e_selfhost_lsp_state_preserves_wire_uri() {
         .expect("state URI prefix");
     let body = r#"{"jsonrpc":"2.0","id":7,"result":{"uri":"file:///tmp/lsharp-state-uri.ls","range":{"start":{"line":0,"character":6},"end":{"line":0,"character":6}}}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
-    assert_eq!(frame, expected, "state URI は Location wire に投影されるべき");
+    assert_eq!(
+        frame, expected,
+        "state URI は Location wire に投影されるべき"
+    );
 }
 
 /// TEST-LSP-10d: document 更新後の publishDiagnostics refresh が wire URI を保持すること
@@ -815,7 +821,10 @@ fn test_e2e_selfhost_lsp_completion_frame_projects_item_objects() {
     let output = compile_and_run(&format!("{}\n{}", source, harness));
     let body = r#"{"jsonrpc":"2.0","id":11,"result":[{"label":"if","kind":14,"insertText":"if"},{"label":"name","kind":3,"insertText":"name"}]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
-    assert_eq!(output, expected, "completion response は LSP item object を返すべき");
+    assert_eq!(
+        output, expected,
+        "completion response は LSP item object を返すべき"
+    );
 }
 
 /// TEST-LSP-13c: formatting TextEdit の wire response は LSP object を投影すること
@@ -833,7 +842,10 @@ fn test_e2e_selfhost_lsp_formatting_frame_projects_text_edit_object() {
     let output = compile_and_run(&format!("{}\n{}", source, harness));
     let body = r#"{"jsonrpc":"2.0","id":12,"result":[{"range":{"start":{"line":0,"character":1},"end":{"line":2,"character":3}},"newText":"formatted"}]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
-    assert_eq!(output, expected, "formatting response は LSP TextEdit object を返すべき");
+    assert_eq!(
+        output, expected,
+        "formatting response は LSP TextEdit object を返すべき"
+    );
 }
 
 /// TEST-LSP-14: sort-diagnostics が source 優先 → severity → line → col の順で並べること

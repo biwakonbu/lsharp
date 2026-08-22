@@ -33,9 +33,8 @@ fn assert_selfhost_root_lifetime(instrs: &[(i64, i64)], context: &str) {
     let mut active_slots = Vec::new();
     let mut next_slot = 0;
 
-    let pop = |stack: &mut Vec<SelfhostRootValue>| {
-        stack.pop().unwrap_or(SelfhostRootValue::Unknown)
-    };
+    let pop =
+        |stack: &mut Vec<SelfhostRootValue>| stack.pop().unwrap_or(SelfhostRootValue::Unknown);
 
     for (index, (opcode, operand)) in instrs.iter().enumerate() {
         match *opcode {

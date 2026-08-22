@@ -517,13 +517,13 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         open_source.len()
     );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
     let change_response = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         change_source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let formatting_response =
         "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\\n(he)\\n\"]]}";
 
@@ -595,13 +595,13 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         open_source.len()
     );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
     let change_response = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         change_source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let formatting_response =
         "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\\n(he)\\n\"]]}";
 
@@ -692,13 +692,13 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetr
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         open_source.len()
     );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
+    let hover_response = r#"{"jsonrpc":"2.0","id":81,"result":{"range":{"start":{"line":1,"character":21},"end":{"line":1,"character":27}},"contents":"defn helper"}}"#;
     let change_response = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         change_source.len()
     );
-    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
+    let completion_response =
+        r#"{"jsonrpc":"2.0","id":82,"result":[{"label":"helper","kind":3,"insertText":"helper"}]}"#;
     let formatting_response =
         "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\\n(he)\\n\"]]}";
 

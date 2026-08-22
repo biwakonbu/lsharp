@@ -143,7 +143,8 @@ fn selfhost_contract_suite_preserves_property_precondition_source_spans() {
 
 #[test]
 fn selfhost_test_runner_reports_property_unknown_variable_diagnostic_span() {
-    let source = "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition missing)] x)";
+    let source =
+        "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition missing)] x)";
     let unknown_start = source
         .find("missing")
         .expect("property unknown variable span fixture が見つかる");

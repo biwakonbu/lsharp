@@ -61,7 +61,7 @@ fn run_with_partial_fd_write_with_close_errno(
     close_errno: i32,
 ) -> Result<PartialFdWriteCapture, String> {
     use wasmtime::{Engine, Linker, Module, Store};
-    use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
     let engine = Engine::default();
     let mut linker = Linker::<WasiP1Ctx>::new(&engine);
@@ -204,7 +204,7 @@ fn run_with_partial_fd_read_with_errors_and_path_open(
     path_open_errno: Option<i32>,
 ) -> Result<PartialFdReadCapture, String> {
     use wasmtime::{Engine, Linker, Module, Store};
-    use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
     let engine = Engine::default();
     let mut linker = Linker::<WasiP1Ctx>::new(&engine);

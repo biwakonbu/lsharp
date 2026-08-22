@@ -186,10 +186,9 @@ fn test_e2e_selfhost_flat_compat_sources_removed() {
 
 #[test]
 fn test_e2e_selfhost_embedded_cli_source_compile_uses_full_program_builder() {
-    let source = std::fs::read_to_string(
-        selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
-    )
-    .expect("canonical EmbeddedCli.ls が読み込めない");
+    let source =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"))
+            .expect("canonical EmbeddedCli.ls が読み込めない");
 
     assert!(
         source.contains("(defn compile-source-wasm-bytes "),
@@ -217,10 +216,9 @@ fn test_e2e_selfhost_embedded_cli_source_compile_uses_full_program_builder() {
 /// EC-M1-03: EmbeddedCli も check JSON report と argv routing を持つこと
 #[test]
 fn test_e2e_selfhost_embedded_cli_check_json_contract_is_present() {
-    let source = std::fs::read_to_string(
-        selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
-    )
-    .expect("canonical EmbeddedCli.ls が読み込めない");
+    let source =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"))
+            .expect("canonical EmbeddedCli.ls が読み込めない");
 
     assert!(
         source.contains("(defn check-json-report "),
@@ -251,10 +249,9 @@ fn test_e2e_selfhost_embedded_cli_check_json_contract_is_present() {
 /// EC-M1-06: EmbeddedCli も test の assurance JSON report と argv routing を持つこと
 #[test]
 fn test_e2e_selfhost_embedded_cli_test_json_contract_is_present() {
-    let source = std::fs::read_to_string(
-        selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
-    )
-    .expect("canonical EmbeddedCli.ls が読み込めない");
+    let source =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"))
+            .expect("canonical EmbeddedCli.ls が読み込めない");
 
     assert!(
         source.contains("(defn test-option-json "),
@@ -372,10 +369,9 @@ fn test_e2e_selfhost_pipeline_smoke_uses_full_program_builder() {
 
 #[test]
 fn test_e2e_selfhost_smoke_cli_source_compile_uses_full_program_builder() {
-    let source = std::fs::read_to_string(
-        selfhost_project_root().join("selfhost/src/App/SmokeCli.ls"),
-    )
-    .expect("canonical SmokeCli.ls が読み込めない");
+    let source =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/App/SmokeCli.ls"))
+            .expect("canonical SmokeCli.ls が読み込めない");
 
     assert!(
         source.contains("(defn compile-source-wasm-bytes "),
@@ -401,10 +397,9 @@ fn test_e2e_selfhost_smoke_cli_source_compile_uses_full_program_builder() {
 
 #[test]
 fn test_e2e_selfhost_embedded_cli_component_output_has_explicit_external_boundary() {
-    let source = std::fs::read_to_string(
-        selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
-    )
-    .expect("canonical EmbeddedCli.ls が読み込めない");
+    let source =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"))
+            .expect("canonical EmbeddedCli.ls が読み込めない");
 
     assert!(
         source.contains("(defn component-output-boundary-message "),

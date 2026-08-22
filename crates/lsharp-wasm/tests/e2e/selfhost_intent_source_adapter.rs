@@ -1334,7 +1334,7 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_attestation_fields() {
     let output = run_source_adapter_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(
-    lines,
+        lines,
         [
             "0", "8", "1", "0", "8", "1", "0", "8", "1", "0", "8", "1", "0", "8", "1",
         ]

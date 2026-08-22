@@ -234,9 +234,18 @@ fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
     );
     assert_eq!(lines[0], "1", "未定義変数 infer は失敗すべき");
     assert_eq!(lines[1], "1", "未定義変数 error code は E0001 であるべき");
-    assert_eq!(lines[2], "-1", "spanなし undefined error の start は -1 であるべき");
-    assert_eq!(lines[3], "-1", "spanなし undefined error の end は -1 であるべき");
-    assert_eq!(lines[4], "99999", "spanなし undefined error の name hash を保持すべき");
+    assert_eq!(
+        lines[2], "-1",
+        "spanなし undefined error の start は -1 であるべき"
+    );
+    assert_eq!(
+        lines[3], "-1",
+        "spanなし undefined error の end は -1 であるべき"
+    );
+    assert_eq!(
+        lines[4], "99999",
+        "spanなし undefined error の name hash を保持すべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: if 条件不一致は if-cond error code を返せる
@@ -804,7 +813,9 @@ fn test_e2e_selfhost_typeinfer_analysis_classifies_multilevel_definition_failure
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_expression_span() {
     let source = "(defn fail [] missing)";
-    let expected_start = source.find("missing").expect("fixture must contain missing");
+    let expected_start = source
+        .find("missing")
+        .expect("fixture must contain missing");
     let expected_end = expected_start + "missing".len();
     let harness = r#"
 (defn main []
@@ -834,7 +845,9 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_expression_span() {
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_reports_nested_if_failure_span() {
     let source = "(defn fail [] (if missing 1 2))";
-    let expected_start = source.find("missing").expect("fixture must contain missing");
+    let expected_start = source
+        .find("missing")
+        .expect("fixture must contain missing");
     let expected_end = expected_start + "missing".len();
     let harness = r#"
 (defn main []
@@ -864,7 +877,9 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_nested_if_failure_span() {
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_reports_apply_callee_failure_span() {
     let source = "(defn fail [] (missing 2))";
-    let expected_start = source.find("missing").expect("fixture must contain missing");
+    let expected_start = source
+        .find("missing")
+        .expect("fixture must contain missing");
     let expected_end = expected_start + "missing".len();
     let harness = r#"
 (defn main []
@@ -894,7 +909,9 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_apply_callee_failure_span() {
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_reports_apply_argument_failure_span() {
     let source = "(defn fail [] (not missing))";
-    let expected_start = source.find("missing").expect("fixture must contain missing");
+    let expected_start = source
+        .find("missing")
+        .expect("fixture must contain missing");
     let expected_end = expected_start + "missing".len();
     let harness = r#"
 (defn main []
@@ -914,7 +931,12 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_apply_argument_failure_span() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 3, "apply argument span 出力が不足: {:?}", lines);
+    assert_eq!(
+        lines.len(),
+        3,
+        "apply argument span 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1");
     assert_eq!(lines[1], expected_start.to_string());
     assert_eq!(lines[2], expected_end.to_string());
@@ -924,7 +946,9 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_apply_argument_failure_span() {
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_reports_let_initializer_failure_span() {
     let source = "(defn fail [] (let [value missing] value))";
-    let expected_start = source.find("missing").expect("fixture must contain missing");
+    let expected_start = source
+        .find("missing")
+        .expect("fixture must contain missing");
     let expected_end = expected_start + "missing".len();
     let harness = r#"
 (defn main []
@@ -944,7 +968,12 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_let_initializer_failure_span() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 3, "let initializer span 出力が不足: {:?}", lines);
+    assert_eq!(
+        lines.len(),
+        3,
+        "let initializer span 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1");
     assert_eq!(lines[1], expected_start.to_string());
     assert_eq!(lines[2], expected_end.to_string());
@@ -954,7 +983,9 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_let_initializer_failure_span() {
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_reports_computation_step_failure_span() {
     let source = "(defn fail [] (computation maybe-builder (let! x missing) (return x)))";
-    let expected_start = source.find("missing").expect("fixture must contain missing");
+    let expected_start = source
+        .find("missing")
+        .expect("fixture must contain missing");
     let expected_end = expected_start + "missing".len();
     let harness = r#"
 (defn main []
@@ -1055,7 +1086,8 @@ fn test_e2e_selfhost_typeinfer_analysis_classifies_do_dependency_failure_kind() 
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_definition() {
     let source = "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib :as L) (defn main [] (L.helper 42))";
-    let program = lsharp_syntax::parse(source).expect("qualified import fixture は parse できるべき");
+    let program =
+        lsharp_syntax::parse(source).expect("qualified import fixture は parse できるべき");
     let mut oracle = Infer::new();
     let helper_type = lsharp_types::types::Type::Fun(
         vec![lsharp_types::types::Type::int()],
@@ -1102,8 +1134,7 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_definiti
 /// EC-M1-01: import の module 名経由の qualified function lookup を selfhost でも解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_module_qualified_definition() {
-    let source =
-        "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (Lib.helper 42))";
+    let source = "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (Lib.helper 42))";
     let program =
         lsharp_syntax::parse(source).expect("module-qualified import fixture は parse できるべき");
     let mut oracle = Infer::new();
@@ -1218,8 +1249,7 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_open_definition() {
 /// EC-M1-01: import の :only が qualified lookup の公開 symbol 境界を守ること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_only_qualified_definition() {
-    let selected_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :only [helper]) (defn main [] (Lib.helper 42))";
+    let selected_source = "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :only [helper]) (defn main [] (Lib.helper 42))";
     let selected_oracle_source =
         "(module Main) (import Lib :only [helper]) (defn main [] (Lib.helper 42))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
@@ -1244,8 +1274,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_only_qualified_definition
         "Rust oracle は :only で選択された definition を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :only [helper]) (defn main [] (Lib.hidden 42))";
+    let excluded_source = "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :only [helper]) (defn main [] (Lib.hidden 42))";
     let excluded_oracle_source =
         "(module Main) (import Lib :only [helper]) (defn main [] (Lib.hidden 42))";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
@@ -1292,8 +1321,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_only_qualified_definition
       (print (vector-get excluded-kinds 1))
       0)))
 "#,
-        selected_source,
-        excluded_source
+        selected_source, excluded_source
     );
 
     let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
@@ -1312,8 +1340,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_only_qualified_definition
 /// EC-M1-01: import の :as + :only が alias-qualified lookup の公開境界を守ること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_definition() {
-    let selected_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :as L :only [helper]) (defn main [] (L.helper 42))";
+    let selected_source = "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :as L :only [helper]) (defn main [] (L.helper 42))";
     let selected_oracle_source =
         "(module Main) (import Lib :as L :only [helper]) (defn main [] (L.helper 42))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
@@ -1338,8 +1365,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_defi
         "Rust oracle は alias + :only で選択された definition を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :as L :only [helper]) (defn main [] (L.hidden 42))";
+    let excluded_source = "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :as L :only [helper]) (defn main [] (L.hidden 42))";
     let excluded_oracle_source =
         "(module Main) (import Lib :as L :only [helper]) (defn main [] (L.hidden 42))";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
@@ -1386,8 +1412,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_defi
       (print (vector-get excluded-kinds 1))
       0)))
 "#,
-        selected_source,
-        excluded_source
+        selected_source, excluded_source
     );
 
     let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
@@ -1406,8 +1431,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_defi
 /// EC-M1-01: import の :open は public function だけを unqualified lookup へ公開すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_unqualified_definition() {
-    let selected_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (private (defn secret [value] (+ value 2))) (module Main) (import Lib :open) (defn main [] (helper 42))";
+    let selected_source = "(module Lib) (defn helper [value] (+ value 1)) (private (defn secret [value] (+ value 2))) (module Main) (import Lib :open) (defn main [] (helper 42))";
     let selected_oracle_source = "(module Main) (import Lib :open) (defn main [] (helper 42))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
         .expect("selected :open oracle fixture は parse できるべき");
@@ -1425,8 +1449,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_unqualified_definiti
         "Rust oracle は :open の public definition を unqualified lookup で受理するべき"
     );
 
-    let closed_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (helper 42))";
+    let closed_source = "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (helper 42))";
     let closed_oracle_source = "(module Main) (import Lib) (defn main [] (helper 42))";
     let closed_program = lsharp_syntax::parse(closed_oracle_source)
         .expect("closed import oracle fixture は parse できるべき");
@@ -1436,8 +1459,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_unqualified_definiti
         "Rust oracle は :open なしの unqualified definition を拒否するべき"
     );
 
-    let private_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (private (defn secret [value] (+ value 2))) (module Main) (import Lib :open) (defn main [] (secret 42))";
+    let private_source = "(module Lib) (defn helper [value] (+ value 1)) (private (defn secret [value] (+ value 2))) (module Main) (import Lib :open) (defn main [] (secret 42))";
     let private_oracle_source = "(module Main) (import Lib :open) (defn main [] (secret 42))";
     let private_program = lsharp_syntax::parse(private_oracle_source)
         .expect("private :open oracle fixture は parse できるべき");
@@ -1496,8 +1518,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_unqualified_definiti
 /// EC-M1-01: import の :open + :only が selected symbol だけを unqualified lookup へ公開すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_unqualified_definition() {
-    let selected_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :open :only [helper]) (defn main [] (helper 42))";
+    let selected_source = "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :open :only [helper]) (defn main [] (helper 42))";
     let selected_oracle_source =
         "(module Main) (import Lib :open :only [helper]) (defn main [] (helper 42))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
@@ -1522,8 +1543,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_unqualified_def
         "Rust oracle は :open + :only の selected definition を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :open :only [helper]) (defn main [] (hidden 42))";
+    let excluded_source = "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :open :only [helper]) (defn main [] (hidden 42))";
     let excluded_oracle_source =
         "(module Main) (import Lib :open :only [helper]) (defn main [] (hidden 42))";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
@@ -1576,11 +1596,10 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_unqualified_def
 /// EC-M1-01: import の module prefix 経由で ADT constructor を解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_adt_constructor() {
-    let source =
-        "(module Lib) (type Option (Some Int) None) (module Main) (import Lib) (defn main [] (Lib.Some 42))";
+    let source = "(module Lib) (type Option (Some Int) None) (module Main) (import Lib) (defn main [] (Lib.Some 42))";
     let oracle_source = "(module Main) (import Lib) (defn main [] (Lib.Some 42))";
-    let oracle_program =
-        lsharp_syntax::parse(oracle_source).expect("qualified ADT constructor fixture は parse できるべき");
+    let oracle_program = lsharp_syntax::parse(oracle_source)
+        .expect("qualified ADT constructor fixture は parse できるべき");
     let mut oracle = Infer::new();
     let some_type = lsharp_types::types::Type::Fun(
         vec![lsharp_types::types::Type::int()],
@@ -1626,8 +1645,7 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_adt_constructo
 /// EC-M1-01: import の alias + :only が ADT constructor export 境界を守ること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructor() {
-    let selected_source =
-        "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn main [] (L.Some 42))";
+    let selected_source = "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn main [] (L.Some 42))";
     let selected_oracle_source =
         "(module Main) (import Lib :as L :only [Some]) (defn main [] (L.Some 42))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
@@ -1651,8 +1669,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructo
         "Rust oracle は alias + :only の selected ADT constructor を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn main [] (L.Other true))";
+    let excluded_source = "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn main [] (L.Other true))";
     let excluded_oracle_source =
         "(module Main) (import Lib :as L :only [Some]) (defn main [] (L.Other true))";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
@@ -1714,10 +1731,8 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructo
 /// EC-M1-01: import alias + :only が ADT constructor pattern の型環境 lookup へも適用されること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructor_pattern() {
-    let selected_source =
-        "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Some x) x] [_ 0]))";
-    let selected_oracle_source =
-        "(module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Some x) x] [_ 0]))";
+    let selected_source = "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Some x) x] [_ 0]))";
+    let selected_oracle_source = "(module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Some x) x] [_ 0]))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
         .expect("selected alias + :only ADT pattern oracle fixture は parse できるべき");
     let some_type = lsharp_types::types::Type::Fun(
@@ -1739,10 +1754,8 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructo
         "Rust oracle は alias + :only の selected ADT pattern を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Other x) x] [_ 0]))";
-    let excluded_oracle_source =
-        "(module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Other x) x] [_ 0]))";
+    let excluded_source = "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Other x) x] [_ 0]))";
+    let excluded_oracle_source = "(module Main) (import Lib :as L :only [Some]) (defn unwrap [value] (match value [(L.Other x) x] [_ 0]))";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
         .expect("excluded alias + :only ADT pattern oracle fixture は parse できるべき");
     let other_type = lsharp_types::types::Type::Fun(
@@ -1845,9 +1858,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_accesso
 /// EC-M1-01: import の alias + :only が record field accessor export 境界を守ること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_accessor() {
-    let selected_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point.x]) (defn get-x [] L.Point.x)";
-    let selected_oracle_source = "(module Main) (import Lib :as L :only [Point.x]) (defn get-x [] L.Point.x)";
+    let selected_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point.x]) (defn get-x [] L.Point.x)";
+    let selected_oracle_source =
+        "(module Main) (import Lib :as L :only [Point.x]) (defn get-x [] L.Point.x)";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
         .expect("selected alias + :only record accessor oracle fixture は parse できるべき");
     let accessor_type = lsharp_types::types::Type::Fun(
@@ -1869,9 +1882,9 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_accesso
         "Rust oracle は alias + :only の selected record accessor を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point.x]) (defn get-y [] L.Point.y)";
-    let excluded_oracle_source = "(module Main) (import Lib :as L :only [Point.x]) (defn get-y [] L.Point.y)";
+    let excluded_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point.x]) (defn get-y [] L.Point.y)";
+    let excluded_oracle_source =
+        "(module Main) (import Lib :as L :only [Point.x]) (defn get-y [] L.Point.y)";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
         .expect("excluded alias + :only record accessor oracle fixture は parse できるべき");
     let excluded_type = lsharp_types::types::Type::Fun(
@@ -1931,11 +1944,10 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_accesso
 /// EC-M1-01: import の :open が record field accessor だけを unqualified lookup へ公開すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_record_accessor() {
-    let open_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open) (defn get-x [] Point.x)";
+    let open_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open) (defn get-x [] Point.x)";
     let open_oracle_source = "(module Main) (import Lib :open) (defn get-x [] Point.x)";
-    let open_program =
-        lsharp_syntax::parse(open_oracle_source).expect("open record accessor oracle は parse できるべき");
+    let open_program = lsharp_syntax::parse(open_oracle_source)
+        .expect("open record accessor oracle は parse できるべき");
     let accessor_type = lsharp_types::types::Type::Fun(
         vec![lsharp_types::types::Type::Con("Lib.Point".to_string())],
         Box::new(lsharp_types::types::Type::int()),
@@ -1950,11 +1962,10 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_record_accessor() {
         "Rust oracle は :open の unqualified record accessor を受理するべき"
     );
 
-    let closed_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn get-x [] Point.x)";
+    let closed_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn get-x [] Point.x)";
     let closed_oracle_source = "(module Main) (import Lib) (defn get-x [] Point.x)";
-    let closed_program =
-        lsharp_syntax::parse(closed_oracle_source).expect("closed record accessor oracle は parse できるべき");
+    let closed_program = lsharp_syntax::parse(closed_oracle_source)
+        .expect("closed record accessor oracle は parse できるべき");
     let mut closed_oracle = Infer::new();
     closed_oracle.inject_external_types(&[(
         "Lib.Point.x".to_string(),
@@ -1997,9 +2008,9 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_record_accessor() {
 /// EC-M1-01: import の :open + :only が selected record field accessor だけを公開すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_record_accessor() {
-    let selected_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open :only [Point.x]) (defn get-x [] Point.x)";
-    let selected_oracle_source = "(module Main) (import Lib :open :only [Point.x]) (defn get-x [] Point.x)";
+    let selected_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open :only [Point.x]) (defn get-x [] Point.x)";
+    let selected_oracle_source =
+        "(module Main) (import Lib :open :only [Point.x]) (defn get-x [] Point.x)";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
         .expect("selected open + only record accessor oracle は parse できるべき");
     let accessor_type = lsharp_types::types::Type::Fun(
@@ -2016,9 +2027,9 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_record_accessor
         "Rust oracle は open + only の selected record accessor を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open :only [Point.x]) (defn get-y [] Point.y)";
-    let excluded_oracle_source = "(module Main) (import Lib :open :only [Point.x]) (defn get-y [] Point.y)";
+    let excluded_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open :only [Point.x]) (defn get-y [] Point.y)";
+    let excluded_oracle_source =
+        "(module Main) (import Lib :open :only [Point.x]) (defn get-y [] Point.y)";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
         .expect("excluded open + only record accessor oracle は parse できるべき");
     let mut excluded_oracle = Infer::new();
@@ -2063,8 +2074,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_record_accessor
 /// EC-M1-01: import の alias + :only が record constructor export 境界を守ること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_constructor() {
-    let selected_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (L.Point 1 2))";
+    let selected_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (L.Point 1 2))";
     let selected_oracle_source =
         "(module Main) (import Lib :as L :only [Point]) (defn main [] (L.Point 1 2))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
@@ -2091,8 +2101,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_constru
         "Rust oracle は alias + :only の selected record constructor を受理するべき"
     );
 
-    let excluded_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (L.Hidden 1 2))";
+    let excluded_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (L.Hidden 1 2))";
     let excluded_oracle_source =
         "(module Main) (import Lib :as L :only [Point]) (defn main [] (L.Hidden 1 2))";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
@@ -2151,8 +2160,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_constru
 /// EC-M1-01: import の module prefix 経由で record constructor を解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_constructor() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] (Lib.Point 1 2))";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] (Lib.Point 1 2))";
     let oracle_source = "(module Main) (import Lib) (defn main [] (Lib.Point 1 2))";
     let oracle_program = lsharp_syntax::parse(oracle_source)
         .expect("qualified record constructor fixture は parse できるべき");
@@ -2204,10 +2212,8 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_constru
 /// EC-M1-01: qualified record constructor の結果を qualified record 型として注釈できること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_type_annotation() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] (: (Lib.Point 1 2) Lib.Point))";
-    let oracle_source =
-        "(module Main) (import Lib) (defn main [] (: (Lib.Point 1 2) Lib.Point))";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] (: (Lib.Point 1 2) Lib.Point))";
+    let oracle_source = "(module Main) (import Lib) (defn main [] (: (Lib.Point 1 2) Lib.Point))";
     let oracle_program = lsharp_syntax::parse(oracle_source)
         .expect("qualified record type annotation fixture は parse できるべき");
     let mut oracle = Infer::new();
@@ -2254,11 +2260,10 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_type_an
 
 /// EC-M1-01: import alias と `:only` の record 型 annotation を解決すること
 #[test]
-fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_only_qualified_record_type_annotation() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (: (L.Point 1 2) L.Point))";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (: (L.Point 1 2) Int))";
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_only_qualified_record_type_annotation()
+ {
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (: (L.Point 1 2) L.Point))";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] (: (L.Point 1 2) Int))";
     let oracle_source =
         "(type L.Point (record (: x Int) (: y Int))) (defn main [] (: (L.Point 1 2) L.Point))";
     let oracle_program = lsharp_syntax::parse(oracle_source)
@@ -2274,7 +2279,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_only_qualified_rec
         .expect("invalid alias-qualified record type annotation fixture は parse できるべき");
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は alias-qualified record type annotation の mismatch を拒否するべき"
     );
 
@@ -2310,10 +2317,8 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_only_qualified_rec
 /// EC-M1-01: defn の alias-qualified record return signature を解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_defn_signature() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn make [] : L.Point (L.Point 1 2))";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn make [] : L.Point (L.Point true 2))";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn make [] : L.Point (L.Point 1 2))";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn make [] : L.Point (L.Point true 2))";
     let oracle_source =
         "(type L.Point (record (: x Int) (: y Int))) (defn make [] : L.Point (L.Point 1 2))";
     let oracle_program = lsharp_syntax::parse(oracle_source)
@@ -2329,7 +2334,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_d
         .expect("invalid alias-qualified record defn signature fixture は parse できるべき");
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は alias-qualified record constructor の field mismatch を拒否するべき"
     );
 
@@ -2365,12 +2372,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_d
 /// EC-M1-01: nested function type の record 引数を alias-qualified schema として解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_signature() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [] : (-> L.Point Int) (fn [point] (L.Point.x point)))";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [] : (-> L.Point Bool) (fn [point] (L.Point.x point)))";
-    let oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [] : (-> L.Point Int) (fn [point] (L.Point.x point)))";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [] : (-> L.Point Int) (fn [point] (L.Point.x point)))";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [] : (-> L.Point Bool) (fn [point] (L.Point.x point)))";
+    let oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn get-x [] : (-> L.Point Int) (fn [point] (L.Point.x point)))";
     let oracle_program = lsharp_syntax::parse(oracle_source)
         .expect("nested alias-qualified record signature fixture は parse できるべき");
     let mut oracle = Infer::new();
@@ -2378,13 +2382,14 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_s
         oracle.infer_program(&oracle_program).is_ok(),
         "Rust oracle は nested alias-qualified record signature を受理するべき"
     );
-    let invalid_oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [] : (-> L.Point Bool) (fn [point] (L.Point.x point)))";
+    let invalid_oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn get-x [] : (-> L.Point Bool) (fn [point] (L.Point.x point)))";
     let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source)
         .expect("invalid nested alias-qualified record signature fixture は parse できるべき");
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は nested alias-qualified record signature の return mismatch を拒否するべき"
     );
 
@@ -2419,13 +2424,11 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_s
 
 /// EC-M1-01: nested TypeApp の record 引数を alias-qualified schema として解決すること
 #[test]
-fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_type_app_signature() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn read-x [(: point (Ref L.Point))] : Int (L.Point.x (ref-get point)))";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn read-x [(: point (Ref L.Point))] : Bool (L.Point.x (ref-get point)))";
-    let oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn read-x [(: point (Ref L.Point))] : Int (L.Point.x (ref-get point)))";
+fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_type_app_signature()
+{
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn read-x [(: point (Ref L.Point))] : Int (L.Point.x (ref-get point)))";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn read-x [(: point (Ref L.Point))] : Bool (L.Point.x (ref-get point)))";
+    let oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn read-x [(: point (Ref L.Point))] : Int (L.Point.x (ref-get point)))";
     let oracle_program = lsharp_syntax::parse(oracle_source)
         .expect("nested alias-qualified record TypeApp signature fixture は parse できるべき");
     let mut oracle = Infer::new();
@@ -2433,13 +2436,15 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_t
         oracle.infer_program(&oracle_program).is_ok(),
         "Rust oracle は nested alias-qualified record TypeApp signature を受理するべき"
     );
-    let invalid_oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn read-x [(: point (Ref L.Point))] : Bool (L.Point.x (ref-get point)))";
-    let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source)
-        .expect("invalid nested alias-qualified record TypeApp signature fixture は parse できるべき");
+    let invalid_oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn read-x [(: point (Ref L.Point))] : Bool (L.Point.x (ref-get point)))";
+    let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source).expect(
+        "invalid nested alias-qualified record TypeApp signature fixture は parse できるべき",
+    );
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は nested alias-qualified record TypeApp signature の return mismatch を拒否するべき"
     );
 
@@ -2475,12 +2480,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_t
 /// EC-M1-01: imported record を alias-qualified record pattern として分解すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_pattern() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [point] : Int (match point [{L.Point x true} x] [_ 0]))";
-    let oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [point] : Int (match point [{L.Point x true} x] [_ 0]))";
+    let oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
     let oracle_program = lsharp_syntax::parse(oracle_source)
         .expect("alias-qualified record pattern fixture は parse できるべき");
     let mut oracle = Infer::new();
@@ -2488,13 +2490,14 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_p
         oracle.infer_program(&oracle_program).is_ok(),
         "Rust oracle は alias-qualified record pattern を受理するべき"
     );
-    let invalid_oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x true} x] [_ 0]))";
+    let invalid_oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x true} x] [_ 0]))";
     let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source)
         .expect("invalid alias-qualified record pattern fixture は parse できるべき");
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は alias-qualified record pattern の field mismatch を拒否するべき"
     );
 
@@ -2530,12 +2533,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_p
 /// EC-M1-01: alias + :only の record pattern は選択された型だけを可視化すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_record_pattern() {
-    let selected_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
-    let excluded_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn get-x [point] : Int (match point [{L.Hidden x x} x] [_ 0]))";
-    let selected_oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let selected_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let excluded_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn get-x [point] : Int (match point [{L.Hidden x x} x] [_ 0]))";
+    let selected_oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
     let selected_program = lsharp_syntax::parse(selected_oracle_source)
         .expect("selected alias + :only record pattern oracle は parse できるべき");
     let mut selected_oracle = Infer::new();
@@ -2543,8 +2543,7 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_reco
         selected_oracle.infer_program(&selected_program).is_ok(),
         "Rust oracle は alias + :only の selected record pattern を受理するべき"
     );
-    let excluded_oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Hidden x x} x] [_ 0]))";
+    let excluded_oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Hidden x x} x] [_ 0]))";
     let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
         .expect("excluded alias + :only record pattern oracle は parse できるべき");
     let mut excluded_oracle = Infer::new();
@@ -2585,12 +2584,9 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_reco
 /// EC-M1-01: alias-qualified record 型を record update の base として解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_update() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn update-x [(: point L.Point)] : L.Point {point | x 42})";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn update-x [(: point L.Point)] : L.Point {point | x true})";
-    let oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn update-x [(: point L.Point)] : L.Point {point | x 42})";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn update-x [(: point L.Point)] : L.Point {point | x 42})";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn update-x [(: point L.Point)] : L.Point {point | x true})";
+    let oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn update-x [(: point L.Point)] : L.Point {point | x 42})";
     let oracle_program = lsharp_syntax::parse(oracle_source)
         .expect("alias-qualified record update fixture は parse できるべき");
     let mut oracle = Infer::new();
@@ -2598,13 +2594,14 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_u
         oracle.infer_program(&oracle_program).is_ok(),
         "Rust oracle は alias-qualified record update を受理するべき"
     );
-    let invalid_oracle_source =
-        "(type L.Point (record (: x Int) (: y Int))) (defn update-x [(: point L.Point)] : L.Point {point | x true})";
+    let invalid_oracle_source = "(type L.Point (record (: x Int) (: y Int))) (defn update-x [(: point L.Point)] : L.Point {point | x true})";
     let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source)
         .expect("invalid alias-qualified record update fixture は parse できるべき");
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は alias-qualified record update の field mismatch を拒否するべき"
     );
 
@@ -2640,10 +2637,8 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_u
 /// EC-M1-01: imported record は qualified record literal として構築できること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] {Lib.Point x 1 y 2})";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] {Lib.Point x true y 2})";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] {Lib.Point x 1 y 2})";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] {Lib.Point x true y 2})";
     let oracle_source =
         "(type Lib.Point (record (: x Int) (: y Int))) (defn main [] {Lib.Point x 1 y 2})";
     let oracle_program = lsharp_syntax::parse(oracle_source)
@@ -2659,7 +2654,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal
         .expect("invalid qualified record literal fixture は parse できるべき");
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は qualified record literal の field type mismatch を拒否するべき"
     );
 
@@ -2695,10 +2692,8 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal
 /// EC-M1-01: import alias の record は alias-qualified record literal として構築できること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_literal() {
-    let source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn main [] {L.Point x 1 y 2})";
-    let invalid_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn main [] {L.Point x true y 2})";
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn main [] {L.Point x 1 y 2})";
+    let invalid_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn main [] {L.Point x true y 2})";
     let oracle_source =
         "(type L.Point (record (: x Int) (: y Int))) (defn main [] {L.Point x 1 y 2})";
     let oracle_program = lsharp_syntax::parse(oracle_source)
@@ -2714,7 +2709,9 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_l
         .expect("invalid alias-qualified record literal fixture は parse できるべき");
     let mut invalid_oracle = Infer::new();
     assert!(
-        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        invalid_oracle
+            .infer_program(&invalid_oracle_program)
+            .is_err(),
         "Rust oracle は alias-qualified record literal の field type mismatch を拒否するべき"
     );
 
@@ -2750,17 +2747,17 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_l
 /// EC-M1-01: alias + :only で除外された record literal を受理しないこと
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_literal() {
-    let selected_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] {L.Point x 1 y 2})";
-    let excluded_source =
-        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] {L.Hidden x 1 y 2})";
+    let selected_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] {L.Point x 1 y 2})";
+    let excluded_source = "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn main [] {L.Hidden x 1 y 2})";
     let selected_oracle_source =
         "(type L.Point (record (: x Int) (: y Int))) (defn main [] {L.Point x 1 y 2})";
     let selected_oracle_program = lsharp_syntax::parse(selected_oracle_source)
         .expect("selected alias + :only record literal oracle は parse できるべき");
     let mut selected_oracle = Infer::new();
     assert!(
-        selected_oracle.infer_program(&selected_oracle_program).is_ok(),
+        selected_oracle
+            .infer_program(&selected_oracle_program)
+            .is_ok(),
         "Rust oracle は alias + :only の selected record literal を受理するべき"
     );
 
@@ -2770,7 +2767,9 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_literal
         .expect("excluded alias + :only record literal oracle は parse できるべき");
     let mut excluded_oracle = Infer::new();
     assert!(
-        excluded_oracle.infer_program(&excluded_oracle_program).is_err(),
+        excluded_oracle
+            .infer_program(&excluded_oracle_program)
+            .is_err(),
         "Rust oracle は alias + :only で除外された record literal を拒否するべき"
     );
 
@@ -2806,14 +2805,15 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_literal
 /// EC-M1-01: private record は同一 module 内だけで可視、import 先へ漏れないこと
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_imported_private_record() {
-    let blocked_source =
-        "(module Lib) (private (type Secret (record (: x Int)))) (module Main) (import Lib :as L :only [Secret]) (defn main [] {L.Secret x 1})";
+    let blocked_source = "(module Lib) (private (type Secret (record (: x Int)))) (module Main) (import Lib :as L :only [Secret]) (defn main [] {L.Secret x 1})";
     let mut blocked_oracle = Infer::new();
     let blocked_oracle_source = "(defn main [] {L.Secret x 1})";
     let blocked_oracle_program = lsharp_syntax::parse(blocked_oracle_source)
         .expect("private record import oracle は parse できるべき");
     assert!(
-        blocked_oracle.infer_program(&blocked_oracle_program).is_err(),
+        blocked_oracle
+            .infer_program(&blocked_oracle_program)
+            .is_err(),
         "Rust oracle は公開 registry にない private record を拒否するべき"
     );
 

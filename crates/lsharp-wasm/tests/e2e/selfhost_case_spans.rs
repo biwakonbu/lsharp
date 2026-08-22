@@ -167,12 +167,7 @@ fn selfhost_test_runner_reports_case_diagnostic_span() {
 
     assert_eq!(
         lines,
-        vec![
-            "6",
-            "1",
-            &actual_start.to_string(),
-            &actual_end.to_string(),
-        ],
+        vec!["6", "1", &actual_start.to_string(), &actual_end.to_string(),],
         "selfhost test runner は case の unknown-variable 診断 span を結果へ保持するべき"
     );
 }

@@ -265,7 +265,12 @@ fn test_e2e_selfhost_cli_main_batched_version_and_parse_argv() {
         assert_eq!(output.exit_code, 0, "parse argv は成功終了するべき");
         assert_output_lines(
             &output_lines(output.stdout),
-            &["decls:1", "first-decl:defn", "first-body:int", "diagnostics:0"],
+            &[
+                "decls:1",
+                "first-decl:defn",
+                "first-body:int",
+                "diagnostics:0",
+            ],
             "parse argv は既存の summary contract を返すべき",
         );
     });
@@ -295,12 +300,18 @@ fn test_e2e_selfhost_cli_main_with_args_check_json_file() {
             &["check", "input.ls", "--json"],
         )
     });
-    assert_eq!(output.exit_code, 0, "check --json は exit code 0 で終了するべき");
+    assert_eq!(
+        output.exit_code, 0,
+        "check --json は exit code 0 で終了するべき"
+    );
     let lines = output_lines(output.stdout);
 
-    assert_eq!(lines.len(), 1, "actual check --json は JSON report だけを stdout へ返すべき");
-    let report: Value =
-        serde_json::from_str(&lines[0]).expect("check --json output は valid JSON");
+    assert_eq!(
+        lines.len(),
+        1,
+        "actual check --json は JSON report だけを stdout へ返すべき"
+    );
+    let report: Value = serde_json::from_str(&lines[0]).expect("check --json output は valid JSON");
     assert_eq!(report["command"], "check");
     assert_eq!(report["type"], "Int");
     assert_eq!(report["diagnostics"]["count"], 0);
@@ -323,12 +334,21 @@ fn test_e2e_selfhost_cli_main_with_args_check_json_diagnostic_exit() {
         "診断付き check --json は exit code 1 で終了するべき"
     );
     let lines = output_lines(output.stdout);
-    assert_eq!(lines.len(), 1, "診断付き actual check --json は report だけを stdout へ返すべき");
+    assert_eq!(
+        lines.len(),
+        1,
+        "診断付き actual check --json は report だけを stdout へ返すべき"
+    );
     let report: Value =
         serde_json::from_str(&lines[0]).expect("診断付き check --json output は valid JSON");
     assert!(report["diagnostics"]["count"].as_i64().unwrap() > 0);
     assert!(report["diagnostics"]["firstErrorCode"].as_i64().unwrap() > 0);
-    assert!(!report["diagnostics"]["message"].as_str().unwrap().is_empty());
+    assert!(
+        !report["diagnostics"]["message"]
+            .as_str()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// EC-M1-03: actual selfhost check の JSON aliases が同じ report を返すこと
@@ -349,14 +369,13 @@ fn test_e2e_selfhost_cli_main_check_json_aliases() {
             std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
             std::fs::write(dir.join("input.ls"), "(defn main [] 42)")
                 .expect("fixture input.ls の書き込みに失敗");
-            let output =
-                lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
-                    &wasm,
-                    Some(&dir),
-                    &args,
-                    "",
-                )
-                .expect("check JSON alias 実行に失敗");
+            let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+                &wasm,
+                Some(&dir),
+                &args,
+                "",
+            )
+            .expect("check JSON alias 実行に失敗");
             let _ = std::fs::remove_dir_all(&dir);
             assert_eq!(output.exit_code, 0, "valid check JSON alias は成功するべき");
             let lines = output_lines(output.stdout);
@@ -369,7 +388,10 @@ fn test_e2e_selfhost_cli_main_check_json_aliases() {
         reports
     });
 
-    assert_eq!(reports[0], reports[1], "--json と --format json は同じ report を返すべき");
+    assert_eq!(
+        reports[0], reports[1],
+        "--json と --format json は同じ report を返すべき"
+    );
     assert_eq!(reports[0]["command"], "check");
     assert_eq!(reports[0]["type"], "Int");
 }
@@ -725,7 +747,8 @@ stale-evidence: 0",
 
 /// EC-M2-02/EC-M3-03: EmbeddedCli の source sampling error は report/manifest を残さず fail-closed にする。
 #[test]
-fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_sampling_without_report_or_manifest() {
+fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_sampling_without_report_or_manifest()
+ {
     let source = r#"
 (defn invalid []
   :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
@@ -780,12 +803,16 @@ fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_sampling_with
         "EmbeddedCli は invalid sampling の report を出力しないべき: {}",
         output.stdout
     );
-    assert!(!manifest_exists, "EmbeddedCli は invalid sampling で manifest を残さないべき");
+    assert!(
+        !manifest_exists,
+        "EmbeddedCli は invalid sampling で manifest を残さないべき"
+    );
 }
 
 /// EC-M2-02/EC-M3-03: EmbeddedCli の seed/shrinks sampling error も report/manifest を残さず fail-closed にする。
 #[test]
-fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_seed_and_shrinks_without_report_or_manifest() {
+fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_seed_and_shrinks_without_report_or_manifest()
+ {
     let sources = [
         (
             "negative_seed",
@@ -1113,11 +1140,13 @@ fn test_e2e_selfhost_embedded_cli_validate_source_projects_review_attestation() 
     let manifest: Value =
         serde_json::from_str(&manifest).expect("manifest は valid JSON であるべき");
     assert_eq!(manifest["reviews"].as_array().unwrap().len(), 2);
-    assert!(manifest["reviews"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|review| review["verification_state"] == "unverified"));
+    assert!(
+        manifest["reviews"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|review| review["verification_state"] == "unverified")
+    );
     assert_eq!(text_output.exit_code, 2);
     let first = text_output
         .stdout
@@ -1191,10 +1220,9 @@ fn test_e2e_selfhost_embedded_cli_validate_projects_explicit_review_evidence_ide
             "now": "2026-08-15T00:00:00Z"
         })
     );
-    let manifest: Value = serde_json::from_str(
-        &manifest.expect("explicit identity manifest は出力されるべき"),
-    )
-    .expect("explicit identity manifest は valid JSON であるべき");
+    let manifest: Value =
+        serde_json::from_str(&manifest.expect("explicit identity manifest は出力されるべき"))
+            .expect("explicit identity manifest は valid JSON であるべき");
     assert_eq!(
         manifest["review_evidence_identity"],
         report["review_evidence_identity"]

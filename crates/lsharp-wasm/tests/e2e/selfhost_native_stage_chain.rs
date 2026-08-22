@@ -1612,9 +1612,7 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
         );
     }
     assert!(
-        script.contains(
-            r#"LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT="${SOURCE_COMMIT}" \"#
-        ),
+        script.contains(r#"LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT="${SOURCE_COMMIT}" \"#),
         "hostgen script は actual stage1 generator に source commit を渡すべき"
     );
     assert!(
@@ -2171,7 +2169,8 @@ fn test_native_validate_accepts_positional_manifest_input() {
     let cli_path = selfhost_project_root().join("selfhost/src/App/Cli.ls");
     let cli = std::fs::read_to_string(&cli_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", cli_path.display()));
-    let manifest_path = selfhost_project_root().join("selfhost/src/Tools/Validation/ManifestInput.ls");
+    let manifest_path =
+        selfhost_project_root().join("selfhost/src/Tools/Validation/ManifestInput.ls");
     let manifest = std::fs::read_to_string(&manifest_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", manifest_path.display()));
 
@@ -2223,7 +2222,10 @@ fn test_native_validation_evidence_registry_precedes_wire_id_validation() {
     let body = evidence
         .split("(defn source-evidence-edge-form-result-with-reviews ")
         .nth(1)
-        .and_then(|tail| tail.split("(defn source-evidence-append-edge-forms ").next())
+        .and_then(|tail| {
+            tail.split("(defn source-evidence-append-edge-forms ")
+                .next()
+        })
         .expect("evidence edge validation が存在すること");
     let registry_pos = body
         .find("(source-evidence-id-exists? registry evidence-id)")
@@ -2298,7 +2300,8 @@ fn test_native_source_pair_parser_marks_extra_field_malformed() {
 
 #[test]
 fn test_native_duplicate_node_diagnostic_uses_ec_m3_code() {
-    let intent_source_path = selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls");
+    let intent_source_path =
+        selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls");
     let intent_source = std::fs::read_to_string(&intent_source_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", intent_source_path.display()));
 
@@ -2395,8 +2398,8 @@ fn test_native_linux_x86_stage0_smoke_exposes_conservative_transport_controls() 
 
 #[test]
 fn test_rust_boundary_reduction_doc_records_native_stage0_command_boundaries() {
-    let document_path = selfhost_project_root()
-        .join("docs/development/operations/rust-boundary-reduction.md");
+    let document_path =
+        selfhost_project_root().join("docs/development/operations/rust-boundary-reduction.md");
     let document = std::fs::read_to_string(&document_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", document_path.display()));
 
@@ -3148,9 +3151,9 @@ fn test_native_linux_x86_hostgen_vm_script_can_skip_unrelated_host_probes() {
         .expect("host probe block が必要");
 
     assert!(
-        script.contains(
-            r#"SKIP_HOST_PROBES="${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}""#
-        ) && script.contains("SKIP_HOST_PROBES=\"${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}\"")
+        script.contains(r#"SKIP_HOST_PROBES="${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}""#)
+            && script
+                .contains("SKIP_HOST_PROBES=\"${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}\"")
             && script.contains("SKIP_HOST_PROBES"),
         "hostgen VM script は unrelated probe を切り離す skip flag を持つべき"
     );
@@ -8951,7 +8954,8 @@ fn test_native_codegen_x86_map_remove_opcode_correlates_ir_bytes_and_rel32_targe
         "opcode=66 の stage2 IR が emitted bytes / rel32 target へ到達するための map-remove helper 契約が必要"
     );
     assert!(
-        runtime_bundle.contains("(x86-selfhost-map-remove-helper-offset import-stub-offset import-count)")
+        runtime_bundle
+            .contains("(x86-selfhost-map-remove-helper-offset import-stub-offset import-count)")
             && runtime_bundle.contains("(+ current-offset 5)")
             && runtime_bundle.contains("(emit-consume-two-bundle-x86"),
         "opcode=66 の runtime bundle は emitted bytes の call 直後を基準に map-remove helper への rel32 target を計算するべき"
@@ -8965,7 +8969,8 @@ fn test_native_codegen_x86_map_remove_opcode_correlates_ir_bytes_and_rel32_targe
     );
     assert!(
         source.contains("(append-native-bytes-rooted result (emit-x86-selfhost-map-remove-helper)")
-            && seed_template.contains("(print-packed-code-segment (emit-x86-selfhost-map-remove-helper))")
+            && seed_template
+                .contains("(print-packed-code-segment (emit-x86-selfhost-map-remove-helper))")
             && seed_template.contains(
                 "c19 (write-packed-code-segment prefix (emit-x86-selfhost-map-remove-helper) c18)",
             ),
@@ -9148,7 +9153,8 @@ fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     assert!(
-        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
+        control_loop
+            .contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-read-file-helper-offset")
             && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
@@ -9200,7 +9206,8 @@ fn test_native_codegen_x86_print_runtime_call_direct_appends_in_stage1() {
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     assert!(
-        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
+        control_loop
+            .contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-read-file-helper-offset")
             && control_loop.contains("(x86-selfhost-command-line-arg-helper-offset")
@@ -9310,7 +9317,8 @@ fn test_native_codegen_x86_command_line_arg_runtime_call_direct_appends_in_stage
         })
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
     assert!(
-        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
+        control_loop
+            .contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-read-file-helper-offset")
             && control_loop.contains("(x86-selfhost-command-line-arg-helper-offset")
@@ -9432,13 +9440,13 @@ fn test_selfhost_parser_parse_defn_v3_uses_branch_unique_finalized_defn_locals()
     assert!(
         parse_defn_body.contains(
             "bodyless-finalized-defn (finalize-defn-body-v3 bodyless-defn-body defn-node)"
-        ) && parse_defn_body.contains(
-            "expr-finalized-defn (finalize-defn-body-v3 parsed-defn-body defn-node)"
-        ) && parse_defn_body.contains(
-            "(maybe-append-defn-signature-v3 bodyless-finalized-defn signature)"
-        ) && parse_defn_body.contains(
-            "(maybe-append-defn-signature-v3 expr-finalized-defn signature)"
-        ) && !parse_defn_body.contains("parsed-body (finalize-defn-body-v3"),
+        ) && parse_defn_body
+            .contains("expr-finalized-defn (finalize-defn-body-v3 parsed-defn-body defn-node)")
+            && parse_defn_body
+                .contains("(maybe-append-defn-signature-v3 bodyless-finalized-defn signature)")
+            && parse_defn_body
+                .contains("(maybe-append-defn-signature-v3 expr-finalized-defn signature)")
+            && !parse_defn_body.contains("parsed-body (finalize-defn-body-v3"),
         "parse-defn-v3 は Linux x86 selfhost の branch local slot 衝突を避けるため、bodyless/body 分岐で finalized defn の local 名を共有しないべき"
     );
 }
@@ -11211,7 +11219,10 @@ fn test_native_codegen_append_bytes_continuations_are_self_tail_calls() {
     let bounded = source
         .split("(defn append-native-bytes-loop-bounded")
         .nth(1)
-        .and_then(|tail| tail.split("(defn continue-append-native-bytes-loop-step-64").next())
+        .and_then(|tail| {
+            tail.split("(defn continue-append-native-bytes-loop-step-64")
+                .next()
+        })
         .expect("NativeCodegen.ls に bounded native byte append loop が存在すること");
     let continuation = source
         .split("(defn continue-append-native-bytes-loop-step-64")
@@ -11540,7 +11551,9 @@ fn test_native_codegen_x86_control_if_restores_window_after_condition_test() {
     assert!(
         source.contains("(defn emit-control-if-bundle-x86")
             && source.contains("(emit-drop-bundle-x86 frame-base-slot-count current-depth)")
-            && source.contains("(emit-control-if-bundle-x86 meta offsets idx frame-base-slot-count current-depth)")
+            && source.contains(
+                "(emit-control-if-bundle-x86 meta offsets idx frame-base-slot-count current-depth)"
+            )
             && size_body.contains("(native-conditional-control-instr-size-x86 current-depth)"),
         "x86 if bundle は TEST 後に条件値を pop/shift して、size pass もその追加 bytes を rel32 計算へ反映するべき"
     );
@@ -12987,8 +13000,7 @@ fn test_wasm_compiler_not_application_lowers_to_existing_ir_sequence() {
         .and_then(|tail| tail.split("(defn compile-not-builtin-with-source").next())
         .expect("Compiler.ls に not の IR lowering helper が存在すること");
     assert!(
-        not_body.contains("(emit-to instrs 1 0)")
-            && not_body.contains("(emit-to with-zero 30 0)"),
+        not_body.contains("(emit-to instrs 1 0)") && not_body.contains("(emit-to with-zero 30 0)"),
         "not は新しい runtime opcode ではなく i64.const 0 と i64.eq へ lower するべき"
     );
     assert_eq!(
@@ -15124,10 +15136,9 @@ fn generate_actual_macos_aarch64_app_cli_release_program(
         &stage3_input,
         "src/App/Cli.ls",
     )?;
-    if let Some(stage0_compiler_dir) = std::env::var_os(
-        "LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR",
-    )
-    .filter(|path| !path.is_empty())
+    if let Some(stage0_compiler_dir) =
+        std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_STAGE0_COMPILER_ARTIFACT_DIR")
+            .filter(|path| !path.is_empty())
     {
         write_actual_macos_aarch64_stage0_compiler_artifact(
             &std::path::PathBuf::from(stage0_compiler_dir),
@@ -27945,9 +27956,7 @@ fn host_target_bundle_if_result_preserves_outer_for_add_code_bytes() -> Vec<u8> 
     ]
     .iter()
     .enumerate()
-    .map(|(idx, (opcode, operand))| {
-        format!("instr{idx} (make-instr {opcode} {operand})")
-    })
+    .map(|(idx, (opcode, operand))| format!("instr{idx} (make-instr {opcode} {operand})"))
     .collect::<Vec<_>>()
     .join("\n        ");
     let ir_expr = (0..10).fold("(vector-new 10)".to_string(), |expr, idx| {
@@ -42285,8 +42294,8 @@ fn test_e2e_native_linux_x86_host_generates_map_ref_get_elf_object_artifact() {
 
     std::fs::write(&artifact_path, &object_bytes)
         .expect("Linux x86_64 map/ref object artifact 書き込みに失敗");
-    let written = std::fs::read(&artifact_path)
-        .expect("Linux x86_64 map/ref object artifact 読み戻しに失敗");
+    let written =
+        std::fs::read(&artifact_path).expect("Linux x86_64 map/ref object artifact 読み戻しに失敗");
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 map/ref object artifact は生成 ELF object をそのまま保存すること"
@@ -42585,8 +42594,8 @@ fn test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artif
     std::fs::write(artifact_dir.join("seed.ls"), seed_source).expect("seed.ls 書き込みに失敗");
     let source_commit = std::env::var("LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT")
         .unwrap_or_else(|_| "unknown".to_string());
-    let source_commit_json = serde_json::to_string(&source_commit)
-        .expect("source commit の JSON エスケープに失敗");
+    let source_commit_json =
+        serde_json::to_string(&source_commit).expect("source commit の JSON エスケープに失敗");
     std::fs::write(
         artifact_dir.join("manifest.json"),
         format!(
@@ -44253,13 +44262,17 @@ fn test_e2e_native_host_binary_bundle_if_result_preserves_outer_for_add() {
 
     let code_bytes = host_target_bundle_if_result_preserves_outer_for_add_code_bytes();
 
-    assert!(!code_bytes.is_empty(), "bundle if result のコードバイト列が空");
+    assert!(
+        !code_bytes.is_empty(),
+        "bundle if result のコードバイト列が空"
+    );
 
     let exit_code = link_and_run_linux_x86_native_binary_via_lima(&code_bytes)
         .expect("Linux x86 bundle if result/add host binary 実行に失敗");
 
     assert_eq!(
-        exit_code, 8,
+        exit_code,
+        8,
         "bundle if result は outer value 7 を保持して add できるべき: exit={exit_code}\nbytes ({} bytes): {:?}",
         code_bytes.len(),
         code_bytes
@@ -57665,8 +57678,8 @@ fn normalize_x86_signed_word(value: i128, context: &str) -> i64 {
         return i64::try_from(value)
             .unwrap_or_else(|_| panic!("{context} が i64 範囲外: value={value}"));
     }
-    let value = u64::try_from(value)
-        .unwrap_or_else(|_| panic!("{context} が u64 範囲外: value={value}"));
+    let value =
+        u64::try_from(value).unwrap_or_else(|_| panic!("{context} が u64 範囲外: value={value}"));
     value as i64
 }
 
@@ -57701,8 +57714,9 @@ fn find_linux_x86_metadata_header_for_function_idx<'a>(
     function_idx: usize,
     name: &str,
 ) -> &'a LinuxX86FunctionSegmentMetadataHeader {
-    let function_idx_i64 = i64::try_from(function_idx)
-        .unwrap_or_else(|_| panic!("x86 function index が i64 範囲外: name={name} index={function_idx}"));
+    let function_idx_i64 = i64::try_from(function_idx).unwrap_or_else(|_| {
+        panic!("x86 function index が i64 範囲外: name={name} index={function_idx}")
+    });
     let matches = headers
         .iter()
         .filter(|header| header.function_idx == function_idx_i64)
@@ -57723,14 +57737,16 @@ fn assert_linux_x86_metadata_rows_match_stage_code(
     code: &[u8],
 ) {
     assert_eq!(
-        usize::try_from(header.function_start)
-            .unwrap_or_else(|_| panic!("x86 metadata function start が負: name={name} header={header:?}")),
+        usize::try_from(header.function_start).unwrap_or_else(|_| panic!(
+            "x86 metadata function start が負: name={name} header={header:?}"
+        )),
         segment.start,
         "x86 metadata function start と stage segment start が一致しない: name={name} header={header:?} segment={segment:?}"
     );
     assert_eq!(
-        usize::try_from(header.function_size)
-            .unwrap_or_else(|_| panic!("x86 metadata function size が負: name={name} header={header:?}")),
+        usize::try_from(header.function_size).unwrap_or_else(|_| panic!(
+            "x86 metadata function size が負: name={name} header={header:?}"
+        )),
         segment.len,
         "x86 metadata function size と stage segment length が一致しない: name={name} header={header:?} segment={segment:?}"
     );
@@ -57738,8 +57754,9 @@ fn assert_linux_x86_metadata_rows_match_stage_code(
         let row_offset = usize::try_from(row.offset).unwrap_or_else(|_| {
             panic!("x86 metadata instruction offset が負: name={name} row={row:?}")
         });
-        let row_size = usize::try_from(row.size)
-            .unwrap_or_else(|_| panic!("x86 metadata instruction size が負: name={name} row={row:?}"));
+        let row_size = usize::try_from(row.size).unwrap_or_else(|_| {
+            panic!("x86 metadata instruction size が負: name={name} row={row:?}")
+        });
         let byte_count = row_size.min(row.bytes.len());
         if byte_count == 0 {
             continue;
@@ -57784,20 +57801,20 @@ fn assert_linux_x86_parser_call_correlation(
     let program_idx = usize::try_from(program_owner.function_idx).unwrap_or_else(|_| {
         panic!("parse-program-step-v3 function index が usize 範囲外: owner={program_owner:?}")
     });
-    let defn_idx = usize::try_from(defn_owner.function_idx)
-        .unwrap_or_else(|_| panic!("parse-defn-v3 function index が usize 範囲外: owner={defn_owner:?}"));
+    let defn_idx = usize::try_from(defn_owner.function_idx).unwrap_or_else(|_| {
+        panic!("parse-defn-v3 function index が usize 範囲外: owner={defn_owner:?}")
+    });
     let program_header = find_linux_x86_metadata_header_for_function_idx(
         program_headers,
         program_idx,
         "parse-program-step-v3",
     );
-    let defn_header = find_linux_x86_metadata_header_for_function_idx(
-        defn_headers,
-        defn_idx,
-        "parse-defn-v3",
-    );
+    let defn_header =
+        find_linux_x86_metadata_header_for_function_idx(defn_headers, defn_idx, "parse-defn-v3");
     let program_segment = find_linux_x86_transport_segment_for_function_idx(segments, program_idx)
-        .unwrap_or_else(|| panic!("parse-program-step-v3 stage segment が無い: function_idx={program_idx}"));
+        .unwrap_or_else(|| {
+            panic!("parse-program-step-v3 stage segment が無い: function_idx={program_idx}")
+        });
     let defn_segment = find_linux_x86_transport_segment_for_function_idx(segments, defn_idx)
         .unwrap_or_else(|| panic!("parse-defn-v3 stage segment が無い: function_idx={defn_idx}"));
 
@@ -57841,15 +57858,15 @@ fn assert_linux_x86_parser_call_correlation(
         });
     let expected_relative_target = i64::try_from(defn_segment.start)
         .expect("stage segment start は i64 範囲内であること")
-        - i64::try_from(program_segment.start).expect("stage segment start は i64 範囲内であること");
+        - i64::try_from(program_segment.start)
+            .expect("stage segment start は i64 範囲内であること");
     assert_eq!(
         normalize_x86_signed_word(direct.target_offset, "opcode 40 target offset"),
         expected_relative_target,
         "parse-program-step-v3 direct replay target が parse-defn-v3 segment に着地しない: call={call:?} direct={direct:?} program_segment={program_segment:?} defn_segment={defn_segment:?}"
     );
-    let call_next_offset = i64::try_from(direct.call_next_offset).unwrap_or_else(|_| {
-        panic!("opcode 40 call next offset が i64 範囲外: direct={direct:?}")
-    });
+    let call_next_offset = i64::try_from(direct.call_next_offset)
+        .unwrap_or_else(|_| panic!("opcode 40 call next offset が i64 範囲外: direct={direct:?}"));
     let expected_call_rel = expected_relative_target - (call.offset + call_next_offset);
     assert_eq!(
         normalize_x86_signed_word(direct.call_rel, "opcode 40 call rel"),
@@ -57857,7 +57874,9 @@ fn assert_linux_x86_parser_call_correlation(
         "parse-program-step-v3 direct replay rel32 が target/current offset と一致しない: call={call:?} direct={direct:?}"
     );
     assert_eq!(
-        direct.bytes.map(|byte| u8::try_from(byte).expect("direct replay byte は u8 範囲内であること")),
+        direct
+            .bytes
+            .map(|byte| u8::try_from(byte).expect("direct replay byte は u8 範囲内であること")),
         call.bytes,
         "parse-program-step-v3 direct replay bytes と metadata prefix が一致しない: call={call:?} direct={direct:?}"
     );
@@ -59510,7 +59529,8 @@ fn test_e2e_linux_x86_actual_parser_call_metadata_correlates_to_stage_code() {
     );
     let defn_metadata =
         extract_linux_x86_function_metadata_records(&read("parse-defn-v3-metadata.txt"));
-    let segments = read_linux_x86_stage_code_segments_tsv(&artifact_dir.join("stage-code-segments.tsv"));
+    let segments =
+        read_linux_x86_stage_code_segments_tsv(&artifact_dir.join("stage-code-segments.tsv"));
     let code = std::fs::read(artifact_dir.join("stage-code.bin")).unwrap_or_else(|e| {
         panic!(
             "parser diagnostic stage code を読めない: dir={}: {e}",
@@ -62823,8 +62843,8 @@ fn test_native_macos_aarch64_release_producer_accepts_task_owned_tmpdir() {
         selfhost_project_root().join("scripts/ci/native-macos-aarch64-selfhost-release.sh");
     let script = std::fs::read_to_string(&script_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
-    let stage0_script_path = selfhost_project_root()
-        .join("scripts/ci/native-macos-aarch64-stage0-release.sh");
+    let stage0_script_path =
+        selfhost_project_root().join("scripts/ci/native-macos-aarch64-stage0-release.sh");
     let stage0_script = std::fs::read_to_string(&stage0_script_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", stage0_script_path.display()));
 

@@ -1749,7 +1749,11 @@ fn test_e2e_selfhost_wasmemit_chunked_read_body_contract() {
         harness
     );
     let output = compile_and_run(&combined);
-    assert_eq!(output.trim(), "1", "chunked read body の raw opcode 契約が崩れている");
+    assert_eq!(
+        output.trim(),
+        "1",
+        "chunked read body の raw opcode 契約が崩れている"
+    );
 }
 
 /// selfhost WasmEmit.ls: string write-file が fd_close の errno を保持できること
@@ -2147,8 +2151,16 @@ fn test_e2e_selfhost_compiler_ftable_root_set_preserves_allocating_map_insert() 
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.len(), 5, "ftable root_set probe の行数が不正: {:?}", lines);
-    assert_eq!(lines[0], "3", "ftable root_set fixture は 3 引数関数であること");
+    assert_eq!(
+        lines.len(),
+        5,
+        "ftable root_set probe の行数が不正: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "3",
+        "ftable root_set fixture は 3 引数関数であること"
+    );
     assert!(
         lines[1].parse::<i64>().unwrap_or(0) >= 3,
         "allocating map-insert は slot と RHS 用の temporary local を確保すべき: {:?}",
@@ -3824,7 +3836,8 @@ fn test_e2e_selfhost_ftable_compiler_deep_nested_parametric_record_pattern_runs(
 
 /// selfhost ftable compiler: alias-qualified parametric record を複数の concrete 型で実行できること
 #[test]
-fn test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_multiple_instantiations_run() {
+fn test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_multiple_instantiations_run()
+{
     let harness = r#"
 (defn print-bytes-loop [bytes idx count]
   (if (>= idx count)
@@ -4051,12 +4064,13 @@ fn test_e2e_selfhost_compiler_mode_imported_record_constructor_and_static_access
     let emitted =
         compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
-        &wasm_bytes,
-        &temp_root,
-        &[],
-    )
-    .expect("import 先 record を含む selfhost compiler-mode module should run");
+    let output =
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+            &wasm_bytes,
+            &temp_root,
+            &[],
+        )
+        .expect("import 先 record を含む selfhost compiler-mode module should run");
     assert_eq!(output, "41\n2\n");
     std::fs::remove_dir_all(&temp_root).expect("record import fixture を削除できない");
 }
@@ -4070,7 +4084,8 @@ fn test_e2e_selfhost_compiler_mode_imported_record_update_runs() {
     ));
     let _ = std::fs::remove_dir_all(&temp_root);
     let app_dir = temp_root.join("src/App");
-    std::fs::create_dir_all(&app_dir).expect("record update import fixture の directory を作れない");
+    std::fs::create_dir_all(&app_dir)
+        .expect("record update import fixture の directory を作れない");
     std::fs::write(
         app_dir.join("Shapes.ls"),
         "(module App.Shapes)\n(type Point (record (: x Int) (: y Int)))\n",
@@ -4121,7 +4136,8 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_record_pattern_runs(
     ));
     let _ = std::fs::remove_dir_all(&temp_root);
     let app_dir = temp_root.join("src/App");
-    std::fs::create_dir_all(&app_dir).expect("record pattern import fixture の directory を作れない");
+    std::fs::create_dir_all(&app_dir)
+        .expect("record pattern import fixture の directory を作れない");
     std::fs::write(
         app_dir.join("Shapes.ls"),
         "(module App.Shapes)\n(type Point (record (: x Int) (: y Int)))\n",
@@ -4172,7 +4188,8 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_record_literal_patte
     ));
     let _ = std::fs::remove_dir_all(&temp_root);
     let app_dir = temp_root.join("src/App");
-    std::fs::create_dir_all(&app_dir).expect("record literal import fixture の directory を作れない");
+    std::fs::create_dir_all(&app_dir)
+        .expect("record literal import fixture の directory を作れない");
     std::fs::write(
         app_dir.join("Shapes.ls"),
         "(module App.Shapes)\n(type Point (record (: x Int) (: y Int)))\n",
@@ -4216,7 +4233,8 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_record_literal_patte
 
 /// selfhost compiler-mode: alias-qualified parametric record literal を pattern と nominal に接続できること
 #[test]
-fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_parametric_record_literal_pattern_runs() {
+fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_parametric_record_literal_pattern_runs()
+{
     let temp_root = std::env::temp_dir().join(format!(
         "lsharp-selfhost-parametric-record-import-literal-pattern-runtime-{}",
         std::process::id()
@@ -4263,7 +4281,8 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_parametric_record_li
     )
     .expect("alias-qualified parametric record literal pattern を含む selfhost compiler-mode module should run");
     assert_eq!(output, "41\n");
-    std::fs::remove_dir_all(&temp_root).expect("parametric record literal import fixture を削除できない");
+    std::fs::remove_dir_all(&temp_root)
+        .expect("parametric record literal import fixture を削除できない");
 }
 
 /// selfhost compiler-mode: imported nested parametric record pattern を実行できること
@@ -4308,12 +4327,13 @@ fn test_e2e_selfhost_compiler_mode_imported_nested_parametric_record_pattern_run
     let emitted =
         compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
-        &wasm_bytes,
-        &temp_root,
-        &[],
-    )
-    .expect("imported nested parametric record pattern module should run");
+    let output =
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+            &wasm_bytes,
+            &temp_root,
+            &[],
+        )
+        .expect("imported nested parametric record pattern module should run");
     assert_eq!(output, "41\n1\n7\n");
     std::fs::remove_dir_all(&temp_root)
         .expect("nested parametric record import fixture を削除できない");
@@ -4378,7 +4398,8 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_name_record_con
 
 /// selfhost compiler-mode: 同じ schema の異なる module の record pattern は nominal に分離されること
 #[test]
-fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_patterns_are_nominal() {
+fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_patterns_are_nominal()
+ {
     let temp_root = std::env::temp_dir().join(format!(
         "lsharp-selfhost-same-schema-record-pattern-runtime-{}",
         std::process::id()
@@ -4435,7 +4456,8 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_p
 
 /// selfhost compiler-mode: record literal も異なる module の同名 schema と nominal に分離されること
 #[test]
-fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_literals_are_nominal() {
+fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_literals_are_nominal()
+ {
     let temp_root = std::env::temp_dir().join(format!(
         "lsharp-selfhost-same-schema-record-literal-runtime-{}",
         std::process::id()
@@ -4492,7 +4514,8 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_l
 
 /// selfhost compiler-mode: 同名 record static accessor の alias-qualified ftable key を分離すること
 #[test]
-fn test_e2e_selfhost_compiler_mode_imported_alias_same_name_record_accessor_ftable_keys_are_separate() {
+fn test_e2e_selfhost_compiler_mode_imported_alias_same_name_record_accessor_ftable_keys_are_separate()
+ {
     let temp_root = std::env::temp_dir().join(format!(
         "lsharp-selfhost-same-name-record-accessor-alias-ftable-{}",
         std::process::id()

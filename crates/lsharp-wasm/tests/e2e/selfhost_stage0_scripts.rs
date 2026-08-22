@@ -287,11 +287,7 @@ fn create_stage0_release_fixture(
     let release_dir = temp_root.join("release");
     let archive_root = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu");
     std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
-    write_native_stage0_fixture(
-        &archive_root,
-        "x86_64-unknown-linux-gnu",
-        source_commit,
-    );
+    write_native_stage0_fixture(&archive_root, "x86_64-unknown-linux-gnu", source_commit);
 
     let package_checksums = Command::new("bash")
         .arg(&checksum_script)
@@ -306,7 +302,8 @@ fn create_stage0_release_fixture(
     std::fs::write(archive_root.join("checksums.txt"), package_checksums.stdout)
         .expect("package checksums.txt 書き込み失敗");
 
-    let archive_path = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
+    let archive_path =
+        release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
     let tar_output = Command::new("tar")
         .env("COPYFILE_DISABLE", "1")
         .arg("-czf")
@@ -395,10 +392,8 @@ fn test_e2e_ops07_fetch_stage0_script_rejects_stale_source_commit_without_replac
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fetch_script = project_root.join("scripts/fetch-stage0.sh");
     let temp_root = ops07_unique_temp_dir("fetch-stage0-reject-stale-source");
-    let release_dir = create_stage0_release_fixture(
-        &temp_root,
-        "1111111111111111111111111111111111111111",
-    );
+    let release_dir =
+        create_stage0_release_fixture(&temp_root, "1111111111111111111111111111111111111111");
     let stage0_dir = temp_root.join("stage0");
     std::fs::create_dir_all(&stage0_dir).expect("existing stage0 の作成に失敗");
     std::fs::write(stage0_dir.join("keep.txt"), "keep existing stage0\n")
@@ -422,7 +417,8 @@ fn test_e2e_ops07_fetch_stage0_script_rejects_stale_source_commit_without_replac
         "fetch-stage0.sh は current checkout と異なる source_commit を受け入れてはならない"
     );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("source_commit does not match current checkout"),
+        String::from_utf8_lossy(&output.stderr)
+            .contains("source_commit does not match current checkout"),
         "stale source commit の診断は checkout との不一致を示すべき: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
@@ -449,8 +445,11 @@ fn test_e2e_ops07_fetch_stage0_script_rejects_app_cli_archive_without_replacing_
     let release_dir = temp_root.join("release");
     let archive_root = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu");
     std::fs::create_dir_all(&archive_root).expect("reject fixture archive root の作成に失敗");
-    std::fs::write(archive_root.join("program.native"), "not a native stage0 package\n")
-        .expect("reject fixture program の書き込みに失敗");
+    std::fs::write(
+        archive_root.join("program.native"),
+        "not a native stage0 package\n",
+    )
+    .expect("reject fixture program の書き込みに失敗");
 
     let package_checksums = Command::new("bash")
         .arg(&checksum_script)
@@ -465,7 +464,8 @@ fn test_e2e_ops07_fetch_stage0_script_rejects_app_cli_archive_without_replacing_
     std::fs::write(archive_root.join("checksums.txt"), package_checksums.stdout)
         .expect("reject fixture package checksums の書き込みに失敗");
 
-    let archive_path = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
+    let archive_path =
+        release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
     let tar_output = Command::new("tar")
         .env("COPYFILE_DISABLE", "1")
         .arg("-czf")
@@ -521,7 +521,8 @@ fn test_e2e_ops07_fetch_stage0_script_rejects_app_cli_archive_without_replacing_
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(
-        std::fs::read_to_string(stage0_dir.join("keep.txt")).expect("existing stage0 sentinel の読み込みに失敗"),
+        std::fs::read_to_string(stage0_dir.join("keep.txt"))
+            .expect("existing stage0 sentinel の読み込みに失敗"),
         "keep existing stage0\n",
         "invalid archive は既存 stage0 を置換してはならない"
     );

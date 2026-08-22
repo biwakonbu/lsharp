@@ -86,7 +86,9 @@ fn test_e2e_selfhost_typeinfer_large_record_inference_preserves_results() {
 
     assert_eq!(
         lines,
-        ["0", "1", "100", "132", "164", "0", "0", "4", "700", "0", "4", "700",],
+        [
+            "0", "1", "100", "132", "164", "0", "0", "4", "700", "0", "4", "700",
+        ],
         "65 要素の record field/value inference は chunk 境界を越えて結果を保持するべき"
     );
 }

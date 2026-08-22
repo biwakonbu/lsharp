@@ -159,7 +159,11 @@ fn selfhost_test_runner_reports_assertion_diagnostic_span() {
 fn selfhost_assertion_results_match_rust_oracle() {
     let source = "(defn truth [] (= 1 1)) (defn falsehood [] (= 1 2)) (defn positive [] :assert [(truth) (falsehood)] true)";
     let oracle = run_metadata_tests(source);
-    assert_eq!(oracle.len(), 2, "Rust oracle は assertion 2 件を生成するべき");
+    assert_eq!(
+        oracle.len(),
+        2,
+        "Rust oracle は assertion 2 件を生成するべき"
+    );
     assert!(oracle[0].passed, "Rust oracle の1件目は pass するべき");
     assert!(!oracle[1].passed, "Rust oracle の2件目は fail するべき");
     assert!(oracle[0].error.is_none());

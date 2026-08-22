@@ -324,7 +324,9 @@ fn test_embedded_component_cache_misses_when_key_changes() {
     let dir = unique_temp_dir("key-miss");
     let cache = EmbeddedComponentCache::new(&dir);
 
-    cache.store(&test_key("emitter-v1"), b"component-bytes").unwrap();
+    cache
+        .store(&test_key("emitter-v1"), b"component-bytes")
+        .unwrap();
     assert_eq!(
         cache
             .load(&test_key("emitter-v2"))
@@ -345,9 +347,7 @@ fn test_embedded_component_cache_rejects_corrupt_envelope_and_leaves_no_temp_fil
     cache.store(&key, b"component-bytes").unwrap();
     let path = cache.path_for(&key);
     let mut corrupt = std::fs::read(&path).unwrap();
-    *corrupt
-        .last_mut()
-        .expect("envelope は payload を含む") ^= 1;
+    *corrupt.last_mut().expect("envelope は payload を含む") ^= 1;
     std::fs::write(&path, corrupt).unwrap();
 
     assert_eq!(

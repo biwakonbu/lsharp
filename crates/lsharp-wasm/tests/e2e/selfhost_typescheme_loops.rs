@@ -30,10 +30,7 @@ fn test_e2e_selfhost_typescheme_large_traversals_preserve_results() {
     for idx in 0..65 {
         let var_id = 2000 + idx;
         bound_expr = format!("(vector-push {} {})", bound_expr, var_id);
-        args_expr = format!(
-            "(vector-push {} (make-type-var {}))",
-            args_expr, var_id
-        );
+        args_expr = format!("(vector-push {} (make-type-var {}))", args_expr, var_id);
         record_expr = format!(
             "(type-record-add-field {} {} (make-type-var {}))",
             record_expr,
@@ -88,8 +85,7 @@ fn test_e2e_selfhost_typescheme_large_traversals_preserve_results() {
     assert_eq!(
         lines,
         [
-            "4", "2", "1000", "2", "1064", "65", "65", "1000", "1064", "65", "64",
-            "2001", "2064"
+            "4", "2", "1000", "2", "1064", "65", "65", "1000", "1064", "65", "64", "2001", "2064"
         ],
         "65 bound vars/record fields/app args は chunk 境界を越えて TypeScheme の結果を保持するべき"
     );

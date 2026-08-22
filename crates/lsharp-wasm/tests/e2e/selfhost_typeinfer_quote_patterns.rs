@@ -324,10 +324,8 @@ fn test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type() {
 /// selfhost TypeInfer.ls テスト: parametric record pattern の field binder を具体化する
 #[test]
 fn test_e2e_selfhost_typeinfer_parametric_record_pattern_binds_field_type() {
-    let valid_source =
-        "(type (Box a) (record (: value a))) (defn unbox [point] : Int (match point [{Box value x} x] [_ 0]))";
-    let invalid_source =
-        "(type (Box a) (record (: value a))) (defn unbox [point] : Int (match point [{Box value true} true] [_ 0]))";
+    let valid_source = "(type (Box a) (record (: value a))) (defn unbox [point] : Int (match point [{Box value x} x] [_ 0]))";
+    let invalid_source = "(type (Box a) (record (: value a))) (defn unbox [point] : Int (match point [{Box value true} true] [_ 0]))";
     let valid_program = lsharp_syntax::parse(valid_source)
         .expect("parametric record pattern fixture は parse できるべき");
     let mut valid_oracle = lsharp_types::infer::Infer::new();

@@ -293,8 +293,7 @@ fn test_e2e_selfhost_formatter_preserves_import_alias() {
     );
 
     assert_eq!(
-        output,
-        "(import Lib :as L)\n",
+        output, "(import Lib :as L)\n",
         "formatter は import alias を canonical text に保持するべき"
     );
 }
@@ -315,8 +314,7 @@ fn test_e2e_selfhost_formatter_preserves_import_only() {
     );
 
     assert_eq!(
-        output,
-        "(import Lib :only [helper extra])\n",
+        output, "(import Lib :only [helper extra])\n",
         "formatter は import :only を canonical text に保持するべき"
     );
 }
@@ -357,8 +355,7 @@ fn test_e2e_selfhost_formatter_preserves_import_alias_only() {
     );
 
     assert_eq!(
-        output,
-        "(import Lib :as L :only [helper extra])\n",
+        output, "(import Lib :as L :only [helper extra])\n",
         "formatter は import :as + :only を canonical text に保持するべき"
     );
 }
@@ -379,8 +376,7 @@ fn test_e2e_selfhost_formatter_preserves_import_open_only() {
     );
 
     assert_eq!(
-        output,
-        "(import Lib :only [helper] :open)\n",
+        output, "(import Lib :only [helper] :open)\n",
         "formatter は import :open + :only を canonical option 順へ保持するべき"
     );
 }
