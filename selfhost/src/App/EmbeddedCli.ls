@@ -1066,16 +1066,27 @@
   (let [program (parse-program src)
     analysis (infer-program-analysis program)
     property-boundary-code (metadata-test-runner-boundary-code program)
+    assertion-check (check-canonical-assertions-with-analysis program analysis)
+    assertion-diagnostics-count (vector-get assertion-check 0)
+    assertion-first-error-code (vector-get assertion-check 1)
+    assertion-first-error-start (vector-get assertion-check 2)
+    assertion-first-error-end (vector-get assertion-check 3)
     case-check (check-canonical-cases-with-analysis program analysis)]
     (if (> property-boundary-code 0)
       (run-test-source-json-preflight program property-boundary-code 0 0)
-      (if (> (vector-get case-check 0) 0)
+      (if (> assertion-diagnostics-count 0)
         (run-test-source-json-preflight
           program
-          (vector-get case-check 1)
-          (vector-get case-check 2)
-          (vector-get case-check 3))
-        (run-test-source-json-suite (generate-tests-from-source src))))))
+          assertion-first-error-code
+          assertion-first-error-start
+          assertion-first-error-end)
+        (if (> (vector-get case-check 0) 0)
+          (run-test-source-json-preflight
+            program
+            (vector-get case-check 1)
+            (vector-get case-check 2)
+            (vector-get case-check 3))
+          (run-test-source-json-suite (generate-tests-from-source src)))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -1126,6 +1137,11 @@
   (let [program (parse-program src)
     analysis (infer-program-analysis program)
     property-boundary-code (metadata-test-runner-boundary-code program)
+    assertion-check (check-canonical-assertions-with-analysis program analysis)
+    assertion-diagnostics-count (vector-get assertion-check 0)
+    assertion-first-error-code (vector-get assertion-check 1)
+    assertion-first-error-start (vector-get assertion-check 2)
+    assertion-first-error-end (vector-get assertion-check 3)
     case-check (check-canonical-cases-with-analysis program analysis)
     case-diagnostics-count (vector-get case-check 0)]
     (if (> property-boundary-code 0)
@@ -1134,7 +1150,13 @@
         (vector-push
           (vector-push (vector-new 2) 1)
           property-boundary-code))
-      (if (> case-diagnostics-count 0)
+      (if (> assertion-diagnostics-count 0)
+        (run-test-source-case-preflight
+          program
+          (vector-push
+            (vector-push (vector-new 2) assertion-diagnostics-count)
+            assertion-first-error-code))
+        (if (> case-diagnostics-count 0)
         (run-test-source-case-preflight program case-check)
         (let [suite (generate-tests-from-source src)
     example-results (vector-get suite 0)
@@ -1193,7 +1215,7 @@
           (print-string diagnostic-summary)
           (print-string "\n"))
         (print-string ""))
-      (if (> failed 0) 2 (exit-success))))))))
+      (if (> failed 0) 2 (exit-success)))))))))
 (defn run-test-source [src opts]
   (if (= opts (test-option-json))
     (run-test-source-json src)

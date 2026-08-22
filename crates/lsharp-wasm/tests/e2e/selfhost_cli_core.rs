@@ -8754,6 +8754,79 @@ fn test_e2e_selfhost_cli_test_source_json_reports_assertion_failure_coverage() {
     assert_eq!(lines[1], "2");
 }
 
+/// `ASSERT-TYPECHECK-01` (`I-49`): selfhost test lane が `:assert` predicate を型検査すること
+///
+/// 未定義の変数を呼ぶ predicate は、runtime 評価まで進まずに診断で落ちなければならない。
+/// Rust oracle は `diagnostics.count = 1` / `firstErrorCode = 1001` / `executed = 0` を返す。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_test_source_json_typechecks_assert_predicate() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn caller [] :assert [(> (nope) 0)] 0)"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines.len(),
+        2,
+        "型検査で落ちる assert の test JSON は report と exit code を返すべき"
+    );
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("assert 型エラーの selfhost test JSON は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["count"], 1,
+        "未定義変数を呼ぶ assert predicate は診断 1 件で落ちるべき (Rust oracle と同数)"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"], 1001,
+        "assert predicate の型エラーは canonical-assertion-type-error-code (1001) であるべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"], 0,
+        "型検査で落ちた predicate を runtime 評価まで進めてはいけない"
+    );
+    assert_eq!(lines[1], "2");
+}
+
+/// `ASSERT-TYPECHECK-01` (`I-49`) の control: 健全な `:assert` は従来どおり実行されること
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_test_source_json_keeps_running_well_typed_assert_predicate() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn incr [x] (+ x 1)) (defn caller [] :assert [(> (incr 1) 0)] 0)"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "健全な assert も report と exit code を返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("健全な assert の selfhost test JSON は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "pass");
+    assert_eq!(report["implementation_conformance"]["method"], "assert");
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"], 1,
+        "型検査を通った predicate は runtime 評価まで進むべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["count"], 0
+    );
+    assert_eq!(lines[1], "0");
+}
+
 /// EC-M1-01/06: selfhost test JSON が unknown invariant identifier の token span を返すこと
 #[test]
 #[ignore]
@@ -9082,13 +9155,54 @@ fn test_e2e_selfhost_migration_rows_preserve_expression_spans() {
     );
 }
 
+/// `ASSERT-TYPECHECK-01` (`I-49`): selfhost test lane が vacuous な `:assert` を診断すること
+///
+/// `(> 1 0)` のような定数 predicate は検査を識別できない。Rust oracle は `LS2005` で落とす。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_test_source_rejects_vacuous_assert_predicate() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn positive [] :assert [(> 1 0) (= 1 1)] true)"]
+    (do
+      (print-string "BEGIN\n")
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "examples:0",
+            "invariants:0",
+            "assertions:2",
+            "failures:2",
+            "diagnostics:2,LS2005",
+            "2"
+        ],
+        "定数だけの :assert predicate は vacuous として診断されるべき (Rust oracle と同じ向き)"
+    );
+}
+
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
+///
+/// predicate は非 vacuous でなければならない。定数だけの predicate は Rust oracle が
+/// `LS2005` で弾くため、件数の契約を測る fixture としては使えない (`I-49` / `ASSERT-TYPECHECK-01`)。
+/// vacuity 自体の契約は
+/// `test_e2e_selfhost_cli_test_source_rejects_vacuous_assert_predicate` が持つ。
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_reports_canonical_assertions() {
     let harness = r#"
 (defn main []
-  (let [src "(defn positive [] :assert [(> 1 0) (= 1 1)] true)"]
+  (let [src "(defn incr [x] (+ x 1)) (defn positive [] :assert [(> (incr 0) 0) (= (incr 0) 1)] true)"]
     (do
       (print-string "BEGIN\n")
       (print (run-test-source src 0))

@@ -1119,6 +1119,11 @@
     analysis (infer-program-analysis program)
     analysis-root-slot (root_push analysis)
     property-boundary-code (metadata-test-runner-boundary-code program)
+    assertion-check (check-canonical-assertions-with-analysis program analysis)
+    assertion-diagnostics-count (vector-get assertion-check 0)
+    assertion-first-error-code (vector-get assertion-check 1)
+    assertion-first-error-start (vector-get assertion-check 2)
+    assertion-first-error-end (vector-get assertion-check 3)
     case-check (check-canonical-cases-with-analysis program analysis)
     case-check-root-slot (root_push case-check)]
     (if (> property-boundary-code 0)
@@ -1129,6 +1134,18 @@
         (root_pop)
         (root_pop)
         (exit-runtime-error))
+      (if (> assertion-diagnostics-count 0)
+        (do
+          (run-test-source-json-preflight
+            program
+            assertion-first-error-code
+            assertion-first-error-start
+            assertion-first-error-end)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (exit-runtime-error))
       (if (> (vector-get case-check 0) 0)
         (do
           (run-test-source-json-preflight
@@ -1148,7 +1165,7 @@
               (root_pop)
               (root_pop)
               (root_pop)
-              status)))))))
+              status))))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -1202,6 +1219,11 @@
     analysis (infer-program-analysis program)
     analysis-root-slot (root_push analysis)
     property-boundary-code (metadata-test-runner-boundary-code program)
+    assertion-check (check-canonical-assertions-with-analysis program analysis)
+    assertion-diagnostics-count (vector-get assertion-check 0)
+    assertion-first-error-code (vector-get assertion-check 1)
+    assertion-first-error-start (vector-get assertion-check 2)
+    assertion-first-error-end (vector-get assertion-check 3)
     case-check (check-canonical-cases-with-analysis program analysis)
     case-check-root-slot (root_push case-check)
     case-diagnostics-count (vector-get case-check 0)]
@@ -1217,6 +1239,18 @@
         (root_pop)
         (root_pop)
         (exit-runtime-error))
+      (if (> assertion-diagnostics-count 0)
+        (do
+          (run-test-source-case-preflight
+            program
+            (vector-push
+              (vector-push (vector-new 2) assertion-diagnostics-count)
+              assertion-first-error-code))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (exit-runtime-error))
       (if (> case-diagnostics-count 0)
         (do
           (run-test-source-case-preflight program case-check)
@@ -1286,7 +1320,7 @@
       (root_pop)
       (root_pop)
       (root_pop)
-      (if (> failed 0) (exit-runtime-error) (exit-success))))))))
+      (if (> failed 0) (exit-runtime-error) (exit-success)))))))))
 (defn run-test-source [src opts]
   (if (= opts (test-option-json))
     (run-test-source-json src)

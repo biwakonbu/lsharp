@@ -2978,16 +2978,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: 相互再帰の多相化 (polymorphic recursion)。現状の `mutual` fixture は
   既に正しく落ちるので回帰だけ見る。
 
-- [ ] `ASSERT-TYPECHECK-01` selfhost の `:assert` predicate を型検査する — Issue `I-49`。
-  `EmbeddedCli.ls:1065-1078` の preflight は `check-canonical-cases-with-analysis` しか
-  呼ばず、`check-canonical-assertions-with-analysis` (`TypeInferAssertions.ls:2183`) は
-  存在するのに未接続。未定義変数を呼ぶ predicate が診断 0 件で runtime 評価まで進む。
-  受入条件: `(defn caller [] :assert [(> (nope) 0)] 0)` が selfhost lane で
-  `diagnostics.count >= 1` を返し、Rust lane と同じ向き (exit 非 0) で落ちること。
-  健全な predicate (`:assert [(> (incr 1) 0)]`) が引き続き `executed >= 1` で pass することを
-  同じ fixture 群で対比する。
-  **含めない範囲**: `I-45` の 0 引数 `defn` 修正そのもの (解決済み)。
-  assert lane の診断コード体系を Rust の `LS1001` へ揃えること。
+- [ ] `ASSERT-DIAG-MESSAGE-01` selfhost preflight の診断 message を埋める — Issue `I-49` の残差分。
+  `run-test-source-json-preflight` は `assurance-report-json` へ message を `""` で渡すため、
+  型検査で落ちた assert / case / property は code と span しか返さない。Rust oracle は
+  `[LS1001] [error] <fn>: :assert predicate の型推論に失敗しました: [E0001] ...` を返す。
+  受入条件: `(defn caller [] :assert [(> (nope) 0)] 0)` の selfhost JSON が
+  非空の `diagnostics.message` を返し、少なくとも診断コードと未定義シンボル名を含むこと。
+  case / property の同型 fixture を control として並べ、3 経路で同じ形になることを確認する。
+  **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
+  (`LS2004` の code text 追加を含む)。
 
 - [ ] `COMPILE-FORMAT-NOTICE-01` `lsharp compile` の入力ソース整形上書きを利用者へ通知する —
   Issue `I-50`。`prepare_source_for_compile` (`crates/lsharp-tooling/src/compile.rs:222-234`) が
@@ -3011,6 +3010,33 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: `-o out.wasm` / `-o ./out.wasm` / 絶対パスの 3 形が同じ artifact を生むこと。
   **含めない範囲**: 書き込み順序 (`I-50`)。存在しない親ディレクトリの自動作成。
 
+- [ ] `LSP-COL-CONV-01` LSP stdio の位置規約を fixture と実装で一致させる — Issue `I-52` の facet A。
+  `lsp-stdio-nav-params` (`selfhost/src/App/Cli.ls:2010-2020`) が wire の `line`/`col` を
+  0-indexed とみなして `+1` する一方、`--ignored` lane の補完 e2e fixture は 1-indexed のまま
+  書かれており、カーソルが 1 文字後ろへずれて `lsp-prefix-at` が `""` を返す。
+  空 prefix は `lsp-prefix-matches` (`LspServerNav.ls:686-694`) が全一致として扱うため、
+  補完結果にキーワード 7 件が常に混ざる。
+  受入条件: **位置規約だけで説明できる 3 本** — `..._completion_uses_open_document` /
+  `..._completion_uses_open_document_spec_params` / `..._completion_uses_changed_document` —
+  と `..._repeated_didopen_keeps_latest_source` が緑になること。あわせて wire の位置規約
+  (0-indexed / LSP 3.17 準拠) を `docs/language/` か `AGENTS.md` のいずれか 1 箇所へ明記し、
+  fixture が参照できる正本を作ること。
+  **含めない範囲**: snapshot file の形式ドリフト (`LSP-SNAPSHOT-SHAPE-01`)。
+  `..._schema_snapshot` 系 6 本は本項目を完了しても緑にならない。
+  **両方が揃って初めて緑になる 5 本** (`..._latest_reopened_schema_snapshot` /
+  `..._changed_document_schema_snapshot` / `..._filesystem_import_schema_snapshot` /
+  `..._uses_spec_changed_document_with_escaped_newline` / 同 `_unicode_` 版) を
+  本項目の受入条件に含めてはならない。
+
+- [ ] `LSP-SNAPSHOT-SHAPE-01` LSP stdio snapshot の形式ドリフトを解消する — Issue `I-52` の facet B。
+  `assert_lsp_stdio_snapshot` (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:80-84`) は
+  生の JSON frame をそのまま snapshot と比較するが、`tests/snapshots/lsp/stdio/*.json` は
+  completion item を三要素配列、diagnostics を型タグで持つ縮約形 (`78813333` / 2026-04-03) のまま
+  止まっている。実出力が LSP 準拠の object 形へ変わったのは `5db1c2a4` (2026-08-03)。
+  受入条件: `..._completion_schema_snapshot` (位置を送らないため facet A の影響を受けない) が
+  緑になること。縮約器を入れる設計を採るなら「何を縮約対象とするか」を ADR に書いてから実装する。
+  **含めない範囲**: 位置規約の修正 (`LSP-COL-CONV-01`)。
+  snapshot の無検討な一括再生成 (`cargo insta accept` 相当) はしない。
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が
   「type-directed sampling、seed、shrink は別 slice」と明記したうえで、

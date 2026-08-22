@@ -180,9 +180,10 @@
 | [I-46](#i-46) | 前方参照された呼び出しは引数型も arity も検査されていない | 高 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | resolved | -- |
 | [I-48](#i-48) | selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている | 高 | open | -- |
-| [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | open | -- |
+| [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | resolved | -- |
 | [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | open | -- |
 | [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | open | -- |
+| [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2660,7 +2661,7 @@
 <a id="i-49"></a>
 ### I-49: selfhost の `:assert` lane は predicate を型検査していない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`I-45` の対照実験中)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-22 (`I-45` の対照実験中)
 - **内容**: canonical `:assert` の predicate を selfhost lane に食わせると、
   **未定義の変数を呼んでいても型診断が 1 件も出ない**。runtime 評価まで進んで
   「述語が偽」として落ちるだけなので、診断としては型エラーと区別できない。
@@ -2681,7 +2682,18 @@
 - **なぜ危険か**: `:case` (`I-45`) は正しい contract を赤にする「安全側の壊れ方」だが、
   こちらは**誤った contract の型エラーを緑で通し得る**向きである。predicate が
   たまたま真になれば pass する。
-- **関連**: `ASSERT-TYPECHECK-01` (`TODO.md`) が引き取る。`I-45` と同じ preflight の話。
+- **解決** (2026-08-22): `run-test-source-json` / `run-test-source-text` の preflight へ
+  `check-canonical-assertions-with-analysis` を接続した (`EmbeddedCli.ls` / `Cli.ls` の両方)。
+  優先順位は `check` lane と同じ base → assertion → case → property。
+  同じ fixture で `diagnostics.count=1` / `firstErrorCode=1001` / `executed=0` / rc=1 となり、
+  Rust oracle と同じ向きへ揃った。健全な predicate は `executed=1` / rc=0 のまま。
+  **欠けていたのは実装ではなく接続**で、検査関数自体は `check` lane が既に使っていた。
+  判断と却下理由は [decisions-selfhost-assert-preflight-typecheck.md](docs/adr/decisions-selfhost-assert-preflight-typecheck.md)。
+- **残る差分**: 診断 `message` は空文字列のまま。Rust oracle は
+  `[LS1001] [error] caller: :assert predicate の型推論に失敗しました: ...` を返す。
+  selfhost の preflight は case / property でも message を空で返す設計なので、
+  これは assert 固有ではない。`ASSERT-DIAG-MESSAGE-01` (`TODO.md`) が引き取る。
+- **関連**: `I-45` と同じ preflight の話。
 
 <a id="i-50"></a>
 ### I-50: `lsharp compile` の入力ソース整形上書きが利用者へ通知されない
@@ -2773,6 +2785,103 @@
   そのまま open している形。`I-50` の書き戻しはこの失敗の**前**に済んでいるため、
   入力は書き換わったうえで rc=1 になる。
 - **関連**: `I-50` (書き込み順序)。引き取り先は未登録。
+
+<a id="i-52"></a>
+### I-52: LSP stdio 補完の e2e が 2 系統の理由で全滅している (位置規約の食い違い / snapshot 形式のドリフト)
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`I-49` の slice を閉じる際の sweep)
+- **範囲 (実測)**: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_completion`
+  で 10 本が走り、**1 passed / 9 failed** (`finished in 839.52s`, 2026-08-22)。
+  緑なのは `..._lsp_stdio_completion` のみ。失敗 9 本は **signature が 2 系統**に分かれ、
+  片方だけを直しても残りは緑にならない。
+
+  | test | A: 位置規約 | B: snapshot 形式 |
+  |---|---|---|
+  | `..._completion_uses_open_document` | ○ | -- |
+  | `..._completion_uses_open_document_spec_params` | ○ | -- |
+  | `..._completion_uses_changed_document` | ○ | -- |
+  | `..._completion_latest_reopened_schema_snapshot` | ○ | ○ |
+  | `..._completion_changed_document_schema_snapshot` | ○ | ○ |
+  | `..._completion_filesystem_import_schema_snapshot` | ○ | ○ |
+  | `..._completion_uses_spec_changed_document_with_escaped_newline` | ○ | ○ |
+  | `..._completion_uses_spec_changed_document_with_unicode_escaped_newline` | ○ | ○ |
+  | `..._completion_schema_snapshot` | -- | ○ |
+
+  最後の 1 本は request が `"params":0` で **位置を一切送らない**ため、A では説明できない。
+  「同じ family が同じ理由で落ちている」と丸めると、この 1 本の原因が消える。
+
+#### A: wire の位置正規化と fixture の col 規約が食い違う
+
+- **内容**: `lsharp lsp` の stdio 経路は wire 上の `line` / `col` を **0-indexed (LSP 3.17 準拠)**
+  として受け取り、内部の 1-indexed 規約へ `+1` して渡す。一方 fixture は **1-indexed のまま**で
+  書かれており、実効カーソル位置が 1 文字後ろへずれる。ずれた先が `)` などの非シンボル文字だと
+  `lsp-prefix-at` が `""` を返し、`lsp-prefix-matches` は空 prefix を**全一致として扱う**ため、
+  prefix 絞り込みが丸ごと無効になる。補完結果に L# キーワード 7 件が常に混ざる。
+- **根拠**: `..._completion_uses_changed_document` の実測。
+
+  ```
+  left  (実測): Content-Length: 407 ... "result":[{"label":"helper",...},{"label":"defn",...},
+                {"label":"let",...},{"label":"if",...},{"label":"match",...},
+                {"label":"do",...},{"label":"fn",...},{"label":"module",...}]
+  right (期待): Content-Length:  86 ... "result":[{"label":"helper","kind":3,"insertText":"helper"}]
+  ```
+
+  **item の形は左右で一致している**。差は「余計な keyword 7 件が付く」ことだけで、
+  これが A の signature である。
+
+  索引の突き合わせ — `..._repeated_didopen_keeps_latest_source` (`selfhost_cli_core.rs:17665`) の
+  latest source は `"(defn beta [] 1) (be)"` (21 byte)、要求は `"col":21`:
+
+  | 経路 | 内部 col | offset | `idx = offset - 1` | 文字 | prefix |
+  |---|---|---|---|---|---|
+  | 正規化前 (〜2026-08-02) | 21 | 20 | 19 | `e` | `"be"` |
+  | 正規化後 (2026-08-03〜) | 22 | 21 (= 文字列長) | 20 | `)` | `""` |
+
+  該当実装は `selfhost/src/App/Cli.ls:2010-2020` (`lsp-stdio-nav-params` の `+1`)、
+  `selfhost/src/Tools/Lsp/LspServerNav.ls:275-276` (`lsp-offset-from-line-col`、`line`/`col` とも 1 始まり)、
+  `:686-694` (`lsp-prefix-at` / `lsp-prefix-matches`)。
+- **いつ壊れたか**: `+1` 正規化は `9175c6e5` 「fix: normalize native lsp wire positions」(2026-08-03)。
+  fixture 側は `d32f9e91` (2026-04-01) 由来で、正規化に追随していない。
+
+#### B: snapshot file が 2026-08-03 以前の縮約形のまま残っている
+
+- **内容**: `assert_lsp_stdio_snapshot` (`selfhost_cli_core.rs:80-84`) は
+  `parse_lsp_stdio_frames` の**生の JSON をそのまま** snapshot file と `assert_eq!` する。
+  正規化器は挟まっていない。ところが `tests/snapshots/lsp/stdio/*.json` は
+  completion item を `["label", kind, "insertText"]` の**三要素配列**で、diagnostics を
+  `{"col":1,"line":1,"messageHash":1,"rule":1,"severity":1,"source":2}` の**型タグ**で持つ、
+  実出力には存在しない縮約形で書かれている。したがって **A を直しても B の 6 本は緑にならない**。
+- **根拠**: `..._completion_schema_snapshot` の実測。左右の内容は同一 (keyword 7 件) で、形だけが違う。
+
+  ```
+  left  (実測): "result":[{"label":"defn","kind":14,"insertText":"defn"}, ...]
+  right (file): "result":[["defn",14,"defn"], ...]
+  ```
+
+- **いつ壊れたか**: completion item の emit を LSP 準拠の object 形へ変えたのは
+  `5db1c2a4` 「fix: project native lsp completion and formatting」(2026-08-03、
+  `LspServerNav.ls:140-155`)。snapshot file 側は `78813333` (2026-04-03) で止まっている。
+  A と B は**同じ日の別 commit**で入っており、どちらも fixture / snapshot の追随が漏れた。
+
+#### 共通
+
+- **`I-49` の slice が持ち込んだものではない** — `I-49` の diff は
+  `Cli.ls` / `EmbeddedCli.ls` の `run-test-source-json` / `run-test-source-text` にしか触れておらず、
+  補完経路に一行も入っていない。原因 commit はいずれも 2026-08-03 で、`I-49` の 19 日前。
+  ただし **HEAD での再現は未実施** (working tree 復元が auto-mode classifier に阻まれたため)。
+  根拠は diff の局所性・履歴・出力の意味的一致の 3 点。
+- **なぜ台帳に無かったか**: これらは `#[ignore]` test であり、
+  `docs/development/validation/ignored-lane-expected-failures.txt` は宣言スコープが
+  `selfhost_native_stage_chain.rs` 単体に限られる。`selfhost_cli_core.rs` の `--ignored` lane は
+  **どちらの台帳の対象でもない**。「どちらの表にも無い = 落ちていない」とは読めない。
+- **修正方針の候補** (未決): A は (a) fixture の col を 0-indexed へ直す、
+  (b) 空 prefix を「全一致」ではなく「補完しない」へ変える、(c) 両方。
+  (b) 単独では params 無しの既定 keyword 補完 (`LspServerNav.ls:1105-1113`) と衝突する。
+  B は (d) snapshot file を現行の object 形へ書き直す、(e) `assert_lsp_stdio_snapshot` に
+  縮約器を入れて生出力を縮約形へ落とす、のいずれか。**(e) を選ぶなら「何を縮約するか」が
+  契約になる**ので ADR が要る。無検討な一括再生成はしない。
+- **関連**: `I-49` (発見の経緯)。引き取り先は `TODO.md` の `LSP-COL-CONV-01` (A) と
+  `LSP-SNAPSHOT-SHAPE-01` (B)。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>
