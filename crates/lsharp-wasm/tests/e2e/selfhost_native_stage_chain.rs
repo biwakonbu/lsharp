@@ -43888,7 +43888,7 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
           operand (vector-get instr 1)
           expected (native-instr-size-x86 opcode operand functions depth)
           native (if (= (is-control-opcode opcode) 1)
-                   (emit-control-instr-x86 ir meta offsets idx)
+                   (emit-control-instr-bundle-x86 ir meta offsets idx frame-base-slot-count depth)
                    (codegen-ir-instr-bundle-x86-with-import-count opcode operand (vector-get offsets idx) starts functions import-count import-stub-offset frame-base-slot-count depth))
           actual (vector-length native)]
 	      (if (!= expected actual)

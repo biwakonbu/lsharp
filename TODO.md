@@ -888,7 +888,9 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
      `selfhost/src/**.ls` に import meta の構築点が存在しない事実 (`I-28` の
      「production 側の帰趨は未確定」節) をどう扱うかを結論づけ、
      production 側にも欠陥があるなら別 ID を起票する
-  3. 同族の `..._x86_function_size_...` (`STALE-HARNESS-01`) と混ぜない
+  3. 同族の `..._x86_function_size_...` と混ぜない (そちらは `I-23` /
+     `STALE-HARNESS-01` で 2026-08-22 に解決済み。harness の bundle 未追従が原因で、
+     本項の import ABI とは別種である)
   4. **巻き添えを確認する。** rewriter は seed を書き換えるので、同じ harness
      `run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args`
      を共有する test すべてに効く。import 6 が 1 引数呼び出しになると call site の
@@ -1008,46 +1010,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **この理由で却下済み** (ADR)。
   **含めない範囲**: 重複名そのものの解消 (`MODULE-DUP-FN-01`)。
 
-- [ ] `STALE-HARNESS-01` `function_size_matches_generated_length` 診断の埋め込み harness を
-  bundle 分割後の emitter へ寄せる — Issue `I-23` の `STALE-PIN-03` 裁定 [B]。
-  `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:43891` の `check-instr-sizes` は
-  サイズを `native-instr-size-x86` (drop bundle 込み) で見積もりながら、実バイト列を
-  bundle 分割前の `emit-control-instr-x86` で作っている。実経路
-  (`append-control-if-instr-x86` -> `emit-control-if-bundle-x86`) と揃えるなら
-  `emit-control-instr-bundle-x86 ir meta offsets idx frame-base-slot-count depth` を呼ぶ
-  (両変数とも `check-instr-sizes` のスコープに既にある)。
-  **直し方は確定している (2026-08-19 にソース読解で決着)。** production の
-  `codegen-x86-control-loop-fallback-native` (`:11204-11216`) が
-  **harness と同じ形の分岐を既に持っている**:
-
-  ```
-  (if (= (is-control-opcode opcode) 1)
-    (emit-control-instr-bundle-x86 ir-func meta offsets idx frame-base-slot-count current-depth)
-    ...)
-  ```
-
-  harness (`:43891`) はこの行の陳腐化コピーで、末尾 2 引数を落として非 bundle 版を呼んでいる。
-  **production の行へ揃えるだけでよく、新しい判断は要らない。**
-  `frame-base-slot-count` / `depth` はどちらも `check-instr-sizes` のスコープに既にある。
-  **受入条件**: (1) `..._representative_x86_function_size_matches_generated_length_diagnostic` が
-  `Some(-1)` を返すこと、(2) 修正後も**診断は最初の mismatch で止まる**ので、
-  1 回 GREEN を見て終わりにせず、残る mismatch が無いことまで確認すること。
-  当初 (3) として「opcode 80/81/83 で実ループと同じ列を出すか」を置いていたが、
-  **ソース読解で discharge した**ので受入条件から外した。根拠は 2 つ:
-  `emit-control-instr-bundle-x86` が扱う opcode 集合 {41, 79, 80, 81, 83} は
-  `native-control-instr-size-x86` (`:12275-12285`) の非 0 集合と完全一致し、
-  `native-instr-size-x86` (`:8997-9002`) が bundle 込みサイズへ回す 3 つ (41 / 81 / 83) は
-  bundle 版と非 bundle 版で出力が異なる 3 つと厳密に一致する。79 / 80 は両版で同一である。
-  **含めない範囲**: production の legacy 非 bundle 経路
-  (`generate-native-instr-loop-x86`。offset 側も `native-plain-instr-size-x86` を使うので
-  内部整合しており、欠陥ではないと確認済み)、
-  `test_linux_x86_metadata_replays_control_if_control_loop_single_row` (`:8257`。
-  production `:12994` へのソース文字列 pin であり本件と無関係)。
-  **同族 3 件**: `ignored-lane-expected-failures.txt` の `:135` / `:136` は Lima VM 依存で
-  未実測の同族候補、`:189` が裁定済みの本体。加えて
-  `test_e2e_native_aarch64_map_insert_instr_size_matches_emitted_length` (`:16762`、
-  harness `:18007`) が同じ書き方をしている。**行の削除は GREEN が出てから。**
-  **cargo が要る。**
 - [~] `PARSER-PARITY-01` metadata directive の allowlist が二重管理 — Issue `I-18`。
   parity test (`crates/lsharp-syntax/tests/metadata_directive_parity.rs`) は設置済みで、
   片側だけの directive 追加は検出できる状態になった。判断と実測は

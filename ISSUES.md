@@ -155,7 +155,7 @@
 | [I-20](#i-20) | selfhost parser が受理した 6 directive の payload を黙って捨てている | 中 | open | [directive allowlist parity ADR](docs/adr/decisions-parser-directive-allowlist-parity.md) |
 | [I-21](#i-21) | native backend の root API が runtime spec の tier 1 契約に適合していない (aarch64 は解決済、x86-64 が残件) | 高 | open | [空 stack ガード ADR](docs/adr/decisions-native-root-pop-empty-guard.md) |
 | [I-22](#i-22) | heavy e2e 164 件が `#[ignore]` 契約を満たしていない。案 A で裁定し 2026-08-19 に実装した | 中 | resolved | [ignore 契約 ADR](docs/adr/decisions-test-gate-ignore-contract.md) |
-| [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | open | -- |
+| [I-23](#i-23) | `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない | 中 | resolved | -- |
 | [I-24](#i-24) | 診断の「重複」定義が spec 文言 / test / 実装の 3 者で食い違い、文言どおりに直すと lint 指摘が消える | 中 | resolved | [lint dedup identity ADR](docs/adr/decisions-lint-diagnostic-dedup-identity.md) |
 | [I-25](#i-25) | `NativeCodegen.ls` に呼び出し元 0 の defn が 64 個。うち 1 群は使用中の実装と乖離している | 低-中 | open | -- |
 | [I-26](#i-26) | x86 lane は helper trailer の補正を持たず、`x86-selfhost-helper-trailer-size` は呼び出し元 0 のまま | 中 | open | -- |
@@ -1389,7 +1389,7 @@
 <a id="i-23"></a>
 ### I-23: `aarch64-selfhost-helper-trailer-size` の pin が 2026-08-03 から陳腐化したまま気付かれていない
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: resolved
 - **内容**: `test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer`
   (`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs`) は
   `(aarch64-selfhost-helper-trailer-size 10)` == `2520` と
@@ -1539,6 +1539,43 @@
   - 裁定は cargo 非依存で閉じた (診断値は `STALE-PIN-02` の run で取得済み、
     残りはソース読解のみ)。**harness の修正は含めない** — `TODO.md` の
     `STALE-HARNESS-01` が持つ。
+- **`STALE-HARNESS-01` を閉じた (2026-08-22)**: `STALE-PIN-03` 裁定 [B] の修正である。
+  `selfhost_native_stage_chain.rs:43891` の harness `check-instr-sizes` を、production の
+  `codegen-x86-control-loop-fallback-native` (`NativeCodegen.ls:11216`) と同じ
+  `emit-control-instr-bundle-x86 ir meta offsets idx frame-base-slot-count depth` へ揃えた。
+  `frame-base-slot-count` / `depth` はどちらも harness のスコープに既にあり、
+  **裁定で決着済みの形へ寄せるだけだったので ADR は起こしていない** (`STALE-PIN-02` と同じ扱い)。
+
+  | test | 修正前 | 修正後 |
+  |---|---|---|
+  | `..._representative_x86_function_size_matches_generated_length_diagnostic` | FAILED (52.78s) | ok (64.82s) |
+  | `..._linux_x86_actual_seed_function_size_matches_generated_length_diagnostic` | FAILED (70.98s) | ok |
+  | `..._linux_x86_actual_seed_segmented_function_size_matches_generated_length_diagnostic` | FAILED (50.23s) | ok |
+
+  RED の診断レコードは `[777000, 3, 41, 0, 1, 11, 8, 10, 0, 0, 466, 466, 4, 4, 48, 96]` で、
+  **裁定時に記録した `idx=3 / opcode=41 (if) / operand=0 / depth=1 / expected=11 / actual=8` と
+  逐語で一致した**。差 `3` は `native-drop-bundle-size-x86(1)`、function レベルは
+  `expected-size 466 == actual-size 466` で、トリガが instr-status のみである点も一致する。
+  裁定はソース読解だけで下したが、**実測が後から同じ数を出したので裁定の前提が裏付けられた**。
+- **受入条件 (2) は 1 回の GREEN で満たせる**: `check-function-sizes` は mismatch を見つけると
+  診断レコードを出して**その場で再帰を止める** (`:44002-44003` の `0` 復帰。次の
+  `check-function-sizes` 呼び出しへ進まない)。したがって出力の先頭が `-1` であることは
+  「最初の mismatch が無い」ではなく「全 function / 全 instr を走り切って mismatch が 0」を意味する。
+  「診断は最初の mismatch で止まるので 1 回 GREEN を見て終わりにしない」という受入条件の懸念は、
+  **sentinel の位置を読めば 1 回で discharge できる**ものだった。
+- **同族 2 件の分類が誤っていた (2026-08-22 訂正)**: `ignored-lane-expected-failures.txt` は
+  `..._linux_x86_actual_seed_*` の 2 件を分類 (a) 「Lima VM 依存のため未実測」としていたが、
+  **macOS ローカルでそのまま実行でき、修正前 RED / 修正後 GREEN を実測できた**。
+  test 名の `linux_x86` は seed source の名前であって実行環境の要求ではない。
+  分類は「test 名の prefix ではなく関数本体を読んで分けた」と手続きを明記してあり、
+  その手続き自体は正しいが、**seed 名と env 依存の区別までは救えていなかった**。
+  分類を (a) 60 → 58 / (c) 52 → 51、一覧を 116 → 113 件へ更新した。
+- **含めなかったもの**: `test_e2e_native_aarch64_map_insert_instr_size_matches_emitted_length`
+  (`:16762`、harness `:18007`) は同じ書き方 — `emit-control-instr-x86` を末尾 2 引数なしで呼ぶ —
+  をしているが、**現に pass しており** (回帰確認 `ok` 19.08s)、台帳にも載っていない。
+  こちらの harness は `exact` を size モデルと突き合わせず emit 列そのものの検査に使っており、
+  bundle 版へ替えると**検査対象が変わる**。落ちていないものを「同じ形だから」で書き換えるのは
+  根拠の無い変更なので触っていない。**「形が同じ」は「同じ欠陥がある」を含意しない。**
 - **発見の経緯**: `NATIVE-ROOT-01` (aarch64 root_pop の空 stack ガード) の回帰確認で
   `selfhost_native_stage_chain` の `--ignored` lane を通したときに検出した。
   `NATIVE-ROOT-01` の変更とは無関係であることは上記の算術で確定している
@@ -2219,8 +2256,9 @@
   そのまま降りるためで、quote 深度を持たない構造上の帰結である。
 - **範囲外**: `(module ...)` 本体の contract。main の `check_metadata` は `program.decls` の
   top-level しか走査せず module 本体へ降りないので、module 内の `:example` は**検査自体が走らない**。
-  false positive も出ないが検査もされない。ここは `MODULE-BODY-FORM-01` (`I-39`) の側の問題であり、
-  本 issue では扱わない。
+  false positive も出ないが検査もされない。ここは `I-39` の側の問題であり、本 issue では扱わない。
+  `I-39` は compile 経路での reject までを閉じた ([ADR](docs/adr/decisions-module-body-form-rejection.md))
+  が、metadata 検査経路が module 本体へ降りない点は**そのまま残っている**。
 - **関連**: 参照実装は `codex/v0.2-ec-m1-02-integration` の `e4fab504` (ADT constructor) /
   `95bcfc53` (trait method) / `5da4d83c` (quote 境界) / `3ac2227a` (builtin doc 参照) /
   `420b2eaa` (macro / builder symbol) / `971840ac` (constrained type member)。
@@ -2275,7 +2313,8 @@
   誤った contract が緑で通ることはない。**危険なのは逆向き** — 正しい contract が
   永久に赤のままになり、`:example` から `:case` への移行が機械的にはできない。
 - **範囲外**: `(module ...)` 本体に置いた場合。main は module 本体へ降りないため
-  そもそも検査が走らない (`I-39` / `MODULE-BODY-FORM-01`)。
+  そもそも検査が走らない (`I-39`。compile 経路の reject は
+  [ADR](docs/adr/decisions-module-body-form-rejection.md) で閉じたが、metadata 検査経路は未対応)。
 - **関連**: `CASE-ZERO-ARITY-01` (`TODO.md`) が引き取る。
   canonical case lane の取り込み判定は
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) の群 3。
