@@ -1,1 +1,1 @@
-[{"jsonrpc":"2.0","id":51,"result":[["defn",14,"defn"],["let",14,"let"],["if",14,"if"],["match",14,"match"],["do",14,"do"],["fn",14,"fn"],["module",14,"module"]]}]
+[{"jsonrpc":"2.0","id":51,"result":[{"label":"defn","kind":14,"insertText":"defn"},{"label":"let","kind":14,"insertText":"let"},{"label":"if","kind":14,"insertText":"if"},{"label":"match","kind":14,"insertText":"match"},{"label":"do","kind":14,"insertText":"do"},{"label":"fn","kind":14,"insertText":"fn"},{"label":"module","kind":14,"insertText":"module"}]}]

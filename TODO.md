@@ -2988,35 +2988,29 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
 
-- [BLOCKED: LSP-SNAPSHOT-SHAPE-01] `LSP-COL-CONV-03` snapshot file を読む 3 本の wire 位置を
+- [ ] `LSP-COL-CONV-03` snapshot file を読む 3 本の wire 位置を
   0-indexed へ揃える — Issue `I-52` の残渣。`:18966` / `:19232` / `:19490` の 3 本は facet A に加えて
   facet B (`tests/snapshots/lsp/stdio/*.json` の縮約形) も踏むため、位置だけ直しても緑にならない。
   修正値は**導出済み (未検証)** で `ISSUES.md` の `I-52` に表として置いてある。
-  受入条件: 上記 3 本が緑になること。**`LSP-SNAPSHOT-SHAPE-01` を先に閉じないと検証できない。**
+  受入条件: 上記 3 本が緑になること。
+  **多段になる。** この 3 本は snapshot の値まで違う (facet A の keyword 混入が snapshot 側に
+  写っていない) ため、位置を直したあとに実測して snapshot を転記し直す必要がある。
+  転記手順は `completion.json` で確立済み (`ISSUES.md` の `I-52` facet B)。
 
-- [ ] `LSP-SNAPSHOT-SHAPE-01` LSP stdio snapshot の形式ドリフトを解消する — Issue `I-52` の facet B。
-  `assert_lsp_stdio_snapshot` (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:80-84`) は
-  生の JSON frame をそのまま snapshot と比較するが、`tests/snapshots/lsp/stdio/*.json` は
-  completion item を三要素配列、diagnostics を型タグで持つ縮約形 (`78813333` / 2026-04-03) のまま
-  止まっている。実出力が LSP 準拠の object 形へ変わったのは `5db1c2a4` (2026-08-03)。
-  方針は **(d) snapshot file を現行の object 形へ書き直す** に決めた (`ISSUES.md` の `I-52`)。
-  縮約器を入れる (e) は却下したので ADR は不要。
-  受入条件: `..._completion_schema_snapshot` (位置を送らないため facet A の影響を受けない) が
-  緑になること。転記は実測した左辺を読み、item の中身が期待どおりであることを確認してから行う。
-  **中身が変わっている snapshot は形式ドリフトではなく別の回帰なので、転記せず issue を切る。**
-  **含めない範囲**: 位置規約の修正 (`LSP-COL-CONV-03`)。
-  snapshot の無検討な一括再生成 (`cargo insta accept` 相当) はしない。
 
-- [BLOCKED: LSP-SNAPSHOT-SHAPE-01] `LSP-SNAPSHOT-SHAPE-02` 残りの LSP stdio snapshot を
-  現行の object 形へ転記する — Issue `I-53` の B 系統。lane 全体の実測で
-  `assert_lsp_stdio_snapshot` (`selfhost_cli_core.rs:84`) 内で落ちるのは **31 本**あり、
-  `LSP-SNAPSHOT-SHAPE-01` が扱う completion 系はその一部にすぎない。
-  転記の元データは再 run 不要で、`/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/lsp_stdio_full_red.log`
-  の左辺をそのまま使える (再取得には 72 分かかる)。
-  受入条件: 31 本のうち転記対象としたものが全て緑になり、`I-53` の内訳表の B 行が 0 になること。
-  **含めない範囲**: `LSP-SNAPSHOT-SHAPE-01` が扱う completion 系。中身が変わっている snapshot
-  (diagnostics 系が該当する疑いがある) の転記 — それは形式ドリフトではないので `I-54` 側で扱う。
-  先に `LSP-SNAPSHOT-SHAPE-01` で転記手順を 1 本確立してから広げる。
+- [ ] `LSP-SNAPSHOT-SHAPE-02` 形式ドリフトだけの snapshot 残り 2 本を object 形へ転記する —
+  Issue `I-53` の B 系統。`assert_lsp_stdio_snapshot` 内で落ちる 31 本のうち、
+  **転記だけで緑になるのは 3 本しかない**ことが lane ログの左右比較で分かった
+  (`completion_schema_snapshot` は 2026-08-23 に解決済み)。残るのは
+  `initialize_schema_snapshot` と `initialize_shutdown_schema_snapshot` で、
+  `[1,1,1,1,1,1,1]` を `capabilities` object へ直す。同じ inline 期待値が
+  `..._lsp_stdio_wire_repeated_sequence` (`selfhost_cli_core.rs:6245`) にもある。
+  転記の元データは `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/lsp_stdio_full_red.log`
+  の左辺で、再 run は不要 (再取得には 72 分かかる)。
+  受入条件: 上記 3 本が緑になること。
+  **含めない範囲**: 残り 28 本 — 値まで違うので転記対象ではない。
+  位置起因の 20 本は `LSP-NAV-DEGRADE-01` / `LSP-COL-CONV-03`、
+  diagnostics の内容差 8 本は `LSP-COL-CONV-04` の判別が先。
 
 - [ ] `LSP-COL-CONV-04` LSP response 側の位置 fixture を wire 規約へ揃える — Issue `I-54`。
   `formatting` 5 本は期待が 1 始まりのまま陳腐化し、`body_hover` /

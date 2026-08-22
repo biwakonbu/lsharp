@@ -2990,6 +2990,24 @@
   `5db1c2a4` 「fix: project native lsp completion and formatting」(2026-08-03、
   `LspServerNav.ls:140-155`)。snapshot file 側は `78813333` (2026-04-03) で止まっている。
   A と B は**同じ日の別 commit**で入っており、どちらも fixture / snapshot の追随が漏れた。
+- **解決の第一段** (2026-08-23): `tests/snapshots/lsp/stdio/completion.json` を object 形へ転記した。
+  実測の左辺と snapshot の右辺を突き合わせ、**値 (label / kind / insertText の 7 件) が
+  完全に一致し、形だけが違う**ことを確認したうえで転記した = レビュー済みの転記である。
+  検証: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_completion_schema_snapshot`
+  で **1 passed / 0 failed** (`206.74s`、2026-08-23)。
+- **転記できるのは 31 本中 3 本だけだった**。`I-53` の lane ログの左右を機械比較したところ、
+  値まで一致する (= 純粋な形式ドリフト) のは以下だけである。
+
+  | 分類 | 本数 | 引き取り先 |
+  |---|---|---|
+  | 形式のみ | 3 (`completion_schema_snapshot` / `initialize_schema_snapshot` / `initialize_shutdown_schema_snapshot`) | `LSP-SNAPSHOT-SHAPE-02` |
+  | 位置起因で値が違う | 20 (nav 系 17 + completion 3) | `I-55` / `LSP-COL-CONV-03` |
+  | diagnostics の内容差 | 8 (`document_sequence_*` 6 + `filesystem_document_sequence_*` 2) | `I-54` (判別待ち) |
+
+  initialize 2 本は値の比較では差が出る (`[1,1,1,1,1,1,1]` 対 6 個の `Bool(true)` +
+  `textDocumentSync:1` + `completionProvider:{}`) が、**能力の集合としては同一**であることを
+  目視で確認したので形式ドリフトに分類した。機械比較は一次選別にすぎず、目視が要る。
+  **残り 28 本は「転記すれば緑になる」ものではない。** 原因を先に解く。
 
 #### 共通
 
