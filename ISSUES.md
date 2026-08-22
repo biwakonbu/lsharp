@@ -166,7 +166,7 @@
 | [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 1 件が 3 経路へ波及) | 低 | resolved | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
 | [I-33](#i-33) | analysis-only cache の直後に compile すると空の IR が返る (clean-hit が IR readiness を見ていない) | 中 | resolved | [analysis/compile cache 境界](docs/adr/decisions-legacy-module-analysis-compile-cache-boundary.md) |
 | [I-34](#i-34) | `cargo fmt --check -p lsharp-ir` が main で既に落ちる (`lower/mod.rs` の mod 宣言順 8 箇所) | 低 | resolved | -- |
-| [I-35](#i-35) | allocator の到達不能 free-list search に誤った `Br(0)` が残り、path を再有効化すると無限 loop する | 低 | open | -- |
+| [I-35](#i-35) | allocator の到達不能 free-list search に誤った `Br(0)` が残り、path を再有効化すると無限 loop する | 低 | resolved | [到達不能 free-list の削除](docs/adr/decisions-allocator-dead-free-list-removal.md) |
 | [I-36](#i-36) | AST / token の Display が string escape と型注釈・`:where` を落とし、pretty-print が re-parse できない | 中 | open | -- |
 | [I-37](#i-37) | 別 module の同名 top-level function が診断なしに衝突し、誤った wasm を出す (silent miscompilation) | 高 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-38](#i-38) | import した module の `type-alias` が展開されず `expected String, found Text` になる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
@@ -2352,7 +2352,7 @@
 <a id="i-35"></a>
 ### I-35: allocator の到達不能 free-list search に誤った `Br(0)` が残っている
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maintenance-stage-chain-integration` の判定中)
+- **影響度**: 低 / **状態**: resolved / **発見**: 2026-08-22 (`codex/legacy-maintenance-stage-chain-integration` の判定中)
 - **内容**: `emit_alloc_func` の legacy free-list first-fit search は、size-class heads を
   導入した際に `crates/lsharp-wasm/src/wasi/allocator.rs:140` の無条件 `Br(0)` で
   丸ごと skip されるようになった。skip される区間の `:172` にある `Br(0)` は
@@ -2365,10 +2365,22 @@
   `codex/legacy-maintenance-stage-chain-integration` の `8be951e4`
   (`fix(wasm): skip undersized free-list entries`) が同じ箇所を `Br(1)` へ直しているが、
   main では dead path なので取り込みは却下した。
-- **含めない範囲**: 修正そのもの。dead path を直すか消すかは
-  「legacy free-list を ABI 互換のために残し続けるか」という設計判断とセットで、
-  `I-04` (free list 線形探索) の範囲で決める。
-- **関連**: `I-04`。判定は
+- **解決** (2026-08-22): **区間ごと削除した。** `Br(1)` へ直して残す案は却下した。
+  ABI は function signature と heap layout であって instruction 列ではないので、
+  「ABI 差分を小さく保つため残す」という当初の理由が根拠を欠いていた。
+  削除は emitter 91 行と、この区間が唯一の参照だった
+  `AllocatorGlobals::free_list_base_global_idx` (struct field と構築 4 箇所)。
+  判断は [到達不能 free-list の削除](docs/adr/decisions-allocator-dead-free-list-removal.md)。
+- **再発防止**: `allocator_body_has_no_unreachable_block_prologue` が、`__alloc` の
+  encode 済み body に `block (empty)` + `br 0` のバイト列が現れないことを検査する。
+  この形は「区間を丸ごと到達不能にして残す」ときにだけ出るので、**同じ形の再発を
+  実行に依存せず禁止できる**。到達不能命令は wasm validator を通ってしまうため、
+  中の誤りは behavioural test では原理的に検出できない。
+- **`I-04` は閉じていない**: 起票時は「`I-04` の範囲で決める」としていたが、`I-04` が問うのは
+  「線形探索をどう速くするか」であり、その答えである size-class heads は既に入っている。
+  今回決めたのは「置き換え済みの旧実装を保持しない」という一点で、class 境界の選び方や
+  oversize の扱いには触れていない。`I-04` は自身の範囲で open のまま残す。
+- **関連**: `I-04`。起票時の判定は
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 <a id="i-36"></a>

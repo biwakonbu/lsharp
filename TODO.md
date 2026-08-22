@@ -943,15 +943,7 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   受入条件: cycle ごとに `live=0` を assert すること。
   **branch が記録している `freed` / free-list entry 数の実測値 (10 cycle で 384→402 等) は
   旧 first-fit 設計に紐づくので期待値に使わない。** size-class heads の下では違う数になる。
-  **含めない範囲**: 到達不能な legacy free-list path の修正 (`I-35`)、GC アルゴリズムの変更。
-
-- [ ] `ALLOC-DEAD-BR-01` allocator の到達不能 free-list search を直すか消すか決める —
-  Issue `I-35`。`crates/lsharp-wasm/src/wasi/allocator.rs:140` の無条件 `Br(0)` が
-  legacy first-fit search 全体を skip しているため、`:172` の誤った `Br(0)`
-  (`Br(1)` であるべき) は現状発火しない。path を再有効化すると無限 loop する。
-  受入条件: `I-04` (free list 線形探索) の設計判断とセットで、
-  「ABI 互換のために残す」なら誤りを直す、「残さない」なら区間ごと削る、のどちらかへ倒すこと。
-  **含めない範囲**: size-class allocator 自体の変更。
+  **含めない範囲**: GC 側 free-list の再設計 (`I-04`。allocator 側の到達不能 path は `I-35` で削除済み)、GC アルゴリズムの変更。
 
 - [ ] `RUST-FILE-SIZE-GATE-01` workspace 全域の 800 行 gate を入れる — Issue `I-01`。
   main は per-file の targeted guard 8 本 (`*_file_size.rs`) しか持たず、`crates/**/src/**` と

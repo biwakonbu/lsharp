@@ -376,7 +376,6 @@ pub(super) fn emit_wasm_wasi_with_options(
         alloc_count_global_idx: ALLOC_COUNT_GLOBAL_IDX,
         object_count_global_idx: GC_OBJECT_COUNT_GLOBAL_IDX,
         free_list_count_global_idx: GC_FREE_LIST_COUNT_GLOBAL_IDX,
-        free_list_base_global_idx: GC_FREE_LIST_BASE_GLOBAL_IDX,
         object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
         object_table_capacity_global_idx: GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX,
         free_class_heads_base_global_idx: GC_FREE_CLASS_HEAD_GLOBAL_BASE_IDX,

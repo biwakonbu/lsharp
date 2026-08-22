@@ -9,7 +9,6 @@ pub(super) fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals
         alloc_count_global_idx,
         object_count_global_idx,
         free_list_count_global_idx,
-        free_list_base_global_idx,
         object_table_base_global_idx,
         object_table_capacity_global_idx,
         free_class_heads_base_global_idx,
@@ -133,97 +132,10 @@ pub(super) fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals
     free_list::emit_free_class_capacity(&mut f, 1, 22);
     f.instruction(&W::End);
 
-    // free-list first-fit search
-    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
-    // 旧 table は新しい class heads と併用しない。コードは ABI 差分を
-    // 小さく保つため残すが、常に bump/class path へ進む。
-    f.instruction(&W::Br(0));
-    f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(4));
-    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(4));
-    f.instruction(&W::GlobalGet(free_list_count_global_idx));
-    f.instruction(&W::I32GeU);
-    f.instruction(&W::BrIf(1));
-
-    f.instruction(&W::GlobalGet(free_list_base_global_idx));
-    f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Const(3));
-    f.instruction(&W::I32Shl);
-    f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(5));
-
-    f.instruction(&W::LocalGet(5));
-    f.instruction(&W::I32Load(mem32(0)));
-    f.instruction(&W::LocalSet(6));
-    f.instruction(&W::LocalGet(5));
-    f.instruction(&W::I32Load(mem32(4)));
-    f.instruction(&W::LocalSet(7));
-
-    f.instruction(&W::LocalGet(7));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32LtU);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(4));
-    f.instruction(&W::Br(0));
-    f.instruction(&W::End);
-
-    f.instruction(&W::LocalGet(6));
-    f.instruction(&W::LocalSet(8));
-    f.instruction(&W::LocalGet(7));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Sub);
-    f.instruction(&W::LocalSet(9));
-
-    f.instruction(&W::LocalGet(9));
-    f.instruction(&W::I32Eqz);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::GlobalGet(free_list_count_global_idx));
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Sub);
-    f.instruction(&W::LocalSet(10));
-    f.instruction(&W::LocalGet(4));
-    f.instruction(&W::LocalGet(10));
-    f.instruction(&W::I32Eq);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::Else);
-    f.instruction(&W::GlobalGet(free_list_base_global_idx));
-    f.instruction(&W::LocalGet(10));
-    f.instruction(&W::I32Const(3));
-    f.instruction(&W::I32Shl);
-    f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(11));
-    f.instruction(&W::LocalGet(5));
-    f.instruction(&W::LocalGet(11));
-    f.instruction(&W::I32Load(mem32(0)));
-    f.instruction(&W::I32Store(mem32(0)));
-    f.instruction(&W::LocalGet(5));
-    f.instruction(&W::LocalGet(11));
-    f.instruction(&W::I32Load(mem32(4)));
-    f.instruction(&W::I32Store(mem32(4)));
-    f.instruction(&W::End);
-    f.instruction(&W::GlobalGet(free_list_count_global_idx));
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Sub);
-    f.instruction(&W::GlobalSet(free_list_count_global_idx));
-    f.instruction(&W::Else);
-    f.instruction(&W::LocalGet(5));
-    f.instruction(&W::LocalGet(6));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Add);
-    f.instruction(&W::I32Store(mem32(0)));
-    f.instruction(&W::LocalGet(5));
-    f.instruction(&W::LocalGet(9));
-    f.instruction(&W::I32Store(mem32(4)));
-    f.instruction(&W::End);
-    f.instruction(&W::Br(1));
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-    f.instruction(&W::End);
+    // legacy free-list first-fit search はここにあったが、size-class heads の導入で
+    // 無条件 Br(0) により丸ごと到達不能になっていた。到達不能なまま残すと中の誤り
+    // (Br(1) であるべき箇所が Br(0) だった) に実行で気付けないので削除した。
+    // 判断は ISSUES.md の I-35、guard は allocator_body_has_no_unreachable_block_prologue。
 
     // free-list miss -> bump allocate
     f.instruction(&W::LocalGet(8));

@@ -144,7 +144,6 @@ struct AllocatorGlobals {
     alloc_count_global_idx: u32,
     object_count_global_idx: u32,
     free_list_count_global_idx: u32,
-    free_list_base_global_idx: u32,
     object_table_base_global_idx: u32,
     object_table_capacity_global_idx: u32,
     free_class_heads_base_global_idx: u32,
