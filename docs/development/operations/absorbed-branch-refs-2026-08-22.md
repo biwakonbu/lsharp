@@ -2,8 +2,10 @@
 
 `main` = `13a3786b` 時点。全 local branch **129 本** を `git cherry main <branch>` で分類し、
 `+` (main に patch-id が無い commit) が **0 本** の branch を「取り込み済み」とした。
-そのうち worktree が checkout していない **71 本** が削除対象。**A の 25 本は削除済み、
-B の 46 本は未削除** (`git branch -D` が auto mode classifier に拒否された)。
+そのうち worktree が checkout していない **71 本** が削除対象。
+**A の 25 本 / B の 46 本、計 71 本すべて 2026-08-22 に削除済み。**
+その後 worktree を全部破棄して除外条件が消えたため再分類し、**さらに 10 本を削除した (D / E)**。
+**local branch は 129 本 → 49 本**になり、取り込み済みなのに残っている ref は 0 本である。
 名前と sha をここに残す。
 
 ## この台帳が保証するもの / しないもの
@@ -18,8 +20,8 @@ B の 46 本は未削除** (`git branch -D` が auto mode classifier に拒否�
 
 | 分類 | 件数 | 理由 |
 |---|---|---|
-| worktree が checkout 中 | 9 | patch-id は commit 済みの内容しか見ない。未 commit の作業内容には何も言えないので、salvage が済むまで触らない |
-| `+` を 1 本以上持つ | 49 | 未取り込みの commit がある。判断は `docs/adr/decisions-worktree-absorption-2026-08-20.md`。**うち 1 本 (`codex/lsharp-wasmgc-atomic-artifact`) は 2026-08-22 に内容で取り込み済みと判定した。下記 C** |
+| worktree が checkout 中 | 9 | patch-id は commit 済みの内容しか見ない。未 commit の作業内容には何も言えないので、salvage が済むまで触らない。**→ D で salvage と worktree 破棄を済ませ、E で 9 本とも削除した** |
+| `+` を 1 本以上持つ | 49 | 未取り込みの commit がある。判断は `docs/adr/decisions-worktree-absorption-2026-08-20.md`。**うち 1 本 (`codex/lsharp-wasmgc-atomic-artifact`) は 2026-08-22 に内容で取り込み済みと判定した (C)。E で再検証のうえ削除した**ので、残る 48 本が今の未取り込み集合である |
 
 除外した 9 本:
 
@@ -65,17 +67,23 @@ B の 46 本は未削除** (`git branch -D` が auto mode classifier に拒否�
 | `release/v0.1.0-native-rc1` | `e72c9e82b292` | origin |
 | `worktree-agbullet-fire-todo-tasks` | `47e5d3e63266` | local |
 
-## B. patch-id 一致のみ (46 本) — **未削除**
+## B. patch-id 一致のみ (46 本) — **削除済み (2026-08-22)**
 
-祖先ではないが `git cherry main <branch>` が `+` を出さない。`-d` は拒否するので `-D` が要る。
+祖先ではないが `git cherry main <branch>` が `+` を出さない。`-d` は拒否するので `-D` を使った。
 **この 46 本がこの台帳の本体である。**
 
-**2026-08-22 に再検証済み** (`main` = `8f9cd510` 時点)。46 本すべてについて
-`git cherry main <branch>` の `+` が 0 本であること、および `git worktree list` の
-どれもこの 46 本を checkout していないことを確認した。削除の前提は今も成り立っている。
+**削除直前に 3 つを再検証した** (`main` = `8da59d82` 時点)。
 
-削除は下表の branch 名を強制削除するだけだが、**強制削除は auto mode classifier に
-拒否されるため、ユーザーが実行する必要がある**。名前の抽出は次で行える。
+1. 46 本すべて `git cherry main <branch>` の `+` が **0 本**
+2. `git worktree list --porcelain` の checkout 集合と 46 本の積が **空**
+3. 削除後、`git branch -D` が報告した sha を下表の sha 列と機械的に突き合わせ、
+   **46/46 が一致**した (不一致 0)
+
+3 番目は台帳そのものの検算である。台帳が保証するのは「その sha の内容が main にある」ことだが、
+**そもそも台帳の sha が実物とずれていたらその保証は空文になる**ので、消える直前の実測と
+突き合わせておく。local branch は 105 本 → 59 本になった。
+
+名前の抽出は次で行える (削除後は 0 本 hit するのが正しい)。
 
 ```bash
 sed -n '/^## B\./,/^## C\./p' docs/development/operations/absorbed-branch-refs-2026-08-22.md \
@@ -147,8 +155,98 @@ main が後から file を分割すると hunk の当たり先が変わって pa
 |---|---|---|---|---|
 | `codex/lsharp-wasmgc-atomic-artifact` | `35f59fe5` | local | 37 | 追加関数 208 個ミス 0、WasmGC ADR 79 本と `wit/` 2 本が main にある、probe は main の方が大きい (10769 行 vs 10300 行)。ADR [`decisions-worktree-absorption-2026-08-20.md`](../../adr/decisions-worktree-absorption-2026-08-20.md) |
 
-削除は **`WORKTREE-ABSORB-02` の判定が全部終わるまでしない** (TODO の「含めない範囲」)。
-この行は「削除してよい根拠が揃った」という記録であって、削除の実行記録ではない。
+**2026-08-22 に削除した。** 保留条件だった「`WORKTREE-ABSORB-02` の判定が全部終わるまで」が
+解けたため、C の根拠 1 を現行 main で引き直したうえで実行している。手順と実測は E を見ること。
+
+## D. worktree の破棄 (2026-08-22)
+
+branch ref とは別に、**worktree 36 本を全部破棄した**。`git worktree list` は
+main の 1 本だけになった。**branch ref は 1 本も消していない** (`git worktree remove` は
+checkout を外すだけで ref に触らない)。除外 9 本を含め、削除後も 59 本が健在である。
+
+破棄前に 3 種類に分けて、それぞれ別の根拠で安全性を確かめた。
+
+| 種別 | 本数 | 破棄の根拠 |
+|---|---|---|
+| 未 commit なし (branch checkout) | 14 | 失うものが無い |
+| 未 commit なし (detached HEAD) | 14 | **HEAD の commit が生き残る ref から到達可能**であることを `git for-each-ref --contains` で 1 本ずつ確認した (12 個の sha すべて hit) |
+| 未 commit あり | 8 | 内容を salvage したうえで破棄 |
+
+**detached HEAD だけは扱いが違う。** branch checkout の worktree は ref が残るので
+worktree を消しても commit は残るが、detached HEAD の worktree は **HEAD 自身が
+到達性の唯一の担保になっている可能性がある**。ここを確認せずに消すと、計測用に
+切っただけの baseline のつもりが実は唯一の参照だった、という失い方をする。
+実測では 12 個すべてが `main` / `codex/*` / `backup/*` のいずれかから到達可能だった。
+
+未 commit ありの 8 本は
+`/Users/biwakonbu/github/tmp/worktree-salvage-2026-08-20/removed-2026-08-22/<name>/` へ
+`STATUS.txt` / `tracked.patch` / `tracked.stat` / `untracked/` の形で退避した (計 400 KB)。
+7 本は上の「突き合わせの結果 (2026-08-22): salvage すべき内容は 0 件」で判定済みのもので、
+残る `lsharp-baseline-a3ae4551` の 14 件は insta の `.snap.new` である
+(`worktree-salvage-2026-08-20/untracked/lsharp-baseline-a3ae4551/` の既存 salvage と
+**14/14 byte 一致**を確認した)。`.snap.new` を accept しない方針は変えていない。
+
+### ディスク
+
+`/Users/biwakonbu/github/tmp/` を **13 GB → 1.1 MB** にした。残したのは
+`worktree-salvage-2026-08-20/` だけで、そこへ `worktree-inventory-2026-08-20.md` と
+absorb 実行時の raw log 7 本 (`absorb-logs-2026-08-20/`) を移して集約した。
+
+消したものは build 出力と probe の残骸である (`absorb-target` 7.3 GB /
+`stale-pin-02` 3.1 GB / `lsharp-stage1-current-330-target` 1.7 GB /
+`lsharp-validation-input-refs` 664 MB / `*-target` 12 本 / `*-reuse-*` 4 本 ほか)。
+`stale-pin-02` と `absorb-target` は `ISSUES.md:1509` と worktree 取り込み ADR が
+`CARGO_TARGET_DIR` として名前を引いているが、**引いているのは取得条件としての path であって
+中身ではない**ので、再生成可能な build 出力として消してよい。
+
+worktree 破棄分と合わせて **16 GB** を回収した (`544Gi used / 331Gi avail` →
+`528Gi used / 346Gi avail`)。
+
+## E. worktree 解放後の再分類と最終削除 (2026-08-22)
+
+「除外したもの」の **worktree が checkout 中 9 本**は、D で worktree を全部破棄したことで
+除外理由が消えた。全 58 本へ `git cherry` を回し直したところ、**`+` が 0 本なのは
+ちょうどこの 9 本**だった (残り 49 本はすべて `+` を 1 本以上持つ)。9 本とも削除した。
+
+| branch | sha | origin | 分類 |
+|---|---|---|---|
+| `codex/gc-soak-telemetry-lane` | `5f162a7013d5` | local | patch-id 一致のみ |
+| `codex/lsharp-typeinfer-record-next` | `39a23f6d3117` | local | main の祖先 |
+| `codex/release-input-bundle` | `185f953fd1e0` | local | main の祖先 |
+| `codex/v0.2-ec-m1-01` | `13eac0b0cca4` | local | main の祖先 |
+| `codex/v0.2-ec-m1-02-frontend-snapshot` | `e9f9442817c3` | local | patch-id 一致のみ |
+| `codex/v2-16c-native-selfhost-doc` | `0cd019e40759` | local | main の祖先 |
+| `codex/v2-16c-native-selfhost-install` | `0cd019e40759` | local | main の祖先 |
+| `codex/v2-16c-native-selfhost-repl` | `0cd019e40759` | local | main の祖先 |
+| `codex/worktree-absorb-2026-08-20` | `13a3786b3cf7` | local | main の祖先 |
+
+7 本は main の祖先、2 本 (`gc-soak-telemetry-lane` / `v0.2-ec-m1-02-frontend-snapshot`) は
+patch-id 一致のみ。未 commit の内容は D で salvage 済みである。
+
+### `codex/lsharp-wasmgc-atomic-artifact` も削除した
+
+C に置いていた 1 本である。C の保留条件は「`WORKTREE-ABSORB-02` の判定が全部終わるまで」
+だったので、判定完了をもって条件が解けた。ただし **この 1 本だけは patch-id が根拠にならない**
+(`+` が 37 件ある) ので、削除直前に C の根拠のうち最も機械的な 1 番を現行 main で引き直した。
+
+```bash
+git cherry main codex/lsharp-wasmgc-atomic-artifact | grep '^+' | awk '{print $2}' \
+  | xargs -n1 -I{} git show {} -- '*.rs' \
+  | grep -E '^\+' | grep -oE '\bfn [A-Za-z0-9_]+' | sed 's/^fn //' | sort -u
+```
+
+37 commit が追加した **一意な関数名 138 個**を `grep -rE "\bfn <name>\b" crates/` で突き合わせ、
+`main` = `8da59d82` で **ミス 0 件**。判定は今も成立している。sha は `35f59fe5` (local のみ)。
+
+**この 1 本の削除は他の 48 本へ一般化しない。** 48 本は「patch-id も内容も未取り込み」であって、
+`ISSUES.md` / ADR が参照実装を commit hash で名指ししている。ref を消すと参照先が
+到達不能になるので残す。
+
+### 最終状態
+
+local branch は **129 本 → 49 本**。残る 49 本は例外なく `+` を 1 本以上持つ
+(24 本が batch family = `BOUNDED-SCAN-01` の hand-port 元、25 本が判定済みの EC / 各 lane で
+`I-35` 以降が hash で名指しする参照実装)。**取り込み済みなのに残っている ref は 0 本**である。
 
 ## 再検証の手順
 

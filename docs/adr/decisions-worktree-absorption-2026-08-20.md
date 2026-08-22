@@ -802,8 +802,12 @@ branch の名前になっている atomic artifact 化 (`35f59fe5`) は `git che
 `crates/lsharp-tooling/src/compile_tests_wasmgc_a.rs:66`
 `test_compile_file_wasmgc_backend_uses_atomic_artifact_boundary` が張っている。
 
-**判定: 全 37 件取り込み済み。live な残りは無い。** branch ref は削除対象へ回さず据え置く
-(`WORKTREE-ABSORB-02` の「branch ref は消さないこと」に従う)。
+**判定: 全 37 件取り込み済み。live な残りは無い。** 判定した時点では branch ref を
+据え置いた (`WORKTREE-ABSORB-02` の「branch ref は消さないこと」に従った)。
+**この据え置きは 2026-08-22 に解けている。** ユーザーが削除を許可したのち、上の判定を
+現行 main で引き直した (追加関数名 138 件、miss 0) うえで ref を削除した。手順と実測は
+[`absorbed-branch-refs-2026-08-22.md`](../development/operations/absorbed-branch-refs-2026-08-22.md)
+の E 節。**この 1 本の再検証は他の branch へ一般化しない。**
 
 ##### triage 手順への追記 -- `test_` 接頭辞を仮定しない
 
@@ -1586,3 +1590,40 @@ lane を持っていることを確認して満足すると、群 6 / 8 / 9 の�
 同じ probe に control (`:assert [true]` / `(defn helper ...)` を参照する `:example`) を
 並べて初めて、0 件が異常なのか正常なのかが決まった。群 8 で
 「module 本体は到達しない / top-level は live」に割れたのも control のおかげである。
+
+## 後片付けの完了 (2026-08-22)
+
+取り込み判断が全部閉じたあと、ユーザーが ref / worktree / artifact の削除を許可した。
+**`WORKTREE-ABSORB-02` はこれで完了**であり、`TODO.md` からは削除した。実測と手順の正本は
+[`absorbed-branch-refs-2026-08-22.md`](../development/operations/absorbed-branch-refs-2026-08-22.md)
+の D / E 節に置いてある。ここには「何を根拠に消してよいと判断したか」だけを残す。
+
+| 対象 | 前 | 後 | 削除してよいと判断した根拠 |
+|---|---|---|---|
+| local branch | 129 本 | **49 本** | 削除した 56 本は全て `git cherry main <branch>` が `+` 0 件。残る 49 本は 1 件以上の未取り込み commit を持つことを再確認した |
+| worktree | 37 本 | **1 本** (main のみ) | branch checkout 14 / detached-HEAD 14 / dirty 8 を**別々の根拠で**処理した (下記) |
+| `github/tmp/` の artifact | 13 GB | 1.1 MB | `target/` は再生成可能。docs が参照しているのは `CARGO_TARGET_DIR` の**取得条件**としてであって、成果物そのものではない |
+
+### 台帳が自分を検算した
+
+削除時に `git branch -D` が報告する sha を、台帳 B 表が記録していた sha と 46 件突き合わせ、
+**不一致 0 件**だった。台帳の保証は「この sha の内容は main にある」なので、
+**sha 自体が違っていればその保証は空手形になる。** 削除は台帳を消費する操作であり、
+消費する前に台帳そのものを検算できる最後の機会でもあった。
+
+### detached-HEAD の worktree には到達性の確認が要る
+
+branch を checkout している worktree は、消しても commit が ref 経由で生き残る。
+**detached-HEAD の worktree はその HEAD が commit を生かしている唯一の参照でありうる。**
+12 個の distinct な HEAD sha を `git for-each-ref --contains <sha>` にかけ、全て生存 ref から
+到達可能であることを確認してから消した。この確認を飛ばすと「計測用 baseline」の worktree が
+静かに commit を道連れにする。
+
+### 消さなかったもの
+
+- `crates/lsharp-wasm/tests/snapshots/*.snap.new` 14 件 — salvage 済みの写しと **byte 一致**を
+  確認したうえで worktree ごと消した。`cargo insta accept` はしていない
+  (2 ヶ月分の未レビュー codegen 出力の追認になるため。スコープ外の判断は変えていない)
+- `/Users/biwakonbu/github/tmp/worktree-salvage-2026-08-20/` — dirty worktree 8 本の
+  patch / 未追跡ファイルと absorb log。**削除の唯一の取り消し手段**なので残す
+- `/Users/biwakonbu/github/lsharp-frame` — 別 repo であることを確認して手を触れていない

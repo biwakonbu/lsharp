@@ -3083,22 +3083,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 移植した family ごとに、chunk 境界 (65 要素) を跨ぐ e2e が 1 本以上あること。
   **含めない範囲**: `Types/TypeInferAdt.ls` (branch のみの family が 0 で取り込むものが無い)、
   branch の非 bounded-scan 差分。
-- [BLOCKED: branch ref の削除にユーザー確認が要る] `WORKTREE-ABSORB-02` 未取り込み branch の後片付け —
-  ADR [`decisions-worktree-absorption-2026-08-20.md`](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
-  **取り込み判断そのものは 2026-08-22 に完了した。** 母集団は全 local branch 129 本、
-  `git cherry main <branch>` が `+` を返す 49 本のうち batch family 26 本は
-  `BOUNDED-SCAN-01` が正本 (family 単位 hand-port のみ。merge はしない)。
-  残る非 batch **23 本は全て ADR で判定済み**。live な残りは
-  `FMT-ROUNDTRIP-01` / `GC-LEAK-CYCLE-01` / `RUST-FILE-SIZE-GATE-01` / `I-35` /
-  `MODULE-DUP-FN-01` / `MODULE-ALIAS-EXPORT-01` / `MODULE-BODY-FORM-01` /
-  `DOCTOOLS-META-SLOT-01` / `LEGACY-MAINT-01` / `DOC-ACTIVE-ONLY-01` / `CACHE-TELEMETRY-01` /
-  `STATIC-CONTRACT-01` / `CONTRACT-SCOPE-01` / `COMP-BUILDER-01` / `PROP-GEN-01` へ引き取った。
-  **残っているのは ref の削除だけ。** 取り込み済み 80 本のうち main の祖先 25 本は削除済み、
-  patch-id 一致のみの **46 本が未削除** (worktree 固定の 9 本は対象外)。台帳は
-  [`absorbed-branch-refs-2026-08-22.md`](docs/development/operations/absorbed-branch-refs-2026-08-22.md)。
-  7 worktree の未 commit 内容は main と突き合わせ済みで **salvage すべき内容は 0 件**だった。
-  受入条件: 台帳 B 表の 46 本を削除し、`git branch --list 'codex/*'` の残数を台帳へ戻すこと。
-  **含めない範囲**: batch family 26 本 (`BOUNDED-SCAN-01`)、worktree 固定の 9 本、CI 設定。
 - [ ] `LINT-CLIPPY-01` `lsharp-types` の clippy gate 復旧 — Issue `I-31`。
   `crates/lsharp-types/src/review_trust_store.rs:120` の nested `if` が `collapsible_if` に当たり、
   `cargo clippy -p lsharp-types -- -D warnings` が lib / lib test / all-targets の 3 経路で
