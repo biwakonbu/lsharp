@@ -2337,6 +2337,12 @@
   `cargo clippy -p lsharp-types --all-targets` は clean。
   非空虚性は 3 点をそれぞれ破壊して確認した — doc の skip を外すと 1 件、
   `collect_nested_names` を空にすると 3 件、quote の内側を全部拾うと 3 件が落ちる。
+  `all_names` を広げた影響範囲も測った — `未定義の識別子` の文字列で分岐している
+  `crates/lsharp-tooling/src/metadata_test.rs:65` を含む `cargo test -p lsharp-tooling --lib` は
+  145 passed / 1 failed で、その 1 件は既知の `api_doc::tests::test_build_api_doc_for_file_preserves_parse_error_code`
+  (`docs/development/validation/workspace-expected-failures.txt:139` に記録済み) のみ。
+  `cargo test -p lsharp-types` (integration binary 込み) は exit 0。
+  測ったのはこの 2 crate だけで、driver / wasm 側の metadata 消費者は含まない。
 - **証拠表の訂正** (2026-08-23): 上表の `:invariant (= c Red)` は識別子スコープを直しても
   0 件にはならない。`=` が Int 比較なので `(= c Red)` は**型推論**で落ちる。
   これは `I-43` の穴ではないので、test 側の fixture を
