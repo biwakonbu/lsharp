@@ -1,1 +1,1 @@
-[{"jsonrpc":"2.0","id":62,"result":{"range":[1,36,1,42],"contents":"defn helper"}}]
+[{"jsonrpc":"2.0","id":62,"result":{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"contents":"defn helper"}}]

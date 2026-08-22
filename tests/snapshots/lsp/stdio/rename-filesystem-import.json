@@ -13,12 +13,20 @@
     "params": {
       "diagnostics": [
         {
-          "col": 1,
-          "line": 1,
-          "messageHash": 1,
-          "rule": 1,
+          "code": "LS1001",
+          "message": "undefined symbol",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 50
+            },
+            "end": {
+              "line": 0,
+              "character": 57
+            }
+          },
           "severity": 1,
-          "source": 2
+          "source": "lsharp"
         }
       ],
       "uri": 200
@@ -31,25 +39,37 @@
       [
         200,
         [
-          [
-            1,
-            51,
-            1,
-            58,
-            "mid-next"
-          ]
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 50
+              },
+              "end": {
+                "line": 0,
+                "character": 57
+              }
+            },
+            "newText": "mid-next"
+          }
         ]
       ],
       [
         8091858770804166904,
         [
-          [
-            1,
-            50,
-            1,
-            57,
-            "mid-next"
-          ]
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 49
+              },
+              "end": {
+                "line": 0,
+                "character": 56
+              }
+            },
+            "newText": "mid-next"
+          }
         ]
       ]
     ]

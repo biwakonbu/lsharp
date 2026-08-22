@@ -1,1 +1,1 @@
-[{"jsonrpc":"2.0","id":65,"result":[[10,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}]
+[{"jsonrpc":"2.0","id":65,"result":[[10,[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"newText":"cube"},{"range":{"start":{"line":0,"character":46},"end":{"line":0,"character":52}},"newText":"cube"}]]]}]

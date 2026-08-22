@@ -186,7 +186,8 @@
 | [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open (facet A のみ resolved) | -- |
 | [I-53](#i-53) | `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない | 中 | open | -- |
 | [I-54](#i-54) | LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている | 中 | open | -- |
-| [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | open (原因判別済み) | -- |
+| [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | resolved | -- |
+| [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -3131,6 +3132,21 @@
   | `..._lsp_stdio_body_rename_spec_position_character_params` | `["42","2","39","cube"]` | `["42","1","38","cube"]` | 同上 |
   | `..._main_with_lsp_stdio_formatting` | `line:0,character:0` 〜 `0,16` | `line:1,character:1` 〜 `1,17` | 期待が 1 始まりで陳腐化 |
 
+- **body params 2 本の帰結** (2026-08-23、**fixture を直した / 実装は触っていない**):
+  この 2 本が見ているのは `lsp-stdio-nav-params` の変換**後**の内部値である。
+  fixture は `line` については変換後の値 (`1`) を、`col` については変換前の wire 値 (`38`) を
+  期待しており、**同じ vector の中で座標系が混ざっていた**。`+1` は line と col の双方に
+  等しくかかるので、内部整合する読みは `["42","1","39"]` の一方しかない。
+  `+1` が wire → 内部の正規変換であることは緑の contract test 2 本
+  (`..._zero_based_position_contract` / `..._standard_uri_navigation_contract`) が押さえている。
+  よって **fixture 側が陳腐化している**と判定し、`38` → `39` へ直した。
+  request の `"line":1` → `"line":0` は `I-55` 第一段で同時に直っている。
+  検証は `I-55` の 40 本ランに含まれる (`ok. 40 passed; 0 failed`)。
+- **formatting 系の帰結** (2026-08-23): 当初 5 本と数えていたが、実測で **2 群に割れた**。
+  `..._main_with_lsp_stdio_formatting` (inline `source` を送る 1 本) だけが純粋な fixture の
+  陳腐化で、残る 5 本 (didOpen 済み document を `uri` だけで参照するもの) は
+  **実装バグだった** — `I-56` へ分離した。
+
   前 2 本は `lsp-stdio-nav-params` が返す**変換後の内部値**を test が直接見ており、
   後者は response range が wire (0 始まり) へ正規化されたのに fixture が追随していない。
   **「どちらも off-by-one」で丸めると向きが逆であることが消える**ので、行ごとに向きを記録する。
@@ -3217,8 +3233,78 @@
   なお実測ログから抽出した nav 系 40 本の左右は
   `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/nav_left_right.txt` にある。
 - **修正方針**: fixture を wire 規約 (0 始まり) へ直す。実装には触らない。response 側の期待値は request 修正後の実測で決める。
+- **解決** (2026-08-23): 上記の方針どおり fixture だけを直した。**実装は 1 行も触っていない。**
+  二段で進めた。
+
+  | 段 | 直したもの | 件数 | 結果 |
+  |---|---|---|---|
+  | 第一段 | request の `"line":1` → `"line":0` | 40 箇所 | 40 本中 15 本 (definition / references 系) が緑へ |
+  | 第一段 | nav 4 本に残っていた diagnostics の縮約形 → object 形 | 4 箇所 | -- |
+  | 第二段 | hover の response 期待値 (`1,36`〜`1,42` → `0,35`〜`0,41`) | 6 箇所 | -- |
+  | 第二段 | rename の response 期待値 (5-tuple → LSP TextEdit object) | 5 箇所 | -- |
+  | 第二段 | `definition` / `hover` の open-document 2 本に欠けていた publishDiagnostics frame | 2 箇所 | -- |
+  | 第二段 | snapshot file の転記 | 11 file | -- |
+
+  **hover の response は推測で書かなかった。** 第一段の実測で `contents:"type-info:2:39"` /
+  `range -1,-1` という miss 時の fallback が消え、`contents:"defn helper"` と正しい span が
+  返ることを確認してから期待値を決めた。すなわち hover の退化も request の座標系に
+  起因しており、**実装退行ではなかった**ことが実測で裏付けられた。
+
+  snapshot 11 file は転記前に左右を機械比較し、**全件が「同じ span を 0 始まり + LSP object 形へ
+  書き直しただけ」**であることを確認した。値そのものが動いたものは 1 件も無い。
+  `definition-open-document.json` にだけ frame が 1 つ増えるが、これは main document
+  `(helper 1)` に対する `LS0103 unknown form` (0,1〜0,7) で、top-level が defn でない以上
+  正当な出力である。helper document (uri 11) 側に frame が出ないのも、
+  「空 → 空は publish しない」という既存の clear 意味論と整合する。
+- **検証** (2026-08-23): `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_hover
+  lsp_stdio_definition lsp_stdio_references lsp_stdio_rename lsp_stdio_goto_definition
+  lsp_stdio_body_hover lsp_stdio_body_rename` →
+  **`ok. 40 passed; 0 failed; 0 ignored; 3034 filtered out; finished in 3608.39s`**。
+  第一段時点は `15 passed; 25 failed; 1693.35s` だった。
 - **関連**: `I-52` (facet A、帰結仮説の元)、`I-53` (実測の出所)、`I-54` (response 側の位置)。
-  引き取り先は `TODO.md` の `LSP-NAV-DEGRADE-01`。
+  引き取り先だった `TODO.md` の `LSP-NAV-DEGRADE-01` は完了につき削除した。
+
+<a id="i-56"></a>
+### I-56: `source` を持たない document request で params の slot がずれ、open document state が参照されない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-54` の formatting 5 本を潰す過程)
+- **内容**: `lsp --stdio` に `{"uri":42}` だけの `textDocument/formatting` を送ると、
+  直前の `didOpen` で登録した source を使わず、空の TextEdit
+  (`range` が `line:-1,character:-1`、`newText:""`) を返す。
+  同じ request に `"source"` を inline で載せた場合は正しく整形される。
+
+  | test | 送る params | 実測 (left) |
+  |---|---|---|
+  | `..._lsp_stdio_formatting` | `uri` + `source` | `start 0,0` / `end 0,16` / 整形済み text |
+  | `..._lsp_stdio_formatting_uses_open_document` | `uri` のみ (didOpen 済み) | `range -1,-1` / `newText:""` |
+  | `..._formatting_uses_spec_document_text_with_escaped_quote` | 同上 | 同上 |
+  | `..._formatting_uses_spec_document_text_with_unicode_escaped_quote` | 同上 | 同上 |
+  | `..._formatting_preserves_defn_metadata` | 同上 | 同上 |
+  | `..._formatting_open_document_schema_snapshot` | 同上 | 同上 |
+
+- **原因** (source を読んで確定):
+  `lsp-stdio-document-params` (`selfhost/src/App/Cli.ls:2022-2035`) は
+  `source` も `text` も無いとき **source slot を詰めずに** path / uriText を push する。
+  結果 params は `[uri, path, uriText]` となり、`[uri, source, path, uriText]` を前提とする
+  以下の読み出しが 1 つずつずれる。
+
+  - `lsp-has-document-param` (`LspServerCore.ls:305-306`) は要素数 > 1 だけを見るので、
+    source が無い params でも 1 を返す
+  - `lsp-document-src` (`:323-324`) は index 1 を返すので、**path (空文字列) を source として読む**
+  - `lsp-session-document-src` (`:338-340`) はそのため `server-state-source-for-uri` の
+    fallback へ入らず、`handle-formatting` (`LspServerNav.ls:1078-1088`) が空 source と判断して
+    `handle-formatting-mock` を返す
+
+  nav 系 (hover / definition / references / rename) は `lsp-stdio-nav-params` という
+  別の parser を使い、source slot を常に固定位置へ詰めるので同じずれを踏まない。
+  **したがってこれは formatting の request 経路に固有の実装バグである。**
+- **fixture の陳腐化とは別物**: 同じ 6 本は response 形式のドリフト
+  (`[[1,1,1,17,"..."]]` の 5-tuple → LSP TextEdit object) も同時に踏んでいる。
+  形式だけ転記しても `range -1,-1` は消えないので、**実装の修正が先**である。
+- **修正方針**: params の slot を常に固定長で詰め、`lsp-session-document-src` は
+  inline source が空なら session state へ落ちる。実装を直す (fixture ではない)。
+- **関連**: `I-54` (formatting 5 本の出所)、`I-53` (実測の出所)。
+  引き取り先は `TODO.md` の `LSP-DOC-PARAM-SLOT-01`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

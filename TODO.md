@@ -2989,7 +2989,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   (`LS2004` の code text 追加を含む)。
 
 - [ ] `LSP-COL-CONV-03` snapshot file を読む 3 本の wire 位置を
-  0-indexed へ揃える — Issue `I-52` の残渣。`:18966` / `:19232` / `:19490` の 3 本は facet A に加えて
+  0-indexed へ揃える — Issue `I-52` の残渣 (母集団は `I-53` の lane 監査)。`:18966` / `:19232` / `:19490` の 3 本は facet A に加えて
   facet B (`tests/snapshots/lsp/stdio/*.json` の縮約形) も踏むため、位置だけ直しても緑にならない。
   修正値は**導出済み (未検証)** で `ISSUES.md` の `I-52` に表として置いてある。
   受入条件: 上記 3 本が緑になること。
@@ -2999,29 +2999,29 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 
 
 - [ ] `LSP-COL-CONV-04` LSP response 側の位置 fixture を wire 規約へ揃える — Issue `I-54`。
-  `formatting` 5 本は期待が 1 始まりのまま陳腐化し、`body_hover` /
-  `body_rename_spec_position_character_params` の 2 本は実装が内部値 (1 始まり) を返している。
-  **向きが逆なので同じ理由では直せない。** どちらが正本かを行ごとに決める。
-  受入条件: 上記 7 本が緑になり、`I-54` の表の各行に「実装を直したか fixture を直したか」が
+  `..._lsp_stdio_formatting` の 1 本は期待が 1 始まりのまま陳腐化している
+  (実測 `start 0,0`/`end 0,16` に対し期待が `1,1`/`1,17`)。
+  受入条件: 当該 1 本が緑になり、`I-54` の表の各行に「実装を直したか fixture を直したか」が
   理由つきで記録されていること。
   **含めない範囲**: diagnostics refresh 系 — 形式ドリフトと判別が付き、2026-08-23 に
   転記で解決済み (`I-52` facet B の第三段)。nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
+  didOpen 済み document を参照する formatting 5 本 — 陳腐化ではなく実装バグと判別が付いた
+  (`LSP-DOC-PARAM-SLOT-01`)。body params 2 本は 2026-08-23 に fixture 修正で解決済み。
 
-- [ ] `LSP-NAV-DEGRADE-01` nav 系 fixture を wire 規約へ直す — Issue `I-55` (母集団は `I-53` の lane 監査)。
-  原因の判別は完了している (2026-08-23): 実装退行ではなく、request 側の fixture が
-  内部 1 始まり座標のまま止まっているだけである。実装の wire 契約が
-  入力・出力とも 0 始まりであることは緑の contract test 2 本
-  (`..._zero_based_position_contract` / `..._standard_uri_navigation_contract`) が押さえている。
-  **references / rename は単段でよい。** 実測の左右を並べると応答は triple 形のままで
-  形式ドリフトしておらず、期待値の `col` も正しい。外れているのは request の `"line":1` だけで、
-  `"line":0` へ直せばよい (根拠は `I-55` 本文)。
-  **hover は別扱い。** miss 時の fallback が `contents:"type-info:2:39"` という別形を返すので、
-  request 修正後に response を実測してから期待値を決める。**推測で書かない。**
-  対象の実測左右は `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/nav_left_right.txt` に
-  40 本ぶん抽出済み (`I-53` の lane ログ由来。再取得には 72 分かかる)。
-  受入条件: 抽出した nav 系が緑になり、hover の response 期待値が実測に基づいて
-  決まったことが `I-55` に記録されること。
-  **含めない範囲**: 実装側の変更。`I-54` の formatting / body params 系 (`LSP-COL-CONV-04`)。
+- [ ] `LSP-DOC-PARAM-SLOT-01` `source` なし document request の params slot ずれを直す —
+  Issue `I-56`。`lsp-stdio-document-params` が source slot を詰めないため、
+  `{"uri":N}` だけの `textDocument/formatting` が path (空文字列) を source として読み、
+  open document state の fallback に入らず空の TextEdit を返す。
+  修正は実装側 — params を固定長で詰め、`lsp-session-document-src` は inline source が
+  空なら session state へ落ちる。
+  受入条件: `..._formatting_uses_open_document` /
+  `..._formatting_uses_spec_document_text_with_escaped_quote` /
+  `..._formatting_uses_spec_document_text_with_unicode_escaped_quote` /
+  `..._formatting_preserves_defn_metadata` /
+  `..._formatting_open_document_schema_snapshot` の 5 本が緑になること。
+  **含めない範囲**: response 形式のドリフト (5-tuple → TextEdit object) の転記は
+  実装修正後の実測に基づいて同 slice 内で行うが、位置規約そのものの再定義はしない。
+
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が
   「type-directed sampling、seed、shrink は別 slice」と明記したうえで、
