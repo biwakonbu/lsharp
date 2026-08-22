@@ -191,7 +191,7 @@
 | [DOC-07](#doc-07) | ドキュメント更新が実装の後追いになり、依頼駆動でしか走らない | 中 | in-design | [doc-sync rule](.claude/rules/doc-sync.md) |
 | [DOC-08](#doc-08) | 陳腐化した記述と重複節 (legacy-rust-bootstrap README / TODO の v0.3 節) | 低-中 | resolved | -- |
 | [DOC-09](#doc-09) | 完了 TODO を削除する際に根拠が ADR へ移されず、原因究明の記録ごと消えている | 中 | resolved | [x86 値 liveness の却下案](docs/adr/decisions-native-x86-value-liveness-rejected-approaches.md) |
-| [DOC-10](#doc-10) | 設計ドキュメントと TODO に完了済み項目が蓄積し、残作業が読めない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [DOC-10](#doc-10) | 設計ドキュメントと TODO に完了済み項目が蓄積し、残作業が読めない | 中 | resolved | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 
 ---
 
@@ -352,7 +352,7 @@
   |---------|------|--------|
   | `crates/lsharp-driver/src/main.rs` | 3254 | 4.1x |
   | `crates/lsharp-driver/src/main_tests.rs` | 3086 | 3.9x |
-  | `crates/lsharp-driver/src/mcp_tests.rs` | 1889 | 2.4x |
+  | `crates/lsharp-driver/src/mcp_tests.rs` | 1949 | 2.4x |
   | `crates/lsharp-types/src/infer_tests.rs` | 1384 | 1.7x |
   | `crates/lsharp-driver/src/mcp_review_registry_tests.rs` | 1223 | 1.5x |
   | `crates/lsharp-types/src/validation.rs` | 825 | 1.0x |
@@ -2823,7 +2823,7 @@
 <a id="doc-10"></a>
 ### DOC-10: 設計ドキュメントと TODO に完了済み項目が蓄積し、残作業が読めない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maintenance-docs-active-only` の判定中)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-22 (`codex/legacy-maintenance-docs-active-only` の判定中)
 - **内容**: `TODO.md` には「**未完了タスクだけ**を持つ単一正本」という規約があるが、
   同じ規律が設計ドキュメントと一部の TODO 項目本文には効いていない。
   完了済みの分割・module 名が本文へ追記され続け、**残っている作業が読めなくなっている**。
@@ -2845,7 +2845,20 @@
 - **`I-01` との関係**: `I-01` は「39 file が 800 行超過」という**事実**を持ち、
   こちらは「その分割計画が読めない」という**記述の問題**である。分割の実作業は
   `LEGACY-MAINT-01`、gate は `RUST-FILE-SIZE-GATE-01` が持つ。
-- **含めない範囲**: 分割そのもの、`TODO.md` 全体の再編。
+- **解決** (2026-08-22): imp-06 の「## 検証済み部分実装」「## ステータス」節 (計 23,486 バイト) を
+  [Rust 側ファイル分割の完了記録](docs/development/operations/rust-file-decomposition-record-2026-08-22.md)
+  へ逐語で移し、imp-06 には「## 残っている作業 (2026-08-22 実測)」だけを残した。
+  `TODO.md` の `LEGACY-MAINT-01` 本文からも完了済み seam の列挙 4 行を落とし、
+  運用記録と ADR 群への参照へ置き換えた。設計済み分割軸の表は残作業なので残した。
+- **archive は破棄ではない**: 移した文章は 1 文字も削っていない。個別の分割の判断は
+  もともと `docs/adr/decisions-legacy-*split*.md` (2026-08-22 時点で 166 本) にあり、
+  imp-06 の列挙はその要約が累積したものだった。**同じ内容が 2 箇所にあることが問題**であって、
+  内容そのものが不要だったわけではない。運用記録の側に「追記しないこと」と明記した
+- **`I-01` の数値を 1 件訂正した**: `mcp_tests.rs` を 1889 行としていたが、同日の再実測で 1949 行。
+  取得条件は同じコマンドなので、起票時の転記ミスである
+- **含めなかった範囲**: 分割そのもの (`LEGACY-MAINT-01`)、gate (`RUST-FILE-SIZE-GATE-01`)、
+  `TODO.md` 全体の再編。imp-06 の「### 3. 優先順位」「### 4. 機械検査」は設計であって
+  完了記録ではないので触っていない。
 - **関連**: `DOC-09` (完了 TODO の根拠が ADR へ移らない) と同じ病理の別の面。
   `codex/legacy-maintenance-docs-active-only` の `5348570e` は同じ問題を branch 側で
   直そうとしたが、**2026-07-24 時点の実測値を現在値として書く**形だったので却下した

@@ -2922,10 +2922,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   計測起点: `docs/development/operations/rust-boundary-reduction.md` の T0-5 節に、
   `lsharp-ir --lib` の壁時計 107.8s のほぼ全量を単一 test (`incremental_analysis_tests::
   test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds`) が占めることを記録済み。
-- [~] `LEGACY-MAINT-01` large-file decomposition — Issues `I-01` / `I-08`。多数の test/
-  production split と `lsharp-ir/src/lib.rs` の `Instruction` / `IrType` および
-  `Module` / `Function` / GC model、linker seam、compile surface seam、compile/incremental orchestration seam、`validation_source` node/evidence/typed edge seam、validation source adapter test seam、selfhost evidence registry runtime/validation test seam、selfhost evidence parser duplicate-field seam、selfhost native differential test seam、selfhost bootstrap four-layer test seam、selfhost bootstrap acceptance test seam、selfhost typeinfer E2E test seam、selfhost lexer/parser parity E2E test seam、WasmGC probe test seam、selfhost native stage23 gap test seam、validation input manifest/reference seam、native emitter memory seam、atomic/durable writer cleanup test seam、validation output manifest wire seam、native selfhost transport strict payload-length seam、WASI runner Preview1/Preview2 mode seam は verified。`wasi.rs`、`lsharp-ir/src/lib.rs`、`lsharp-tooling/src/compile.rs`、
-  `infer.rs`、parser/lower/driver/LSP の責務分割を、型・focused test・snapshot parity を保って完了する。WasmGC emitter の instruction lowering / Component output seam / Preview2・CLI runner seam、WASI HTTP handler core seam、WASI GC collector seam、WASI tests core seam も verified とし、残る責務分割を続ける。
+- [~] `LEGACY-MAINT-01` large-file decomposition — Issues `I-01` / `I-08`。
+  **完了した分割はここに書かない。** 判断は `docs/adr/decisions-legacy-*split*.md` (166 本)、
+  一覧と実測は
+  [Rust 側ファイル分割の完了記録](docs/development/operations/rust-file-decomposition-record-2026-08-22.md)
+  にある。分割軸の設計は
+  [imp-06](docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md)。
+  残っているのは `main.rs` / `validation.rs` の production 責務分割と、
+  `crates/**/tests/**` の 33 file である (2026-08-22 実測: `src/` 6 / `tests/` 33)。
+  **`main.rs` は test 分離後も 2438 → 3254 行へ増えている** ので、test 分離だけでは足りない。
   **残っている超過 13 file と、既に設計済みの分割軸** (2026-08-22 実測 / 軸は
   `codex/legacy-maintenance-docs-active-only` (2026-07-24) が実施済み。
   追加された test 本体は全件 main にあり、ミス 42 名は file-size guard / 分割機構 / main が
@@ -2948,17 +2953,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   | `crates/lsharp-wasm/tests/e2e/selfhost_gc_runtime_bootstrap.rs` | 851 | `cli_contracts` | `1cf7e72f` |
   | `crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs` | 840 | `lsp_stateful` / `repl` / `stability` | `5fac11c4` |
 
-  **この項目本文の完了済み seam 列挙が読めなくなっている件は `DOC-10`。**
-- [ ] `DOC-ACTIVE-ONLY-01` `imp-06` と `LEGACY-MAINT-01` から完了済み項目を落とす — Issue `DOC-10`。
-  `docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md` は
-  全 299 行のうちステータス節が 20,594 バイトで、完了済み module 名の列挙 (`infer.rs` が 8 回) に
-  なっている。`TODO.md` の `LEGACY-MAINT-01` 本文も同じ形。
-  受入条件: 完了記録を ADR / 運用記録へ移したうえで、両方から**残作業だけが読める**状態にすること。
-  **数値は必ず main の現行 checkout で測り直す** — `codex/legacy-maintenance-docs-active-only` の
-  `5348570e` は方針は同じだが 2026-07-24 の branch 実測値を現在値として書いたため却下した。
-  **含めない範囲**: 分割そのもの (`LEGACY-MAINT-01`)、gate (`RUST-FILE-SIZE-GATE-01`)、
-  `TODO.md` 全体の再編。
-
+  **完了済み seam の列挙は 2026-08-22 に運用記録へ移した (`DOC-10`)。ここへ戻さないこと。**
 - [ ] `CACHE-TELEMETRY-01` compile cache に hit/miss の集計 counter を足す — Issue `I-41`。
   main の 2 層 cache (`lsharp-ir` の `ModuleCache`、`lsharp-tooling` の `ArtifactCache`) は
   どちらも累積 counter を持たず、1 回の compile が cache から来たかを
