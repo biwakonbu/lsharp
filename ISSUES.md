@@ -188,10 +188,11 @@
 | [I-54](#i-54) | LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている | 中 | resolved | -- |
 | [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | resolved | -- |
 | [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | resolved | -- |
-| [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | open | -- |
+| [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | resolved | -- |
 | [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | open | -- |
 | [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | open | -- |
 | [I-60](#i-60) | 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている | 中 | resolved | -- |
+| [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -3547,7 +3548,9 @@
   **したがって「wire 形式が client の送り方で変わる」という、より重い問題が下にある。**
   同じ document / 同じ token に対して、URI を文字列で送れば 0 始まりの `Location`、
   int で送れば 1 始まりの縮約 array が返る。座標系が request の書き方に依存する。
-- **修正の切り分け**: 座標の漏れは `lsp-render-location-json` と `lsp-render-location-frame` の
+- **修正の切り分け**: 座標の漏れは `lsp-render-location-json`
+  (`selfhost/src/Tools/Lsp/LspServerNav.ls`) と `lsp-render-location-frame`
+  (`selfhost/src/Tools/Lsp/LspServerCore.ls`) の
   2 箇所で wire 変換 (`- 1`) を入れれば閉じる。**`make-location` 側では直せない** —
   `handle-rename` (`LspServerNav.ls:993-1000`) が同じ location vector の
   line / col を内部値として読んで TextEdit を組み立てるため、生成時に変換すると
@@ -3559,8 +3562,33 @@
   `lsp-offset-from-line-col` 等の内部 helper がこの形を前提にしていないかを先に見る必要がある。
   **本 issue では形式変更まで決めない。** 座標の 1 始まり漏れは規約違反として確定させ、
   形式は ADR で決める。
-- **関連**: `I-52` (request 側の同型問題)、`I-54` (逆向きの不一致)、`I-55` (nav 系の座標)。
-  引き取り先は `TODO.md` の `LSP-NAV-LOCATION-01`。
+- **解決** (2026-08-23): render 境界 2 箇所へ wire 変換 (`- 1`) を入れた。
+  `lsp-render-location-json` (`selfhost/src/Tools/Lsp/LspServerNav.ls:55-68`) は
+  line / col を読む時点で減算する。`lsp-render-location-frame`
+  (`selfhost/src/Tools/Lsp/LspServerCore.ls:504-511`) は 3 要素を先に読んでから
+  変換済み vector を組み立てて `render-rpc-int-vector-response-frame` へ渡す
+  (汎用の int vector 応答 helper に location の意味を持たせないため、そちらは触っていない)。
+  `lsp-render-wire-range-json` と同じ規約に揃え、**clamp はしない**。
+- **起票時に把握できていなかった波及範囲**: 起票時は snapshot 3 file と書いたが、実測では
+  `tests/snapshots/lsp/stdio/` の **8 file / 10 frame** と、
+  `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs` に**インラインで直書きされた
+  期待 wire 文字列 13 箇所**が同じ値を pin していた。後者には snapshot を持たない
+  request id (7 / 10 / 61 / 67 / 68) が含まれる。判断ではなく同一問題の footprint なので
+  起票し直さず、実測としてここに記録する。
+- **ずれが 1 文字ぶんであることの裏取り**: 変換後、`references` の col 51→50 が
+  同じ snapshot の rename TextEdit の `character:50` と一致し、`definition` の 50→49 が
+  rename の 49 と一致する。上の「rename TextEdit の start (wire)」表の予測どおりで、
+  単に数値を 1 引いただけではなく skew が閉じたことを示す。
+- **検証**: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_definition
+  lsp_stdio_references lsp_stdio_filesystem_document_sequence
+  lsp_transport_goto_definition_frame lsp_transport_references_frame`。
+  実装前 (fixture だけ wire へ書き換えた状態) が `0 passed; 22 failed` (1170.90s、
+  差分はすべて line / col の 1 ずれのみ)、実装後が `22 passed; 0 failed` (1197.76s)。
+  22 本はすべて `#[ignore]` 付きなので `--ignored` が要る。
+- **残した範囲**: 縮約 array と `Location` object の**形式の分岐そのもの**は閉じていない。
+  `I-61` へ分離した。
+- **関連**: `I-52` (request 側の同型問題)、`I-54` (逆向きの不一致)、`I-55` (nav 系の座標)、
+  `I-61` (本 issue が残した形式の分岐)。
 
 <a id="i-58"></a>
 
@@ -4286,3 +4314,27 @@
   直そうとしたが、**2026-07-24 時点の実測値を現在値として書く**形だったので却下した
   ([worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md))。
   方針は正しいので、main の実測に基づいてやり直す。
+
+<a id="i-61"></a>
+
+### I-61: `definition` / `references` の wire 形式が request の URI の送り方で分岐する
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-57` の修正中に分離)
+- **内容**: 同じ document の同じ token に対して、client が `"uri"` を**文字列**で送れば
+  `lsp-render-location-json-with-uri` (`selfhost/src/Tools/Lsp/LspServerNav.ls:88-96`) を通って
+  LSP の `Location` object (`{"uri":"..","range":{..}}`) が返り、**int** で送れば
+  `lsp-render-location-json` / `lsp-render-location-frame` を通って縮約 array
+  (`[uri, line, col]`) が返る。分岐条件は `server-state-uri-text-for-uri` が非空かどうかだけで、
+  method でも capability でもない。
+- **根拠**: `I-57` の「原因」節の表。`I-57` の修正で**座標系は両経路とも 0 始まりに揃った**が、
+  **形式の分岐は残っている**。snapshot の request は int を送るので、
+  `tests/snapshots/lsp/stdio/definition-*.json` / `references-*.json` /
+  `filesystem-document-sequence.json` はすべて縮約 array 側を実測している。
+- **なぜ `I-57` で閉じないか**: 縮約 array を廃するか残すかは互換性の判断であり、
+  座標のバグ修正とは別種の決定である。`I-57` 本文の「判断が要る点」で
+  「**本 issue では形式変更まで決めない。形式は ADR で決める**」と切り分けた。
+- **決める前に見るもの**: `definition` / `references` の consumer は現状 test だけだが、
+  `lsp-offset-from-line-col` 等の内部 helper が縮約 array の形を前提にしていないかを先に確認する。
+  object 経路は既に実装されているので、決定は「新形式の追加」ではなく「fallback の廃止」になる。
+- **関連**: `I-57` (座標の漏れ。解決済み)、`I-52` / `I-55` (座標規約の同系統)。
+  引き取り先は `TODO.md` の `LSP-LOCATION-SHAPE-01`。

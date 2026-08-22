@@ -1,1 +1,1 @@
-[{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":43}},{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":45}},{"jsonrpc":"2.0","id":78,"result":[42,1,7]}]
+[{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":43}},{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":45}},{"jsonrpc":"2.0","id":78,"result":[42,0,6]}]

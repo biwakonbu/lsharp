@@ -4934,7 +4934,7 @@ fn test_e2e_selfhost_cli_lsp_transport_request_after_shutdown_error() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
-    let body = r#"{"jsonrpc":"2.0","id":7,"result":[10,1,7]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":7,"result":[10,0,6]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn helper [x] x)\n(defn main [] (helper 1))";
     let harness = format!(
@@ -5012,7 +5012,7 @@ fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_references_frame() {
-    let body = r#"{"jsonrpc":"2.0","id":10,"result":[[99,1,7],[99,2,16],[99,2,27]]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":10,"result":[[99,0,6],[99,1,15],[99,1,26]]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
     let harness = format!(
@@ -16523,7 +16523,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_goto_definition() {
         request_body.len(),
         request_body
     );
-    let response_body = r#"{"jsonrpc":"2.0","id":61,"result":[10,1,7]}"#;
+    let response_body = r#"{"jsonrpc":"2.0","id":61,"result":[10,0,6]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -16581,7 +16581,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references() {
         request_body.len(),
         request_body
     );
-    let response_body = r#"{"jsonrpc":"2.0","id":63,"result":[[10,1,7],[10,1,36],[10,1,47]]}"#;
+    let response_body = r#"{"jsonrpc":"2.0","id":63,"result":[[10,0,6],[10,0,35],[10,0,46]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -16788,7 +16788,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         source.len()
     );
-    let definition_response = r#"{"jsonrpc":"2.0","id":67,"result":[42,1,7]}"#;
+    let definition_response = r#"{"jsonrpc":"2.0","id":67,"result":[42,0,6]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16830,7 +16830,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document_spec_
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         source.len()
     );
-    let definition_response = r#"{"jsonrpc":"2.0","id":67,"result":[42,1,7]}"#;
+    let definition_response = r#"{"jsonrpc":"2.0","id":67,"result":[42,0,6]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16874,7 +16874,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document() {
     );
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":55},"end":{"line":0,"character":56}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}]}}"#;
     let references_response =
-        r#"{"jsonrpc":"2.0","id":68,"result":[[42,1,7],[42,1,36],[42,1,47]]}"#;
+        r#"{"jsonrpc":"2.0","id":68,"result":[[42,0,6],[42,0,35],[42,0,46]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -16920,7 +16920,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document_spec_
     );
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":55},"end":{"line":0,"character":56}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}]}}"#;
     let references_response =
-        r#"{"jsonrpc":"2.0","id":68,"result":[[42,1,7],[42,1,36],[42,1,47]]}"#;
+        r#"{"jsonrpc":"2.0","id":68,"result":[[42,0,6],[42,0,35],[42,0,46]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -17387,7 +17387,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_resolves_open_document()
     );
     // didOpen は uri:10 の parse diagnostics frame を後続させる (実測 2026-08-23)
     let main_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":10,"diagnostics":[{"range":{"start":{"line":0,"character":1},"end":{"line":0,"character":7}},"severity":1,"code":"LS0103","source":"lsharp","message":"unknown form"}]}}"#;
-    let definition_response = r#"{"jsonrpc":"2.0","id":72,"result":[11,1,7]}"#;
+    let definition_response = r#"{"jsonrpc":"2.0","id":72,"result":[11,0,6]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_helper_response.len(),
@@ -17847,7 +17847,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_latest_reopened_doc
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         latest_source.len()
     );
-    let definition_response = r#"{"jsonrpc":"2.0","id":77,"result":[42,1,7]}"#;
+    let definition_response = r#"{"jsonrpc":"2.0","id":77,"result":[42,0,6]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_response.len(),
@@ -17902,7 +17902,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_changed_document() 
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         changed_source.len()
     );
-    let definition_response = r#"{"jsonrpc":"2.0","id":78,"result":[42,1,7]}"#;
+    let definition_response = r#"{"jsonrpc":"2.0","id":78,"result":[42,0,6]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -17958,7 +17958,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_changed_document() 
         changed_source.len()
     );
     let references_response =
-        r#"{"jsonrpc":"2.0","id":82,"result":[[42,1,7],[42,1,40],[42,1,51]]}"#;
+        r#"{"jsonrpc":"2.0","id":82,"result":[[42,0,6],[42,0,39],[42,0,50]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -18124,7 +18124,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_latest_reopened_doc
         latest_source.len()
     );
     let references_response =
-        r#"{"jsonrpc":"2.0","id":83,"result":[[42,1,7],[42,1,40],[42,1,51]]}"#;
+        r#"{"jsonrpc":"2.0","id":83,"result":[[42,0,6],[42,0,39],[42,0,50]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_response.len(),

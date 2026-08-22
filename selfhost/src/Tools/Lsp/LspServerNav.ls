@@ -52,10 +52,13 @@
 
 ;; === JSON レンダリング (ナビゲーション部) ===
 
+;; LSP wire の Position は zero-based。縮約 array も内部解析位置 (1-based) から
+;; render 境界で変換する (I-57)。`make-location` 側では変換しない —
+;; handle-rename が同じ vector の line / col を内部値として読むため。
 (defn lsp-render-location-json [location]
   (let [uri-text (int-to-string (vector-get location 0))
-    line-text (int-to-string (vector-get location 1))
-    col-text (int-to-string (vector-get location 2))
+    line-text (int-to-string (- (vector-get location 1) 1))
+    col-text (int-to-string (- (vector-get location 2) 1))
     payload-0 "["
     payload-1 (string-concat payload-0 uri-text)
     payload-2 (string-concat payload-1 ",")

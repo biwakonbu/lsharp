@@ -2904,22 +2904,19 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
 
-- [ ] `LSP-NAV-LOCATION-01` `definition` / `references` の response の line / col を wire 規約へ揃える —
-  Issue `I-57`。1 行の文書に対して `[uri, 1, 50]` を返しており、**line も col も内部の
-  1 始まりが無変換で漏れている** (同じ snapshot の rename TextEdit が返す wire 値と
-  1 文字ずれる)。hover / rename / formatting / publishDiagnostics は
-  すべて 0 始まりの LSP object なので、この 2 method だけが外れている。
-  修正は実装側 — fixture は実測どおりなので、実装を直したあとに snapshot を転記し直す。
-  変換を入れる場所は `lsp-render-location-json` (`LspServerNav.ls:55-65`) と
-  `lsp-render-location-frame` (`LspServerCore.ls:505-506`) の **render 境界**。
-  `make-location` 側では直せない — `handle-rename` が同じ vector の line / col を
-  内部値として読むため、生成時に変換すると rename が壊れる (`I-57` の「修正の切り分け」)。
-  受入条件: `definition-*.json` / `references-*.json` / `filesystem-document-sequence.json` の
-  当該 frame が **line / col の双方とも wire 規約 (0 始まり) へ変換された値**になり、
-  `lsp_stdio_definition` / `lsp_stdio_references` /
-  `lsp_stdio_filesystem_document_sequence` の lane が緑を維持すること。
-  **含めない範囲**: 縮約 array を LSP `Location` object (`{uri, range}`) へ変える形式変更。
-  互換性の判断を含むので ADR を別に立てる (`I-57` の「判断が要る点」)。
+- [ ] `LSP-LOCATION-SHAPE-01` `definition` / `references` の wire 形式を一本化するか決める —
+  Issue `I-61`。client が `"uri"` を文字列で送れば LSP `Location` object、int で送れば
+  縮約 array (`[uri, line, col]`) が返る。分岐条件は `server-state-uri-text-for-uri` が
+  非空かどうかだけで、method でも capability でもない。**座標系は `I-57` で両経路とも
+  0 始まりに揃えたので、残っているのは形式の分岐だけ**である。
+  先に **ADR を書く** — object 経路は既に実装されているので、決定は「新形式の追加」ではなく
+  「縮約 array fallback の廃止」になる。廃止するなら
+  `tests/snapshots/lsp/stdio/definition-*.json` / `references-*.json` /
+  `filesystem-document-sequence.json` と `selfhost_cli_core.rs` のインライン期待値が
+  すべて object 形式へ移る (`I-57` の実測で snapshot 8 file / インライン 13 箇所)。
+  受入条件: ADR に採用案と却下理由が書かれ、実装するなら上記 lane が緑を維持すること。
+  **含めない範囲**: 座標変換 (`I-57` で完了)。`hover` / `rename` / `formatting` の形式
+  (すでに LSP object なので触らない)。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

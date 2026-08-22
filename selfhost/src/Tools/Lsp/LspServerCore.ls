@@ -501,8 +501,14 @@
     payload (string-concat payload-3 "}}")]
     (render-json-rpc-frame payload)))
 
+;; LSP wire の Position は zero-based (I-57)。render-rpc-int-vector-response-frame は
+;; 汎用の int vector 応答なので location の意味を持たせない。変換はここで行う。
 (defn lsp-render-location-frame [request-id location]
-  (render-rpc-int-vector-response-frame request-id location))
+  (let [uri (vector-get location 0)
+    line (- (vector-get location 1) 1)
+    col (- (vector-get location 2) 1)
+    wire (vector-push (vector-push (vector-push (vector-new 3) uri) line) col)]
+    (render-rpc-int-vector-response-frame request-id wire)))
 
 (defn lsp-render-range-json [range]
   (let [payload-0 "{\"start\":{\"line\":"
