@@ -287,12 +287,22 @@ impl Infer {
             Expr::RecordUpdate(span, base, fields) => {
                 self.infer_record_update(env, *span, base, fields)
             }
-            Expr::Computation(_span, builder_name, steps) => {
+            Expr::Computation(span, builder_name, steps) => {
                 // Computation Expression: ビルダーの bind/return 関数で脱糖
-                let builder_info = self.computation_builders.get(builder_name).cloned();
+                // 未登録の builder 名は typo を実行時まで持ち越すので、ここで拒否する (I-44)
+                let Some((bind_fn, return_fn)) =
+                    self.computation_builders.get(builder_name).cloned()
+                else {
+                    return Err(TypeError::UndefinedVar {
+                        name: builder_name.clone(),
+                        span: *span,
+                    });
+                };
 
                 let mut subst = Substitution::new();
-                let mut result_ty = self.var_gen.fresh();
+                // 結果型が return 関数で確定したかどうかを Option で持つ。
+                // fresh 同士の比較は常に false になるため sentinel には使えない
+                let mut result_ty: Option<Type> = None;
 
                 // 各ステップを順方向で型チェック（let! で束縛を追加）
                 let mut local_env = env.clone();
@@ -333,43 +343,48 @@ impl Infer {
                     }
                 }
 
-                // ビルダーが登録されている場合、return_fn/bind_fn の存在を確認して型を推定
-                if let Some((bind_fn, return_fn)) = &builder_info {
-                    let current_env = env.apply_subst(&subst);
-                    // return_fn が環境にあれば、最後の return ステップの型からモナド型を推定
-                    if let Some(return_scheme) = current_env.get(return_fn) {
-                        let return_ty = self.instantiate(return_scheme);
-                        // return_fn : a -> m a の形式
-                        // 最後のステップの型から result_ty を推定
-                        if let Some((kind, inner_ty)) = step_types.last()
-                            && *kind == "return"
-                        {
-                            // return_fn(inner) の戻り型
-                            let ret_result = self.var_gen.fresh();
-                            let expected_fn_ty = Type::Fun(
-                                vec![inner_ty.apply_subst(&subst)],
-                                Box::new(ret_result.clone()),
-                            );
-                            let s = self.unify(&return_ty, &expected_fn_ty, *_span)?;
-                            subst = subst.compose(&s);
-                            result_ty = ret_result.apply_subst(&subst);
-                        }
-                    }
-
-                    // bind_fn が環境にあれば、let!/do! ステップの型整合性を確認
-                    if let Some(bind_scheme) = current_env.get(bind_fn) {
-                        let _bind_ty = self.instantiate(bind_scheme);
-                        // bind_fn : m a -> (a -> m b) -> m b の形式
-                        // let!/do! ステップの式はモナド値 (m a) であるべき
-                    }
-                }
-
-                // ビルダーが未登録の場合は最後のステップの型をそのまま返す
-                if result_ty == self.var_gen.fresh()
-                    && let Some((_, ty)) = step_types.last()
+                // 宣言された bind/return が解決できることを要求する。
+                // 片方だけ持つ incomplete な builder を黙って通さない (I-44)
+                let current_env = env.apply_subst(&subst);
+                let return_scheme =
+                    current_env
+                        .get(&return_fn)
+                        .ok_or_else(|| TypeError::UndefinedVar {
+                            name: return_fn.clone(),
+                            span: *span,
+                        })?;
+                let return_ty = self.instantiate(return_scheme);
+                // return_fn : a -> m a の形式
+                // 最後のステップの型から result_ty を推定
+                if let Some((kind, inner_ty)) = step_types.last()
+                    && *kind == "return"
                 {
-                    result_ty = ty.apply_subst(&subst);
+                    // return_fn(inner) の戻り型
+                    let ret_result = self.var_gen.fresh();
+                    let expected_fn_ty = Type::Fun(
+                        vec![inner_ty.apply_subst(&subst)],
+                        Box::new(ret_result.clone()),
+                    );
+                    let s = self.unify(&return_ty, &expected_fn_ty, *span)?;
+                    subst = subst.compose(&s);
+                    result_ty = Some(ret_result.apply_subst(&subst));
                 }
+
+                let bind_scheme =
+                    current_env
+                        .get(&bind_fn)
+                        .ok_or_else(|| TypeError::UndefinedVar {
+                            name: bind_fn.clone(),
+                            span: *span,
+                        })?;
+                let _bind_ty = self.instantiate(bind_scheme);
+                // bind_fn : m a -> (a -> m b) -> m b の形式
+                // let!/do! ステップの式はモナド値 (m a) であるべき
+
+                // return 関数で結果型が確定しなかった場合は最後のステップの型を返す
+                let result_ty = result_ty
+                    .or_else(|| step_types.last().map(|(_, ty)| ty.apply_subst(&subst)))
+                    .unwrap_or_else(|| self.var_gen.fresh());
 
                 Ok((subst, result_ty))
             }

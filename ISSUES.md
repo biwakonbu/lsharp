@@ -175,8 +175,10 @@
 | [I-41](#i-41) | compile cache の hit/miss を集計する手段が無い | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
-| [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | resolved | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-45](#i-45) | canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-46](#i-46) | 前方参照された computation builder member の下で結果型が汎化され、誤用が通る | 中 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
+| [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2270,7 +2272,7 @@
 <a id="i-44"></a>
 ### I-44: 未定義の computation builder が型検査を通る
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
 - **内容**: `(computation missing (return 42))` の `missing` がどこにも定義されていなくても
   `Infer::infer_program` が `Ok` を返す。builder 名に fresh type variable が割り当てられ、
   `UndefinedVar` にならない。**typo した builder 名が compile を通り、実行時まで残る。**
@@ -2285,8 +2287,39 @@
 - **関連**: 参照実装は `codex/v0.2-ec-m1-02-integration` の `2d116f69` (unknown builder) /
   `5730cfe2` (incomplete builder) / `e8f7ba83` (computation expression の結果型保持)。
   test は同 branch の `crates/lsharp-types/tests/computation_builder_diagnostics.rs`。
-  `COMP-BUILDER-01` (`TODO.md`) が引き取る。
   判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+- **解決** (2026-08-22): `Expr::Computation` arm
+  (`crates/lsharp-types/src/infer/expr.rs:289`) で未登録 builder を `UndefinedVar` に
+  したうえで、**同じ arm に重なっていた 2 つの欠陥も併せて閉じた**。判断は
+  [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md)。
+
+  | # | 欠陥 | 直し方 |
+  |---|---|---|
+  | 1 | 未登録の builder 名を通す | `get()` が `None` なら `UndefinedVar { name: builder_name }` |
+  | 2 | member (`bind_fn` / `return_fn`) の存在を検査しない | use-site の env から引けなければ `UndefinedVar { name: <member 名> }` |
+  | 3 | `result_ty == self.var_gen.fresh()` が sentinel として機能しない | `Option<Type>` に置き換え |
+
+  3 は起票時に見えていなかった。`fresh()` は毎回新しい id を作るので比較は**常に false** であり、
+  「未登録なら最後のステップの型を返す」という fallback は一度も発火していない。
+  `(computation identity (+ 1 2))` の結果型が束縛されない型変数のままになる。
+  1 / 2 だけ直しても残るので同じ slice で閉じた。
+- **incomplete builder の「別診断」は variant ではなく `name` で分けた**: `TODO.md` の
+  受入条件の文言は「別診断で拒否すること」だったが、新 variant + 新 error code は採らなかった。
+  builder 宣言が指す `missing-return` は実際にどこにも定義されていないので `UndefinedVar` が
+  意味的に正しく、新 code は `error_codes.rs` と error-reference の二重更新を強制する。
+  却下理由は ADR に書いた。
+- **member 検査を decl-site に置けなかった**: 登録 pass (`infer/decl.rs:95`) は関数の型環境が
+  できる前に走るため、builder より後ろに書かれた member が必ず未定義に見える。
+  use-site なら `infer_decl_functions` のパス 1 が全 defn を仮登録済みなので前方参照が通る。
+  `computation_builder_members_resolve_when_declared_after_use` がこれを固定する。
+- **検証**: `crates/lsharp-types/tests/computation_builder_diagnostics.rs` 5 件が
+  RED 5/5 → GREEN 5/5。回帰は
+  `cargo test --no-fail-fast -p lsharp-types -p lsharp-ir -p lsharp-tooling` で
+  960 passed / 1 failed、唯一の FAIL は `workspace-expected-failures.txt:139` に
+  既収載の `api_doc::tests::test_build_api_doc_for_file_preserves_parse_error_code`。
+  e2e は `core_language_semantics::test_e2e_computation` と `..._let_bang_typecheck` が ok。
+  `cargo clippy -p lsharp-types --all-targets` は警告なし。
+- **範囲外を 1 件起票した**: 前方参照下の結果型は直っていない (`I-46`)。
 
 <a id="i-45"></a>
 ### I-45: canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない
@@ -2318,6 +2351,69 @@
 - **関連**: `CASE-ZERO-ARITY-01` (`TODO.md`) が引き取る。
   canonical case lane の取り込み判定は
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) の群 3。
+
+<a id="i-46"></a>
+### I-46: 前方参照された computation builder member の下で結果型が汎化され、誤用が通る
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`I-44` の実装中)
+- **内容**: computation builder の `bind_fn` / `return_fn` が使用箇所より**後ろ**に
+  定義されていると、`Expr::Computation` の結果型が束縛されない型変数のまま generalize され、
+  `main : forall a. () -> a` になる。**宣言順だけが違う同じ program が、片方は型エラーで
+  落ち、片方は通る。**
+- **根拠**: 2026-08-22 実測。`Infer::infer_program` の戻り値を直接読んだもの。
+  違いは `(defn main ...)` を member の defn より前に置くか後ろに置くかだけである。
+
+  ```
+  FORWARD: Ok(["main:Fun([], Var(28))", ..., "misuse:Fun([], Con(\"Int\"))"])
+  ORDERED: Err(Mismatch { expected: Con("String"), found: Con("Int"),
+                          span: 230..252, error_code: ArgMismatch })
+  ```
+
+  ```lisp
+  (computation-builder identity identity-bind identity-return)
+  (defn main [] (computation identity (return 42)))   ; ← member より前
+  (defn identity-return [x] x)
+  (defn identity-bind [m f] (f m))
+  (defn misuse [] (string-length (main)))             ; Int を String として使えてしまう
+  ```
+
+- **原因**: 結果型の推定は use-site の env に対して行うが、前方参照された member は
+  `infer_decl_functions` のパス 1 が入れた placeholder 型変数でしかない。
+  `unify(placeholder, Fun([Int], ret_result))` は placeholder 側を束縛するだけで、
+  `ret_result` は自由なまま残る。member の本推論が後から確定させても、
+  `main` は既に generalize 済みで戻ってこない。
+- **`I-44` の修正で入った欠陥ではない**: 修正前の RED でも同じ `Fun([], Var(28))` が出ていた。
+  `I-44` は「誤って incomplete 扱いにしないこと」までを閉じ、結果型は範囲外として残した。
+- **関連**: `COMP-BUILDER-FORWARD-01` (`TODO.md`) が引き取る。
+  判断は [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md)。
+
+<a id="i-47"></a>
+### I-47: `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった)
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`I-44` の commit 前検査中)
+- **内容**: `I-34` は `cargo fmt --check -p lsharp-ir` を解消して resolved にしたが、
+  **workspace の他 crate は測っていなかった**。実際には 5 crate が落ちる。
+- **根拠**: 2026-08-22 実測。`cargo fmt --check -p <crate>` の `Diff in` 行数。
+
+  | crate | `Diff in` |
+  |---|---|
+  | `lsharp-wasm` | 346 |
+  | `lsharp-types` | 66 |
+  | `lsharp-driver` | 27 |
+  | `lsharp-syntax` | 9 |
+  | `lsharp-tooling` | 4 |
+  | `lsharp-ir` / `lsharp-lsp` / `lsharp-docs` | 0 |
+
+- **実害が出た経路**: `I-44` の作業中に `cargo fmt -p lsharp-types` を走らせたところ、
+  意図した 1 file に加えて**無関係な 20 file**が書き換わり、HEAD の内容へ戻す手間が発生した。
+  **crate 単位の `cargo fmt` が commit の粒度を壊す。**
+- **`I-34` を再 open にしない理由**: `I-34` の主張 (`lsharp-ir` の `mod` 宣言順) は
+  実際に解消済みで、その範囲では正しい。誤っていたのは**範囲の取り方**であり、
+  「1 crate で緑になったことを workspace の状態として書いた」ことである。
+  別 ID で起票して範囲を明示する。
+- **CI の扱いは決めていない**: `I-31` / `I-34` と同じく、gate を緑にすることと
+  CI で強制することは別の判断である。
+- **関連**: `I-34` / `I-31`。`FMT-WORKSPACE-01` (`TODO.md`) が引き取る。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

@@ -2934,15 +2934,24 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `(module ...)` 本体の contract 検査 (main はそもそも module 本体へ降りない。
   `I-39` で compile 経路からは reject 済み)、nested owner の qualified 名解決。
 
-- [ ] `COMP-BUILDER-01` 未定義 computation builder を型エラーにする — Issue `I-44`。
-  `(computation missing (return 42))` が `Infer::infer_program` で `Ok` になり、
-  builder 名に fresh type variable が割り当てられている。
-  受入条件: `TypeError::UndefinedVar { name: "missing" }` (code `LS1001`) を返し、
-  span が `(computation missing (return 42))` 全体を指すこと。
-  builder が一部の member だけ持つ incomplete な場合も別診断で拒否すること。
-  参照実装は `codex/v0.2-ec-m1-02-integration` の `2d116f69` / `5730cfe2` / `e8f7ba83`、
-  test は同 branch の `crates/lsharp-types/tests/computation_builder_diagnostics.rs`。
-  **含めない範囲**: computation expression の lowering / codegen (別 slice)。
+- [ ] `COMP-BUILDER-FORWARD-01` 前方参照された computation builder member の下でも
+  結果型を確定させる — Issue `I-46`。member が使用箇所より後ろに定義されていると
+  `main : forall a. () -> a` へ汎化され、`(string-length (main))` のような誤用が通る。
+  宣言順を入れ替えただけの同じ program は `Mismatch` で落ちるので、**順序だけが判定を変える**。
+  受入条件: 前方参照の有無で `infer_program` の結果が変わらないこと。
+  RED は `I-46` の 2 fixture (FORWARD / ORDERED) を同一 test に並べ、
+  どちらも `Mismatch` になることを見る。
+  **含めない範囲**: `bind_fn` の型そのものの検査 (`m a -> (a -> m b) -> m b` の形の強制)。
+  selfhost 側 `TypeInfer.ls` の同経路。
+
+- [ ] `FMT-WORKSPACE-01` `cargo fmt --check` を workspace 全域で緑にする — Issue `I-47`。
+  `lsharp-wasm` 346 / `lsharp-types` 66 / `lsharp-driver` 27 / `lsharp-syntax` 9 /
+  `lsharp-tooling` 4 の `Diff in` が出る。`I-34` は `lsharp-ir` だけを見て resolved にしていた。
+  受入条件: `cargo fmt --check` が workspace 全体で exit 0 になり、
+  適用後に `cargo test --no-fail-fast --workspace` の FAIL 集合が
+  `workspace-expected-failures.txt` から増えないこと。
+  crate ごとに独立した commit へ分け、**適用 commit に他の変更を混ぜない**。
+  **含めない範囲**: CI で `--check` を強制するかどうか (`I-31` / `I-34` と同じ理由で別判断)。
 
 - [ ] `CASE-ZERO-ARITY-01` canonical `:case` で 0 引数関数を呼べるようにする — Issue `I-45`。
   `:case [(expect (zero) 1)]` が `LS1001` (`UndefinedVar`) で `cases:0` / `executed:0` の
