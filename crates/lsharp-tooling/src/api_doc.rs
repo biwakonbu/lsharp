@@ -263,8 +263,7 @@ fn collect_lsharp_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::Result<()
         }
         if metadata.is_dir() {
             collect_lsharp_files(&path, out)?;
-        } else if metadata.is_file()
-            && path.extension().and_then(|ext| ext.to_str()) == Some("ls")
+        } else if metadata.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("ls")
         {
             out.push(path);
         }

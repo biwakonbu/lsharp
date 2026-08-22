@@ -147,7 +147,11 @@ fn test_build_api_doc_for_package_rejects_nested_src_symlink() {
 
     let error = build_api_doc_for_package(&root, "demo", "1.0.0")
         .expect_err("nested package src symlink は外部 source を辿らないべき");
-    assert!(error.to_string().contains("package src tree must not contain symlinks"));
+    assert!(
+        error
+            .to_string()
+            .contains("package src tree must not contain symlinks")
+    );
     assert!(!error.to_string().contains("Geometry"));
 
     let _ = std::fs::remove_dir_all(&root);
@@ -171,9 +175,11 @@ fn test_build_api_doc_for_package_rejects_direct_src_file_symlink() {
 
     let error = build_api_doc_for_package(&root, "demo", "1.0.0")
         .expect_err("direct source file symlink は外部 source を辿らないべき");
-    assert!(error
-        .to_string()
-        .contains("package src tree must not contain symlinks"));
+    assert!(
+        error
+            .to_string()
+            .contains("package src tree must not contain symlinks")
+    );
     assert!(!error.to_string().contains("Geometry"));
 
     let _ = std::fs::remove_dir_all(&root);

@@ -3,7 +3,7 @@ use std::path::Path;
 pub use lsharp_wasm::test_runner::TestResult;
 
 use crate::diagnostics::driver_io_error;
-use lsharp_types::metadata_contract::{inventory_contract_suites, ExecutableContract};
+use lsharp_types::metadata_contract::{ExecutableContract, inventory_contract_suites};
 
 /// metadata test 実行結果。
 #[derive(Debug, Clone)]
