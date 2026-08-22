@@ -184,6 +184,9 @@
 | [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | resolved | -- |
 | [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | resolved | -- |
 | [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open (facet A のみ resolved) | -- |
+| [I-53](#i-53) | `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない | 中 | open | -- |
+| [I-54](#i-54) | LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている | 中 | open | -- |
+| [I-55](#i-55) | hover / definition / references / rename が退化した結果を返す (原因判別未了) | 高 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2959,12 +2962,14 @@
   lsp_stdio_completion_uses_spec_changed_document`、2026-08-22):
   **2 passed / 0 failed** (`221.10s`)。RED は同日の facet A GREEN run で
   同 2 本が FAILED (左辺に keyword 7 件 + 右辺が三要素配列) であることを実測している。
-- **未監査 (合否を測っていない)**: 位置を送る fixture のうち、`LSP-COL-CONV-01` の filter
-  (`lsp_stdio_completion`) にも RED 時の 10 本 run にも一致しなかったものがある。
-  `..._lsp_stdio_wire_repeated_sequence` (`selfhost_cli_core.rs:6207` / `:6212`、id 81/82) が該当し、
-  hover / definition 族も同様に未確認である。**合否は推測しない。**
-  もし現在 pass しているなら、期待値がキーワード混入込みで書かれている可能性があり、
-  その場合は `AGENTS.md` の新しい規約と矛盾したまま緑という状態になる。監査は別 slice で行う。
+- **lane 全体の監査** (2026-08-23、`I-53` へ分離): 上記の「未監査」は
+  `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio` (filter は lane 全体、93 本一致) で解消した。
+  結果は **29 passed / 64 failed** (`4346.02s`)。`..._lsp_stdio_wire_repeated_sequence` は
+  **FAILED** で、原因は位置ではなく最初の frame の initialize capabilities の形
+  (実測 object 形 vs 期待 `[1,1,1,1,1,1,1]`) — facet B と同型の inline 期待値の陳腐化である。
+  この test の completion が送る `"col":23` は 2 行目 `(defn main []  (he))` の範囲外を指しており、
+  initialize を直した後の再測で初めて表面化する。**多段になる前提で扱う。**
+  lane 全体の内訳と、そこで見つかった 2 系統の別問題は `I-53` / `I-54` / `I-55` が持つ。
 
 #### B: snapshot file が 2026-08-03 以前の縮約形のまま残っている
 
@@ -2973,7 +2978,7 @@
   正規化器は挟まっていない。ところが `tests/snapshots/lsp/stdio/*.json` は
   completion item を `["label", kind, "insertText"]` の**三要素配列**で、diagnostics を
   `{"col":1,"line":1,"messageHash":1,"rule":1,"severity":1,"source":2}` の**型タグ**で持つ、
-  実出力には存在しない縮約形で書かれている。したがって **A を直しても、snapshot file を読む test は緑にならない**。ただし inline 期待値の 2 本は `assert_lsp_stdio_snapshot` を経由しないので B の対象外であり、既に解決済みである (facet A の節を参照)。
+  実出力には存在しない縮約形で書かれている。したがって **A を直しても、snapshot file を読む test は緑にならない**。 **規模は当初の 6 本ではなく、lane 全体の実測で `assert_lsp_stdio_snapshot` (`:84`) 内で落ちるものが 31 本ある** (`I-53`)。ただし snapshot file が全て陳腐化しているわけではない — echo 系の 4 本 (`..._document_sequence_` / `..._publish_diagnostics_` / `..._request_after_shutdown_` / `..._unknown_method_schema_snapshot`) は緑である。ただし inline 期待値の 2 本は `assert_lsp_stdio_snapshot` を経由しないので B の対象外であり、既に解決済みである (facet A の節を参照)。
 - **根拠**: `..._completion_schema_snapshot` の実測。左右の内容は同一 (keyword 7 件) で、形だけが違う。
 
   ```
@@ -2998,13 +3003,125 @@
   `selfhost_native_stage_chain.rs` 単体に限られる。`selfhost_cli_core.rs` の `--ignored` lane は
   **どちらの台帳の対象でもない**。「どちらの表にも無い = 落ちていない」とは読めない。
 - **修正方針**: A は (a) fixture の col を 0-indexed へ直す、で決着した (2026-08-22、上記)。
-  B は未決で、(d) snapshot file を現行の object 形へ書き直す、(e) `assert_lsp_stdio_snapshot` に
-  縮約器を入れて生出力を縮約形へ落とす、のいずれか。**(e) を選ぶなら「何を縮約するか」が
-  契約になる**ので ADR が要る。無検討な一括再生成はしない。
+  B は **(d) snapshot file を現行の object 形へ書き直す** を採る (2026-08-22 決定)。
+
+  **(e) `assert_lsp_stdio_snapshot` に縮約器を入れて生出力を縮約形へ落とす、は却下した。**
+  理由は 2 つ。第一に、縮約器を置くと「何を縮約対象とするか」がそのまま LSP 出力の契約になり、
+  snapshot が wire の真値を写さなくなる。回帰検知の対象が「実際に送られる bytes」から
+  「縮約後の何か」へすり替わり、縮約器の穴に落ちた差分は永久に検知できない。
+  第二に、縮約形は 2026-04-03 の実装出力をたまたま写しただけの形式であり、
+  保存する価値のある設計ではない。維持コストを払う理由が無い。
+
+  **(d) は「無検討な一括再生成」ではない。** これらの snapshot は insta 管理ではなく
+  手管理の JSON ファイルで、`cargo insta accept` 相当の機構自体が無い。
+  実測した左辺を読み、item の中身が期待どおりであることを確認したうえで転記する
+  = レビュー済みの転記である。**中身が変わっている snapshot があれば、それは
+  形式ドリフトではなく別の回帰なので、転記せず個別に issue を切る。**
 - **状態の内訳**: facet A は resolved。**facet B が未解決なので issue 全体は open のまま**である。
 - **関連**: `I-49` (発見の経緯)。引き取り先は `TODO.md` の `LSP-SNAPSHOT-SHAPE-01` (B) と
   `LSP-COL-CONV-03` (snapshot file を読む 3 本の位置修正。B の解消と同時にしか検証できない)。
   wire 位置規約の正本は `AGENTS.md`。
+
+<a id="i-53"></a>
+
+### I-53: `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-52` の「未監査」を潰すための lane 全体監査)
+- **実測**: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio`
+  (filter は lane 全体。`nohup` 切り離しで実行、2026-08-23)
+
+  ```
+  test result: FAILED. 29 passed; 64 failed; 0 ignored; 0 measured; 2981 filtered out;
+  finished in 4346.02s
+  ```
+
+  **分母は 93 本である。** 事前の grep 見積もり 73 本は `main_with_` 付きだけを数えており、
+  `test_e2e_selfhost_cli_lsp_stdio_*` 系を取りこぼしていた。分母を 73 と書かない。
+- **証拠の所在**: 生ログと分類は `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/`
+  (`lsp_stdio_full_red.log` / `lsp_class.txt`)。再取得には 72 分かかるため、
+  **以後の slice はこのログの左辺を RED 証拠として再利用する** (再 run は GREEN 側だけでよい)。
+- **内訳** (panic 位置で機械的に分けたのち、左右を読んで分類):
+
+  | 系統 | 本数 | panic 位置 | 引き取り先 |
+  |---|---|---|---|
+  | B: snapshot 形式のドリフト | 31 | `selfhost_cli_core.rs:84` (`assert_lsp_stdio_snapshot` 内) | `I-52` facet B |
+  | C: nav 系が退化した結果を返す | 22 | 各 test の inline assert | `I-55` |
+  | D: response 側の位置が内部値のまま fixture に固定 | 7 | 同上 | `I-54` |
+  | diagnostics refresh 3 本 (`Content-Length` 250/259/256 実測 vs 167/164/168 期待) | 3 | `:5817` / `:6034` / `:6105` | `I-54` (形式判別を含む) |
+  | `..._lsp_stdio_wire_repeated_sequence` (initialize capabilities の inline 期待値) | 1 | `:6286` | `I-52` facet B |
+
+  C の 22 本は `hover` 6 / `definition` 5 / `references` 5 / `rename` 5 / `goto_definition` 1。
+  D の 7 本は `formatting` 5 / `body_hover_spec_position_character_params` /
+  `body_rename_spec_position_character_params`。
+- **緑 29 本から読めること**: `..._lsp_stdio_zero_based_position_contract` と
+  `..._lsp_stdio_standard_uri_navigation_contract` は **pass している**。
+  すなわち wire 規約そのものは実装側で成立している。また `*_schema_snapshot` のうち
+  `document_sequence` / `publish_diagnostics` / `request_after_shutdown` / `unknown_method` の
+  4 本も緑で、**snapshot file が一律に陳腐化しているわけではない**。
+  ただしこの 4 本は入力 body をそのまま返す echo 系であり、出力形式の証拠としては弱い
+  (`publish-diagnostics.json` の中身は request body の逐語コピーである)。
+- **回帰していないことの傍証**: 直近 2 slice で緑にした 6 本
+  (`e24bc0f6` の 4 本 + `6af8b52f` の 2 本) は、この lane 全体 run でも全て `ok` だった。
+- **なぜ 1 issue にまとめないか**: `I-52` は「補完が 2 系統の理由で落ちる」という
+  機構の issue で、facet A は既に resolved である。ここへ lane 全体を後付けで流し込むと
+  A の解決追跡が濁る。機構 (A / B) は `I-52` に残し、**lane 全体の実測と未分類の系統は本 issue が持つ**。
+- **関連**: `I-52` (機構 A / B)、`I-54` (D)、`I-55` (C)。
+  引き取り先は `TODO.md` の `LSP-SNAPSHOT-SHAPE-02` (B の残り約 30 本)。
+
+<a id="i-54"></a>
+
+### I-54: LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-53` の lane 監査)
+- **内容**: `I-52` facet A は **request 側**の位置規約のずれだった。同じずれが
+  **response 側**にもあり、しかも向きが test ごとに違う。どちらも fixture が
+  `9175c6e5` (2026-08-03) の wire 正規化に追随していないことの表れである。
+
+  | test | 実測 (left) | 期待 (right) | 向き |
+  |---|---|---|---|
+  | `..._lsp_stdio_body_hover_spec_position_character_params` | `["42","2","39"]` | `["42","1","38"]` | 実装が内部値 (1 始まり) を返す |
+  | `..._lsp_stdio_body_rename_spec_position_character_params` | `["42","2","39","cube"]` | `["42","1","38","cube"]` | 同上 |
+  | `..._main_with_lsp_stdio_formatting` | `line:0,character:0` 〜 `0,16` | `line:1,character:1` 〜 `1,17` | 期待が 1 始まりで陳腐化 |
+
+  前 2 本は `lsp-stdio-nav-params` が返す**変換後の内部値**を test が直接見ており、
+  後者は response range が wire (0 始まり) へ正規化されたのに fixture が追随していない。
+  **「どちらも off-by-one」で丸めると向きが逆であることが消える**ので、行ごとに向きを記録する。
+- **diagnostics refresh 3 本**: `..._body_document_sequence_spec_params_publishes_{,type_,lint_}diagnostics_refresh`
+  は `Content-Length` が 250/259/256 (実測) 対 167/164/168 (期待) で、
+  位置だけでなく **frame の形そのものが違う**。位置の問題なのか `I-52` facet B と同型の
+  形式ドリフトなのかは未判別。**推測で分類しない。**
+- **修正方針**: 未決。`I-52` facet A と同じく「実装ではなく fixture を直す」が既定線だが、
+  向きが逆の 2 群を同じ理由で直せるかは検算するまで決めない。
+- **関連**: `I-52` (request 側の同型問題、facet A で resolved)、`I-53` (実測の出所)。
+  引き取り先は `TODO.md` の `LSP-COL-CONV-04`。
+
+<a id="i-55"></a>
+
+### I-55: hover / definition / references / rename が退化した結果を返す (原因判別未了)
+
+- **影響度**: 高 / **状態**: open / **発見**: 2026-08-23 (`I-53` の lane 監査)
+- **内容**: nav 系 22 本が、単なる形式差ではなく**シンボル解決に失敗した形**の結果を返す。
+
+  | test | 実測 (left) | 期待 (right) |
+  |---|---|---|
+  | `..._hover_uses_open_document` | `range` が `line:-1,character:-1`、`contents:"type-info:2:39"` | `range` が `1,36`〜`1,42`、`contents:"defn helper"` |
+  | `..._references` | `[[10,2,39]]` (1 件) | `[[10,1,7],[10,1,36],[10,1,47]]` (3 件) |
+  | `..._rename` | `[[0,[]]]` (編集 0 件) | `[[10,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]` |
+  | `..._goto_definition` | `[10,1,0]` | `[10,1,7]` |
+
+- **判別未了の点**: これらは **`I-52` facet A の帰結 (request 位置がずれて lookup が外れ、
+  fallback が sentinel を返している) である可能性が高い。** 根拠は 3 つ。
+  (1) hover の `type-info:2:39` の `2:39` は、`I-54` で実測した「送った `1,38` を `+1` した内部値」
+  そのものである。(2) `references` の唯一の要素 `[10,2,39]` も同じ内部位置の echo である。
+  (3) `..._zero_based_position_contract` と `..._standard_uri_navigation_contract` は緑で、
+  正しい位置を渡せば解決できている。
+- **それでも「実装退行」と書かないのは**、hover の期待 range (`1,36`〜`1,42`) から逆算すると
+  カーソルはシンボル上に載っているように読め、fallback 仮説と整合しない test が残るため。
+  **各 test の source を読んで offset を検算するまで、原因を台帳に書かない (`合否も原因も推測しない`)。**
+  検算で「シンボル上なのに退化する」ものが残れば、それが本物の実装 issue である。
+- **修正方針**: 未決 (検算が先)。
+- **関連**: `I-52` (facet A、帰結仮説の元)、`I-53` (実測の出所)、`I-54` (response 側の位置)。
+  引き取り先は `TODO.md` の `LSP-NAV-DEGRADE-01`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

@@ -2999,10 +2999,44 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   生の JSON frame をそのまま snapshot と比較するが、`tests/snapshots/lsp/stdio/*.json` は
   completion item を三要素配列、diagnostics を型タグで持つ縮約形 (`78813333` / 2026-04-03) のまま
   止まっている。実出力が LSP 準拠の object 形へ変わったのは `5db1c2a4` (2026-08-03)。
+  方針は **(d) snapshot file を現行の object 形へ書き直す** に決めた (`ISSUES.md` の `I-52`)。
+  縮約器を入れる (e) は却下したので ADR は不要。
   受入条件: `..._completion_schema_snapshot` (位置を送らないため facet A の影響を受けない) が
-  緑になること。縮約器を入れる設計を採るなら「何を縮約対象とするか」を ADR に書いてから実装する。
+  緑になること。転記は実測した左辺を読み、item の中身が期待どおりであることを確認してから行う。
+  **中身が変わっている snapshot は形式ドリフトではなく別の回帰なので、転記せず issue を切る。**
   **含めない範囲**: 位置規約の修正 (`LSP-COL-CONV-03`)。
   snapshot の無検討な一括再生成 (`cargo insta accept` 相当) はしない。
+
+- [BLOCKED: LSP-SNAPSHOT-SHAPE-01] `LSP-SNAPSHOT-SHAPE-02` 残りの LSP stdio snapshot を
+  現行の object 形へ転記する — Issue `I-53` の B 系統。lane 全体の実測で
+  `assert_lsp_stdio_snapshot` (`selfhost_cli_core.rs:84`) 内で落ちるのは **31 本**あり、
+  `LSP-SNAPSHOT-SHAPE-01` が扱う completion 系はその一部にすぎない。
+  転記の元データは再 run 不要で、`/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/lsp_stdio_full_red.log`
+  の左辺をそのまま使える (再取得には 72 分かかる)。
+  受入条件: 31 本のうち転記対象としたものが全て緑になり、`I-53` の内訳表の B 行が 0 になること。
+  **含めない範囲**: `LSP-SNAPSHOT-SHAPE-01` が扱う completion 系。中身が変わっている snapshot
+  (diagnostics 系が該当する疑いがある) の転記 — それは形式ドリフトではないので `I-54` 側で扱う。
+  先に `LSP-SNAPSHOT-SHAPE-01` で転記手順を 1 本確立してから広げる。
+
+- [ ] `LSP-COL-CONV-04` LSP response 側の位置 fixture を wire 規約へ揃える — Issue `I-54`。
+  `formatting` 5 本は期待が 1 始まりのまま陳腐化し、`body_hover` /
+  `body_rename_spec_position_character_params` の 2 本は実装が内部値 (1 始まり) を返している。
+  **向きが逆なので同じ理由では直せない。** どちらが正本かを行ごとに決める。
+  受入条件: 上記 7 本が緑になり、`I-54` の表の各行に「実装を直したか fixture を直したか」が
+  理由つきで記録されていること。
+  **含めない範囲**: diagnostics refresh 3 本 — 位置ではなく frame の形が違う疑いがあり、
+  形式判別が先。判別結果によっては `LSP-SNAPSHOT-SHAPE-02` へ移す。
+  nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
+
+- [ ] `LSP-NAV-DEGRADE-01` hover / definition / references / rename の退化の原因を判別する —
+  Issue `I-55`。22 本が sentinel (`line:-1`)、内部位置の echo (`type-info:2:39`)、
+  空の編集リスト (`[[0,[]]]`) を返す。`I-52` facet A の帰結 (位置ずれによる lookup miss の
+  fallback) である可能性が高いが、**確定していない。**
+  まず cargo を回さずに各 test の source を読み、送っている位置と `+1` 後の offset が
+  シンボル上に載るかを検算する。
+  受入条件: 22 本それぞれについて「facet A の帰結」か「本物の実装退行」かが検算の根拠つきで
+  `I-55` に記録され、後者が 1 件でもあれば独立した issue として採番されていること。
+  **含めない範囲**: 実装の修正そのもの。判別の結果が出るまで実装に触らない。
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が
   「type-directed sampling、seed、shrink は別 slice」と明記したうえで、
