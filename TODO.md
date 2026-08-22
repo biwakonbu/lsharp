@@ -3028,15 +3028,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   形式判別が先。判別結果によっては `LSP-SNAPSHOT-SHAPE-02` へ移す。
   nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
 
-- [ ] `LSP-NAV-DEGRADE-01` hover / definition / references / rename の退化の原因を判別する —
-  Issue `I-55`。22 本が sentinel (`line:-1`)、内部位置の echo (`type-info:2:39`)、
-  空の編集リスト (`[[0,[]]]`) を返す。`I-52` facet A の帰結 (位置ずれによる lookup miss の
-  fallback) である可能性が高いが、**確定していない。**
-  まず cargo を回さずに各 test の source を読み、送っている位置と `+1` 後の offset が
-  シンボル上に載るかを検算する。
-  受入条件: 22 本それぞれについて「facet A の帰結」か「本物の実装退行」かが検算の根拠つきで
-  `I-55` に記録され、後者が 1 件でもあれば独立した issue として採番されていること。
-  **含めない範囲**: 実装の修正そのもの。判別の結果が出るまで実装に触らない。
+- [ ] `LSP-NAV-DEGRADE-01` nav 系 22 本の fixture を wire 規約へ直す — Issue `I-55`。
+  原因の判別は完了している (2026-08-23): 実装退行ではなく、request 側も response 側も
+  fixture が内部 1 始まり座標のまま止まっているだけである。実装の wire 契約が
+  入力・出力とも 0 始まりであることは緑の contract test 2 本
+  (`..._zero_based_position_contract` / `..._standard_uri_navigation_contract`) が押さえている。
+  **多段で進める。** まず request 側を 0 始まりへ直し、成功時の response を実測してから
+  response 側の期待値を埋める。数値 uri を使う旧経路 (`[[10,1,7],...]` 形) は
+  contract test が覆っていないので、**期待値を推測で書かない。**
+  受入条件: hover 6 / definition 5 / references 5 / rename 5 / goto_definition 1 の
+  計 22 本が緑になり、response 側の期待値が実測に基づいて決まったことが `I-55` に記録されること。
+  **含めない範囲**: 実装側の変更。`I-54` の formatting / body params 系 (`LSP-COL-CONV-04`)。
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が
   「type-directed sampling、seed、shrink は別 slice」と明記したうえで、

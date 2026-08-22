@@ -186,7 +186,7 @@
 | [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open (facet A のみ resolved) | -- |
 | [I-53](#i-53) | `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない | 中 | open | -- |
 | [I-54](#i-54) | LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている | 中 | open | -- |
-| [I-55](#i-55) | hover / definition / references / rename が退化した結果を返す (原因判別未了) | 高 | open | -- |
+| [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | open (原因判別済み) | -- |
 
 ### ドキュメント (DOC)
 
@@ -3045,7 +3045,7 @@
   | 系統 | 本数 | panic 位置 | 引き取り先 |
   |---|---|---|---|
   | B: snapshot 形式のドリフト | 31 | `selfhost_cli_core.rs:84` (`assert_lsp_stdio_snapshot` 内) | `I-52` facet B |
-  | C: nav 系が退化した結果を返す | 22 | 各 test の inline assert | `I-55` |
+  | C: nav 系が退化した結果を返す (原因は fixture の座標系。2026-08-23 判別済み) | 22 | 各 test の inline assert | `I-55` |
   | D: response 側の位置が内部値のまま fixture に固定 | 7 | 同上 | `I-54` |
   | diagnostics refresh 3 本 (`Content-Length` 250/259/256 実測 vs 167/164/168 期待) | 3 | `:5817` / `:6034` / `:6105` | `I-54` (形式判別を含む) |
   | `..._lsp_stdio_wire_repeated_sequence` (initialize capabilities の inline 期待値) | 1 | `:6286` | `I-52` facet B |
@@ -3097,9 +3097,9 @@
 
 <a id="i-55"></a>
 
-### I-55: hover / definition / references / rename が退化した結果を返す (原因判別未了)
+### I-55: hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている
 
-- **影響度**: 高 / **状態**: open / **発見**: 2026-08-23 (`I-53` の lane 監査)
+- **影響度**: 中 / **状態**: open (原因は判別済み、fixture 修正が未了) / **発見**: 2026-08-23 (`I-53` の lane 監査)
 - **内容**: nav 系 22 本が、単なる形式差ではなく**シンボル解決に失敗した形**の結果を返す。
 
   | test | 実測 (left) | 期待 (right) |
@@ -3109,17 +3109,34 @@
   | `..._rename` | `[[0,[]]]` (編集 0 件) | `[[10,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]` |
   | `..._goto_definition` | `[10,1,0]` | `[10,1,7]` |
 
-- **判別未了の点**: これらは **`I-52` facet A の帰結 (request 位置がずれて lookup が外れ、
-  fallback が sentinel を返している) である可能性が高い。** 根拠は 3 つ。
-  (1) hover の `type-info:2:39` の `2:39` は、`I-54` で実測した「送った `1,38` を `+1` した内部値」
-  そのものである。(2) `references` の唯一の要素 `[10,2,39]` も同じ内部位置の echo である。
-  (3) `..._zero_based_position_contract` と `..._standard_uri_navigation_contract` は緑で、
-  正しい位置を渡せば解決できている。
-- **それでも「実装退行」と書かないのは**、hover の期待 range (`1,36`〜`1,42`) から逆算すると
-  カーソルはシンボル上に載っているように読め、fallback 仮説と整合しない test が残るため。
-  **各 test の source を読んで offset を検算するまで、原因を台帳に書かない (`合否も原因も推測しない`)。**
-  検算で「シンボル上なのに退化する」ものが残れば、それが本物の実装 issue である。
-- **修正方針**: 未決 (検算が先)。
+- **判別の結果** (2026-08-23、cargo を回さず source と緑の契約 test を読んで検算):
+  **実装退行ではない。`I-52` facet A と同じ「fixture が内部 1 始まり座標のまま」が
+  request 側と response 側の両方で起きているだけである。** 実装側の wire 契約は
+  **入力も出力も 0 始まり**で確定しており、それを緑の contract test 2 本が押さえている。
+
+  | 緑の contract test | 送る位置 | 返る位置 | source |
+  |---|---|---|---|
+  | `..._lsp_stdio_zero_based_position_contract` (`:5081`) | `line:0,character:6` | `start 0,6` / `end 0,12` | `(defn helper [x] x)` (1 行) |
+  | `..._lsp_stdio_standard_uri_navigation_contract` (`:5141`) | `line:1,character:15` | `start 0,6` / `end 0,6` | `(defn helper [x] x)\n(defn main [] (helper 1))` |
+
+  前者は `helper` が 0-based 6..11 の位置で `character:6` を送って当たっており、
+  `end` は排他で 12。後者は 2 行目 (`line:1`) の `character:15` が `helper` の内側に当たり、
+  定義位置を `line:0,character:6` で返す。**両方向とも 0 始まりである。**
+
+  これに対し `..._hover_uses_open_document_spec_params` (`:16723`) は
+  source が `(defn helper [x] x) (defn main [] (helper 1))` の **1 行 45 byte** なのに
+  `"line":1,"character":38` を送る。wire が 0 始まりなら 1 行の文書に `line:1` は存在せず、
+  実装の `+1` を経て内部 `(2,39)` となって lookup が外れる。実測の
+  `range: -1,-1` と `contents:"type-info:2:39"` は、その miss 時の fallback が
+  内部位置をそのまま埋めた形である。期待値 `start 1,36` / `end 1,42` も、
+  2 個目の `helper` の 0-based 35..40 を **1 始まりへ直した値**であり、
+  request と response の両方が内部座標で書かれている。
+- **したがって残る作業は fixture の書き換えだけ**だが、**多段になる**:
+  request 側を wire 規約へ直すまで、成功時の response が実際にどの座標で返るかは
+  測れない。特に `"uri":10` のような数値 uri を使う旧経路
+  (`..._references` の `[[10,1,7],...]` 形) は緑の contract test が覆っていないので、
+  **response の期待値は request を直したあとに実測して決める。推測で埋めない。**
+- **修正方針**: fixture を wire 規約 (0 始まり) へ直す。実装には触らない。response 側の期待値は request 修正後の実測で決める。
 - **関連**: `I-52` (facet A、帰結仮説の元)、`I-53` (実測の出所)、`I-54` (response 側の位置)。
   引き取り先は `TODO.md` の `LSP-NAV-DEGRADE-01`。
 
