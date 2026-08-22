@@ -2998,41 +2998,29 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   転記手順は `completion.json` で確立済み (`ISSUES.md` の `I-52` facet B)。
 
 
-- [ ] `LSP-SNAPSHOT-SHAPE-02` diagnostics の縮約形 fixture 9 本を object 形へ転記する —
-  Issue `I-53` の B 系統。`assert_lsp_stdio_snapshot` 内で落ちる 31 本のうち、
-  **転記だけで緑になるのは 3 本しかない**ことが lane ログの左右比較で分かった。
-  completion / initialize 系は 2026-08-23 に解決済みで、残るのは diagnostics 系だけである。
-  転記の元データは `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/lsp_stdio_full_red.log`
-  の左辺で、再 run は不要 (再取得には 72 分かかる)。
-  加えて **diagnostics 系 9 本**も同じ形式ドリフトであることが 2026-08-23 に確定した
-  (`I-54`)。期待値が型タグの縮約形 (`{"source":1,"rule":1001,"line":1,"col":1,...}`) のままで、
-  実出力は LSP 準拠の Diagnostic object。inline 3 本
-  (`..._body_document_sequence_spec_params_publishes_*_refresh`) と snapshot 6 本
-  (`..._document_sequence_*_diagnostics_refresh_snapshot`) が該当する。
-  受入条件: diagnostics 9 本が緑になること。
-  転記は 1 本ずつ左右を突き合わせてから行う (実測で確認済みなのは各系統 1 本)。
-  **含めない範囲**: 位置起因の 20 本 (`LSP-NAV-DEGRADE-01` / `LSP-COL-CONV-03`)。
-  位置と形式が重なる `filesystem_document_sequence_*` 2 本 — `I-55` の解決が先。
-
 - [ ] `LSP-COL-CONV-04` LSP response 側の位置 fixture を wire 規約へ揃える — Issue `I-54`。
   `formatting` 5 本は期待が 1 始まりのまま陳腐化し、`body_hover` /
   `body_rename_spec_position_character_params` の 2 本は実装が内部値 (1 始まり) を返している。
   **向きが逆なので同じ理由では直せない。** どちらが正本かを行ごとに決める。
   受入条件: 上記 7 本が緑になり、`I-54` の表の各行に「実装を直したか fixture を直したか」が
   理由つきで記録されていること。
-  **含めない範囲**: diagnostics refresh 系 — 形式ドリフトと判別が付いたので
-  `LSP-SNAPSHOT-SHAPE-02` へ移した。nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
+  **含めない範囲**: diagnostics refresh 系 — 形式ドリフトと判別が付き、2026-08-23 に
+  転記で解決済み (`I-52` facet B の第三段)。nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
 
-- [ ] `LSP-NAV-DEGRADE-01` nav 系 22 本の fixture を wire 規約へ直す — Issue `I-55`。
-  原因の判別は完了している (2026-08-23): 実装退行ではなく、request 側も response 側も
-  fixture が内部 1 始まり座標のまま止まっているだけである。実装の wire 契約が
+- [ ] `LSP-NAV-DEGRADE-01` nav 系 fixture を wire 規約へ直す — Issue `I-55` (母集団は `I-53` の lane 監査)。
+  原因の判別は完了している (2026-08-23): 実装退行ではなく、request 側の fixture が
+  内部 1 始まり座標のまま止まっているだけである。実装の wire 契約が
   入力・出力とも 0 始まりであることは緑の contract test 2 本
   (`..._zero_based_position_contract` / `..._standard_uri_navigation_contract`) が押さえている。
-  **多段で進める。** まず request 側を 0 始まりへ直し、成功時の response を実測してから
-  response 側の期待値を埋める。数値 uri を使う旧経路 (`[[10,1,7],...]` 形) は
-  contract test が覆っていないので、**期待値を推測で書かない。**
-  受入条件: hover 6 / definition 5 / references 5 / rename 5 / goto_definition 1 の
-  計 22 本が緑になり、response 側の期待値が実測に基づいて決まったことが `I-55` に記録されること。
+  **references / rename は単段でよい。** 実測の左右を並べると応答は triple 形のままで
+  形式ドリフトしておらず、期待値の `col` も正しい。外れているのは request の `"line":1` だけで、
+  `"line":0` へ直せばよい (根拠は `I-55` 本文)。
+  **hover は別扱い。** miss 時の fallback が `contents:"type-info:2:39"` という別形を返すので、
+  request 修正後に response を実測してから期待値を決める。**推測で書かない。**
+  対象の実測左右は `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/nav_left_right.txt` に
+  40 本ぶん抽出済み (`I-53` の lane ログ由来。再取得には 72 分かかる)。
+  受入条件: 抽出した nav 系が緑になり、hover の response 期待値が実測に基づいて
+  決まったことが `I-55` に記録されること。
   **含めない範囲**: 実装側の変更。`I-54` の formatting / body params 系 (`LSP-COL-CONV-04`)。
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

@@ -5691,7 +5691,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_diagnostics_refresh() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":1}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":1,"messageHash":0}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
@@ -5767,7 +5767,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":1}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":1,"messageHash":0}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
@@ -5835,7 +5835,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_type_diagnostics_refresh() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":26}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":2,"severity":1,"rule":2,"line":1,"col":1,"messageHash":2}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":14},"end":{"line":0,"character":25}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
@@ -5908,7 +5908,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_type_diagnost
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_lint_diagnostics_refresh() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":3,"severity":2,"rule":100,"line":1,"col":1,"messageHash":100}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding x is not used"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
@@ -5984,7 +5984,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":26}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":2,"severity":1,"rule":2,"line":1,"col":1,"messageHash":2}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":14},"end":{"line":0,"character":25}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
@@ -6055,7 +6055,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":3,"severity":2,"rule":100,"line":1,"col":1,"messageHash":100}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding x is not used"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(

@@ -3007,13 +3007,28 @@
   `..._wire_repeated_sequence` もこれで緑になった — 同 test は frame0 の initialize だけを
   絶対値で比較し、hover / completion は**反復 1 回目と 2 回目以降を突き合わせる**構造なので、
   位置の絶対値を要求していなかった。`I-52` で疑義として残していた `col:23` は問題ではない。
+- **解決の第三段** (2026-08-23): diagnostics の縮約形を object 形へ転記した。
+  snapshot 3 ファイル (`document-sequence-diagnostics-refresh.json` /
+  `document-sequence-type-diagnostics-refresh.json` /
+  `document-sequence-lint-diagnostics-refresh.json`) と inline 6 箇所
+  (`selfhost_cli_core.rs` の `open_diagnostics` 定義) を書き換えた。
+  **inline は当初 3 本と見積もっていたが実際は 6 箇所だった** — `lsp_transport_document_sequence_*`
+  3 本が同じ縮約形のまま残っており、lane 監査の filter (`lsp_stdio`) に掛からないので
+  `I-53` の 64 FAIL に現れていなかった。転記前に 9 本すべての左右をログで突き合わせ、
+  位置の値が緑の契約 test と一致することを確認した
+  (`:18664` の type `character:14`、`:18721` の lint `0,0`)。
+  検証: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_document_sequence
+  lsp_stdio_body_document_sequence lsp_transport_document_sequence` で
+  **15 passed / 0 failed** (`738.62s`、2026-08-23)。
+  これで facet B のうち**転記だけで解決する系統は打ち止め**である。残る 22 本は位置起因なので
+  `I-55` / `LSP-COL-CONV-03` が先に要る。
 - **転記できるのは 31 本中 3 本だけだった**。`I-53` の lane ログの左右を機械比較したところ、
   値まで一致する (= 純粋な形式ドリフト) のは以下だけである。
 
   | 分類 | 本数 | 引き取り先 |
   |---|---|---|
-  | 形式のみ (completion / initialize) | 3 | `LSP-SNAPSHOT-SHAPE-02` |
-  | 形式のみ (diagnostics の縮約形) | 6 (`document_sequence_*_diagnostics_refresh_snapshot`) | `LSP-SNAPSHOT-SHAPE-02` |
+  | 形式のみ (completion / initialize) | 3 | 2026-08-23 転記済 (`I-52` 第一段 / 第二段) |
+  | 形式のみ (diagnostics の縮約形) | 6 (`document_sequence_*_diagnostics_refresh_snapshot`) | 2026-08-23 転記済 (`I-52` 第三段) |
   | 位置起因で値が違う | 20 (nav 系 17 + completion 3) | `I-55` / `LSP-COL-CONV-03` |
   | 位置と形式の重畳 | 2 (`filesystem_document_sequence_*`) | `I-55` を先に解く |
 
@@ -3098,7 +3113,8 @@
   機構の issue で、facet A は既に resolved である。ここへ lane 全体を後付けで流し込むと
   A の解決追跡が濁る。機構 (A / B) は `I-52` に残し、**lane 全体の実測と未分類の系統は本 issue が持つ**。
 - **関連**: `I-52` (機構 A / B)、`I-54` (D)、`I-55` (C)。
-  引き取り先は `TODO.md` の `LSP-SNAPSHOT-SHAPE-02` (B の残り約 30 本)。
+  引き取り先は `TODO.md` の `LSP-COL-CONV-03` / `LSP-COL-CONV-04` / `LSP-NAV-DEGRADE-01`。
+  B のうち転記だけで解決する 9 本は 2026-08-23 に完了した (`I-52` の第一〜第三段)。
 
 <a id="i-54"></a>
 
@@ -3138,8 +3154,9 @@
   逐語で期待して pass している。
   内訳は inline 3 本 (`..._body_document_sequence_spec_params_publishes_*_refresh`) と
   snapshot 6 本 (`..._document_sequence_*_diagnostics_refresh_snapshot`)。
-  実測で左右を確認したのは inline / snapshot 各 1 本で、**残り 7 本は同型の差分として扱う**
-  (転記時に 1 本ずつ左右を突き合わせる)。引き取り先は `LSP-SNAPSHOT-SHAPE-02`。
+  **解決** (2026-08-23): 転記前に 9 本すべての左右をログで突き合わせ、object 形へ書き換えた。
+  併せて `lsp_transport_document_sequence_*` 3 本の同型ドリフトも見つかり、計 12 本を修正した。
+  検証は `I-52` facet B の「解決の第三段」に記録した (15 passed / 0 failed)。
 - **修正方針**: 位置の 7 本は fixture を直す。ただし**向きが逆の 2 群を同じ理由では直せない**ので、
   行ごとにどちらが正本かを決める。diagnostics 9 本は形式ドリフトとして転記する。
 - **関連**: `I-52` (request 側の同型問題、facet A で resolved)、`I-53` (実測の出所)。
@@ -3181,11 +3198,24 @@
   内部位置をそのまま埋めた形である。期待値 `start 1,36` / `end 1,42` も、
   2 個目の `helper` の 0-based 35..40 を **1 始まりへ直した値**であり、
   request と response の両方が内部座標で書かれている。
-- **したがって残る作業は fixture の書き換えだけ**だが、**多段になる**:
-  request 側を wire 規約へ直すまで、成功時の response が実際にどの座標で返るかは
-  測れない。特に `"uri":10` のような数値 uri を使う旧経路
-  (`..._references` の `[[10,1,7],...]` 形) は緑の contract test が覆っていないので、
-  **response の期待値は request を直したあとに実測して決める。推測で埋めない。**
+- **したがって残る作業は fixture の書き換えだけ**である。当初は「request を直すまで
+  response の座標が測れないので多段になる」と見ていたが、**references / rename については
+  多段が要らないことが 2026-08-23 に分かった**。lane ログの左右を並べると:
+
+  ```
+  left  (実測): "result":[[42,2,39]]
+  right (期待): "result":[[42,1,7],[42,1,36],[42,1,47]]
+  ```
+
+  応答は **triple 形のまま**で形式ドリフトしておらず、期待値の `col` (7 / 36 / 47) も
+  source `(defn square [x] x) (defn main [] (square 1) (square 2))` の
+  0-based 6 / 35 / 46 に一対一で対応する内部 1 始まり値である。つまり**期待値は既に正しい**。
+  request 側も `col:38` は `+1` を経て内部 39 = 0-based 38 となり `square` (0-based 35..40) の
+  内側に当たる。**外れているのは `"line":1` だけ**で、1 行の文書に対して内部 line 2 を
+  指してしまっている。修正は `"line":1` → `"line":0` の 1 箇所である。
+  hover は fallback が `contents:"type-info:2:39"` という別形を返すので、**別に確認する**。
+  なお実測ログから抽出した nav 系 40 本の左右は
+  `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/nav_left_right.txt` にある。
 - **修正方針**: fixture を wire 規約 (0 始まり) へ直す。実装には触らない。response 側の期待値は request 修正後の実測で決める。
 - **関連**: `I-52` (facet A、帰結仮説の元)、`I-53` (実測の出所)、`I-54` (response 側の位置)。
   引き取り先は `TODO.md` の `LSP-NAV-DEGRADE-01`。
