@@ -189,6 +189,7 @@
 | [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | resolved | -- |
 | [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | resolved | -- |
 | [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | open | -- |
+| [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -3472,6 +3473,44 @@
   形式は ADR で決める。
 - **関連**: `I-52` (request 側の同型問題)、`I-54` (逆向きの不一致)、`I-55` (nav 系の座標)。
   引き取り先は `TODO.md` の `LSP-NAV-LOCATION-01`。
+
+<a id="i-58"></a>
+
+### I-58: lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`LINT-SPAN-01` の doc-RED)
+- **内容**: `I-24` は「同一開始位置でも rule が異なる lint 診断は dedup しない」を裁定し、
+  `test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics`
+  (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:18762`) がそれを pin している。
+  この pin が成立しているのは、fixture `(defn main [] (let [unused (do)] 0))` に対して
+  **全ての lint 診断が `0:0..0:0` へ潰れている**ためであり、
+  「同一開始位置」は仕様ではなく `LINT-SPAN-01` が直そうとしている**バグの副作用**である。
+
+  `LINT-SPAN-01` で real span を載せると、同じ fixture で
+
+  | rule | span (offset) | wire range |
+  |---|---|---|
+  | `L0001` unused-let | 束縛識別子 `unused` = 20..26 | `0:20..0:26` |
+  | `L0002` empty-do | `do` トークン = 28..30 | `0:28..0:30` |
+
+  となり開始位置が一致しなくなる。test は expected 文字列を更新すれば pass するが、
+  **検査していた意味論には触れなくなる**。`I-24` の裁定は pin を 1 本失う。
+
+- **なぜ同じ形で作り直せないか**: `review-*-diagnostic` は 2 rule しかなく
+  (`DocTools.ls:713` / `:729`)、それぞれ `let` (tag 7) / `do` (tag 9) という
+  **互いに素な kind** に紐づく。したがって lint 同士で同一 span になる fixture は
+  原理的に構成できない。残る手は type 診断と lint 診断を同一開始位置に置くことだが、
+  `LS1002` の span は実測で if 式**全体**を指す (`selfhost_cli_core.rs:18754` が
+  `(defn main [] (let [unused 42] (if 1 true false)))` に対し `0:31..0:48` を pin) ので、
+  同一開始位置を作れるかは span 決定規則側の調査を要する。
+
+- **根拠**:
+  - 裁定の正本: [診断 dedup の rule identity](docs/adr/decisions-lint-diagnostic-dedup-identity.md)
+  - dedup 実装: `selfhost/src/Tools/Lsp/LspServerNav.ls:1225-1245` (AC-209)
+  - span 化の正本: [lint span の AST 表現](docs/adr/decisions-lint-span-ast-representation.md) 決定 6
+- **これは `LINT-SPAN-01` を止める理由にはならない**。`0:0..0:0` は実利用者に見える不具合で、
+  pin の副作用のほうを保存するのは本末転倒である。**pin の再建を別項目へ分けて追跡する**
+  ことでカバレッジの黙殺を防ぐ。追跡は `LINT-DEDUP-PIN-01`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

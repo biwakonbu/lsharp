@@ -2,7 +2,7 @@
 
 - Status: doc-RED (判断のみ確定。実装は本 slice に載せない)
 - Date: 2026-08-19
-- Scope: `LINT-SPAN-01` / `I-24`
+- Scope: `LINT-SPAN-01` / `I-24` / `I-58`
 - Related: [診断 dedup の rule identity](decisions-lint-diagnostic-dedup-identity.md)、
   `selfhost/src/Syntax/AST.ls` / `Syntax/Parser.ls` / `Tools/Doc/DocTools.ls`
 
@@ -113,6 +113,68 @@ AST 側は byte offset のまま持ち、line/col への変換は診断を組み
 **この決定に伴い `review-collect-node` 系の signature がソースを取る形へ変わる。**
 これは本項目の受入条件に含める。
 
+### 決定 6: `L0001` の span は束縛識別子、`L0002` は `do` トークンとする
+
+ADR 本文は「`let` / `do` に span を載せる」とだけ決めており、**どの範囲を span とするか**を
+決めていなかった。実装前にここを確定させる。
+
+| rule | span | 構築点で使える値 |
+|---|---|---|
+| `L0001` unused-let | **束縛識別子** (`unused` の 1 token) | `parse-let-first-binding-v3` (`Parser.ls:3562-3564`) の `ns` / `ne`、および `parse-let-after-first-binding-v3` (`:3530-3531`) の `ns2` / `ne2`、`parse-let-rest-rooted-v3` (`:3591-3592`) の `ns` / `ne` |
+| `L0002` empty-do | **`do` トークン** | `parse-do-v3` (`Parser.ls:3624`) が `p-advance` する直前の `p-start` / `p-end` |
+
+`L0001` に let form 全体ではなく識別子を採るのは、診断文が
+「let binding `x` is not used」と**識別子を主語にしている**ためである。エディタ上で
+波線が引かれるべきなのは未使用の名前であって、let 式全体ではない。
+`L0002` は逆に「do block に式が無い」であり主語が form なので、`do` トークンを起点にする
+(空 do は `(do)` の 4 文字しかなく、トークン span で実用上十分)。
+
+レイアウトは既存の `make-X-with-span` 規約どおり末尾 pair:
+
+- `let`: `[7, name-hash, init, body, name-start, name-end]` (span 有り = 長さ 6)
+- `do`: `[9, expr-count, expr0..exprN, do-start, do-end]` (span 有り = 長さ > `2 + expr-count`)
+
+`do` の判別子に `vector-length` の**定数比較**は使えない (可変長のため)。
+slot 1 の `expr-count` と比較する形にする。これは本 ADR の「`do` は可変長ノードである」節で
+確認した「全消費者が `expr-count` で打ち切っている」という不変条件の裏返しであり、
+同じ根拠の上に立つ。
+
+`AST.ls:133` の `make-let` (長さ 4) と、test fixture が手で組む長さ 4 の let / do は
+そのまま残る。span が無いノードは**従来どおり line/col `1 1`** を出す
+(= wire `0:0..0:0`)。span の有無で挙動が分岐することは仕様である。
+
+### 受入条件 2 の再定義 — 「pin 2 本が pass」は real span 導入で vacuous になる
+
+受入条件 2 が指す pin 2 本のうち
+`test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics`
+(`selfhost_cli_core.rs:18762`) は、**fixture の 2 診断が同一開始位置を持つことを前提**に
+「同一開始位置でも rule が異なれば dedup しない」を検査している。
+
+real span を入れると、この fixture `(defn main [] (let [unused (do)] 0))` では
+
+- `L0001` → 束縛識別子 `unused` = offset 20..26
+- `L0002` → `do` トークン = offset 28..30
+
+となり **開始位置が一致しなくなる**。test は expected 文字列の更新後も pass するが、
+検査していた意味論 (同一開始位置での dedup 抑止) には**もう触れていない**。
+`I-24` が裁定した dedup の rule identity 規則は、この時点で pin を 1 本失う。
+
+`review-*-diagnostic` は 2 rule しかなく、しかも `let` (tag 7) と `do` (tag 9) という
+**互いに素な kind** に紐づくので、**lint 同士で同一 span を作る fixture は原理的に作れない**。
+残る手は type 診断と lint 診断を同一開始位置に置くことだが、これは
+`LS1002` の span 決定規則 (実測では if 式**全体**を指す) に依存し、
+本 ADR の「含めない範囲」である dedup 意味論へ踏み込む。
+
+したがって受入条件 2 を次のとおり書き換える。
+
+> 2. `I-24` の pin 2 本が引き続き pass すること。ただし
+>    `..._preserves_distinct_same_start_diagnostics` は real span 導入により
+>    **同一開始位置という前提が消える**ため、pass しても dedup 意味論の pin にはならない。
+>    この事実を Evidence に明記し、dedup 意味論の pin 再建は別項目として台帳へ登録する。
+
+**数字を静かに直さない** ([doc-sync](../../.claude/rules/doc-sync.md)) の適用であり、
+「pass したから満たした」で閉じないための明示である。
+
 ## この ADR に含めない範囲
 
 - 重複判定の意味論。`I-24` で rule identity を含む形に裁定済みで、span が精密になっても
@@ -123,7 +185,11 @@ AST 側は byte offset のまま持ち、line/col への変換は診断を組み
 ## 受入条件
 
 1. `(defn main [] (let [unused (do)] 0))` に対し `L0001` と `L0002` が**別の range** を持つ
-2. `I-24` の pin 2 本が引き続き pass する
+2. `I-24` の pin 2 本が引き続き pass する。ただし
+   `..._preserves_distinct_same_start_diagnostics` は real span 導入により
+   **同一開始位置という前提が消える**ため、pass しても dedup 意味論の pin にはならない
+   (決定 6 の後段を参照)。この事実を Evidence に明記し、pin の再建は `I-58` /
+   `LINT-DEDUP-PIN-01` として別項目で追跡する
 3. 変更対象 kind (`let` / `do`) に対する既存の長さ probe が無いことを、
    実装前に grep で確認し ADR の Evidence へ記録する
 4. offset → line/col 変換に単体 test を置く (行頭 / 行末 / 最終行 / 空行を含む)

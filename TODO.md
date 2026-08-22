@@ -772,6 +772,13 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **この項目に含めない範囲**: 重複判定の意味論。`I-24` で rule identity を含む形に裁定済みで、
   span が精密になっても判定規則は変わらない (同一 span に別 rule が正当に並ぶため)。
   **受入条件**: 上記 2 診断が別 range を持つこと、および `I-24` の pin 2 本が引き続き pass すること。
+  **受入条件 2 は 2026-08-23 に再定義した** — Issue `I-58`。real span を入れると fixture の
+  `L0001` (束縛識別子 `unused` = offset 20..26) と `L0002` (`do` トークン = 28..30) は
+  開始位置が一致しなくなるので、`..._preserves_distinct_same_start_diagnostics` は
+  expected を更新すれば pass するが **dedup 意味論には触れなくなる**。
+  pass をもって「満たした」と読まないこと。pin の再建は `LINT-DEDUP-PIN-01` が持つ。
+  **span の範囲は ADR 決定 6 で確定した**: `L0001` は束縛識別子トークン、`L0002` は `do` トークン。
+  レイアウトは末尾 pair (`let` は長さ 6、`do` は `2 + expr-count` より長い場合に span あり)。
   **設計判断は 2026-08-19 に ADR で確定した**:
   [lint span の AST 表現](docs/adr/decisions-lint-span-ast-representation.md)。
   採ったのは「kind ごとに span 付き構築形を足す既存規約への追従」で、
@@ -831,6 +838,19 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   これは `lsp-offset-from-line-col` (`:276`) と逆向きで一貫しており、本項目では変えない。
 
   **この項目に含めない範囲**: `sort-diagnostics` 側の順序規則 (AC-208 で別途固定済み)。
+- [ ] `LINT-DEDUP-PIN-01` lint 診断 dedup の rule identity 規則に pin を作り直す — Issue `I-58`。
+  `I-24` の裁定 ([診断 dedup の rule identity](docs/adr/decisions-lint-diagnostic-dedup-identity.md)、
+  実装は `LspServerNav.ls:1225-1245` の AC-209) を pin していた
+  `test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics` は、
+  `LINT-SPAN-01` で real span が入ると **同一開始位置という前提を失う**。
+  **受入条件**: 開始位置が実際に一致する 2 診断を含む fixture を作り、rule が異なれば
+  両方 publish されることを検査する test を 1 本置くこと。既存 test の rename では足りない
+  (前提が消えているため)。
+  **難所**: lint rule は 2 つしかなく、それぞれ `let` (tag 7) / `do` (tag 9) という互いに素な
+  kind に紐づくので **lint 同士では同一 span を作れない**。type 診断と lint 診断を突き合わせる
+  必要があり、`LS1002` の span 決定規則 (実測では if 式全体) の調査が先に要る。
+  **含めない範囲**: dedup 規則そのものの是非 (`I-24` で裁定済み)、span の範囲決定 (`LINT-SPAN-01`)。
+  **着手順**: `LINT-SPAN-01` の後。前に置くと今の fixture でしか通らない pin をもう 1 本作ることになる。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
   `SMOKE-GATE-03` `default-path-smoke` job が緑になることの 1 run 観測 — Issue `I-15` / `I-19`。
   受入条件 (a) skipped の原因特定は **2026-08-18 に達成**した。原因は job 側の条件ではなく
