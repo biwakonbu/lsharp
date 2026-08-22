@@ -6242,7 +6242,17 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
     let init_response = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 80,
-        "result": [1, 1, 1, 1, 1, 1, 1]
+        "result": {
+            "capabilities": {
+                "completionProvider": {},
+                "definitionProvider": true,
+                "documentFormattingProvider": true,
+                "hoverProvider": true,
+                "referencesProvider": true,
+                "renameProvider": true,
+                "textDocumentSync": 1
+            }
+        }
     });
     let open_response = serde_json::json!({
         "jsonrpc": "2.0",

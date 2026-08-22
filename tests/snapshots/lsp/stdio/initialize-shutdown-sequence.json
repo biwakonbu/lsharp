@@ -1,1 +1,1 @@
-[{"jsonrpc":"2.0","id":31,"result":[1,1,1,1,1,1,1]},{"jsonrpc":"2.0","id":32,"result":0}]
+[{"jsonrpc":"2.0","id":31,"result":{"capabilities":{"completionProvider":{},"definitionProvider":true,"documentFormattingProvider":true,"hoverProvider":true,"referencesProvider":true,"renameProvider":true,"textDocumentSync":1}}},{"jsonrpc":"2.0","id":32,"result":0}]

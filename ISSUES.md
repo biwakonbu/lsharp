@@ -2967,8 +2967,8 @@
   結果は **29 passed / 64 failed** (`4346.02s`)。`..._lsp_stdio_wire_repeated_sequence` は
   **FAILED** で、原因は位置ではなく最初の frame の initialize capabilities の形
   (実測 object 形 vs 期待 `[1,1,1,1,1,1,1]`) — facet B と同型の inline 期待値の陳腐化である。
-  この test の completion が送る `"col":23` は 2 行目 `(defn main []  (he))` の範囲外を指しており、
-  initialize を直した後の再測で初めて表面化する。**多段になる前提で扱う。**
+  (2026-08-23 に解決済み — facet B の節を参照。`"col":23` の疑義は、同 test が反復間比較で
+  あるため問題にならないことが緑で確認できた。)
   lane 全体の内訳と、そこで見つかった 2 系統の別問題は `I-53` / `I-54` / `I-55` が持つ。
 
 #### B: snapshot file が 2026-08-03 以前の縮約形のまま残っている
@@ -2995,19 +2995,33 @@
   完全に一致し、形だけが違う**ことを確認したうえで転記した = レビュー済みの転記である。
   検証: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_completion_schema_snapshot`
   で **1 passed / 0 failed** (`206.74s`、2026-08-23)。
+- **解決の第二段** (2026-08-23): initialize の capabilities を object 形へ転記した。
+  `initialize.json` / `initialize-shutdown-sequence.json` の `[1,1,1,1,1,1,1]` と、
+  `..._lsp_stdio_wire_repeated_sequence` の inline 期待値 (`selfhost_cli_core.rs:6245`) を
+  `{"capabilities":{...}}` へ書き換えた。7 個の `1` は
+  `completionProvider` / `definitionProvider` / `documentFormattingProvider` /
+  `hoverProvider` / `referencesProvider` / `renameProvider` / `textDocumentSync` に
+  一対一で対応し、**能力の集合としては同一**である。
+  検証: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_initialize
+  lsp_stdio_wire_repeated_sequence` で **5 passed / 0 failed** (`310.86s`)。
+  `..._wire_repeated_sequence` もこれで緑になった — 同 test は frame0 の initialize だけを
+  絶対値で比較し、hover / completion は**反復 1 回目と 2 回目以降を突き合わせる**構造なので、
+  位置の絶対値を要求していなかった。`I-52` で疑義として残していた `col:23` は問題ではない。
 - **転記できるのは 31 本中 3 本だけだった**。`I-53` の lane ログの左右を機械比較したところ、
   値まで一致する (= 純粋な形式ドリフト) のは以下だけである。
 
   | 分類 | 本数 | 引き取り先 |
   |---|---|---|
-  | 形式のみ | 3 (`completion_schema_snapshot` / `initialize_schema_snapshot` / `initialize_shutdown_schema_snapshot`) | `LSP-SNAPSHOT-SHAPE-02` |
+  | 形式のみ (completion / initialize) | 3 | `LSP-SNAPSHOT-SHAPE-02` |
+  | 形式のみ (diagnostics の縮約形) | 6 (`document_sequence_*_diagnostics_refresh_snapshot`) | `LSP-SNAPSHOT-SHAPE-02` |
   | 位置起因で値が違う | 20 (nav 系 17 + completion 3) | `I-55` / `LSP-COL-CONV-03` |
-  | diagnostics の内容差 | 8 (`document_sequence_*` 6 + `filesystem_document_sequence_*` 2) | `I-54` (判別待ち) |
+  | 位置と形式の重畳 | 2 (`filesystem_document_sequence_*`) | `I-55` を先に解く |
 
   initialize 2 本は値の比較では差が出る (`[1,1,1,1,1,1,1]` 対 6 個の `Bool(true)` +
   `textDocumentSync:1` + `completionProvider:{}`) が、**能力の集合としては同一**であることを
   目視で確認したので形式ドリフトに分類した。機械比較は一次選別にすぎず、目視が要る。
-  **残り 28 本は「転記すれば緑になる」ものではない。** 原因を先に解く。
+  diagnostics 6 本は当初「内容差」に分類したが、2026-08-23 の再検で**形式ドリフトと確定した**
+  (`I-54` 参照)。**残り 22 本は「転記すれば緑になる」ものではない。** 原因を先に解く。
 
 #### 共通
 
@@ -3104,12 +3118,30 @@
   前 2 本は `lsp-stdio-nav-params` が返す**変換後の内部値**を test が直接見ており、
   後者は response range が wire (0 始まり) へ正規化されたのに fixture が追随していない。
   **「どちらも off-by-one」で丸めると向きが逆であることが消える**ので、行ごとに向きを記録する。
-- **diagnostics refresh 3 本**: `..._body_document_sequence_spec_params_publishes_{,type_,lint_}diagnostics_refresh`
-  は `Content-Length` が 250/259/256 (実測) 対 167/164/168 (期待) で、
-  位置だけでなく **frame の形そのものが違う**。位置の問題なのか `I-52` facet B と同型の
-  形式ドリフトなのかは未判別。**推測で分類しない。**
-- **修正方針**: 未決。`I-52` facet A と同じく「実装ではなく fixture を直す」が既定線だが、
-  向きが逆の 2 群を同じ理由で直せるかは検算するまで決めない。
+- **diagnostics 系 9 本の判別** (2026-08-23、実測ログの左右を読んで確定):
+  **位置の問題ではなく `I-52` facet B と同じ形式ドリフトである。** 期待値が
+  2026-04-03 時点の縮約形 (型タグ) のまま止まっており、実出力は LSP 準拠の
+  Diagnostic object になっている。
+
+  ```
+  left  (実測): {"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},
+                 "severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}
+  right (期待): {"source":1,"severity":1,"rule":1001,"line":1,"col":1,"messageHash":0}
+  ```
+
+  対応は取れている — `rule:1001` は `code:"LS0101"`、`source:1` は `"lsharp"`、
+  `line:1,col:1` (1 始まり) は `start {line:0,character:0}` (0 始まり) に対応する。
+  `end` は縮約形が持っていなかった情報である。
+  **現行契約が object 形であることは緑の test が押さえている** —
+  `..._lsp_stdio_didopen_publishes_standard_parse_diagnostic` (`:18757`) は
+  `{"range":..,"severity":1,"code":"LS0101","source":"lsharp","message":..}` を
+  逐語で期待して pass している。
+  内訳は inline 3 本 (`..._body_document_sequence_spec_params_publishes_*_refresh`) と
+  snapshot 6 本 (`..._document_sequence_*_diagnostics_refresh_snapshot`)。
+  実測で左右を確認したのは inline / snapshot 各 1 本で、**残り 7 本は同型の差分として扱う**
+  (転記時に 1 本ずつ左右を突き合わせる)。引き取り先は `LSP-SNAPSHOT-SHAPE-02`。
+- **修正方針**: 位置の 7 本は fixture を直す。ただし**向きが逆の 2 群を同じ理由では直せない**ので、
+  行ごとにどちらが正本かを決める。diagnostics 9 本は形式ドリフトとして転記する。
 - **関連**: `I-52` (request 側の同型問題、facet A で resolved)、`I-53` (実測の出所)。
   引き取り先は `TODO.md` の `LSP-COL-CONV-04`。
 

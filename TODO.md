@@ -2998,19 +2998,21 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   転記手順は `completion.json` で確立済み (`ISSUES.md` の `I-52` facet B)。
 
 
-- [ ] `LSP-SNAPSHOT-SHAPE-02` 形式ドリフトだけの snapshot 残り 2 本を object 形へ転記する —
+- [ ] `LSP-SNAPSHOT-SHAPE-02` diagnostics の縮約形 fixture 9 本を object 形へ転記する —
   Issue `I-53` の B 系統。`assert_lsp_stdio_snapshot` 内で落ちる 31 本のうち、
-  **転記だけで緑になるのは 3 本しかない**ことが lane ログの左右比較で分かった
-  (`completion_schema_snapshot` は 2026-08-23 に解決済み)。残るのは
-  `initialize_schema_snapshot` と `initialize_shutdown_schema_snapshot` で、
-  `[1,1,1,1,1,1,1]` を `capabilities` object へ直す。同じ inline 期待値が
-  `..._lsp_stdio_wire_repeated_sequence` (`selfhost_cli_core.rs:6245`) にもある。
+  **転記だけで緑になるのは 3 本しかない**ことが lane ログの左右比較で分かった。
+  completion / initialize 系は 2026-08-23 に解決済みで、残るのは diagnostics 系だけである。
   転記の元データは `/Users/biwakonbu/github/tmp/lsp-stdio-lane-red/lsp_stdio_full_red.log`
   の左辺で、再 run は不要 (再取得には 72 分かかる)。
-  受入条件: 上記 3 本が緑になること。
-  **含めない範囲**: 残り 28 本 — 値まで違うので転記対象ではない。
-  位置起因の 20 本は `LSP-NAV-DEGRADE-01` / `LSP-COL-CONV-03`、
-  diagnostics の内容差 8 本は `LSP-COL-CONV-04` の判別が先。
+  加えて **diagnostics 系 9 本**も同じ形式ドリフトであることが 2026-08-23 に確定した
+  (`I-54`)。期待値が型タグの縮約形 (`{"source":1,"rule":1001,"line":1,"col":1,...}`) のままで、
+  実出力は LSP 準拠の Diagnostic object。inline 3 本
+  (`..._body_document_sequence_spec_params_publishes_*_refresh`) と snapshot 6 本
+  (`..._document_sequence_*_diagnostics_refresh_snapshot`) が該当する。
+  受入条件: diagnostics 9 本が緑になること。
+  転記は 1 本ずつ左右を突き合わせてから行う (実測で確認済みなのは各系統 1 本)。
+  **含めない範囲**: 位置起因の 20 本 (`LSP-NAV-DEGRADE-01` / `LSP-COL-CONV-03`)。
+  位置と形式が重なる `filesystem_document_sequence_*` 2 本 — `I-55` の解決が先。
 
 - [ ] `LSP-COL-CONV-04` LSP response 側の位置 fixture を wire 規約へ揃える — Issue `I-54`。
   `formatting` 5 本は期待が 1 始まりのまま陳腐化し、`body_hover` /
@@ -3018,9 +3020,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **向きが逆なので同じ理由では直せない。** どちらが正本かを行ごとに決める。
   受入条件: 上記 7 本が緑になり、`I-54` の表の各行に「実装を直したか fixture を直したか」が
   理由つきで記録されていること。
-  **含めない範囲**: diagnostics refresh 3 本 — 位置ではなく frame の形が違う疑いがあり、
-  形式判別が先。判別結果によっては `LSP-SNAPSHOT-SHAPE-02` へ移す。
-  nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
+  **含めない範囲**: diagnostics refresh 系 — 形式ドリフトと判別が付いたので
+  `LSP-SNAPSHOT-SHAPE-02` へ移した。nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
 
 - [ ] `LSP-NAV-DEGRADE-01` nav 系 22 本の fixture を wire 規約へ直す — Issue `I-55`。
   原因の判別は完了している (2026-08-23): 実装退行ではなく、request 側も response 側も
