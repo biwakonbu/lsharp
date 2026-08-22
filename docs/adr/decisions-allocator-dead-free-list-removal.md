@@ -79,19 +79,23 @@ main では dead path なので取り込みを却下していた (`I-35` の起�
 |---|---|
 | `cargo test -p lsharp-wasm --lib` | 138 passed / 0 failed / warning 0 |
 | `cargo test -p lsharp-wasm --test e2e runtime_allocator` | 96 passed / 0 failed / 4 ignored |
-| `cargo test -p lsharp-wasm --test e2e -- gc runtime_ strings_patterns` | **未採取** (下記) |
+| `cargo test -p lsharp-wasm --test e2e -- gc runtime_ strings_patterns` | 282 passed / 11 failed / 33 ignored / 914.67s。**11 件はすべて baseline 既知** |
 | `cargo clippy -p lsharp-wasm --lib -- -D warnings` | exit 0 |
 | `allocator.rs` の rustfmt | diff なし |
 
-より広い e2e subset (326 test) は **3 回とも採取に失敗した**。ログが途中で切れる、
-または exit 0 で空になる。この host には `timeout` も `setsid` も無く、
-長時間 job を確実に切り離す手段が無いのが原因である。4 回目を
-`nohup` + ファイル出力で流しており、`test result` 行が採れたら追記する。
-**採れなかった場合はその事実を書き、値を推測で埋めない。**
+より広い e2e subset は **3 回失敗したのち 4 回目で採れた** (2026-08-22)。
+1〜3 回目はログが途中で切れる / exit 0 で空になる、で終わった。この host には
+`timeout` も `setsid` も無く、長時間 job を確実に切り離す手段が無いのが原因である。
+4 回目は `nohup ... & disown` でファイルへ落として 914.67s で完走した。
+
+failed 11 件の test 名を
+`docs/development/validation/workspace-expected-failures.txt` と突き合わせ、
+**baseline に無いものが 0 件**であることを確認した。新規 regression は無い。
 
 削除の妥当性はこの subset に依存していない。削除した区間が唯一の参照元であることは
 `unused variable` → `field is never read` の連鎖が機械的に示しており、
 guard test と `--lib` 138 件 / `runtime_allocator` 96 件が実行経路を覆っている。
+
 
 ### 満たしていない受入条件
 
