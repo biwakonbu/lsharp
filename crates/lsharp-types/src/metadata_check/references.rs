@@ -104,10 +104,81 @@ fn collect_var_references_inner(expr: &Expr, refs: &mut Vec<(String, Span)>) {
                 }
             }
         }
-        // P10-1: Quote/Unquote/UnquoteSplice -- 内部式の変数参照を再帰的に収集
-        Expr::Quote(_, inner) | Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => {
+        // P10-1 / `I-43`: quote の内側はデータであって参照ではない。
+        // `~` / `~@` で戻した部分だけが本物の参照なので、そこだけ拾う。
+        Expr::Quote(_, inner) => {
+            collect_unquoted_references(inner, &mut |expr| {
+                collect_var_references_inner(expr, refs)
+            });
+        }
+        Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => {
             collect_var_references_inner(inner, refs);
         }
+    }
+}
+
+/// quote された式の中から `~` / `~@` で戻された部分式だけを取り出して `visit` へ渡す。
+///
+/// quote は入れ子になりうるが、`Expr::Quote` を跨いだ内側の unquote は
+/// 外側の quote には戻らない。ここでは 1 段だけを扱い、入れ子の quote は素通しする。
+fn collect_unquoted_references(expr: &Expr, visit: &mut impl FnMut(&Expr)) {
+    match expr {
+        Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => visit(inner),
+        Expr::Quote(_, _) => {}
+        Expr::App(_, func, args) => {
+            collect_unquoted_references(func, visit);
+            for arg in args {
+                collect_unquoted_references(arg, visit);
+            }
+        }
+        Expr::If(_, cond, then_branch, else_branch) => {
+            collect_unquoted_references(cond, visit);
+            collect_unquoted_references(then_branch, visit);
+            collect_unquoted_references(else_branch, visit);
+        }
+        Expr::Do(_, exprs) => {
+            for inner in exprs {
+                collect_unquoted_references(inner, visit);
+            }
+        }
+        Expr::Ann(_, inner, _) | Expr::FieldAccess(_, inner, _) => {
+            collect_unquoted_references(inner, visit);
+        }
+        Expr::Let(_, bindings, body) => {
+            for (_, value) in bindings {
+                collect_unquoted_references(value, visit);
+            }
+            collect_unquoted_references(body, visit);
+        }
+        Expr::Lambda(_, _, body) => collect_unquoted_references(body, visit),
+        Expr::Match(_, scrutinee, arms) => {
+            collect_unquoted_references(scrutinee, visit);
+            for arm in arms {
+                collect_unquoted_references(&arm.body, visit);
+            }
+        }
+        Expr::RecordLit(_, _, fields) => {
+            for (_, value) in fields {
+                collect_unquoted_references(value, visit);
+            }
+        }
+        Expr::RecordUpdate(_, base, fields) => {
+            collect_unquoted_references(base, visit);
+            for (_, value) in fields {
+                collect_unquoted_references(value, visit);
+            }
+        }
+        Expr::Computation(_, _, steps) => {
+            for step in steps {
+                match step {
+                    ComputationStep::LetBang(_, _, inner)
+                    | ComputationStep::DoBang(_, inner)
+                    | ComputationStep::Return(_, inner)
+                    | ComputationStep::Expr(inner) => collect_unquoted_references(inner, visit),
+                }
+            }
+        }
+        Expr::Var(_, _) | Expr::Lit(_, _) => {}
     }
 }
 
@@ -206,7 +277,15 @@ fn collect_scoped_var_references_inner(
             }
             scope.truncate(scope_start);
         }
-        Expr::Quote(_, inner) | Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => {
+        // `I-43`: quote の内側はデータ。`~` / `~@` で戻した部分だけが参照。
+        Expr::Quote(_, inner) => {
+            let mut quoted = Vec::new();
+            collect_unquoted_references(inner, &mut |expr| quoted.push(expr.clone()));
+            for expr in &quoted {
+                collect_scoped_var_references_inner(expr, scope, refs);
+            }
+        }
+        Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => {
             collect_scoped_var_references_inner(inner, scope, refs);
         }
     }

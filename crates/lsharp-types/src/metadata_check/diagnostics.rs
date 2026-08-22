@@ -61,6 +61,10 @@ pub(super) fn check_defn_metadata(
     if let Some(ref doc) = metadata.doc {
         let doc_idents = extract_doc_identifiers(doc);
         for ident in &doc_idents {
+            // `I-43`: builtin を warning にしない。`:invariant` / `:example` と同じ扱いに揃える。
+            if is_builtin(ident) {
+                continue;
+            }
             // 引数名、関数名、型名のいずれにも存在しない場合は警告
             if !param_names.contains(&ident.as_str()) && !all_names.contains(ident) {
                 diagnostics.push(MetadataDiagnostic {

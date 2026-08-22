@@ -174,7 +174,7 @@
 | [I-40](#i-40) | DocTools の metadata 契約が parser の出力 slot 数と食い違う | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-41](#i-41) | compile cache の hit/miss を集計する手段が無い | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | resolved | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
-| [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | resolved | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | resolved | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-45](#i-45) | selfhost の canonical `:case` preflight が 0 引数 `defn` の呼び出しを型エラーにする | 中 | resolved | [0 引数 defn の型](docs/adr/decisions-selfhost-zero-arity-defn-type.md) |
 | [I-46](#i-46) | 前方参照された呼び出しは引数型も arity も検査されていない | 高 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
@@ -190,6 +190,7 @@
 | [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | resolved | -- |
 | [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | open | -- |
 | [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | open | -- |
+| [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2288,7 +2289,7 @@
 <a id="i-43"></a>
 ### I-43: `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **影響度**: 中 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
 - **内容**: `crates/lsharp-types/src/metadata_check.rs:64` が組み立てる `all_names` は
   top-level の `Defn` / `TypeDef` / `RecordDef` / `TypeAlias` / `TraitDef` の**宣言名だけ**で、
   ADT の variant 名・trait の method 名・quote されたシンボルを含まない。
@@ -2320,8 +2321,28 @@
   `420b2eaa` (macro / builder symbol) / `971840ac` (constrained type member)。
   ただし branch 側はこれらを `check_metadata_from_contract_inventory` という**別の入口**へ
   実装しており、main の `check_metadata` へはそのままでは当たらない。
-  `CONTRACT-SCOPE-01` (`TODO.md`) が引き取る。
+  `CONTRACT-SCOPE-01` が引き取り、2026-08-23 に完了して `TODO.md` からは削除した。
   判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+- **解決** (2026-08-23): branch の別入口 (`check_metadata_from_contract_inventory`) は使わず、
+  main の `check_metadata` へ直接 3 点を当てた。
+
+  | 症状 | 直した場所 |
+  |---|---|
+  | ADT variant / trait method が未定義扱い | `metadata_check.rs` に `collect_nested_names` を足し、`TypeDef` の variant 名と `TraitDef` の method 名を `all_names` へ入れた。`private` で包まれていても辿る |
+  | quote されたシンボルが参照扱い | `references.rs` に `collect_unquoted_references` を足し、`Expr::Quote` の内側は `~` / `~@` で戻された部分式だけを参照として拾うようにした。入れ子の quote は素通しする |
+  | builtin の `:doc` バッククォート参照が Warning | `diagnostics.rs` の doc 検査に `is_builtin` の skip を足し、`:invariant` / `:example` と扱いを揃えた |
+
+  test は `crates/lsharp-types/src/metadata_check/diagnostics_tests.rs` に 11 件
+  (control 1 / 受入 6 / negative control 4)。crate 全体は 255 passed / 0 failed、
+  `cargo clippy -p lsharp-types --all-targets` は clean。
+  非空虚性は 3 点をそれぞれ破壊して確認した — doc の skip を外すと 1 件、
+  `collect_nested_names` を空にすると 3 件、quote の内側を全部拾うと 3 件が落ちる。
+- **証拠表の訂正** (2026-08-23): 上表の `:invariant (= c Red)` は識別子スコープを直しても
+  0 件にはならない。`=` が Int 比較なので `(= c Red)` は**型推論**で落ちる。
+  これは `I-43` の穴ではないので、test 側の fixture を
+  `(= (code Red) 0)` (variant を関数へ渡す形) へ改めた。
+  同様に `:invariant (= 'sym 'sym)` も識別子エラー 2 件は消えるが、
+  quote を扱えない型推論のエラーが 1 件残る。これは `I-59` として別に立てた。
 
 <a id="i-44"></a>
 ### I-44: 未定義の computation builder が型検査を通る
@@ -3540,6 +3561,26 @@
 - **これは `LINT-SPAN-01` を止める理由にはならない**。`0:0..0:0` は実利用者に見える不具合で、
   pin の副作用のほうを保存するのは本末転倒である。**pin の再建を別項目へ分けて追跡する**
   ことでカバレッジの黙殺を防ぐ。追跡は `LINT-DEDUP-PIN-01`。
+
+<a id="i-59"></a>
+### I-59: `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`CONTRACT-SCOPE-01` の実装中)
+- **内容**: `I-43` で `:invariant` の識別子スコープ検査から quote されたシンボルを外したが、
+  その後段に走る型推論 (`check_legacy_invariant_types`) が quote を扱えず、
+  `(defn caller [x] :invariant (= 'sym 'sym) x)` は
+  `[E0001] 未定義の変数 (undefined): quote/unquote はマクロ展開後に使用できません` を
+  **1 件出したままになる**。`:example` 側は型推論を走らせないので 0 件で通る。
+- **根拠**: 2026-08-23、`crates/lsharp-types/src/metadata_check/diagnostics_tests.rs` の
+  `contract_scope_quoted_symbol_in_invariant_is_accepted` で実測。
+  この test は「識別子スコープ由来のエラーが残らないこと」だけを assert しており、
+  型推論由来の 1 件は意図的に許している。
+- **なぜ低いか**: `:invariant` に quote を書く実プログラムを確認できていない。
+  診断メッセージ自体は正確で、黙って通るわけではない。
+- **判断が要る点**: 直し方が 2 つあり、どちらも contract の意味論に関わる。
+  (a) `:invariant` の型推論を quote 対応させる。(b) `:invariant` は `:example` と同じく
+  型推論の対象外とする。**どちらが正しいかは本 issue では決めない。**
+- **関連**: `I-43` の解決節、`CONTRACT-INVARIANT-QUOTE-01` (`TODO.md`)。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

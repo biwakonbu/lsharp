@@ -2913,18 +2913,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
   eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
-- [ ] `CONTRACT-SCOPE-01` `:example` / `:invariant` / `:doc` の識別子検査の false positive を潰す — Issue `I-43`。
-  `metadata_check.rs:64` の `all_names` が top-level 宣言名しか持たず、ADT variant 名 /
-  trait method 名 / quote されたシンボル / builtin を知らないため、正当なプログラムが
-  **Error** で弾かれる (`:doc` は Warning)。
-  受入条件: ADT constructor / trait method / quote / builtin doc 参照の 4 形で診断 0 件になり、
-  かつ本当に未定義の識別子は従来どおり Error のままであること (後者の回帰 test も要る)。
-  参照実装は `codex/v0.2-ec-m1-02-integration` の `e4fab504` / `95bcfc53` / `5da4d83c` /
-  `3ac2227a` / `420b2eaa` / `971840ac`。ただし branch はこれを
-  `check_metadata_from_contract_inventory` という別入口へ実装しており、
-  main の `check_metadata` へはそのままでは当たらない。
-  **含めない範囲**: `(module ...)` 本体の contract 検査 (main はそもそも module 本体へ降りない。
-  `I-39` で compile 経路からは reject 済み)、nested owner の qualified 名解決。
+- [ ] `CONTRACT-INVARIANT-QUOTE-01` `:invariant` に quote を書いたときの扱いを決める — Issue `I-59`。
+  識別子スコープ検査は `CONTRACT-SCOPE-01` で直ったが、後段の型推論
+  (`check_legacy_invariant_types`) が quote を扱えず
+  `[E0001] quote/unquote はマクロ展開後に使用できません` が 1 件残る。
+  受入条件: **先に判断を ADR へ書く**こと。(a) 型推論を quote 対応させる /
+  (b) `:invariant` を `:example` と同じく型推論の対象外にする、のどちらを採り、
+  もう一方をなぜ却下したかを書く。そのうえで
+  `contract_scope_quoted_symbol_in_invariant_is_accepted` の緩い assert を
+  決めた側の厳密な assert へ差し替える。
+  **含めない範囲**: quote/unquote のマクロ展開そのもの、`:example` 側 (既に 0 件で通る)。
 
 - [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
   `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —

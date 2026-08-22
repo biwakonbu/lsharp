@@ -56,31 +56,54 @@ impl std::fmt::Display for MetadataDiagnostic {
     }
 }
 
+/// 宣言が内側に持つ「contract 式から名前で呼ばれうる」名前を集める。
+///
+/// `I-43`: ADT の variant はコンストラクタとして、trait の method は関数として
+/// `:example` / `:invariant` に現れる。`private` で包まれていても同じ。
+fn collect_nested_names(decl: &Decl) -> Vec<String> {
+    match decl {
+        Decl::TypeDef { variants, .. } => variants.iter().map(|v| v.name.clone()).collect(),
+        Decl::TraitDef { methods, .. } => methods.iter().map(|m| m.name.clone()).collect(),
+        Decl::Private { inner, .. } => collect_nested_names(inner),
+        _ => Vec::new(),
+    }
+}
+
 /// プログラム全体のメタデータを検証
 pub fn check_metadata(program: &Program) -> Vec<MetadataDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // 全関数名を収集（:see-also の参照先チェック用）
-    let all_names: Vec<String> = program
+    //
+    // `I-43`: 宣言名だけでは足りない。ADT の variant と trait の method は
+    // contract 式から名前で呼ばれるので、ここに入れないと正当な参照が Error になる。
+    let mut all_names: Vec<String> = program
         .decls
         .iter()
-        .filter_map(|d| match d {
-            Decl::Defn { name, .. } => Some(name.clone()),
-            Decl::TypeDef { name, .. } => Some(name.clone()),
-            Decl::RecordDef { name, .. } => Some(name.clone()),
-            Decl::TypeAlias { name, .. } => Some(name.clone()),
-            Decl::TraitDef { name, .. } => Some(name.clone()),
-            Decl::Private { inner, .. } => match inner.as_ref() {
-                Decl::Defn { name, .. }
-                | Decl::TypeDef { name, .. }
-                | Decl::RecordDef { name, .. }
-                | Decl::TypeAlias { name, .. }
-                | Decl::TraitDef { name, .. } => Some(name.clone()),
-                _ => None,
-            },
-            _ => None,
-        })
+        .flat_map(collect_nested_names)
         .collect();
+    all_names.extend(
+        program
+            .decls
+            .iter()
+            .filter_map(|d| match d {
+                Decl::Defn { name, .. } => Some(name.clone()),
+                Decl::TypeDef { name, .. } => Some(name.clone()),
+                Decl::RecordDef { name, .. } => Some(name.clone()),
+                Decl::TypeAlias { name, .. } => Some(name.clone()),
+                Decl::TraitDef { name, .. } => Some(name.clone()),
+                Decl::Private { inner, .. } => match inner.as_ref() {
+                    Decl::Defn { name, .. }
+                    | Decl::TypeDef { name, .. }
+                    | Decl::RecordDef { name, .. }
+                    | Decl::TypeAlias { name, .. }
+                    | Decl::TraitDef { name, .. } => Some(name.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+    );
 
     for decl in &program.decls {
         // Private 内の defn も展開して検証
