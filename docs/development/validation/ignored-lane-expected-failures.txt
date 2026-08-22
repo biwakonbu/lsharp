@@ -10,6 +10,13 @@
 #
 # ---- 測定 ----
 #   対象: crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs の `--ignored` lane
+#
+#   **この台帳は workspace の `#[ignore]` を網羅していない。** 上記 1 binary の lane だけを
+#   測っている。範囲外で意図的に `#[ignore]` にしてある既知 FAIL:
+#     - `lsharp-types::forward_reference_generalization` の検出側 5 件
+#       (`I-46` / `I-48`。修正は用意済みだが selfhost 側の理由で当てられない)
+#   これらは非 ignored lane の baseline にも本台帳にも現れないので、
+#   「どちらの表にも無い = 落ちていない」と読まないこと。
 #   起動: target/debug/deps/e2e-<hash> --ignored --nocapture
 #         (os.setsid() で切り離す。5 時間かかりハーネス側の停止を受けるため)
 #

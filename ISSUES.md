@@ -177,8 +177,9 @@
 | [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | resolved | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-45](#i-45) | canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
-| [I-46](#i-46) | 前方参照された関数の下で呼び出し側の結果型が汎化され、宣言順が判定を変える | 高 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
+| [I-46](#i-46) | 前方参照された呼び出しは引数型も arity も検査されていない | 高 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | open | -- |
+| [I-48](#i-48) | selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている | 高 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2320,8 +2321,9 @@
   e2e は `core_language_semantics::test_e2e_computation` と `..._let_bang_typecheck` が ok。
   `cargo clippy -p lsharp-types --all-targets` は警告なし。
 - **範囲外を 1 件起票した**: 前方参照下の結果型は直っていない (`I-46`)。
-  後の実測で **computation builder 固有ではなく plain な `defn` で再現する**ことが分かり、
-  `I-46` は一般の前方参照の問題として書き直した。別 issue には分けていない。
+  後の実測で **computation builder 固有ではなく plain な `defn` で再現し**、さらに
+  **前方参照された呼び出しは引数型も arity も検査されていない**ことが分かった。
+  `I-46` は同じ ID のまま範囲を広げてある。selfhost がこの穴に依存している件は `I-48`。
 
 <a id="i-45"></a>
 ### I-45: canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない
@@ -2355,24 +2357,60 @@
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) の群 3。
 
 <a id="i-46"></a>
-### I-46: 前方参照された関数の下で呼び出し側の結果型が汎化され、宣言順が判定を変える
+### I-46: 前方参照された呼び出しは引数型も arity も検査されていない
 
 - **影響度**: 高 / **状態**: open / **発見**: 2026-08-22 (`I-44` の実装中。当初は
-  computation builder 固有と書いたが、後述の実測で **plain な `defn` で再現**した)
-- **内容**: 呼び出し先が呼び出し元より**後ろ**に定義されていると、呼び出し元の結果型は
-  束縛されない型変数のまま generalize され、`main : forall a. () -> a` になる。
-  computation expression は一切関与しない。**宣言順だけが違う同じ program が、
+  computation builder 固有と書き、次に「呼び出し側の結果型が汎化される」と書いたが、
+  実測でどちらも症状の一部でしかないことが分かったので、同じ ID のまま範囲を広げた)
+- **内容**: 呼び出し先が呼び出し元より**後ろ**に定義されていると、その呼び出しは
+  **一切型検査されない**。引数の型が違っても、引数の**個数**が違っても通る。
+  呼び出し元の結果型が `forall a. () -> a` に汎化されるのは、この穴の帰結の一つである。
+  computation expression は関与しない。**宣言順だけが違う同じ program が、
   片方は型エラーで落ち、片方は通る。**
 
-  現れ方は 2 つある。方向が逆なので、片方だけを直しても他方は残る。
+  現れ方は 2 つあり、方向が逆なので片方を直しても他方は残る。
 
   | 現れ方 | 症状 | 危険度 |
   |---|---|---|
-  | 健全性 (unsoundness) | 誤用が**通ってしまう** (`(string-length (main))` が `Int` を受ける) | 高 |
+  | 健全性 (unsoundness) | 誤用が**通ってしまう** (引数型・arity・呼び出し元の結果型) | 高 |
   | 完全性 (incompleteness) | 正しい program が**誤って落ちる** (前方参照した多相関数を 2 型で使えない) | 中 |
 
-- **根拠 (健全性)**: 2026-08-22 実測。`Infer::infer_program` の戻り値を直接読んだもの。
-  3 本の違いは `(defn main ...)` を callee の defn より前に置くか後ろに置くかだけである。
+- **根拠 (健全性 / 呼び出しが検査されない)**: 2026-08-22 実測。`Infer::infer_program` の
+  戻り値を直接読み、後述の修正パッチを当てた版と並べたもの。
+
+  ```
+  --- 修正なし (HEAD) ---
+  callsite-forward: Ok ["main:Fun([], Var(26))", "helper:Fun([Con(\"String\")], Con(\"Int\"))"]
+  callsite-ordered: Err Mismatch { expected: Con("String"), found: Con("Int"),
+                                   span: 83..93, error_code: ArgMismatch }
+  arity-forward:    Ok ["main:Fun([], Var(26))", "helper:Fun([Var(28)], Var(28))"]
+
+  --- 修正あり ---
+  callsite-forward: Err Mismatch { expected: Con("Int"), found: Con("String"),
+                                   span: 59..94, error_code: General }
+  callsite-ordered: Err Mismatch { expected: Con("String"), found: Con("Int"),
+                                   span: 83..93, error_code: ArgMismatch }
+  arity-forward:    Err Mismatch { expected: Fun([Con("Int"), Con("Int")], Var(26)),
+                                   found: Fun([Var(28)], Var(28)),
+                                   span: 61..80, error_code: General }
+  ```
+
+  ```lisp
+  ;; callsite-forward — Int を String 引数へ渡しているのに通る
+  (defn main [] (helper 1))
+  (defn helper [x] (string-length x))
+
+  ;; arity-forward — 1 引数の関数を 2 引数で呼んでいるのに通る
+  (defn main [] (helper 1 2))
+  (defn helper [x] x)
+  ```
+
+  **arity 不一致が codegen まで無検査で届く。** 呼び出し順を入れ替えれば
+  `callsite-ordered` のとおり `ArgMismatch` で落ちるので、検査経路そのものは存在する。
+  前方参照の場合だけそこに到達しない。
+
+- **根拠 (健全性 / 結果型の汎化)**: 同日実測。上の穴の帰結として、
+  caller の結果型が束縛されないまま量化される。
 
   ```
   plain-forward: Ok ["main:Fun([], Var(27))", "helper:Fun([Var(29)], Var(29))",
@@ -2417,25 +2455,69 @@
 
 - **原因**: `infer_decl_functions` のパス 1 は全 defn を placeholder 型変数で仮登録し、
   パス 2 が宣言順に本推論して**その場で generalize する** (`infer/decl.rs:298-333`)。
-  前方参照された callee はパス 2 の時点でまだ placeholder なので、
-  `unify(placeholder, Fun([Int], ret))` は placeholder 側を束縛するだけで `ret` は自由に残る。
-  `generalize` は `env_for_gen` から未推論の pending 名を除くため (`decl.rs:325-328`)、
-  `ret` は「env に現れない自由変数」と判定されて量化されてしまう。
-  callee の本推論が後から `ret` を確定させても、caller の `TypeScheme` は既に確定済みで戻らない。
-- **修復の手掛かり**: 束縛自体は失われていない。`unify` は全ての束縛を
-  `self.global_subst` へ累積し (`infer/unify.rs:115`)、これは `infer_program` の間
-  一度も reset されない (`decl.rs:128` の制約チェックが同じものを使う)。
-  したがって**健全性側は事後 pass で閉じられる可能性がある** — ループ後に各 scheme へ
-  最終代入を適用し、束縛済みになった変数を `vars` から落とす。
-  完全性側は宣言順に依存しない generalize (依存グラフの SCC 順) が要るので、これでは閉じない。
+  前方参照された呼び出しは `env` の placeholder を `Fun([Int], r)` の形へ束縛するが、
+  パス 2 は callee 本体を推論したあと**生の `placeholder_ty` の方**を unify 相手に使う
+  (`decl.rs:317` の `placeholder_ty.apply_subst(&subst)`)。呼び出し側が作った形は
+  `env` 側にしか無いので捨てられ、**呼び出し側の要求と callee の実型は一度も突き合わされない**。
+  さらに `generalize` は `env_for_gen` から未推論の pending 名を除くため
+  (`decl.rs:325-328`)、`r` は「env に現れない自由変数」と判定されて量化される。
+- **事後 pass 仮説は実測で否定された**: 当初は「束縛は `self.global_subst`
+  (`infer/unify.rs:115`) に累積されているので、ループ後に各 scheme へ最終代入を適用すれば
+  閉じられる」と書いた。**これは成立しない。** `global_subst` は `compose` ではなく生の
+  `insert` で積むため同じ変数の再束縛で上書きされ、さらに誤用の検査 (`misuse`) は
+  ループの**途中**で、既に量化済みの scheme に対して走るので、事後 pass では届かない。
+  実際に閉じたのは下記のパッチ (unify 相手を `env` 側の登録型に変える + pending 名の
+  除外を「裸の型変数のときだけ」に絞る) の 2 箇所の同時変更で、
+  **片方だけでは 3 本の RED のうち 3 本とも RED のまま**である (2026-08-22 bisect)。
+
+  ```diff
+  --- a/crates/lsharp-types/src/infer/decl.rs
+  +++ b/crates/lsharp-types/src/infer/decl.rs
+  -            let resolved_placeholder = placeholder_ty.apply_subst(&subst);
+  +            let registered_ty = env
+  +                .get(&qualified_name)
+  +                .filter(|scheme| scheme.vars.is_empty())
+  +                .map(|scheme| scheme.ty.clone())
+  +                .unwrap_or_else(|| placeholder_ty.clone());
+  +            let resolved_placeholder = registered_ty.apply_subst(&subst);
+   @@
+               for pending_name in pending_names.iter().skip(index) {
+  -                env_for_gen.remove(pending_name);
+  +                let is_bare_placeholder = matches!(
+  +                    env_for_gen.get(pending_name).map(|scheme| &scheme.ty),
+  +                    None | Some(Type::Var(_))
+  +                );
+  +                if is_bare_placeholder {
+  +                    env_for_gen.remove(pending_name);
+  +                }
+               }
+  ```
+
+  完全性側はこれでは閉じない。宣言順に依存しない generalize (依存グラフの SCC 順) が要る。
+- **修正を当てられない理由**: 上のパッチは新規 test 6 件を GREEN にするが、
+  **selfhost のソースが同じ穴に依存している**ため当てられない。2026-08-22 実測で、
+  推論に失敗する selfhost の defn が **0 件 → 262 件**へ増える
+  (`Mismatch` 177 / `UndefinedVar` 89、error code は `ArgMismatch` 170 / `IfBranch` 6 /
+  `General` 1。`UndefinedVar` の一部は計測 harness が失敗 defn を `continue` で
+  読み飛ばす副作用の可能性があり、内訳より桁が信号である)。詳細は `I-48`。
+- **selfhost 側の checker も同じ形である**: `selfhost/src/Types/TypeInfer.ls:485` は
+  `(unify placeholder body-ty annotated-subst)` と生の placeholder を使い、
+  `:912` の `typeinfer-pending-env-vars-loop` も `placeholders` map の生の値を読む。
+  **Rust 側だけを直すと 2 つの checker が食い違う。** 修正は両側同時に要る。
 - **発見経路**: computation builder の member を前方参照した fixture
   (`(computation-builder identity identity-bind identity-return)` の member を
   `(defn main ...)` より後ろに置く) で最初に観測した。computation expression 固有ではないので、
   そちらは instance として扱う。
 - **`I-44` の修正で入った欠陥ではない**: 修正前の RED でも同じ `Fun([], Var(28))` が出ていた。
   `I-44` は「誤って incomplete 扱いにしないこと」までを閉じ、結果型は範囲外として残した。
+- **契約の保存先**: `crates/lsharp-types/tests/forward_reference_generalization.rs`。
+  検出側 5 件 (引数型 / arity / 結果型の汎化 / 0 引数 callee / computation builder) は
+  `#[ignore]` で残し、退行防止側 3 件 (宣言順が正しい場合 / 相互再帰 / 正しい前方参照) は
+  live で回る。`#[ignore]` lane の台帳
+  (`docs/development/validation/ignored-lane-expected-failures.txt`) は `lsharp-wasm` の
+  stage chain e2e だけを測っているので、この 5 件はどちらの baseline にも現れない。
 - **関連**: `INFER-FORWARD-GEN-01` (健全性) と `INFER-FORWARD-POLY-01` (完全性) が
-  `TODO.md` で引き取る。発見経路の判断は
+  `TODO.md` で引き取る。selfhost 側の依存は `I-48`。発見経路の判断は
   [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md)。
 
 <a id="i-47"></a>
@@ -2465,6 +2547,59 @@
 - **CI の扱いは決めていない**: `I-31` / `I-34` と同じく、gate を緑にすることと
   CI で強制することは別の判断である。
 - **関連**: `I-34` / `I-31`。`FMT-WORKSPACE-01` (`TODO.md`) が引き取る。
+
+<a id="i-48"></a>
+### I-48: selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている
+
+- **影響度**: 高 / **状態**: open / **発見**: 2026-08-22 (`I-46` の修正を当てた際の実測)
+- **内容**: selfhost は複数の値をまとめて返すのに **`Vector` を異種タプルとして**使う。
+  `push-int-vector` と `push-object-vector` はどちらも `forall a. Vector a -> a -> Vector a`
+  なので、`(Int, Int, Map, Int)` のような組を作ると同じ `a` に `Int` と `Map` が来る。
+  **HM では型が付かない。** 現在 selfhost が型検査を通っているのは、
+  これらの構築関数が呼び出し元より後ろに定義されていて `I-46` の穴で検査されないからである。
+  つまり `I-46` を直すと selfhost が自分自身をコンパイルできなくなる。
+- **根拠**: 2026-08-22 実測。`I-46` の修正パッチを当て、selfhost 全ソースを推論して
+  失敗した defn を一意名で数えた。
+
+  | | 修正なし (HEAD) | 修正あり |
+  |---|---|---|
+  | 推論に失敗する selfhost の defn (一意名) | **0** | **262** |
+
+  内訳は `Mismatch` 177 / `UndefinedVar` 89、error code は `ArgMismatch` 170 /
+  `IfBranch` 6 / `General` 1。`UndefinedVar` の一部は計測 harness が失敗した defn を
+  `continue` で読み飛ばす副作用の可能性があり、**内訳ではなく桁が信号**である。
+
+  代表例 2 件。どちらも異種 vector を組み立てている。
+
+  ```lisp
+  ;; selfhost/src/Backend/Wasm/CompilerBase.ls:498 — (Int, Int, Map, Int) を作る
+  (defn make-bind-node-params-state [done next-param-idx next-env next-local-idx]
+    ... (push-int-vector (push-object-vector (push-int-vector
+          (push-int-vector (vector-new 4) done) next-param-idx) next-env) next-local-idx) ...)
+  ;; → Mismatch { expected: Con("Map"), found: Con("Vector"), span: 17904..17964 }
+
+  ;; selfhost/src/Syntax/Parser.ls:1142 — (String, String, Vector, String, Int, Vector) を作る
+  (defn make-empty-defn-metadata-v3 []
+    ... (vector-push-quad-rooted-v3 (vector-new 4) "" "" params0 "")
+        (vector-push-single-rooted-v3 meta5 0) ...)
+  ;; → Mismatch { expected: Con("Int"), found: Con("String"), span: 37534..37594 }
+  ```
+
+- **観測できる実害**: `lsharp-ir` の
+  `incremental_analysis_tests::test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds`
+  が修正パッチ下で
+  `selfhost/src/Backend/Wasm/CompilerBase.ls: [LS1004] [E0004] 型の不一致: expected Map, found Vector`
+  で落ちる。HEAD では通る。
+- **なぜ `I-46` と別 ID にするか**: `I-46` は Rust 側 checker の欠陥で、修正は
+  `infer/decl.rs` の 2 箇所である。本件は **selfhost のデータ表現**の問題で、
+  修正はレコード型への移行 (L# はレコードを持つ) と、selfhost 自身の `TypeInfer.ls` を
+  Rust 側と同時に直すことになる。成果物も修正経路も別なので ID を分ける。
+  `I-46` の修正は本件に **blocked** される。
+- **一時回避で済ませない理由**: 「異種 vector を許す型付け」を入れると
+  `Vector` の要素型がどこでも `Any` に潰れ、`I-46` を直した意味が無くなる。
+  レコードへの移行が本筋である。
+- **関連**: `I-46` (checker 側の穴)。`TODO.md` の `INFER-FORWARD-GEN-01` が
+  `[BLOCKED: I-48]` で待つ。selfhost の分割は `TYPEINFER-SPLIT-01`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

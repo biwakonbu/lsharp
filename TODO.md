@@ -2934,20 +2934,40 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `(module ...)` 本体の contract 検査 (main はそもそも module 本体へ降りない。
   `I-39` で compile 経路からは reject 済み)、nested owner の qualified 名解決。
 
-- [ ] `INFER-FORWARD-GEN-01` 前方参照された関数の下で汎化された結果型を事後に確定させる —
-  Issue `I-46` の健全性側。callee が caller より後ろに定義されていると caller が
-  `forall a. () -> a` へ汎化され、`(string-length (main))` のような誤用が通る。
-  束縛自体は `Infer::global_subst` に累積されている (`infer/unify.rs:115`、`infer_program` の
-  間 reset されない) ので、`infer_decl_functions` のループ後に各 `TypeScheme` へ最終代入を
-  適用し、束縛済みになった変数を `vars` から落とす。
-  受入条件: `I-46` の `plain-forward` fixture が `plain-ordered` と同じ `Mismatch` で落ちること。
-  RED は plain な `defn` 版 (computation を含まない) と computation builder 版の両方を並べる。
-  適用後に `cargo test --no-fail-fast --workspace` の FAIL 集合が
-  `workspace-expected-failures.txt` から増えないこと。**`lsharp-wasm` の e2e を必ず含める** —
-  この pass は Rust pipeline がコンパイルする全 `.ls` の前方参照を再検査するので、
-  潜在的な Ok→Err が表に出るならそこである。
+- [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
+  `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —
+  Issue `I-46` の健全性側。callee が caller より後ろに定義されていると、その呼び出しは
+  引数型も arity も検査されず、caller は `forall a. () -> a` へ汎化される。
+  **実装は済んでいて RED も GREEN も取れている。当てられないのは selfhost 側の理由である。**
+  - 直し方 (2026-08-22 実測で確定、`I-46` に diff を逐語で保存):
+    `infer/decl.rs:317` の unify 相手を生の `placeholder_ty` から `env` 側の登録型へ変え、
+    `decl.rs:325-328` の pending 名除外を「裸の型変数のときだけ」に絞る。**両方要る** —
+    片方だけでは 3 本の RED が 3 本とも RED のまま。
+  - **`global_subst` の事後 pass 案は否定済み。** `insert` で積むため上書きされ、
+    誤用の検査はループ途中で走るので事後 pass では届かない。同じ案を再提案しないこと。
+  - 当てた場合の実測: 推論に失敗する selfhost の defn が **0 件 → 262 件**
+    (`Mismatch` 177 / `UndefinedVar` 89、`ArgMismatch` 170 / `IfBranch` 6 / `General` 1)。
+    `lsharp-ir` の `test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds`
+    が落ちる。構造的原因は `selfhost/src/Backend/Wasm/CompilerBase.ls:498` 等の
+    異種 vector をタプルとして使う表現 (`I-48`)。
+  - Rust 側だけ直すと selfhost の checker と食い違う。`selfhost/src/Types/TypeInfer.ls:485`
+    と `:912` が同じ形なので、**両側同時に**直す。
+  - 契約は `crates/lsharp-types/tests/forward_reference_generalization.rs` に保存済み。
+    検出側 5 件は `#[ignore]`、退行防止側 3 件は live。unblock 時は `#[ignore]` を外す。
+  受入条件: 上記 5 件の `#[ignore]` を外して GREEN になり、`cargo test --no-fail-fast --workspace`
+  の FAIL 集合が `workspace-expected-failures.txt` から増えないこと。
+  **`lsharp-wasm` の e2e を必ず含める**。
   **含めない範囲**: 完全性側 (`INFER-FORWARD-POLY-01`)。宣言順に依存しない generalize。
-  selfhost 側 `TypeInfer.ls` の同経路。
+
+- [ ] `SELFHOST-TUPLE-REC-01` selfhost の異種 vector タプルをレコードへ移す — Issue `I-48`。
+  `push-int-vector` / `push-object-vector` / `vector-push-*-rooted-v3` はいずれも
+  `forall a. Vector a -> a -> Vector a` なので、`(Int, Int, Map, Int)` のような組は
+  HM で型が付かない。現在通っているのは `I-46` の穴で検査されていないからである。
+  L# はレコード型を持つので、状態の組をレコードへ移す。
+  受入条件: `I-46` の修正パッチを当てた状態で、推論に失敗する selfhost の defn が 0 件になること
+  (計測基準は `I-48` の表と同じ)。`INFER-FORWARD-GEN-01` の unblock 条件でもある。
+  **含めない範囲**: `Vector` の要素型を `Any` へ潰す型付け緩和 (`I-48` に却下理由あり)。
+  selfhost の module 分割 (`TYPEINFER-SPLIT-01`)。
 
 - [ ] `INFER-FORWARD-POLY-01` 前方参照した多相関数を複数の型で使えるようにする —
   Issue `I-46` の完全性側。`(defn f [] (id 1)) (defn g [] (id "s")) (defn id [x] x)` は
