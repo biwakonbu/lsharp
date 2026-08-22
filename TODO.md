@@ -2978,16 +2978,26 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: 相互再帰の多相化 (polymorphic recursion)。現状の `mutual` fixture は
   既に正しく落ちるので回帰だけ見る。
 
-- [ ] `CASE-ZERO-ARITY-01` canonical `:case` で 0 引数関数を呼べるようにする — Issue `I-45`。
-  `:case [(expect (zero) 1)]` が `LS1001` (`UndefinedVar`) で `cases:0` / `executed:0` の
-  `fail` になる。`:assert` と legacy `:example` は同じ呼び出しを解決できるので、
-  `:case` の evaluator 側の穴である。
-  受入条件: 0 引数の `defn` を `expect` の左右どちらに置いても `executed` が 1 以上になり、
-  期待値が一致すれば `status:"pass"` / exit 0、外れれば `status:"fail"` / exit 1 に割れること。
-  RED は `lsharp test` の exit code と `coverage.executed` の**両方**を見る e2e とし、
-  arity 1 の control を同じ fixture 群に置いて対比できる形にする。
-  **含めない範囲**: `(module ...)` 本体に置いた `:case` (`I-39` の側。compile 経路では reject 済み)。
-  `:example` から `:case` への一括移行そのもの。
+- [ ] `ASSERT-TYPECHECK-01` selfhost の `:assert` predicate を型検査する — Issue `I-49`。
+  `EmbeddedCli.ls:1065-1078` の preflight は `check-canonical-cases-with-analysis` しか
+  呼ばず、`check-canonical-assertions-with-analysis` (`TypeInferAssertions.ls:2183`) は
+  存在するのに未接続。未定義変数を呼ぶ predicate が診断 0 件で runtime 評価まで進む。
+  受入条件: `(defn caller [] :assert [(> (nope) 0)] 0)` が selfhost lane で
+  `diagnostics.count >= 1` を返し、Rust lane と同じ向き (exit 非 0) で落ちること。
+  健全な predicate (`:assert [(> (incr 1) 0)]`) が引き続き `executed >= 1` で pass することを
+  同じ fixture 群で対比する。
+  **含めない範囲**: `I-45` の 0 引数 `defn` 修正そのもの (解決済み)。
+  assert lane の診断コード体系を Rust の `LS1001` へ揃えること。
+
+- [ ] `COMPILE-NO-SOURCE-WRITE-01` `lsharp compile` が入力ソースを書き換えないようにする —
+  Issue `I-50`。selfhost lane の `compile <file> -o <out>` が成功時に入力 `.ls` を
+  formatter 出力で上書きする。Rust host 経路 (`--emit-ir` /
+  `LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) では起きない。
+  受入条件: 整形前後で内容が変わる `.ls` を `compile -o` にかけたあと、
+  入力ファイルの中身が **byte 単位で不変**であること。RED はハッシュ比較で書き、
+  `check` / `test` / `fmt` を同じ fixture で control として並べる。
+  **含めない範囲**: formatter 出力そのものの是非 (`FMT-ROUNDTRIP-01`)。
+  `fmt --write` の明示的な書き込み。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

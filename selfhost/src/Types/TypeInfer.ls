@@ -482,10 +482,15 @@
                           counter)]
                       (if (= (unify-failed annotated-subst) 1)
                         (make-error-result-code (error-code-general))
-                        (let [next-subst (unify placeholder body-ty annotated-subst)]
+                        ;; 0 引数 defn は `Unit -> body` として登録する。argc 0 の apply
+                        ;; (infer-apply-legacy-raw) と lambda (infer-lambda) が同じ形を
+                        ;; 要求するため、body の型のまま登録すると呼び出しが unify で落ちる
+                        ;; (I-45)。戻り値注釈の unify は body-ty のまま行う。
+                        (let [fun-ty (mk-fun (mk-unit) body-ty)
+                          next-subst (unify placeholder fun-ty annotated-subst)]
                           (if (= (unify-failed next-subst) 1)
                             (make-error-result-code (error-code-general))
-                            (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst body-ty env-vars)))))))
+                            (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars)))))))
                 (infer-defn-parameterized-predeclared
                   node
                   body-env

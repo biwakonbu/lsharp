@@ -176,10 +176,12 @@
 | [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | resolved | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
-| [I-45](#i-45) | canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-45](#i-45) | selfhost の canonical `:case` preflight が 0 引数 `defn` の呼び出しを型エラーにする | 中 | resolved | [0 引数 defn の型](docs/adr/decisions-selfhost-zero-arity-defn-type.md) |
 | [I-46](#i-46) | 前方参照された呼び出しは引数型も arity も検査されていない | 高 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | resolved | -- |
 | [I-48](#i-48) | selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている | 高 | open | -- |
+| [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | open | -- |
+| [I-50](#i-50) | `lsharp compile <file> -o <out>` が入力ソースを書き換える | 高 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2326,34 +2328,71 @@
   `I-46` は同じ ID のまま範囲を広げてある。selfhost がこの穴に依存している件は `I-48`。
 
 <a id="i-45"></a>
-### I-45: canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない
+### I-45: selfhost の canonical `:case` preflight が 0 引数 `defn` の呼び出しを型エラーにする
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
-- **内容**: `:case [(expect (zero) 1)]` のように **引数を取らない関数**を `expect` 内で呼ぶと、
-  selfhost runner が `LS1001` (`UndefinedVar`) を出して `cases:0` / `executed:0` のまま
-  `status:"fail"` を返す。**期待値が正しいか誤っているかに関係なく同じ結果になる。**
-  同じ 0 引数呼び出しを `:assert` と legacy `:example` は解決できるので、
-  canonical `:case` の evaluator に固有の穴である。
-- **根拠**: 2026-08-22 実測。`./target/debug/lsharp test <fixture>` の
-  `implementation_conformance` を読んだもの。arity を唯一の変数にした対比:
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **内容**: `:case [(expect (zero) 1)]` のように **引数を取らない `defn`** を `expect` 内で
+  呼ぶと、`cases:0` / `executed:0` のまま `status:"fail"` / exit 1 になる。
+  **期待値が正しいか誤っているかに関係なく同じ結果になる。**
+- **原因**: evaluator の穴ではなく、**selfhost 型推論の内部不整合**である。
 
-  | fixture | metadata | 呼び先の arity | 結果 |
-  |---|---|---|---|
-  | `(defn zero [] 1)` + `:case [(expect (zero) 1)]` | canonical case | 0 | `status=fail cases=0 exec=0 code=1001` |
-  | `(defn incr [x] ...)` + `:case [(expect (incr 1) 2)]` | canonical case | 1 | `status=pass cases=2 exec=2 code=0` |
-  | `(defn zero [] 1)` + `:assert [(> (zero) 0)]` | canonical assert | 0 | `status=pass cases=1 exec=1 code=0` |
-  | `(defn one [] ...)` + `:example [(= (one) 1)]` | legacy example | 0 | `status=pass cases=1 exec=1 code=0` |
+  | 箇所 | 0 引数をどう扱うか |
+  |---|---|
+  | `selfhost/src/Types/TypeInfer.ls:466-486` `infer-defn-predeclared` | param-count 0 の `defn` を **body の型そのもの** (`zero : Int`) で env へ登録する |
+  | `selfhost/src/Types/TypeInferApply.ls:688-716` `infer-apply-legacy-raw` | argc 0 の apply に **`Unit -> a`** を要求する |
 
-  literal だけの `:case [(expect 1 1)]` / `[(expect 1 2)]` は pass / fail を正しく割る
-  (`cases=1 exec=1`) ので、`:case` lane 全体が死んでいるわけではない。
+  この 2 つが食い違うため unify が落ち、`check-case-expectation`
+  (`selfhost/src/Types/TypeInferAssertions.ls:1481-1535`) が `infer-expr` の失敗を
+  一律に `canonical-case-type-error-code` = **1001** へ潰す。
+  `selfhost/src/App/EmbeddedCli.ls:1065-1078` の preflight
+  (`check-canonical-cases-with-analysis`) がこれを見て suite 生成前に短絡するので
+  `cases:0` になる。**1001 は `LS1001` (`UndefinedVar`) ではない** — 旧本文の
+  「selfhost runner が `LS1001` を出す」という記述は誤りだった。
+- **ずれているのは `defn` 側 1 箇所**: 同じ selfhost の `infer-lambda`
+  (`TypeInferApply.ls:33-45`) は param-count 0 の lambda を `Unit -> body` にしており、
+  Rust 実装も 0 引数 `defn` を `Fun([], Int)` として持つ (`:case [(expect zero 1)]` を
+  Rust lane に食わせると `actual=() -> Int, expected=Int` と報告する)。
+  apply 側と lambda 側と Rust が一致していて、`infer-defn-predeclared` だけが外れている。
+- **根拠**: 2026-08-22 実測。`lsharp test` の既定 (text) は embedded selfhost component へ
+  委譲され (`crates/lsharp-driver/src/main.rs:1080`
+  `should_delegate_test_to_embedded_component_args`)、`--format json` と
+  `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` は Rust 実装を走らせる。両 lane の対比:
+
+  | fixture | selfhost lane | Rust lane |
+  |---|---|---|
+  | `(defn zero [] 1)` + `:case [(expect (zero) 1)]` | `status=fail cases=0 exec=0 code=1001` / exit 1 | `status=pass cases=1 exec=1` / exit 0 |
+  | `(defn incr [x] ...)` + `:case [(expect (incr 1) 2)]` | `status=pass cases=2 exec=2` / exit 0 | `status=pass cases=1 exec=1` / exit 0 |
+
+  **`--format json` を付けると同じソースが緑になる。** つまり Rust 実装は既に正しく、
+  収束先は Rust 側である。
+- **arity 以外の変数は効かない**: 宣言順を入れ替えても同じ (前方参照固有ではないので
+  `I-46` の別の顔ではない)。`(expect 1 (zero))` / `(expect (+ (zero) 0) 1)` も同じ 1001。
+  `(expect zero 1)` (呼ばずに参照) は 1001 を出さないので、名前解決は成功している。
+- **`lsharp compile` は同じソースを通す**: `compile <file> -o <out>` も selfhost へ委譲される
+  (`main.rs:1129` `should_delegate_compile_build_to_embedded_component_args`) が、
+  `(zero)` を含むプログラムは compile が成功する。`(+ 1 true)` は
+  `[LS1004] [E0004]` で落とすので型検査自体は走っている。
+  差は「preflight だけが `infer-program-analysis` の**確定した** env を見る」ことにあり、
+  compile 経路は pass-1 の生 placeholder を unify するので矛盾が顕在化しないと見られる
+  (`I-46` / `I-48` と同じ穴。`TypeInfer.ls:485`)。**この含意は未証明で、
+  本 issue の修正判断には使わない** — preflight が確定 env を見ている事実は
+  `(expect zero 1)` の Rust 側報告 `() -> Int` と selfhost 側の挙動で直接示せている。
 - **CI を素通りしない**: 失敗側へ倒れる (`status:"fail"` / exit 1) ので、
   誤った contract が緑で通ることはない。**危険なのは逆向き** — 正しい contract が
   永久に赤のままになり、`:example` から `:case` への移行が機械的にはできない。
 - **範囲外**: `(module ...)` 本体に置いた場合。main は module 本体へ降りないため
   そもそも検査が走らない (`I-39`。compile 経路の reject は
   [ADR](docs/adr/decisions-module-body-form-rejection.md) で閉じたが、metadata 検査経路は未対応)。
-- **関連**: `CASE-ZERO-ARITY-01` (`TODO.md`) が引き取る。
-  canonical case lane の取り込み判定は
+- **解決 (2026-08-22)**: `infer-defn-predeclared` の param-count 0 分岐で
+  `(mk-fun (mk-unit) body-ty)` を登録するようにした。判断と却下した選択肢、影響範囲の実測は
+  [0 引数 defn の型](docs/adr/decisions-selfhost-zero-arity-defn-type.md)。
+  contract は `crates/lsharp-driver/tests/metadata_test_selfhost_case_arity.rs` の 5 test
+  (0 引数 actual 側 / expected 側 / 不一致、arity 1 の control 2 件)。
+  非 e2e 6 crate は 1592 passed / 15 failed で、失敗 15 件は baseline と完全一致した。
+  **stage chain の自己適用 lane (`#[ignore]`) と workspace e2e lane は回していない。**
+- **本修正が閉じないもの**: pass-1 の生 placeholder の穴 (`I-46` / `I-48`)。
+  前方参照経由の呼び出しは従来どおり検査されない。
+- **関連**: `:assert` lane が対照にならない理由は `I-49`。canonical case lane の取り込み判定は
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) の群 3。
 
 <a id="i-46"></a>
@@ -2616,6 +2655,73 @@
   レコードへの移行が本筋である。
 - **関連**: `I-46` (checker 側の穴)。`TODO.md` の `INFER-FORWARD-GEN-01` が
   `[BLOCKED: I-48]` で待つ。selfhost の分割は `TYPEINFER-SPLIT-01`。
+
+<a id="i-49"></a>
+### I-49: selfhost の `:assert` lane は predicate を型検査していない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`I-45` の対照実験中)
+- **内容**: canonical `:assert` の predicate を selfhost lane に食わせると、
+  **未定義の変数を呼んでいても型診断が 1 件も出ない**。runtime 評価まで進んで
+  「述語が偽」として落ちるだけなので、診断としては型エラーと区別できない。
+- **根拠**: 2026-08-22 実測。fixture は `(defn caller [] :assert [(> (nope) 0)] 0)` で
+  `nope` はどこにも定義されていない。
+
+  | lane | 結果 |
+  |---|---|
+  | selfhost (既定 text) | `status=fail cases=1 executed=1 failed=1 diagnostics.count=0` |
+  | Rust (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) | `[LS1001] [error] caller: :assert predicate の型推論に失敗しました: [E0001] 未定義の変数 (undefined): nope (29..33)` |
+
+  `EmbeddedCli.ls:1065-1078` の preflight は `check-canonical-cases-with-analysis` を
+  `:case` にしか適用しない。`check-canonical-assertions-with-analysis`
+  (`TypeInferAssertions.ls:2183`) は存在するが、この経路からは呼ばれていない。
+- **`I-45` への含意**: 旧 `I-45` 本文は「同じ 0 引数呼び出しを `:assert` は解決できる」ことを
+  `:case` 固有性の根拠にしていたが、**`:assert` は解決しているのではなく検査していない**。
+  対照群として無効である。`I-45` の根拠表からこの行を落とした。
+- **なぜ危険か**: `:case` (`I-45`) は正しい contract を赤にする「安全側の壊れ方」だが、
+  こちらは**誤った contract の型エラーを緑で通し得る**向きである。predicate が
+  たまたま真になれば pass する。
+- **関連**: `ASSERT-TYPECHECK-01` (`TODO.md`) が引き取る。`I-45` と同じ preflight の話。
+
+<a id="i-50"></a>
+### I-50: `lsharp compile <file> -o <out>` が入力ソースを書き換える
+
+- **影響度**: 高 / **状態**: open / **発見**: 2026-08-22 (`CASE-ZERO-ARITY-01` の影響範囲計測中)
+- **内容**: selfhost lane の `compile` が **成功時に入力 `.ls` を整形して上書きする**。
+  ユーザーが書いたソースをコンパイラが黙って書き換える形であり、
+  レビュー中の diff や git の作業ツリーを汚す。実際、本 slice の計測中に
+  `selfhost/src/App/EmbeddedCli.ls` と `selfhost/src/App/Cli.ls` が
+  計測の副作用として書き換わった (どちらも復元済み)。
+- **根拠**: 2026-08-22 実測。最小再現:
+
+  ```bash
+  printf '(defn f [x]\n  (let [a\n          (+ x 1)]\n    a))\n(defn main [] (f 1))\n' > input.ls
+  md5 -q input.ls                       # d8158dd08c7169e4436faea89bea1722
+  lsharp compile input.ls -o out.wasm
+  md5 -q input.ls                       # 9b18b91c5af42308c0ae8b44a6c166bb
+  ```
+
+  差分は `let` の束縛値のインデント (10 空白 → 4 空白) で、内容としては formatter 出力。
+
+- **コマンド別の切り分け** (同一 fixture、2026-08-22 実測):
+
+  | 実行 | 入力ファイル |
+  |---|---|
+  | `compile input.ls -o out.wasm` | **書き換わる** |
+  | `compile input.ls -o out.wasm` (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) | 変わらない |
+  | `compile input.ls --emit-ir` | 変わらない |
+  | `check input.ls` | 変わらない |
+  | `test input.ls` | 変わらない |
+  | `fmt input.ls` | 変わらない |
+
+  `--emit-ir` と `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` はどちらも Rust host 経路なので、
+  **書き換えているのは embedded selfhost component 側**である。
+- **未特定**: 書き込んでいる正確な箇所。`EmbeddedCli.ls` の `run-compile-*` からは
+  `write-file-bytes output-path` しか見えておらず、入力パスへの `write-file` は未発見。
+  artifact cache / package 経路の副作用の可能性がある。
+- **なぜ気付かれていなかったか**: 整形結果が入力と同一なら差分が出ない。
+  selfhost 自身のソースは formatter の現行出力と一致していないため露見した。
+- **関連**: `COMPILE-NO-SOURCE-WRITE-01` (`TODO.md`) が引き取る。
+  formatter 出力そのものの正しさは `FMT-ROUNDTRIP-01`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>
