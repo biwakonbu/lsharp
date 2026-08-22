@@ -78,7 +78,12 @@ fn assert_extraction_alive(what: &str, names: &BTreeSet<String>, minimum: usize)
 /// 関数本体に現れる文字列リテラルは directive 名だけなので、そのまま拾う。
 fn decl_allowlist() -> BTreeSet<String> {
     let src = read_repo_file("crates/lsharp-syntax/src/parser/decl.rs");
-    let body = slice_between(&src, "is_colon_directive", "fn is_colon_directive", "\n    }");
+    let body = slice_between(
+        &src,
+        "is_colon_directive",
+        "fn is_colon_directive",
+        "\n    }",
+    );
     let names: BTreeSet<String> = body
         .split('"')
         .skip(1)
@@ -126,7 +131,10 @@ fn metadata_allowlist() -> BTreeSet<String> {
 fn selfhost_allowlist() -> BTreeSet<String> {
     let src = read_repo_file("selfhost/src/Syntax/Parser.ls");
     let mut names = BTreeSet::new();
-    for defn in ["(defn directive-symbol-v3 ", "(defn source-directive-symbol-v3 "] {
+    for defn in [
+        "(defn directive-symbol-v3 ",
+        "(defn source-directive-symbol-v3 ",
+    ] {
         let body = slice_between(&src, defn, defn, "\n(defn ");
         for chunk in body.split("(string-eq name \"").skip(1) {
             let name = chunk

@@ -150,7 +150,11 @@ fn review_and_change_edge_metadata_reject_extra_wire_ids() {
         ),
     ] {
         let error = parse(source).expect_err("review edge の余分な endpoint は拒否するべき");
-        assert_eq!(error.code(), "LS0101", "{label} の arity 診断が変わっている");
+        assert_eq!(
+            error.code(),
+            "LS0101",
+            "{label} の arity 診断が変わっている"
+        );
     }
 }
 

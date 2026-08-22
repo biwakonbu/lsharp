@@ -9,8 +9,7 @@ fn expression_strategy() -> impl Strategy<Value = String> {
 
     leaf.prop_recursive(3, 32, 4, |inner| {
         prop_oneof![
-            (inner.clone(), inner.clone())
-                .prop_map(|(left, right)| format!("(+ {left} {right})")),
+            (inner.clone(), inner.clone()).prop_map(|(left, right)| format!("(+ {left} {right})")),
             (inner.clone(), inner.clone())
                 .prop_map(|(left, right)| format!("(if true {left} {right})")),
             inner

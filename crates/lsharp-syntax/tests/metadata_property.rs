@@ -65,10 +65,8 @@ fn property_form_rejects_negative_cases() {
 
 #[test]
 fn property_form_rejects_non_numeric_cases() {
-    let source =
-        "(defn identity [x] :property [(for-all [x Int] :cases false :postcondition (= result x))] x)";
-    let error =
-        lsharp_syntax::parse(source).expect_err("非数値 :cases は parse できてはならない");
+    let source = "(defn identity [x] :property [(for-all [x Int] :cases false :postcondition (= result x))] x)";
+    let error = lsharp_syntax::parse(source).expect_err("非数値 :cases は parse できてはならない");
 
     assert!(error.to_string().contains("non-negative case count"));
 }
@@ -84,7 +82,8 @@ fn property_form_rejects_unknown_option() {
 #[test]
 fn property_form_rejects_prefixed_option_name() {
     let source = "(defn identity [x] :property [(for-all [x Int] :cases-extra true :postcondition (= result x))] x)";
-    let error = lsharp_syntax::parse(source).expect_err("既知 option の prefix を持つ未知 option は拒否するべき");
+    let error = lsharp_syntax::parse(source)
+        .expect_err("既知 option の prefix を持つ未知 option は拒否するべき");
 
     assert!(error.to_string().contains("property option"));
 }
@@ -92,7 +91,8 @@ fn property_form_rejects_prefixed_option_name() {
 #[test]
 fn property_form_rejects_missing_scalar_option_value() {
     let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :seed :postcondition (= result x))] x)";
-    let error = lsharp_syntax::parse(source).expect_err("値が欠落した scalar option は拒否するべき");
+    let error =
+        lsharp_syntax::parse(source).expect_err("値が欠落した scalar option は拒否するべき");
 
     assert!(error.to_string().contains("non-negative seed"));
 }

@@ -2,17 +2,24 @@ use std::fs;
 use std::path::PathBuf;
 
 fn selfhost_cli_source() -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../selfhost/src/App/Cli.ls");
-    fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("selfhost Cli.ls の読み込みに失敗 {}: {error}", path.display()))
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/src/App/Cli.ls");
+    fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "selfhost Cli.ls の読み込みに失敗 {}: {error}",
+            path.display()
+        )
+    })
 }
 
 fn selfhost_evidence_source() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../selfhost/src/Tools/Validation/Evidence.ls");
-    fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("selfhost Evidence.ls の読み込みに失敗 {}: {error}", path.display()))
+    fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "selfhost Evidence.ls の読み込みに失敗 {}: {error}",
+            path.display()
+        )
+    })
 }
 
 #[test]
