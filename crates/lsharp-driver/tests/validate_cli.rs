@@ -528,7 +528,10 @@ fn validate_rejects_project_duplicate_across_source_files() {
         "project input errors must not be serialized as a report: {:?}",
         output.stdout
     );
-    assert!(!manifest_exists, "project input error must not emit a manifest");
+    assert!(
+        !manifest_exists,
+        "project input error must not emit a manifest"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("source validation error:2"),
@@ -538,7 +541,10 @@ fn validate_rejects_project_duplicate_across_source_files() {
         stderr.contains("intent:checkout/same"),
         "duplicate stable ID missing: {stderr}"
     );
-    assert!(stderr.contains("first.ls"), "first source path missing: {stderr}");
+    assert!(
+        stderr.contains("first.ls"),
+        "first source path missing: {stderr}"
+    );
     assert!(
         stderr.contains("second.ls"),
         "duplicate source path missing: {stderr}"

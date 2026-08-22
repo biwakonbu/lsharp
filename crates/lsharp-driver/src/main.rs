@@ -3095,7 +3095,8 @@ fn collect_package_source_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::R
         }
         if metadata.is_dir() {
             collect_package_source_files(&path, out)?;
-        } else if metadata.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("ls") {
+        } else if metadata.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("ls")
+        {
             out.push(path);
         }
     }

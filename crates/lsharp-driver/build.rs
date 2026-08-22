@@ -42,8 +42,8 @@ const EMBEDDED_COMPONENT_CACHE_ENTRIES: usize = 8;
 /// key 導出と cache root の逆算は `lsharp-wasm` 側に置いてある (build.rs は直接テストできない)。
 fn cached_default_embedded_component(project_root: &Path, out_dir: &Path) -> Vec<u8> {
     use lsharp_wasm::embedded_component_cache::{
-        cache_root_from_out_dir, current_executable_fingerprint, embedded_component_key_sources,
-        EmbeddedComponentCache, EmbeddedComponentKey,
+        EmbeddedComponentCache, EmbeddedComponentKey, cache_root_from_out_dir,
+        current_executable_fingerprint, embedded_component_key_sources,
     };
 
     // 走査する root は `EMBEDDED_COMPONENT_KEY_ROOTS` が正本で、下の `rerun-if-changed` と
@@ -69,7 +69,9 @@ fn cached_default_embedded_component(project_root: &Path, out_dir: &Path) -> Vec
                 return bytes;
             }
             Ok(None) => {}
-            Err(error) => println!("cargo:warning=embedded component cache の読み込みを諦めます: {error}"),
+            Err(error) => {
+                println!("cargo:warning=embedded component cache の読み込みを諦めます: {error}")
+            }
         }
     }
 

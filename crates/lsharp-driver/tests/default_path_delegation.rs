@@ -1675,10 +1675,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
 
     let unsupported_source_path = temp_dir.join("unsupported.ls");
     let unsupported_output_path = temp_dir.join("unsupported.wasm");
-    write_source_file(
-        &unsupported_source_path,
-        "(defn main [] (proc-exit 0))\n",
-    );
+    write_source_file(&unsupported_source_path, "(defn main [] (proc-exit 0))\n");
     let unsupported_guest =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
             &component,
@@ -1799,21 +1796,17 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         )
         .expect("embedded CLI root/scratch layout runtime execution failed");
     assert_eq!(
-        root_scratch_guest.exit_code,
-        0,
+        root_scratch_guest.exit_code, 0,
         "Preview1 root/scratch layout compile は成功するべき: stdout={}",
         root_scratch_guest.stdout
     );
     let root_scratch_written =
         fs::read(&root_scratch_output_path).expect("root/scratch layout output read failed");
-    let root_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
-        &root_scratch_written,
-        Some(&temp_dir),
-    )
-    .expect("root/scratch layout Preview1 output should run");
+    let root_scratch_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&root_scratch_written, Some(&temp_dir))
+            .expect("root/scratch layout Preview1 output should run");
     assert_eq!(
-        root_scratch_runtime_output,
-        "42\n",
+        root_scratch_runtime_output, "42\n",
         "Preview1 write-file-bytes は root stack 後方の scratch を使うべき",
     );
     assert_eq!(
@@ -1857,8 +1850,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         )
         .expect("embedded CLI root/string scratch runtime execution failed");
     assert_eq!(
-        root_string_scratch_guest.exit_code,
-        0,
+        root_string_scratch_guest.exit_code, 0,
         "Preview1 root/string scratch compile は成功するべき: stdout={}",
         root_string_scratch_guest.stdout
     );
@@ -1870,8 +1862,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     )
     .expect("root/string scratch Preview1 output should run");
     assert_eq!(
-        root_string_scratch_runtime_output,
-        "42\n",
+        root_string_scratch_runtime_output, "42\n",
         "Preview1 write-file は root stack 後方の scratch を使うべき",
     );
     assert_eq!(
@@ -1918,8 +1909,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         )
         .expect("embedded CLI root/read scratch runtime execution failed");
     assert_eq!(
-        root_read_scratch_guest.exit_code,
-        0,
+        root_read_scratch_guest.exit_code, 0,
         "Preview1 root/read scratch compile は成功するべき: stdout={}",
         root_read_scratch_guest.stdout
     );
@@ -1931,8 +1921,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     )
     .expect("root/read scratch Preview1 output should run");
     assert_eq!(
-        root_read_scratch_runtime_output,
-        "payload42\n",
+        root_read_scratch_runtime_output, "payload42\n",
         "Preview1 read-file は root stack 後方の scratch を使うべき",
     );
 
@@ -1970,22 +1959,21 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         )
         .expect("embedded CLI argv root scratch runtime execution failed");
     assert_eq!(
-        argv_root_scratch_guest.exit_code,
-        0,
+        argv_root_scratch_guest.exit_code, 0,
         "Preview1 argv root scratch compile は成功するべき: stdout={}",
         argv_root_scratch_guest.stdout
     );
     let argv_root_scratch_written =
         fs::read(&argv_root_scratch_output_path).expect("argv root scratch output read failed");
-    let argv_root_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &argv_root_scratch_written,
-        None,
-        &["alpha", "beta"],
-    )
-    .expect("argv root scratch Preview1 output should run");
+    let argv_root_scratch_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+            &argv_root_scratch_written,
+            None,
+            &["alpha", "beta"],
+        )
+        .expect("argv root scratch Preview1 output should run");
     assert_eq!(
-        argv_root_scratch_runtime_output,
-        "alpha42\n",
+        argv_root_scratch_runtime_output, "alpha42\n",
         "Preview1 command-line-arg は root stack 内 scratch を使うべき",
     );
 
@@ -2023,8 +2011,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         )
         .expect("embedded CLI argv count root scratch runtime execution failed");
     assert_eq!(
-        argv_count_root_scratch_guest.exit_code,
-        0,
+        argv_count_root_scratch_guest.exit_code, 0,
         "Preview1 argv count root scratch compile は成功するべき: stdout={}",
         argv_count_root_scratch_guest.stdout
     );
@@ -2038,8 +2025,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         )
         .expect("argv count root scratch Preview1 output should run");
     assert_eq!(
-        argv_count_root_scratch_runtime_output,
-        "2\n42\n",
+        argv_count_root_scratch_runtime_output, "2\n42\n",
         "Preview1 command-line-args は root stack 内 scratch を使うべき",
     );
 
@@ -2071,22 +2057,21 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         )
         .expect("embedded CLI argv heap scratch runtime execution failed");
     assert_eq!(
-        argv_heap_scratch_guest.exit_code,
-        0,
+        argv_heap_scratch_guest.exit_code, 0,
         "Preview1 argv heap scratch compile は成功するべき: stdout={}",
         argv_heap_scratch_guest.stdout
     );
     let argv_heap_scratch_written =
         fs::read(&argv_heap_scratch_output_path).expect("argv heap scratch output read failed");
-    let argv_heap_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &argv_heap_scratch_written,
-        None,
-        &["alpha", "beta"],
-    )
-    .expect("argv heap scratch Preview1 output should run");
+    let argv_heap_scratch_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+            &argv_heap_scratch_written,
+            None,
+            &["alpha", "beta"],
+        )
+        .expect("argv heap scratch Preview1 output should run");
     assert_eq!(
-        argv_heap_scratch_runtime_output,
-        "alpha0\n0\n",
+        argv_heap_scratch_runtime_output, "alpha0\n0\n",
         "Preview1 command-line-arg は既存 heap 上の argv table/buffer を壊してはいけない",
     );
 
@@ -2127,21 +2112,20 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         &argv_source_path,
         "(defn main [] (print (command-line-args)))\n",
     );
-    let argv_guest =
-        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
-            &component,
-            Some(&temp_dir),
-            &[
-                "compile",
-                "argv-count.ls",
-                "--target",
-                "wasi-preview1",
-                "-o",
-                "argv-count.wasm",
-            ],
-            "",
-        )
-        .expect("embedded CLI argv runtime execution failed");
+    let argv_guest = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+        &component,
+        Some(&temp_dir),
+        &[
+            "compile",
+            "argv-count.ls",
+            "--target",
+            "wasi-preview1",
+            "-o",
+            "argv-count.wasm",
+        ],
+        "",
+    )
+    .expect("embedded CLI argv runtime execution failed");
     assert_eq!(
         argv_guest.exit_code, 0,
         "Preview1 command-line-args compile は成功するべき: stdout={}",
@@ -2165,21 +2149,20 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         &arg_source_path,
         "(defn main [] (print-string (command-line-arg 0)))\n",
     );
-    let arg_guest =
-        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
-            &component,
-            Some(&temp_dir),
-            &[
-                "compile",
-                "argv-first.ls",
-                "--target",
-                "wasi-preview1",
-                "-o",
-                "argv-first.wasm",
-            ],
-            "",
-        )
-        .expect("embedded CLI argv string runtime execution failed");
+    let arg_guest = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+        &component,
+        Some(&temp_dir),
+        &[
+            "compile",
+            "argv-first.ls",
+            "--target",
+            "wasi-preview1",
+            "-o",
+            "argv-first.wasm",
+        ],
+        "",
+    )
+    .expect("embedded CLI argv string runtime execution failed");
     assert_eq!(
         arg_guest.exit_code, 0,
         "Preview1 command-line-arg compile は成功するべき: stdout={}",
@@ -2198,8 +2181,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     );
 
     let exists_fixture_path = temp_dir.join("exists.txt");
-    fs::write(&exists_fixture_path, "fixture")
-        .expect("file-exists fixture write failed");
+    fs::write(&exists_fixture_path, "fixture").expect("file-exists fixture write failed");
     let file_exists_source_path = temp_dir.join("file-exists.ls");
     let file_exists_output_path = temp_dir.join("file-exists.wasm");
     write_source_file(
@@ -2228,19 +2210,16 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     );
     let file_exists_written =
         fs::read(&file_exists_output_path).expect("file-exists output read failed");
-    let file_exists_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
-        &file_exists_written,
-        Some(&temp_dir),
-    )
-    .expect("file-exists Preview1 output should run");
+    let file_exists_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&file_exists_written, Some(&temp_dir))
+            .expect("file-exists Preview1 output should run");
     assert_eq!(
         file_exists_runtime_output, "1\n0\n",
         "Preview1 file-exists? は既存/不存在を判定するべき"
     );
 
     let read_fixture_path = temp_dir.join("read.txt");
-    fs::write(&read_fixture_path, "payload")
-        .expect("read-file fixture write failed");
+    fs::write(&read_fixture_path, "payload").expect("read-file fixture write failed");
     let read_file_source_path = temp_dir.join("read-file.ls");
     let read_file_output_path = temp_dir.join("read-file.wasm");
     write_source_file(
@@ -2267,13 +2246,10 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 read-file compile は成功するべき: stdout={}",
         read_file_guest.stdout
     );
-    let read_file_written =
-        fs::read(&read_file_output_path).expect("read-file output read failed");
-    let read_file_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
-        &read_file_written,
-        Some(&temp_dir),
-    )
-    .expect("read-file Preview1 output should run");
+    let read_file_written = fs::read(&read_file_output_path).expect("read-file output read failed");
+    let read_file_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&read_file_written, Some(&temp_dir))
+            .expect("read-file Preview1 output should run");
     assert_eq!(
         read_file_runtime_output, "payload",
         "Preview1 read-file は bounded file content を返すべき"
@@ -2311,11 +2287,9 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     );
     let large_read_written =
         fs::read(&large_read_output_path).expect("large read-file output read failed");
-    let large_read_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
-        &large_read_written,
-        Some(&temp_dir),
-    )
-    .expect("large read-file Preview1 output should run");
+    let large_read_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&large_read_written, Some(&temp_dir))
+            .expect("large read-file Preview1 output should run");
     assert_eq!(
         large_read_runtime_output, large_read_content,
         "Preview1 read-file は 256 bytes を超える bounded file content を返すべき"
@@ -2350,11 +2324,9 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     );
     let write_file_written =
         fs::read(&write_file_output_path).expect("write-file output read failed");
-    let write_file_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
-        &write_file_written,
-        Some(&temp_dir),
-    )
-    .expect("write-file Preview1 output should run");
+    let write_file_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&write_file_written, Some(&temp_dir))
+            .expect("write-file Preview1 output should run");
     assert_eq!(
         write_file_runtime_output, "",
         "Preview1 write-file は stdout に余計な出力を出すべきではない"

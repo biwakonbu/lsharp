@@ -142,11 +142,8 @@ fn signed_delayed_review_wire() -> (String, String) {
         vec![0; 64],
     )
     .expect("delayed attestation should be valid");
-    let signature = base64url_no_padding(
-        &signing_key
-            .sign(&attestation.canonical_bytes())
-            .to_bytes(),
-    );
+    let signature =
+        base64url_no_padding(&signing_key.sign(&attestation.canonical_bytes()).to_bytes());
     let public_key = base64url_no_padding(&signing_key.verifying_key().to_bytes());
     let trust_wire = r#"{
           "schema_version": 1,
