@@ -2988,21 +2988,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
 
-- [ ] `COMPILE-FORMAT-NOTICE-01` `lsharp compile` の入力ソース整形上書きを利用者へ通知する —
-  Issue `I-50`。`prepare_source_for_compile` (`crates/lsharp-tooling/src/compile.rs:222-234`) が
-  entry file を整形して書き戻した事実は `CompileArtifacts.formatted` (`compile.rs:30`) に
-  載っているが、`crates/lsharp-driver/src` に consumer が 0 件で、利用者には黙って
-  ソースが書き換わったように見える。
-  受入条件: 整形差分のある `.ls` を `compile -o` にかけたとき、`formatted == true` の場合にのみ
-  「入力を整形して書き戻した」旨が stderr に 1 行出ること。差分が無い場合は無音であること。
-  RED は driver 側の出力 assertion で書き、整形差分あり / 無しの 2 fixture を対比する。
-  **含めない範囲**: 書き戻しそのものの廃止。これは
-  `test_prepare_source_for_compile_rewrites_file_when_format_diff_exists`
-  (`compile_tests_outputs.rs:172`) が固定した仕様であり、`scripts/dev-loop.sh` の退避・復元は
-  その仕様を前提に組まれている。**起票時の受入条件「入力ファイルが byte 単位で不変」は
-  却下した** — 契約テストの削除と ADR による設計反転を伴うため、この slice の自律範囲を越える。
-  formatter 出力そのものの是非 (`FMT-ROUNDTRIP-01`)。`fmt --write` の明示的な書き込み。
-
 - [ ] `LSP-COL-CONV-01` LSP stdio の位置規約を fixture と実装で一致させる — Issue `I-52` の facet A。
   `lsp-stdio-nav-params` (`selfhost/src/App/Cli.ls:2010-2020`) が wire の `line`/`col` を
   0-indexed とみなして `+1` する一方、`--ignored` lane の補完 e2e fixture は 1-indexed のまま

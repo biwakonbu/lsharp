@@ -181,7 +181,7 @@
 | [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | resolved | -- |
 | [I-48](#i-48) | selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている | 高 | open | -- |
 | [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | resolved | -- |
-| [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | open | -- |
+| [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | resolved | -- |
 | [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | resolved | -- |
 | [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open | -- |
 
@@ -2698,7 +2698,7 @@
 <a id="i-50"></a>
 ### I-50: `lsharp compile` の入力ソース整形上書きが利用者へ通知されない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`CASE-ZERO-ARITY-01` の影響範囲計測中)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-22 (`CASE-ZERO-ARITY-01` の影響範囲計測中)
   / **訂正**: 2026-08-22 (下記「起票時の記述の訂正」)
 - **内容**: `lsharp compile` の **Rust host 経路**は、コンパイル前に entry file を formatter に
   かけ、差分があれば**入力ファイルへ書き戻す**。この書き戻し自体は
@@ -2763,8 +2763,33 @@
   ソースは「書き換えられたうえで失敗する」。
 - **なぜ気付かれていなかったか**: 整形結果が入力と同一なら差分が出ない。
   selfhost 自身のソースは formatter の現行出力と一致していないため露見した。
-- **関連**: `COMPILE-FORMAT-NOTICE-01` (`TODO.md`) が引き取る。
-  formatter 出力そのものの正しさは `FMT-ROUNDTRIP-01`。fallback の設計は `I-15`。
+- **解決** (2026-08-22): driver 側の成功出力 choke point
+  `print_compile_artifacts_success` (`crates/lsharp-driver/src/main.rs:674`) に
+  `artifacts.formatted` ガード付きの stderr 通知を 1 行足した。
+  compile の成功出力はこの関数が唯一の経路で、呼び出し元 2 箇所
+  (`main.rs:419` の直接 host、`main.rs:930` の guest 拒否 fallback) を 1 箇所で覆える。
+  書き込み元である `prepare_source_for_compile` (library) 側には置かない
+  — library が利用者向け出力を持つと LSP / MCP など stderr を持たない consumer に漏れる。
+  通知は stderr なので、`compile` の stdout 契約 (`コンパイル成功: ...`) は不変。
+- **検証**:
+
+  | test | 位置 | RED | GREEN |
+  |---|---|---|---|
+  | `test_compile_reports_source_rewrite_when_format_diff_exists` | `lsharp-driver/tests/default_path_delegation.rs` | 通知 0 行で FAIL (`:2826`) | pass |
+  | `test_compile_stays_silent_when_source_is_already_formatted` | 同上 | (対照 fixture。修正前から pass) | pass |
+
+  両 test は `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` で host lane を固定する。
+  既定 lane も結局 host へ落ちるが (上表)、fallback 判定に依存させると環境差で false GREEN になる。
+  沈黙側 fixture は「整形差分が無いこと」をファイル本文の不変 assertion で自ら pin する
+  — pin しないと、実は差分があって通知を見落としているだけの空虚な test になる。
+- **残渣 (この slice で直していない)**:
+  - **失敗経路は依然として無言**。整形差分があって型エラーもあるソースは
+    「書き換えられたうえで失敗する」が、driver は失敗時に `CompileArtifacts` を受け取らないため
+    通知経路が無い。覆うには library 側で出力するか、エラー型に整形結果を載せる必要があり、
+    どちらもこの slice の受入条件 (成功経路の 1 行) を越える設計判断を含む。
+  - **`--emit-ir` も無言**。`main.rs:418` の `if !emit_ir` で成功出力ごと抑止されるため、
+    整形して書き戻しても通知は出ない。受入条件が `compile -o` に限定されているため意図的に範囲外。
+- **関連**: formatter 出力そのものの正しさは `FMT-ROUNDTRIP-01`。fallback の設計は `I-15`。
 
 <a id="i-51"></a>
 ### I-51: `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる
@@ -2814,7 +2839,7 @@
   test を書くには process 全体の cwd を書き換える必要があり並列実行と両立しないため、
   無検証の修正は避けて記録に留める。`lsharp-tooling/src/native.rs:290` も直書きだが、
   空 parent の `join()` は相対 temp path として機能するので失敗経路ではない。
-- **関連**: `I-50` (書き込み順序 -- 未解決)。
+- **関連**: `I-50` (整形書き戻しの通知 -- resolved。失敗経路の無言は残渣として同 issue に記録)。
 
 <a id="i-52"></a>
 ### I-52: LSP stdio 補完の e2e が 2 系統の理由で全滅している (位置規約の食い違い / snapshot 形式のドリフト)

@@ -2776,7 +2776,82 @@ fn test_compile_output_path_accepts_bare_dotted_and_absolute_forms_identically()
         "bare 形の出力は Wasm binary であるべき"
     );
     assert_eq!(bare, dotted, "bare 形と `./` 形は同一 artifact を生むべき");
-    assert_eq!(bare, absolute, "bare 形と絶対 path 形は同一 artifact を生むべき");
+    assert_eq!(
+        bare, absolute,
+        "bare 形と絶対 path 形は同一 artifact を生むべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// host lane で compile を走らせ、(stderr, compile 後のソース本文) を返す。
+fn compile_host_lane_stderr_and_source(temp_dir: &Path, source: &str) -> (String, String) {
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, source);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("compile")
+        .arg("input.ls")
+        .arg("-o")
+        .arg("out.wasm")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .current_dir(temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "compile は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    (
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+        fs::read_to_string(&source_path).expect("compile 後のソース読み込みに失敗した"),
+    )
+}
+
+#[test]
+fn test_compile_reports_source_rewrite_when_format_diff_exists() {
+    // compile は入力を整形して書き戻すが、その事実がどこにも出ていなかった (I-50)。
+    let temp_dir = unique_temp_dir("compile_format_notice_diff");
+    init_git_repository(&temp_dir);
+
+    let unformatted = "(defn f [x]\n  (let [a\n          (+ x 1)]\n    a))\n(defn main [] (f 1))\n";
+    let (stderr, rewritten) = compile_host_lane_stderr_and_source(&temp_dir, unformatted);
+
+    assert_ne!(
+        rewritten, unformatted,
+        "fixture は整形差分を持つべき (差分が無いと通知 assertion が空虚になる)"
+    );
+    assert_eq!(
+        stderr.matches("整形して書き戻しました").count(),
+        1,
+        "整形差分がある場合は通知が 1 行だけ出るべき: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_compile_stays_silent_when_source_is_already_formatted() {
+    let temp_dir = unique_temp_dir("compile_format_notice_nodiff");
+    init_git_repository(&temp_dir);
+
+    let formatted = "(defn main [] (print 42))\n";
+    let (stderr, unchanged) = compile_host_lane_stderr_and_source(&temp_dir, formatted);
+
+    assert_eq!(
+        unchanged, formatted,
+        "fixture は整形済みであるべき (書き戻されると沈黙 assertion が空虚になる)"
+    );
+    assert_eq!(
+        stderr.matches("整形して書き戻しました").count(),
+        0,
+        "整形差分が無い場合は通知を出さないべき: {stderr}"
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

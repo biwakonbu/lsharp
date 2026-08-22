@@ -416,7 +416,7 @@ fn main() -> miette::Result<()> {
                 artifact_cache_max_bytes,
             )?;
             if !emit_ir {
-                print_compile_artifacts_success(&artifacts);
+                print_compile_artifacts_success(&artifacts, &file);
             }
         }
 
@@ -671,7 +671,10 @@ fn main() -> miette::Result<()> {
     Ok(())
 }
 
-fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifacts) {
+fn print_compile_artifacts_success(
+    artifacts: &commands::compile::CompileArtifacts,
+    source_path: &std::path::Path,
+) {
     let output_size = std::fs::metadata(&artifacts.output_path)
         .map(|metadata| metadata.len())
         .unwrap_or(0);
@@ -680,6 +683,10 @@ fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifac
         artifacts.output_path.display(),
         output_size
     );
+    // compile は入力を整形して書き戻す。黙って書き換えると差分の出所が追えなくなるので通知する (I-50)。
+    if artifacts.formatted {
+        eprintln!("入力を整形して書き戻しました: {}", source_path.display());
+    }
 }
 
 fn driver_config_error(project_dir: &Path, error: config::ConfigError) -> miette::Report {
@@ -923,7 +930,7 @@ fn maybe_bridge_compile_build_artifact_with_component(
 
     match guest_output {
         Ok(_) | Err(_) => {
-            print_compile_artifacts_success(&artifacts);
+            print_compile_artifacts_success(&artifacts, &host_file);
             std::process::exit(0);
         }
     }
