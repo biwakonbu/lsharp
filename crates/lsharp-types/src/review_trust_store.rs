@@ -117,19 +117,19 @@ impl ReviewTrustStore {
                 algorithm: identity.2,
             });
         }
-        if key.is_active() {
-            if let Some(existing) = self.keys.values().find(|existing| {
+        if key.is_active()
+            && let Some(existing) = self.keys.values().find(|existing| {
                 existing.is_active()
                     && existing.provider() == key.provider()
                     && existing.algorithm() == key.algorithm()
-            }) {
-                return Err(TrustStoreError::MultipleActiveKeys {
-                    provider: key.provider().to_string(),
-                    algorithm: key.algorithm().as_str().to_string(),
-                    existing_key_id: existing.key_id().to_string(),
-                    key_id: key.key_id().to_string(),
-                });
-            }
+            })
+        {
+            return Err(TrustStoreError::MultipleActiveKeys {
+                provider: key.provider().to_string(),
+                algorithm: key.algorithm().as_str().to_string(),
+                existing_key_id: existing.key_id().to_string(),
+                key_id: key.key_id().to_string(),
+            });
         }
         self.keys.insert(identity, key);
         Ok(())

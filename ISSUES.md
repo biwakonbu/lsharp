@@ -163,9 +163,9 @@
 | [I-28](#i-28) | x86 native の int-to-string import 呼び出しが rdi を書かない (harness が import placeholder の param-count を 0 で種まきするため) | 中 | open | -- |
 | [I-29](#i-29) | aarch64 native の文字列表現が bit 32 を判別子に使うため、heap offset が 4 GiB を越えると base 相対 offset が絶対番地として strlen される | 中 | open | -- |
 | [I-30](#i-30) | selfhost TestRunner に legacy scanner 2 本と canonical inventory が並存し、実行対象の正本が二つある | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
-| [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 3 件) | 低 | open | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
+| [I-31](#i-31) | `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる (`collapsible_if` 1 件が 3 経路へ波及) | 低 | resolved | [occur-check 深さ境界](docs/adr/decisions-infer-occur-check-depth-bound.md) |
 | [I-33](#i-33) | analysis-only cache の直後に compile すると空の IR が返る (clean-hit が IR readiness を見ていない) | 中 | resolved | [analysis/compile cache 境界](docs/adr/decisions-legacy-module-analysis-compile-cache-boundary.md) |
-| [I-34](#i-34) | `cargo fmt --check -p lsharp-ir` が main で既に落ちる (`lower/mod.rs` の mod 宣言順 8 箇所) | 低 | open | -- |
+| [I-34](#i-34) | `cargo fmt --check -p lsharp-ir` が main で既に落ちる (`lower/mod.rs` の mod 宣言順 8 箇所) | 低 | resolved | -- |
 | [I-35](#i-35) | allocator の到達不能 free-list search に誤った `Br(0)` が残り、path を再有効化すると無限 loop する | 低 | open | -- |
 | [I-36](#i-36) | AST / token の Display が string escape と型注釈・`:where` を落とし、pretty-print が re-parse できない | 中 | open | -- |
 | [I-37](#i-37) | 別 module の同名 top-level function が診断なしに衝突し、誤った wasm を出す (silent miscompilation) | 高 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
@@ -2284,19 +2284,28 @@
 <a id="i-31"></a>
 ### I-31: `cargo clippy -p lsharp-types -- -D warnings` が main で既に落ちる
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`INFER-DEPTH-01` の検証中)
+- **影響度**: 低 / **状態**: resolved / **発見**: 2026-08-22 (`INFER-DEPTH-01` の検証中)
 - **内容**: `crates/lsharp-types/src/review_trust_store.rs:120` の nested `if` が
   `clippy::collapsible_if` に当たる。`-D warnings` を付けると **lib / lib test / all-targets の
   3 経路で compile error になる**ため、この crate では clippy を gate として使えない。
+  **lint 指摘は 1 件で、3 経路すべてが同じ 1 件を再検出していた** (サマリー行の旧記述
+  「3 件」は経路数を件数と取り違えたもの。2026-08-22 に訂正)。
 - **根拠**: 2026-08-22 実測。変更を `git stash` した状態でも同じ 3 件が出る。
   したがって `INFER-DEPTH-01` の変更が持ち込んだものではない。
 - **経緯**: `fix-clippy-collapsible-match` という branch が存在したが `main` の祖先で、
   当該箇所は覆っていない。lint 債務として残っていた。
-- **含めない範囲**: 修正そのもの。`collapsible_if` の潰し方 (let chain へ畳む) は
-  clippy の suggest どおりで済むが、**gate が落ちている事実の記録が先**である。
-  修正を入れるなら、同時に `-D warnings` を CI で常時要求するかを決める必要がある
-  (CI の扱いは本 slice のスコープ外)。
-- **関連**: `INFER-DEPTH-01`。
+- **解決** (2026-08-22): clippy の suggest どおり let chain へ畳んだ
+  (`if key.is_active() && let Some(existing) = ...`)。edition 2024 / rustc 1.93 では
+  let chain が stable なので `#[allow]` による握り潰しは選ばなかった。
+  `--lib` / `--lib --tests` / `--all-targets` の 3 経路が exit 0。
+  `cargo test -p lsharp-types` は全 suite pass (`test result: ok` のみ、`failed` 非 0 なし)。
+  当該 file は `cargo fmt --check` の diff にも現れない。
+- **CI の扱いは決めていない**: 起票時は「修正を入れるなら同時に `-D warnings` を CI で
+  常時要求するかを決める必要がある」としていたが、`TODO.md` の `LINT-CLIPPY-01` が
+  受入条件を「3 経路が exit 0」に限定し、CI 常時要求の判断を明示的に範囲外へ置いた。
+  **gate を緑にすることと、gate を CI で強制することは別の判断である**ため、
+  前者だけを実施した。後者は未決のまま残る。
+- **関連**: `INFER-DEPTH-01`、`I-34` (同時に解消した format gate)。
 
 <a id="i-33"></a>
 ### I-33: analysis-only cache の直後に compile すると空の IR が返る
@@ -2322,18 +2331,23 @@
 <a id="i-34"></a>
 ### I-34: `cargo fmt --check -p lsharp-ir` が main で既に落ちる
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`I-33` の commit 前検査中)
+- **影響度**: 低 / **状態**: resolved / **発見**: 2026-08-22 (`I-33` の commit 前検査中)
 - **内容**: `crates/lsharp-ir/src/lower/mod.rs` の `mod` 宣言順が rustfmt の期待と食い違い、
   8 箇所の diff が出る。`#[cfg(test)] mod *_tests;` が対応する `mod *;` の直後ではなく
   ブロック末尾へ寄せられているのが原因。
 - **根拠**: 2026-08-22 実測。`cargo fmt --check -p lsharp-ir` の `Diff in` は
   `lower/mod.rs` の 8 箇所だけで、他のファイルには出ない。`I-33` の変更以前から出ている
   (触ったのは `cache.rs` / `compile_incremental.rs` / `lib_tests/incremental_compile.rs` の 3 本)。
-- **含めない範囲**: 修正そのもの。`cargo fmt -p lsharp-ir` を流せば消えるが、
-  test 分割の並び順を機械的に崩すため、`I-31` (clippy gate) と合わせて
-  「lint / format gate をどこまで CI で常時要求するか」を決めてから入れる。
-  CI の扱いは本 slice のスコープ外。
-- **関連**: `I-31` (同じく main で既に落ちている gate)。
+- **解決** (2026-08-22): `cargo fmt -p lsharp-ir` を適用した。差分は `lower/mod.rs` 1 file の
+  7 挿入 / 8 削除で、`#[cfg(test)] mod *_tests;` が対応する `mod *;` の直後へ移り、
+  `pub use` の並びが辞書順へ揃い、末尾の余分な空行が 1 行落ちただけである。
+  `cargo fmt --check -p lsharp-ir` が exit 0、`cargo test -p lsharp-ir` は 301 passed / 0 failed。
+- **起票時の懸念は空振りだった**: 「test 分割の並び順を機械的に崩す」ことを理由に保留していたが、
+  実際に動いたのは宣言順だけで `include!` の順序にも test の内容にも触れていない。
+  **並び順が変わる**ことと**分割の構造が壊れる**ことを同一視した誤りである。
+- **CI の扱いは決めていない**: `I-31` と同じ理由。gate を緑にすることと CI で強制することは
+  別の判断で、前者だけを実施した。
+- **関連**: `I-31` (同じく main で既に落ちていた gate。同じ slice で解消)。
 
 <a id="i-35"></a>
 ### I-35: allocator の到達不能 free-list search に誤った `Br(0)` が残っている

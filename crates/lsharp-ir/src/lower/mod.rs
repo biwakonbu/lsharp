@@ -12,37 +12,37 @@ use crate::GcTypeKind;
 use crate::{GcTypeDef, IrType};
 
 mod context;
+#[cfg(test)]
+mod context_tests;
 mod decl;
 mod expr;
 mod heap_helpers;
+#[cfg(test)]
+mod heap_helpers_tests;
 mod pattern;
 mod pattern_wasmgc;
 mod program;
 mod state;
-mod type_helpers;
-#[cfg(test)]
-mod context_tests;
-#[cfg(test)]
-mod heap_helpers_tests;
 #[cfg(test)]
 mod state_tests;
 #[cfg(test)]
 mod tests;
+mod type_helpers;
 #[cfg(test)]
 mod type_helpers_tests;
 
 pub(crate) use context::FuncCtx;
-pub(crate) use heap_helpers::{emit_tag_pointer, emit_untag_pointer};
 #[cfg(test)]
 pub(crate) use heap_helpers::emit_write_heap_header;
 pub use heap_helpers::{
     HEAP_TAG_ADT, HEAP_TAG_CLOSURE, HEAP_TAG_HASHMAP, HEAP_TAG_RECORD, HEAP_TAG_REF,
     HEAP_TAG_STRING, HEAP_TAG_VECTOR,
 };
+pub(crate) use heap_helpers::{emit_tag_pointer, emit_untag_pointer};
+pub use type_helpers::type_to_ir;
 pub(crate) use type_helpers::{
     is_heap_like_type_name, type_expr_to_ir, type_expr_to_name, type_to_name,
 };
-pub use type_helpers::type_to_ir;
 
 /// Lowering エラー
 #[derive(Debug, Clone, thiserror::Error)]
@@ -299,7 +299,6 @@ impl Lower {
         }
         IrType::I64
     }
-
 }
 
 impl Default for Lower {
