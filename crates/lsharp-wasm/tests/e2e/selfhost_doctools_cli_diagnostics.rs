@@ -556,6 +556,8 @@ fn test_e2e_selfhost_doctools_schema_review() {
       (print (vector-get diag0 5))
       (print-string (vector-get diag0 6))
       (print-string "\n")
+      (print (vector-get diag0 7))
+      (print (vector-get diag0 8))
       0)))
 "#;
 
@@ -569,7 +571,7 @@ fn test_e2e_selfhost_doctools_schema_review() {
             "2",
             "200",
             "1",
-            "7",
+            "9",
             "100",
             "unused-let",
             "let binding x is not used",
@@ -577,6 +579,8 @@ fn test_e2e_selfhost_doctools_schema_review() {
             "1",
             "1",
             "L0001",
+            "20",
+            "21",
         ]
     );
 }
@@ -606,6 +610,8 @@ fn test_e2e_selfhost_doctools_schema_review_empty_do() {
       (print (vector-get diag0 5))
       (print-string (vector-get diag0 6))
       (print-string "\n")
+      (print (vector-get diag0 7))
+      (print (vector-get diag0 8))
       0)))
 "#;
 
@@ -618,7 +624,7 @@ fn test_e2e_selfhost_doctools_schema_review_empty_do() {
         vec![
             "300",
             "1",
-            "7",
+            "9",
             "104",
             "empty-do",
             "do block has no expressions",
@@ -626,6 +632,8 @@ fn test_e2e_selfhost_doctools_schema_review_empty_do() {
             "1",
             "1",
             "L0002",
+            "15",
+            "17",
         ]
     );
 }

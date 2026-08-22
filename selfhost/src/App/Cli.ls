@@ -1691,7 +1691,7 @@
     (if (string-eq severity "info")
       3
       (if (string-eq severity "hint") 4 1))))
-(defn lsp-review-diagnostic-to-lsp [diag]
+(defn lsp-review-diagnostic-to-lsp-at [diag start-line start-col end-line end-col]
   (let [result (vector-new 10)
     base (push-int-vector-local
       (push-int-vector-local
@@ -1700,24 +1700,42 @@
             (push-int-vector-local
               (push-int-vector-local result (lsp-review-severity-to-lsp (vector-get diag 3)))
               (vector-get diag 0))
-            (vector-get diag 4))
-          (vector-get diag 5))
+            start-line)
+          start-col)
         (vector-get diag 0))
       (lsp-diagnostic-source-lint))
-    with-end-line (push-int-vector-local base (vector-get diag 4))
-    with-end-col (push-int-vector-local with-end-line (vector-get diag 5))
+    with-end-line (push-int-vector-local base end-line)
+    with-end-col (push-int-vector-local with-end-line end-col)
     with-code (push-object-vector-local with-end-col (vector-get diag 6))]
     (push-object-vector-local with-code (vector-get diag 2))))
-(defn lsp-source-lint-diagnostics-loop [raw idx count diagnostics]
+;; `LINT-SPAN-01`: review diagnostic が末尾 byte offset を持つなら実 span を投影する。
+;; 持たないノード (make-let / Linter 由来 / macro 展開後) は従来どおり slot 4/5 の 1 1。
+(defn lsp-review-diagnostic-to-lsp [diag src]
+  (if (> (vector-length diag) 8)
+    (let [start-position (lsp-position-from-offset src (vector-get diag 7))
+      end-position (lsp-position-from-offset src (vector-get diag 8))]
+      (lsp-review-diagnostic-to-lsp-at
+        diag
+        (position-line start-position)
+        (position-col start-position)
+        (position-line end-position)
+        (position-col end-position)))
+    (lsp-review-diagnostic-to-lsp-at
+      diag
+      (vector-get diag 4)
+      (vector-get diag 5)
+      (vector-get diag 4)
+      (vector-get diag 5))))
+(defn lsp-source-lint-diagnostics-loop [raw src idx count diagnostics]
   (if (>= idx count)
     diagnostics
-    (lsp-source-lint-diagnostics-loop raw (+ idx 1) count (push-object-vector-local diagnostics (lsp-review-diagnostic-to-lsp (vector-get raw idx))))))
+    (lsp-source-lint-diagnostics-loop raw src (+ idx 1) count (push-object-vector-local diagnostics (lsp-review-diagnostic-to-lsp (vector-get raw idx) src)))))
 (defn lsp-source-lint-diagnostics [src]
   (if (> (string-length src) 0)
     (let [program (parse-program src)
       review (generate-review program 0)
       raw (vector-get review 1)
-      diagnostics (lsp-source-lint-diagnostics-loop raw 0 (vector-length raw) (vector-new 4))]
+      diagnostics (lsp-source-lint-diagnostics-loop raw src 0 (vector-length raw) (vector-new 4))]
       (dedup-diagnostics (sort-diagnostics diagnostics)))
     (vector-new 0)))
 (defn lsp-diagnostics-append-loop [extra idx count diagnostics]

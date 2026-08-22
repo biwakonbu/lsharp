@@ -5908,7 +5908,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_type_diagnost
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_lint_diagnostics_refresh() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding x is not used"}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":20},"end":{"line":0,"character":21}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding x is not used"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
@@ -6055,7 +6055,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
-    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding x is not used"}]}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":20},"end":{"line":0,"character":21}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding x is not used"}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
     let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
@@ -18593,7 +18593,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_lint_diagnostic() 
         &stdin,
     );
     let expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":20}},"end":{{"line":0,"character":26}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}}]}}"##
     );
     assert!(
         output.contains(&expected),
@@ -18617,7 +18617,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_hyphenated_lint_name() {
         &stdin,
     );
     let expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unusebka is not used"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":20}},"end":{{"line":0,"character":28}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unusebka is not used"}}]}}"##
     );
     assert!(
         output.contains(&expected),
@@ -18751,7 +18751,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_multiple_diagnostics_in_sta
         &stdin,
     );
     let expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":31}},"end":{{"line":0,"character":48}}}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}},{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":31}},"end":{{"line":0,"character":48}}}},"severity":1,"code":"LS1002","source":"lsharp","message":"if condition must be Bool"}},{{"range":{{"start":{{"line":0,"character":20}},"end":{{"line":0,"character":26}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}}]}}"##
     );
     assert!(
         output.contains(&expected),
@@ -18759,7 +18759,48 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_multiple_diagnostics_in_sta
     );
 }
 
+/// `LINT-SPAN-01` 受入条件 4: offset -> line/col 変換の境界を pin する。
+///
+/// `lsp-position-from-offset` は 1-based。行頭 / 行末 / 空行 / 最終行 /
+/// `offset == (string-length src)` を通す。最後の 1 つは呼び出し元が
+/// end <= len を保つ前提に乗っているだけで、これまで pin が無かった。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_lsp_position_from_offset_covers_line_boundaries() {
+    let harness = r#"
+(defn show-position [src offset]
+  (let [pos (lsp-position-from-offset src offset)]
+    (do
+      (print (position-line pos))
+      (print (position-col pos)))))
+
+(defn main []
+  (let [src "ab\ncd\n\nef"]
+    (do
+      (show-position src 0)
+      (show-position src 2)
+      (show-position src 3)
+      (show-position src 6)
+      (show-position src 7)
+      (show-position src (string-length src)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output.trim().lines().collect::<Vec<_>>(),
+        vec!["1", "1", "1", "3", "2", "1", "3", "1", "4", "1", "4", "3"],
+        "offset -> line/col は 1-based で行頭/行末/空行/最終行/末尾 offset を覆うべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN32j: actual Cli は同一開始位置でも異なる lint diagnostics を dedup しないこと
+///
+/// `LINT-SPAN-01` (ADR 決定 6) で real span が入り、この fixture の 2 診断は
+/// **同一開始位置ではなくなった** (`unused` = 20..26、`do` = 28..30)。
+/// したがって本 test は pass しても dedup 意味論の pin ではない。
+/// pin の再建は `I-58` / `LINT-DEDUP-PIN-01` が持つ。
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics() {
@@ -18776,7 +18817,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnos
         &stdin,
     );
     let expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}},{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0002","source":"lsharp","message":"do block has no expressions"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":20}},"end":{{"line":0,"character":26}}}},"severity":2,"code":"L0001","source":"lsharp","message":"let binding unused is not used"}},{{"range":{{"start":{{"line":0,"character":28}},"end":{{"line":0,"character":30}}}},"severity":2,"code":"L0002","source":"lsharp","message":"do block has no expressions"}}]}}"##
     );
     assert!(
         output.contains(&expected),
@@ -18922,7 +18963,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_standard_empty_do_diagnosti
         &stdin,
     );
     let expected = format!(
-        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":0}}}},"severity":2,"code":"L0002","source":"lsharp","message":"do block has no expressions"}}]}}"##
+        r##""method":"textDocument/publishDiagnostics","params":{{"uri":"{uri}","diagnostics":[{{"range":{{"start":{{"line":0,"character":15}},"end":{{"line":0,"character":17}}}},"severity":2,"code":"L0002","source":"lsharp","message":"do block has no expressions"}}]}}"##
     );
     assert!(
         output.contains(&expected),

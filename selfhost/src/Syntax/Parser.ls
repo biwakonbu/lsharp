@@ -3505,7 +3505,7 @@
             (root_pop)
             final-result))))))
 
-(defn parse-let-after-first-binding-v3 [spans pos-ref src nh init]
+(defn parse-let-after-first-binding-v3 [spans pos-ref src nh init ns ne]
   (do
     (let [init-slot (root_push init)]
       (do
@@ -3516,7 +3516,7 @@
             (let [body (parse-let-body-v3 spans pos-ref src)]
               (do
                 (root_push body)
-                (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)]
+                (let [result (vector-push-pair-rooted-v3 (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body) ns ne)]
                   (do
                     (let [final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)]
                       (do
@@ -3538,10 +3538,10 @@
                   (let [rest-body (parse-let-rest-v3 spans pos-ref src)]
                     (do
                       (root_push rest-body)
-                      (let [inner (vector-push-quad-rooted-v3 (vector-new 8) 7 nh2 init2 rest-body)]
+                      (let [inner (vector-push-pair-rooted-v3 (vector-push-quad-rooted-v3 (vector-new 8) 7 nh2 init2 rest-body) ns2 ne2)]
                         (do
                           (root_push inner)
-                          (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)]
+                          (let [result (vector-push-pair-rooted-v3 (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner) ns ne)]
                             (do
                               (let [final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)]
                                 (do
@@ -3571,7 +3571,7 @@
         (let [init (parse-expr-v3 spans pos-ref src)]
           (do
             (let [init-slot (root_push init)]
-              (let [parsed (parse-let-after-first-binding-v3 spans pos-ref src nh init)]
+              (let [parsed (parse-let-after-first-binding-v3 spans pos-ref src nh init ns ne)]
                 (do
                   (root_push parsed)
                   (root_set init-slot parsed)
@@ -3602,7 +3602,7 @@
                   (let [rest (parse-let-rest-rooted-v3 spans pos-ref src)]
                     (do
                       (root_push rest)
-                      (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init rest)]
+                      (let [result (vector-push-pair-rooted-v3 (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init rest) ns ne)]
                         (do
                           (root_pop)
                           (root_pop)
@@ -3623,17 +3623,25 @@
 ;; === do 式 ===
 (defn parse-do-v3 [spans pos-ref src]
   (do
-    (p-advance pos-ref) ;; do を消費
-    (let [result (vector-push-pair-rooted-v3 (vector-new 16) 9 0) ;; [9, count=0(後で更新)]
-      result-slot (root_push result)
-      with-exprs (parse-do-exprs-v3 spans pos-ref src result 0)
-      expr-count (- (vector-length with-exprs) 2)
-      parsed (do
-        (root_set result-slot with-exprs)
-        (vector-set-at-rooted-v3 with-exprs 1 expr-count))]
+    ;; `LINT-SPAN-01` / ADR 決定 6: L0002 の span は `do` トークン。消費前に控える
+    (let [do-start (p-start spans pos-ref)
+      do-end (p-end spans pos-ref)]
       (do
-        (root_pop)
-        parsed))))
+        (p-advance pos-ref) ;; do を消費
+        (let [result (vector-push-pair-rooted-v3 (vector-new 16) 9 0) ;; [9, count=0(後で更新)]
+          result-slot (root_push result)
+          with-exprs (parse-do-exprs-v3 spans pos-ref src result 0)
+          expr-count (- (vector-length with-exprs) 2)
+          parsed (do
+            (root_set result-slot with-exprs)
+            ;; expr-count の確定後に末尾 span pair を足す (判別子は slot 1 との比較)
+            (vector-push-pair-rooted-v3
+              (vector-set-at-rooted-v3 with-exprs 1 expr-count)
+              do-start
+              do-end))]
+          (do
+            (root_pop)
+            parsed))))))
 
 ;; do 内の式を収集
 (defn parse-do-exprs-rooted-v3 [spans pos-ref src result count]

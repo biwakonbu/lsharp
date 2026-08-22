@@ -699,6 +699,37 @@
         column)
       code)))
 
+;; span 付き review diagnostic: 上記 7 slot の末尾へ byte offset の pair を足す。
+;; `LINT-SPAN-01` / ADR 決定 5 — slot 4/5 の line/column は据え置き、offset は末尾に持つ。
+;; DocJson 経路 (`src` を持たない) は従来どおり slot 4/5 だけを読む。
+(defn make-review-diagnostic-with-offsets [rule-id title body severity line column code start end]
+  (let [d (vector-new 9)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push d rule-id)
+                    title)
+                  body)
+                severity)
+              line)
+            column)
+          code)
+        start)
+      end)))
+
+;; let ノードは span 付きなら長さ 6 ([7, name-hash, init, body, name-start, name-end])
+(defn review-let-has-span [node]
+  (if (> (vector-length node) 5) 1 0))
+
+;; do ノードは可変長なので、判別子は slot 1 の expr-count との比較にする
+(defn review-do-has-span [node]
+  (if (> (vector-length node) (+ 3 (vector-get node 1))) 1 0))
+
 (defn review-warning-severity []
   "warning")
 
@@ -715,21 +746,43 @@
     (let [name-hash (vector-get node 1)
       body (vector-get node 3)]
       (if (= (ast-contains-var body name-hash) 0)
-        (make-review-diagnostic
-          100
-          "unused-let"
-          (string-concat "let binding " (string-concat (symbol-from-hash name-hash) " is not used"))
-          (review-warning-severity)
-          1
-          1
-          "L0001")
+        (if (= (review-let-has-span node) 1)
+          (make-review-diagnostic-with-offsets
+            100
+            "unused-let"
+            (string-concat "let binding " (string-concat (symbol-from-hash name-hash) " is not used"))
+            (review-warning-severity)
+            1
+            1
+            "L0001"
+            (vector-get node 4)
+            (vector-get node 5))
+          (make-review-diagnostic
+            100
+            "unused-let"
+            (string-concat "let binding " (string-concat (symbol-from-hash name-hash) " is not used"))
+            (review-warning-severity)
+            1
+            1
+            "L0001"))
         0))
     0))
 
 (defn review-empty-do-diagnostic [node]
   (if (= (vector-get node 0) (ast-do))
     (if (= (vector-get node 1) 0)
-      (make-review-diagnostic 104 "empty-do" "do block has no expressions" (review-warning-severity) 1 1 "L0002")
+      (if (= (review-do-has-span node) 1)
+        (make-review-diagnostic-with-offsets
+          104
+          "empty-do"
+          "do block has no expressions"
+          (review-warning-severity)
+          1
+          1
+          "L0002"
+          (vector-get node (+ 2 (vector-get node 1)))
+          (vector-get node (+ 3 (vector-get node 1))))
+        (make-review-diagnostic 104 "empty-do" "do block has no expressions" (review-warning-severity) 1 1 "L0002"))
       0)
     0))
 

@@ -1675,6 +1675,21 @@
   (第 2 の消費者 `DocJson.ls:111` と snapshot `tests/snapshots/doctools/review-payload.json` が
   `line: 1, column: 1` を pin しており、その経路には `src` が無い) は
   [lint span の AST 表現 ADR](docs/adr/decisions-lint-span-ast-representation.md) の Evidence 節。
+- **`LINT-SPAN-01` の実装は 2026-08-23 に完了した**: `let` は束縛識別子、`do` は `do` トークンの
+  byte offset を末尾 pair で持ち、投影境界 `lsp-review-diagnostic-to-lsp` が
+  `lsp-position-from-offset` で実 range を作る。fixture `(defn main [] (let [unused (do)] 0))` の
+  2 診断は `0:20..0:26` と `0:28..0:30` になり、受入条件 1 を満たした。
+  焦点 test は 13 本緑 (`683.42s`)、判別力のある 11 本は事前に旧実装で赤を観測している。
+  **受入条件 2 は宣言どおり vacuous になった** — `..._preserves_distinct_same_start_diagnostics` は
+  pass するが、この fixture の 2 診断はもはや同一開始位置ではないので dedup 意味論の pin ではない。
+  pin の再建は `I-58` が持つ。詳細は同 ADR の「受入条件 1 / 2 / 4」節。
+  なお実装中に、受入条件 3 の survey が **Rust 側 test の長さ pin を対象にしていなかった**ことが
+  判明した (`selfhost_doctools_cli_diagnostics.rs:547/597` が review diagnostic の長さ 7 を pin していた)。
+  survey は `selfhost/src/**.ls` だけを走査していた。同種の survey を再び行うときは
+  test 側の pin も対象に含める。
+  広域 sweep (511 本) では 4 本赤が出たが、`.ls` を `HEAD` へ戻した再実行で左右の実測値まで
+  一致したので、**本 slice の回帰は 0 件**である。未登録の 3 本は `I-45` の未計測 fallout として
+  `I-60` へ切り出した。
 - **関連**: I-11 (baseline)、`ISSUES.md` の I-22 (同じ「規約 vs 実態」の形。
   `:1201` が本件の裁定に倣うと書いている)。
 
