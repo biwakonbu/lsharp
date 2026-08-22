@@ -12,18 +12,32 @@ pub(super) fn parse_program_for_incremental(
     lsharp_syntax::parse(source)
 }
 
+/// incremental 経路の parse choke point。
+///
+/// cache hit / fresh parse のどちらでも、返す前に block 形式 module body を弾く
+/// (`I-39`)。ここを唯一の入口にしておかないと、呼び出し側 6 箇所のどれかで
+/// 検査を落としても誰も気付けない。
+///
+/// error は既に整形済みの `String` で返す。呼び出し側はすべて直後に
+/// `format!` で String へ落としており、`ParseAllError` を保持していなかった。
 pub(super) fn cached_program_or_parse(
     mod_name: &str,
     source: &str,
     fingerprint: SourceFingerprint,
     cache: &CompilationCache,
-) -> Result<Arc<lsharp_syntax::ast::Program>, lsharp_syntax::ParseAllError> {
-    if let Some(entry) = cache.get(mod_name)
+) -> Result<Arc<lsharp_syntax::ast::Program>, String> {
+    let program = if let Some(entry) = cache.get(mod_name)
         && entry.fingerprint() == fingerprint
     {
-        return Ok(entry.ast_arc());
-    }
-    parse_program_for_incremental(source).map(Arc::new)
+        entry.ast_arc()
+    } else {
+        Arc::new(
+            parse_program_for_incremental(source)
+                .map_err(|e| format!("[{}] {e}", e.code()))?,
+        )
+    };
+    crate::module_body_form::reject_block_form_module_body(program.as_ref())?;
+    Ok(program)
 }
 
 fn note_incremental_type_infer() {

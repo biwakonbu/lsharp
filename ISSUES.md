@@ -170,7 +170,7 @@
 | [I-36](#i-36) | AST / token の Display が string escape と型注釈・`:where` を落とし、pretty-print が re-parse できない | 中 | open | -- |
 | [I-37](#i-37) | 別 module の同名 top-level function が診断なしに衝突し、誤った wasm を出す (silent miscompilation) | 高 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-38](#i-38) | import した module の `type-alias` が展開されず `expected String, found Text` になる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
-| [I-39](#i-39) | block 形式の module body が parse されるだけで名前解決されず、誤診断で落ちる | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-39](#i-39) | block 形式の module body が lowering されず、沈黙して無出力バイナリを出す | 高 | resolved | [block 形式 module body の reject](docs/adr/decisions-module-body-form-rejection.md) |
 | [I-40](#i-40) | DocTools の metadata 契約が parser の出力 slot 数と食い違う | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-41](#i-41) | compile cache の hit/miss を集計する手段が無い | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
@@ -2532,32 +2532,52 @@
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 <a id="i-39"></a>
-### I-39: block 形式の module body が parse されるだけで、名前解決されない
+### I-39: block 形式の module body が parse されるだけで、lowering されない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`codex/legacy-maint-native-stage-chain-split` の判定中)
+- **影響度**: 高 / **状態**: resolved / **発見**: 2026-08-22 (`codex/legacy-maint-native-stage-chain-split` の判定中)
 - **内容**: `(module M (defn f ...) (defn g ...))` という **body を括弧内に持つ形**は
-  parser が受理し (`Decl::ModuleDecl { name, body }`)、
-  `crates/lsharp-ir/src/compile_pipeline.rs:209` の `collect_private_surface_names` も
-  body を再帰する。しかし**型推論と lowering は body 内の宣言を登録しない**ため、
-  同じ body にある sibling 関数も type-alias も見えない。
-  診断は「未実装の構文」ではなく **`未定義の変数` / `型の不一致`** になるので、
-  利用者からは自分のコードの誤りに見える。
-- **根拠**: 2026-08-22 実測。`target/debug/lsharp` で再現する。
+  parser が受理し (`Decl::ModuleDecl { name, body }`)、型推論と検査系も body を走査する
+  (`crates/lsharp-ir/src/compile_pipeline.rs:229` / `:282`、metadata contract 検査)。
+  しかし **lowering は `Decl::ModuleDecl` を一度も見ない**。
+  `crates/lsharp-ir/src/lower/program.rs` は `Decl::Defn` だけを拾い、
+  multi-file 経路の `crates/lsharp-ir/src/compile_entrypoints.rs:79-80` は
+  `Decl::ModuleDecl { .. } | Decl::ImportDecl { .. } => {}` で丸ごと捨てる。
 
-  | fixture | 実測 |
-  |---|---|
-  | `(module Main (defn helper [] : Int 1) (defn main [] (print (helper))))` | `[LS1001] [E0001] 未定義の変数 (undefined): helper` |
-  | 同じ内容を flat 形 (`(module Main)` + top-level 宣言) で書く | **成功** |
-  | `(module Main (type-alias Text String) (defn wrap [(: v Text)] ...) ...)` | `[LS1004] [E0004] 型の不一致: expected String, found Text` |
+  症状は 2 つに分かれ、**後者の方が重い**。
 
-  **この形を使っている `.ls` は repo 内に 1 件も無い** (`selfhost/` / `examples/` 含め 0 件)。
-  つまり live な regression ではなく、**parser だけが先行して受理している未搭載 surface**である。
-- **含めない範囲**: block 形式を実装するか、parser 側で明示的に reject するかは設計判断で、
-  `MODULE-BODY-FORM-01` (`TODO.md`) で決める。どちらへ倒すにせよ
-  「受理して誤診断で落ちる」現状は解消する。
-- **関連**: `MODULE-BODY-FORM-01` (`TODO.md`)、`I-37` / `I-38`。
-  参照実装は `codex/legacy-maint-native-stage-chain-split` の `a5e5929c` / `fa7b4c51`
-  (`incremental/root_module_body.rs`) と `68849d55` (nested alias target scope)。判定は
+  1. body 内に sibling 参照があると `未定義の変数` / `型の不一致` という**誤診断**で止まる。
+     利用者からは自分のコードの誤りに見える
+  2. sibling 参照が無いと **compile が成功し、何も起きないバイナリが exit 0 で完成する**。
+     失敗を知らせるものが何も無い
+- **根拠**: 2026-08-22 実測。`target/debug/lsharp` + `wasmtime` で再現する。
+
+  | fixture | compile | 実行 |
+  |---|---|---|
+  | `(module Main (defn helper [] 1) (defn main [] (print (helper))))` | `[LS1001] [E0001] 未定義の変数 (undefined): helper` | -- |
+  | `(module Main (defn main [] (print 42)))` | **成功** 6472 bytes | **無出力 / exit 0** |
+  | `(module Main)` + `(defn main [] (print 42))` (flat 形) | 成功 6498 bytes | `42` / exit 0 |
+  | `(module App (module Sub (defn succ [x] (+ x 1))))` + top-level `main` | **成功** | -- |
+
+  block 形式を使う `.ls` は追跡下 133 件のうち **2 件**ある
+  (`crates/lsharp-types/tests/fixtures/metadata/nested_contract_forms.ls`、
+  `tests/fixtures/validation/ec-m2-project-duplicate-source.ls`)。
+  Rust test 内の inline source では 58 箇所。いずれも metadata / validation 検査か
+  selfhost の parser / assertion checker へ渡す文字列で、**compile 経路には入らない**。
+  よって live な regression ではないが、**block 形式は検査系が意図的に受理している surface**
+  であり、「使用 0 件だから何を壊してもよい」わけではない。
+
+  > **訂正 (2026-08-22)**: 本項は当初「この形を使っている `.ls` は repo 内に 1 件も無い」
+  > と書いていたが誤りで、上記 2 件がある。また症状を「誤診断で落ちる」とだけ書いていたが、
+  > 沈黙して誤答する経路を落としていた。影響度を 中 → 高 へ改めた。
+- **解消根拠**: compile 経路の parse 直後・infer 直前で「未対応の構文」として reject する。
+  判断と却下案 (実装 / parser で reject / lowering で reject) は
+  [block 形式 module body の reject](docs/adr/decisions-module-body-form-rejection.md)。
+  body の宣言は lowering に到達しないため、**この形に依存して正しく動いていた program は
+  原理的に存在しない**。error 化で壊れるのは既に沈黙して誤答していた program だけである。
+- **含めない範囲**: block 形式の実装そのもの。入れ子 module の可視性が `I-37` / `I-38` と
+  併せて決まった時点で ADR の reject を撤回し、参照実装
+  (`a5e5929c` / `fa7b4c51` / `68849d55`) を当てなおす。
+- **関連**: `I-37` / `I-38`。判定は
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
 
 ### DOC-01: ユーザーガイドの主要範囲不足

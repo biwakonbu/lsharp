@@ -77,6 +77,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         fix: "先頭の parse error から順に修正してください。",
     },
     ErrorCodeEntry {
+        code: "LS0105",
+        legacy_code: None,
+        name: "unsupported-module-body",
+        summary: "module 本体を括弧の中に置く形は未対応です",
+        detail: "`(module M (defn f ...) ...)` は parse できますが、body 内の宣言は IR に降りません。",
+        fix: "`(module M)` と宣言し、defn などは top-level へ並べてください。",
+    },
+    ErrorCodeEntry {
         code: "LS0201",
         legacy_code: None,
         name: "macro-expansion-error",

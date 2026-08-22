@@ -980,7 +980,7 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   reject に倒せば 65 件が一斉に落ちる。**どちらでも selfhost 側の重複整理が先**で、
   `TYPEINFER-SPLIT-01` と順序を組むこと。selfhost を直さずに Rust 側だけ倒すのは不可。
   **含めない範囲**: `type-alias` の module 越し可視性 (`MODULE-ALIAS-EXPORT-01`)、
-  block 形式 module body (`MODULE-BODY-FORM-01`)、selfhost の重複整理そのもの
+  block 形式 module body (`I-39` で compile 経路から reject 済み)、selfhost の重複整理そのもの
   (`TYPEINFER-SPLIT-01` / `LEGACY-MAINT-01`)。
 
 - [ ] `MODULE-ALIAS-EXPORT-01` `type-alias` の module 越しの扱いを決める — Issue `I-38`。
@@ -994,18 +994,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   「export しない」に倒すなら **未定義型としての診断**を、どちらかを ADR に書いて test で張ること。
   **現状の型不一致診断はどちらの設計でも誤りなので、必ず消えること。**
   **含めない範囲**: parametric alias の高階化、`type-constrained` の可視性。
-
-- [ ] `MODULE-BODY-FORM-01` block 形式 module body を実装するか reject するか決める — Issue `I-39`。
-  `(module M (defn f ...) ...)` は parser が受理する (`Decl::ModuleDecl { name, body }`) が、
-  型推論と lowering が body 内の宣言を登録しないため sibling 参照が
-  `未定義の変数` になる。**repo 内の `.ls` でこの形を使っているものは 0 件**なので
-  regression ではなく、parser だけが先行して受理している未搭載 surface である。
-  参照実装は同 branch の `a5e5929c` / `fa7b4c51` (`incremental/root_module_body.rs`) と
-  `68849d55` (nested alias target scope)。
-  受入条件: 実装するなら flat 形と同じ program が同じ値を返すことを e2e で、
-  reject するなら **parse 時点で「未対応の構文」と分かる診断**を、どちらかを ADR に書いて張ること。
-  **含めない範囲**: 入れ子 module (`(module A (module B ...))`) の可視性設計。
-  まず 1 段の body を決めてからにする。
 
 - [ ] `DOCTOOLS-META-SLOT-01` DocTools の metadata 契約を parser の 6 slot に合わせる —
   Issue `I-40`。`selfhost/src/Syntax/Parser.ls:1140` は 6 slot を返すが
@@ -2982,7 +2970,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `check_metadata_from_contract_inventory` という別入口へ実装しており、
   main の `check_metadata` へはそのままでは当たらない。
   **含めない範囲**: `(module ...)` 本体の contract 検査 (main はそもそも module 本体へ降りない。
-  `MODULE-BODY-FORM-01` / `I-39` の側)、nested owner の qualified 名解決。
+  `I-39` で compile 経路からは reject 済み)、nested owner の qualified 名解決。
 
 - [ ] `COMP-BUILDER-01` 未定義 computation builder を型エラーにする — Issue `I-44`。
   `(computation missing (return 42))` が `Infer::infer_program` で `Ok` になり、
@@ -3002,7 +2990,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   期待値が一致すれば `status:"pass"` / exit 0、外れれば `status:"fail"` / exit 1 に割れること。
   RED は `lsharp test` の exit code と `coverage.executed` の**両方**を見る e2e とし、
   arity 1 の control を同じ fixture 群に置いて対比できる形にする。
-  **含めない範囲**: `(module ...)` 本体に置いた `:case` (`I-39` / `MODULE-BODY-FORM-01` 側)。
+  **含めない範囲**: `(module ...)` 本体に置いた `:case` (`I-39` の側。compile 経路では reject 済み)。
   `:example` から `:case` への一括移行そのもの。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —

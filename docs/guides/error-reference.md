@@ -7,7 +7,7 @@
 ## Code Ranges
 
 - `LS0001` - `LS0003`: lexer
-- `LS0101` - `LS0104`: parser
+- `LS0101` - `LS0105`: parser
 - `LS0201`: macro expansion
 - `LS1001` - `LS1013`: type checker
 - `LS2001` - `LS2006`: metadata contract validation and migration
@@ -39,6 +39,7 @@
 | `LS0102` | unexpected-eof | source が途中で終了しました | 閉じ括弧、vector、metadata form の終端を追加してください。 |
 | `LS0103` | unknown-form | 未知の special form です | `defn`, `type`, `module`, `import`, `trait`, `impl` などの form 名を確認してください。 |
 | `LS0104` | multiple-parse-errors | 複数の parse error が発生しました | 先頭の parse error から順に修正してください。 |
+| `LS0105` | unsupported-module-body | module 本体を括弧の中に置く形は未対応です | `(module M)` と宣言し、`defn` などは top-level へ並べてください。 |
 | `LS0201` | macro-expansion-error | マクロ展開に失敗しました | macro 定義と呼び出し引数、quote / unquote の構造を見直してください。 |
 | `LS1001` | undefined-variable | 未定義の識別子です | 定義、import、module path、綴りを確認してください。 |
 | `LS1002` | type-mismatch | 型が一致していません | if 条件、then/else、関数引数、戻り値の型を揃えてください。 |

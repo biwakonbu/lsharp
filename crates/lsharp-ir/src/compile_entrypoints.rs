@@ -19,6 +19,9 @@ pub(super) fn compile_multi_file_with_mode(
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let program = lsharp_syntax::parse(&source)
             .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
+        // block 形式 module body は infer より前に弾く (I-39)
+        crate::module_body_form::reject_block_form_module_body(&program)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let mut infer = lsharp_types::infer::Infer::new();
         let type_results = infer
             .infer_program(&program)
@@ -46,6 +49,9 @@ pub(super) fn compile_multi_file_with_mode(
 
         let program = lsharp_syntax::parse(&source)
             .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
+        // block 形式 module body は infer より前に弾く (I-39)
+        crate::module_body_form::reject_block_form_module_body(&program)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
         direct_imports.insert(mod_name.clone(), collect_import_visibility(&program));
         module_paths.insert(mod_name.clone(), mod_path.clone());
         parsed_modules.insert(mod_name.clone(), program);

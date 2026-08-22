@@ -262,6 +262,9 @@ fn compile_module_from_formatted_source_with_cache(
 
     let program =
         lsharp_syntax::parse(source).map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
+    // block 形式 module body は infer より前に弾く (I-39)
+    lsharp_ir::reject_block_form_module_body(&program)
+        .map_err(|e| miette::miette!("{}: {e}", file.display()))?;
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&program)

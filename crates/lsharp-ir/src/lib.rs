@@ -11,6 +11,7 @@ mod instruction;
 mod linker;
 pub mod lower;
 mod model;
+pub mod module_body_form;
 pub mod module_graph;
 pub mod root_lifetime;
 
@@ -34,6 +35,7 @@ pub(crate) use compile_surface::ModuleTypeSurface;
 pub use instruction::{Instruction, IrType};
 pub use linker::link_modules;
 pub use model::{Function, GcField, GcTypeDef, GcTypeKind, GlobalDef, ImportFunc, Module};
+pub use module_body_form::{UNSUPPORTED_MODULE_BODY_CODE, reject_block_form_module_body};
 
 #[cfg(test)]
 use compile_surface::{collect_import_modules, collect_import_visibility};

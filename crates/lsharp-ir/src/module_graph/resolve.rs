@@ -258,7 +258,7 @@ impl ModuleGraph {
                         queue.push_back((imp.clone(), imp_path));
                     } else {
                         let span = Self::find_import_span(&mod_path, Some(source_overrides), imp)
-                            .unwrap_or_else(|| lsharp_syntax::span::Span::dummy());
+                            .unwrap_or_else(lsharp_syntax::span::Span::dummy);
                         return Err(ModuleGraphError::ModuleNotFoundAt {
                             name: imp.clone(),
                             from: mod_name.clone(),
