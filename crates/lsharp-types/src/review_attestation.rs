@@ -53,7 +53,9 @@ pub enum AttestationError {
     UnsupportedAlgorithm { value: String },
     #[error("review attestation の signature encoding が不正です: {value:?}")]
     InvalidSignatureEncoding { value: String },
-    #[error("review attestation の timestamp が canonical UTC 形式ではありません: field={field}, value={value:?}")]
+    #[error(
+        "review attestation の timestamp が canonical UTC 形式ではありません: field={field}, value={value:?}"
+    )]
     InvalidTimestamp { field: &'static str, value: String },
     #[error(
         "review attestation の expires_at は issued_at より後でなければなりません: issued_at={issued_at:?}, expires_at={expires_at:?}"
@@ -75,9 +77,7 @@ pub enum AttestationVerificationError {
     InvalidSignatureEncoding,
     #[error("review attestation の signature が canonical bytes と一致しません")]
     SignatureMismatch,
-    #[error(
-        "review attestation の明示 clock が canonical UTC 形式ではありません: value={value:?}"
-    )]
+    #[error("review attestation の明示 clock が canonical UTC 形式ではありません: value={value:?}")]
     InvalidTimestamp { field: &'static str, value: String },
 }
 
@@ -370,9 +370,7 @@ impl ReviewAttestation {
     }
 
     fn lifecycle_state(&self, lifecycle: &ReviewLifecycleRegistry) -> ReviewVerificationState {
-        self.lifecycle_state_from_event(
-            lifecycle.current_event_for(self.review_id().as_str()),
-        )
+        self.lifecycle_state_from_event(lifecycle.current_event_for(self.review_id().as_str()))
     }
 
     fn lifecycle_state_at(
@@ -519,8 +517,7 @@ pub fn decode_signature_base64url(value: &str) -> Result<Vec<u8>, AttestationErr
 /// source named field を decode しても wire の値を失わないよう、標準化した同じ encoding
 /// を report へ戻す。署名対象の canonical bytes とは別の表示用 field である。
 pub fn encode_signature_base64url(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut output = String::new();
     for chunk in bytes.chunks(3) {
         let first = chunk[0];

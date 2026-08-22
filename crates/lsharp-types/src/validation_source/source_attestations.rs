@@ -1,4 +1,4 @@
-use super::{review_attestation_from_form, SourceGraphError, SourceReviewAttestation};
+use super::{SourceGraphError, SourceReviewAttestation, review_attestation_from_form};
 use lsharp_syntax::ast::{Decl, Metadata};
 use lsharp_syntax::metadata::MetadataFormKind;
 

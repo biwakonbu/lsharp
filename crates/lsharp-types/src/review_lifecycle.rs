@@ -46,10 +46,7 @@ pub enum LifecycleError {
     #[error("review lifecycle の必須 field が空です: {field}")]
     EmptyField { field: &'static str },
     #[error("review lifecycle の timestamp が不正です: field={field}, value={value:?}")]
-    InvalidTimestamp {
-        field: &'static str,
-        value: String,
-    },
+    InvalidTimestamp { field: &'static str, value: String },
     #[error("review lifecycle の sequence は 1 以上でなければなりません: {sequence}")]
     InvalidSequence { sequence: u64 },
     #[error("review lifecycle の review ID が不正です: {0}")]
@@ -80,11 +77,11 @@ pub enum LifecycleError {
         previous: String,
         next: String,
     },
-    #[error("review lifecycle に同じ sequence が重複しています: review_id={review_id:?}, sequence={sequence}")]
-    DuplicateSequence { review_id: String, sequence: u64 },
     #[error(
-        "review lifecycle の遷移が不正です: review_id={review_id:?}, from={from:?}, to={to:?}"
+        "review lifecycle に同じ sequence が重複しています: review_id={review_id:?}, sequence={sequence}"
     )]
+    DuplicateSequence { review_id: String, sequence: u64 },
+    #[error("review lifecycle の遷移が不正です: review_id={review_id:?}, from={from:?}, to={to:?}")]
     InvalidTransition {
         review_id: String,
         from: ReviewLifecycleState,
@@ -258,12 +255,9 @@ impl ReviewLifecycleRegistry {
     /// の逆順から最初に時刻へ到達した event を選べば、future event を現在の state として
     /// 適用せずに済む。caller は event と同じ strict timestamp parser を通した値を渡す。
     pub fn event_at(&self, review_id: &str, at: &str) -> Option<&ReviewLifecycleEvent> {
-        self.events.get(review_id).and_then(|events| {
-            events
-                .iter()
-                .rev()
-                .find(|event| event.effective_at() <= at)
-        })
+        self.events
+            .get(review_id)
+            .and_then(|events| events.iter().rev().find(|event| event.effective_at() <= at))
     }
 
     /// review ID、sequence の順に flatten した deterministic view を返す。

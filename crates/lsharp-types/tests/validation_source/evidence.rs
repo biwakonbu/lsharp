@@ -446,12 +446,11 @@ fn source_adapter_rejects_unicode_whitespace_only_sampling_coverage_bucket_with_
             :independence "same-author"
           true)
         "#;
-    let program = parse(SOURCE)
-        .expect("Unicode whitespace-only coverage bucket fixture は parse できるべき");
+    let program =
+        parse(SOURCE).expect("Unicode whitespace-only coverage bucket fixture は parse できるべき");
 
-    let error = source_program_to_intent_graph(&program).expect_err(
-        "Unicode whitespace-only coverage bucket は source graph 登録時に拒否するべき",
-    );
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("Unicode whitespace-only coverage bucket は source graph 登録時に拒否するべき");
     let SourceGraphError::InvalidEvidenceField { field, value, span } = error else {
         panic!(
             "Unicode whitespace-only coverage bucket の source diagnostic を期待しました: {error:?}"

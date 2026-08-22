@@ -11,7 +11,7 @@ use super::review_lifecycle::{
 };
 use super::review_trust_store::{ReviewTrustKey, ReviewTrustStore, TrustStoreError};
 use serde::de::{self, Deserialize, Deserializer, MapAccess, Visitor};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fmt;
 
@@ -330,7 +330,7 @@ impl<'de> Visitor<'de> for AttestationVisitor {
                 _ => {
                     return Err(de::Error::custom(format!(
                         "unknown field attestation.{key}"
-                    )))
+                    )));
                 }
             }
         }

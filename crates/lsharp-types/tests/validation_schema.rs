@@ -49,8 +49,7 @@ fn review_provenance_schema_requires_canonical_timestamp_for_lifecycle_effective
         .expect("lifecycle.effective_at schema が必要");
 
     assert_eq!(
-        effective_at["$ref"],
-        "#/$defs/canonical_utc_timestamp",
+        effective_at["$ref"], "#/$defs/canonical_utc_timestamp",
         "lifecycle.effective_at は non-empty string ではなく canonical UTC timestamp を要求するべき"
     );
 }
@@ -80,8 +79,7 @@ fn review_provenance_schema_declares_nonblank_required_strings() {
         .expect("review provenance schema は JSON であるべき");
 
     assert_eq!(
-        schema["$defs"]["non_empty_string"]["pattern"],
-        "[^\\s]",
+        schema["$defs"]["non_empty_string"]["pattern"], "[^\\s]",
         "required string は whitespace-only を schema で拒否するべき"
     );
     assert_eq!(
@@ -165,14 +163,8 @@ fn intent_graph_schema_declares_optional_review_evidence_identity() {
         ])
     );
     assert_eq!(identity["additionalProperties"], false);
-    assert_eq!(
-        identity["properties"]["trust_store_digest"]["minLength"],
-        1
-    );
-    assert_eq!(
-        identity["properties"]["lifecycle_digest"]["minLength"],
-        1
-    );
+    assert_eq!(identity["properties"]["trust_store_digest"]["minLength"], 1);
+    assert_eq!(identity["properties"]["lifecycle_digest"]["minLength"], 1);
     assert!(
         !schema["required"]
             .as_array()

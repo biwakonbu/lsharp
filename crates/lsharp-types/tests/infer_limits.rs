@@ -81,7 +81,9 @@ fn deeply_nested_type_annotations_do_not_panic() {
 fn occur_check_program(depth: usize) -> String {
     assert!(depth > 0, "the occur-check fixture needs at least one wrap");
 
-    let nested = (0..depth).fold(String::from("value"), |inner, _| format!("(ref-new {inner})"));
+    let nested = (0..depth).fold(String::from("value"), |inner, _| {
+        format!("(ref-new {inner})")
+    });
     format!("(defn occur [value] (value {nested}))")
 }
 
@@ -107,8 +109,9 @@ fn occur_check_reports_infinite_type_at_documented_depths() {
 /// Apply の環境更新を最適化しても、この契約は落としてはならない。
 #[test]
 fn multi_argument_application_propagates_prior_argument_substitution() {
-    let program = parse("(defn pair [left right] left) (defn inconsistent [f] (pair (f 1) (f true)))")
-        .expect("multi-argument substitution fixture must parse");
+    let program =
+        parse("(defn pair [left right] left) (defn inconsistent [f] (pair (f 1) (f true)))")
+            .expect("multi-argument substitution fixture must parse");
     let mut infer = Infer::new();
     let error = infer
         .infer_program(&program)

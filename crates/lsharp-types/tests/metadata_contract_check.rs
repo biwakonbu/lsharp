@@ -42,11 +42,18 @@ fn legacy_invariant_not_requires_bool_operand() {
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "not の Int operand を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "not の Int operand を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains(":invariant"));
-    assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "(not 0)");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(not 0)"
+    );
     assert_eq!(diagnostic.function_name, "succ");
 }
 
@@ -59,7 +66,11 @@ fn legacy_invariant_logic_requires_bool_operands() {
         let program = parse(source).expect("non-Bool logic operand は parse できるべき");
         let diagnostics = check_metadata(&program);
 
-        assert_eq!(diagnostics.len(), 1, "logic の Int operand を成功扱いしてはならない");
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "logic の Int operand を成功扱いしてはならない"
+        );
         let diagnostic = &diagnostics[0];
         assert_eq!(diagnostic.severity, Severity::Error);
         assert!(diagnostic.message.contains(":invariant"));
@@ -82,7 +93,11 @@ fn legacy_invariant_if_requires_bool_condition() {
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "if の Int condition を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "if の Int condition を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains(":invariant"));
@@ -227,16 +242,11 @@ fn canonical_assertion_rejects_literal_true_as_vacuous() {
 #[test]
 fn canonical_assertion_rejects_statically_true_integer_comparisons_as_vacuous() {
     for predicate in [
-        "(= 1 1)",
-        "(< 1 2)",
-        "(> 2 1)",
-        "(<= 1 2)",
-        "(>= 2 1)",
-        "(!= 1 2)",
+        "(= 1 1)", "(< 1 2)", "(> 2 1)", "(<= 1 2)", "(>= 2 1)", "(!= 1 2)",
     ] {
         let source = format!("(defn noop [] :assert [{predicate}] true)");
-        let program = parse(&source)
-            .expect("静的に true な整数比較は diagnostic のため parse できるべき");
+        let program =
+            parse(&source).expect("静的に true な整数比較は diagnostic のため parse できるべき");
 
         let diagnostics = check_metadata(&program);
 
@@ -259,7 +269,11 @@ fn canonical_property_requires_at_least_one_for_all() {
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "空の property を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "空の property を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains(":property"));
@@ -286,7 +300,8 @@ fn canonical_property_rejects_zero_cases() {
 fn canonical_property_requires_a_typed_binder() {
     const SOURCE: &str =
         "(defn noop [] :property [(for-all [] :postcondition (>= result 0))] true)";
-    let program = parse(SOURCE).expect("binder なし property は diagnostic のため parse できるべき");
+    let program =
+        parse(SOURCE).expect("binder なし property は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
@@ -299,13 +314,17 @@ fn canonical_property_requires_a_typed_binder() {
 
 #[test]
 fn canonical_property_rejects_literal_true_postcondition_as_vacuous() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [x Int] :postcondition true)] x)";
-    let program = parse(SOURCE).expect("literal true property は diagnostic のため parse できるべき");
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [x Int] :postcondition true)] x)";
+    let program =
+        parse(SOURCE).expect("literal true property は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "literal true を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "literal true を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"));
@@ -314,14 +333,17 @@ fn canonical_property_rejects_literal_true_postcondition_as_vacuous() {
 
 #[test]
 fn canonical_property_rejects_compound_true_postcondition_as_vacuous() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or true (= value 0)))] x)";
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or true (= value 0)))] x)";
     let program = parse(SOURCE)
         .expect("compound で常に true の property は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "compound true を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "compound true を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"));
@@ -334,14 +356,17 @@ fn canonical_property_rejects_compound_true_postcondition_as_vacuous() {
 
 #[test]
 fn canonical_property_rejects_dynamic_complement_postcondition_as_vacuous() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or (= value 0) (not (= value 0))))] x)";
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or (= value 0) (not (= value 0))))] x)";
     let program = parse(SOURCE)
         .expect("動的な補集合で常に true の property は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "dynamic complement を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "dynamic complement を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"));
@@ -354,14 +379,17 @@ fn canonical_property_rejects_dynamic_complement_postcondition_as_vacuous() {
 
 #[test]
 fn canonical_property_rejects_dynamic_contradiction_precondition_as_vacuous() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(and (= value 0) (not (= value 0)))] :postcondition (= result value))] x)";
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(and (= value 0) (not (= value 0)))] :postcondition (= result value))] x)";
     let program = parse(SOURCE)
         .expect("動的な矛盾で常に false の precondition は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "dynamic contradiction を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "dynamic contradiction を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"));
@@ -375,12 +403,7 @@ fn canonical_property_rejects_dynamic_contradiction_precondition_as_vacuous() {
 #[test]
 fn canonical_property_rejects_statically_true_integer_comparisons_as_vacuous() {
     for predicate in [
-        "(= 1 1)",
-        "(< 1 2)",
-        "(> 2 1)",
-        "(<= 1 2)",
-        "(>= 2 1)",
-        "(!= 1 2)",
+        "(= 1 1)", "(< 1 2)", "(> 2 1)", "(<= 1 2)", "(>= 2 1)", "(!= 1 2)",
     ] {
         let source = format!(
             "(defn identity [x] :property [(for-all [x Int] :postcondition {predicate})] x)"
@@ -404,14 +427,17 @@ fn canonical_property_rejects_statically_true_integer_comparisons_as_vacuous() {
 
 #[test]
 fn canonical_property_rejects_unreachable_literal_false_precondition() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [x Int] :precondition [false] :postcondition (>= result 0))] x)";
-    let program = parse(SOURCE)
-        .expect("literal false precondition は diagnostic のため parse できるべき");
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [x Int] :precondition [false] :postcondition (>= result 0))] x)";
+    let program =
+        parse(SOURCE).expect("literal false precondition は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "到達不能 precondition を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "到達不能 precondition を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"), "{diagnostics:?}");
@@ -422,12 +448,7 @@ fn canonical_property_rejects_unreachable_literal_false_precondition() {
 #[test]
 fn canonical_property_rejects_statically_false_integer_preconditions() {
     for predicate in [
-        "(= 1 2)",
-        "(< 2 1)",
-        "(> 1 2)",
-        "(<= 2 1)",
-        "(>= 1 2)",
-        "(!= 1 1)",
+        "(= 1 2)", "(< 2 1)", "(> 1 2)", "(<= 2 1)", "(>= 1 2)", "(!= 1 1)",
     ] {
         let source = format!(
             "(defn identity [x] :property [(for-all [x Int] :precondition [{predicate}] :postcondition (>= result 0))] x)"
@@ -451,31 +472,40 @@ fn canonical_property_rejects_statically_false_integer_preconditions() {
 
 #[test]
 fn canonical_property_rejects_annotated_false_precondition() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [x Int] :precondition [(: false Bool)] :postcondition (>= result 0))] x)";
-    let program = parse(SOURCE)
-        .expect("annotated false precondition は diagnostic のため parse できるべき");
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [x Int] :precondition [(: false Bool)] :postcondition (>= result 0))] x)";
+    let program =
+        parse(SOURCE).expect("annotated false precondition は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "annotation 付き到達不能 precondition を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "annotation 付き到達不能 precondition を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"), "{diagnostics:?}");
-    assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "(: false Bool)");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(: false Bool)"
+    );
     assert_eq!(diagnostic.function_name, "identity");
 }
 
 #[test]
 fn canonical_property_rejects_compound_false_precondition() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [x Int] :precondition [(and false true)] :postcondition (>= result 0))] x)";
-    let program = parse(SOURCE)
-        .expect("compound false precondition は diagnostic のため parse できるべき");
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [x Int] :precondition [(and false true)] :postcondition (>= result 0))] x)";
+    let program =
+        parse(SOURCE).expect("compound false precondition は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "到達不能 compound precondition を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "到達不能 compound precondition を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"), "{diagnostics:?}");
@@ -488,14 +518,17 @@ fn canonical_property_rejects_compound_false_precondition() {
 
 #[test]
 fn canonical_property_rejects_unary_not_true_precondition() {
-    const SOURCE: &str =
-        "(defn identity [x] :property [(for-all [x Int] :precondition [(not true)] :postcondition (>= result 0))] x)";
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [x Int] :precondition [(not true)] :postcondition (>= result 0))] x)";
     let program = parse(SOURCE)
         .expect("unary not の false precondition は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "unary not の到達不能 precondition を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "unary not の到達不能 precondition を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("vacuous"), "{diagnostics:?}");
@@ -514,10 +547,18 @@ fn canonical_property_requires_bool_postcondition() {
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "non-Bool postcondition を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "non-Bool postcondition を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
-    assert!(diagnostic.message.contains(":property postcondition は Bool 必須"));
+    assert!(
+        diagnostic
+            .message
+            .contains(":property postcondition は Bool 必須")
+    );
     assert!(diagnostic.message.contains("Int"));
     assert_eq!(diagnostic.function_name, "identity");
     assert_eq!(
@@ -533,13 +574,24 @@ fn canonical_property_requires_bool_preconditions() {
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "non-Bool precondition を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "non-Bool precondition を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
-    assert!(diagnostic.message.contains(":property precondition は Bool 必須"));
+    assert!(
+        diagnostic
+            .message
+            .contains(":property precondition は Bool 必須")
+    );
     assert!(diagnostic.message.contains("Int"));
     assert_eq!(diagnostic.function_name, "identity");
-    assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "(+ x 1)");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(+ x 1)"
+    );
 }
 
 #[test]
@@ -549,14 +601,17 @@ fn canonical_property_accepts_bool_predicates_in_binder_scope() {
 
     let diagnostics = check_metadata(&program);
 
-    assert!(diagnostics.is_empty(), "valid property を拒否してはならない: {diagnostics:?}");
+    assert!(
+        diagnostics.is_empty(),
+        "valid property を拒否してはならない: {diagnostics:?}"
+    );
 }
 
 #[test]
 fn canonical_property_rejects_duplicate_binder_names() {
-    const SOURCE: &str =
-        "(defn pair [left right] :property [(for-all [value Int value Int] :postcondition (= result value))] (+ left right))";
-    let program = parse(SOURCE).expect("重複 binder property は diagnostic のため parse できるべき");
+    const SOURCE: &str = "(defn pair [left right] :property [(for-all [value Int value Int] :postcondition (= result value))] (+ left right))";
+    let program =
+        parse(SOURCE).expect("重複 binder property は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
@@ -569,13 +624,17 @@ fn canonical_property_rejects_duplicate_binder_names() {
 
 #[test]
 fn canonical_property_rejects_result_binder_name() {
-    const SOURCE: &str =
-        "(defn identity [value] :property [(for-all [result Int] :postcondition (= result 0))] value)";
-    let program = parse(SOURCE).expect("result binder property は diagnostic のため parse できるべき");
+    const SOURCE: &str = "(defn identity [value] :property [(for-all [result Int] :postcondition (= result 0))] value)";
+    let program =
+        parse(SOURCE).expect("result binder property は diagnostic のため parse できるべき");
 
     let diagnostics = check_metadata(&program);
 
-    assert_eq!(diagnostics.len(), 1, "予約名 result の binder を成功扱いしてはならない");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "予約名 result の binder を成功扱いしてはならない"
+    );
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic.severity, Severity::Error);
     assert!(diagnostic.message.contains("result"), "{diagnostics:?}");

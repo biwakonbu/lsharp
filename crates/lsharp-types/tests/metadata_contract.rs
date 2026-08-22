@@ -2,7 +2,7 @@ use lsharp_syntax::ast::{Decl, Expr};
 use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::parse;
 use lsharp_types::metadata_contract::{
-    inventory_contract_suites, ContractInventoryError, LegacyContract,
+    ContractInventoryError, LegacyContract, inventory_contract_suites,
 };
 
 const LEGACY_CONTRACT_FORMS: &str = include_str!(concat!(

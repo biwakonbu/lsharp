@@ -62,7 +62,9 @@ fn polymorphic_legacy_example_requires_manual_review() {
         diagnostics[0].disposition(),
         LegacyMigrationDisposition::ManualReview
     );
-    assert!(diagnostics[0]
-        .message()
-        .starts_with("legacy :example は silent conversion できません。manual review が必要です:"));
+    assert!(
+        diagnostics[0].message().starts_with(
+            "legacy :example は silent conversion できません。manual review が必要です:"
+        )
+    );
 }

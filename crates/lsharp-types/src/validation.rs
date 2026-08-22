@@ -10,16 +10,14 @@ use crate::evidence::{
 };
 use crate::intent::{
     ClaimId, EvidenceId, IntentId, IntentNode, ReviewId, StableId,
-    review_attestation::{
-        encode_signature_base64url, ReviewAttestation, ReviewVerificationState,
-    },
+    review_attestation::{ReviewAttestation, ReviewVerificationState, encode_signature_base64url},
 };
 pub(crate) use crate::validation_identity::ReviewEvidenceIdentityWire;
 pub use crate::validation_identity::{
     ReviewEvidenceIdentity, ReviewEvidenceIdentityError, ReviewEvidenceIdentityProjectionError,
 };
-use serde::Serialize;
 use lsharp_syntax::span::Span;
+use serde::Serialize;
 
 /// node の trace が欠けている箇所。
 #[derive(Debug, Clone, PartialEq, Eq)]

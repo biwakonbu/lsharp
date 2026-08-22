@@ -85,10 +85,7 @@ fn sequence_zero_is_rejected_at_the_attestation_boundary() {
     )
     .expect_err("attestation sequence は 1 以上でなければならない");
 
-    assert_eq!(
-        error,
-        AttestationError::InvalidSequence { sequence: 0 }
-    );
+    assert_eq!(error, AttestationError::InvalidSequence { sequence: 0 });
 }
 
 #[test]

@@ -4,17 +4,17 @@
 //! 明示的に受け取る。ID の省略や kind の推測は行わず、同じ ID の重複と typed kind mismatch
 //! を既存の canonical model のエラーとして返す。
 
-use crate::intent::{EvidenceId, IntentNodeError, NodeKind, ReviewId, StableIdError};
 use crate::intent::review_attestation::{
-    decode_signature_base64url, AttestationAlgorithm, AttestationError, ReviewAttestation,
-    ReviewVerificationState,
+    AttestationAlgorithm, AttestationError, ReviewAttestation, ReviewVerificationState,
+    decode_signature_base64url,
 };
+use crate::intent::{EvidenceId, IntentNodeError, NodeKind, ReviewId, StableIdError};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::Program;
 use lsharp_syntax::span::Span;
 
-mod source_edges;
 mod source_attestations;
+mod source_edges;
 mod source_evidence;
 mod source_nodes;
 
@@ -275,9 +275,8 @@ pub(super) fn review_attestation_from_form(
     form: &lsharp_syntax::metadata::ReviewAttestationForm,
     span: Span,
 ) -> Result<SourceReviewAttestation, SourceGraphError> {
-    let algorithm = AttestationAlgorithm::parse(form.algorithm().to_string()).map_err(|source| {
-        SourceGraphError::ReviewAttestationAt { span, source }
-    })?;
+    let algorithm = AttestationAlgorithm::parse(form.algorithm().to_string())
+        .map_err(|source| SourceGraphError::ReviewAttestationAt { span, source })?;
     let signature = decode_signature_base64url(form.signature())
         .map_err(|source| SourceGraphError::ReviewAttestationAt { span, source })?;
     let attestation = ReviewAttestation::new(

@@ -5,9 +5,7 @@
 //! silent conversion せず manual review に残す。
 
 use crate::infer::Infer;
-use crate::metadata_contract::{
-    ContractInventoryError, LegacyContract, inventory_contract_suites,
-};
+use crate::metadata_contract::{ContractInventoryError, LegacyContract, inventory_contract_suites};
 use crate::types::Type;
 use lsharp_syntax::ast::{Decl, Expr, Program};
 use lsharp_syntax::span::Span;
@@ -120,12 +118,7 @@ pub fn classify_legacy_contracts(
             match contract {
                 LegacyContract::Example { expressions, .. } => {
                     for expression in expressions {
-                        diagnostics.push(classify_example(
-                            program,
-                            owner,
-                            expression,
-                            probe_index,
-                        ));
+                        diagnostics.push(classify_example(program, owner, expression, probe_index));
                         probe_index += 1;
                     }
                 }

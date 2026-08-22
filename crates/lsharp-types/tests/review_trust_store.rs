@@ -147,12 +147,14 @@ fn trust_store_wire_preserves_retired_key_state() {
     }
     "#;
     let document = parse_review_wire(wire).expect("rotated trust store should parse");
-    assert!(!document
-        .trust_store()
-        .unwrap()
-        .get("github", "org/reviews-2025", AttestationAlgorithm::Ed25519)
-        .unwrap()
-        .is_active());
+    assert!(
+        !document
+            .trust_store()
+            .unwrap()
+            .get("github", "org/reviews-2025", AttestationAlgorithm::Ed25519)
+            .unwrap()
+            .is_active()
+    );
     assert_eq!(
         document
             .trust_store()

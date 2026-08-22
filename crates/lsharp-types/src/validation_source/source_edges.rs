@@ -1,4 +1,4 @@
-use super::{require_evidence, require_node, require_review, SourceGraphError};
+use super::{SourceGraphError, require_evidence, require_node, require_review};
 use crate::evidence::{Edge, InvalidationSubject, ReviewSubject};
 use crate::intent::{
     AssumptionId, ChangeId, ClaimId, ContractId, EvidenceId, IntentId, NodeKind, ReviewId,

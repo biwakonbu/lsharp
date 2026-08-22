@@ -1,7 +1,7 @@
 //! intent graph の node-owned / evidence-owned edge closure を検証する contract tests。
 
 use lsharp_syntax::parse;
-use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
+use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
 
 #[test]
 fn source_adapter_registers_node_edges_after_collecting_all_declarations() {

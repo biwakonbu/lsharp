@@ -5,12 +5,12 @@
 //! 取り違えずに受け取るための canonical handoff である。
 
 use super::review_attestation::{
-    validate_canonical_timestamp, AttestationAlgorithm, AttestationVerificationError,
-    ReviewAttestation, ReviewVerificationState,
+    AttestationAlgorithm, AttestationVerificationError, ReviewAttestation, ReviewVerificationState,
+    validate_canonical_timestamp,
 };
 use super::review_trust_store::ReviewTrustStore;
 use super::{ReviewId, StableIdError};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 /// verification receipt の署名対象 domain separator。

@@ -4,7 +4,7 @@ use lsharp_syntax::parse;
 use lsharp_types::evidence::ReviewVisibility;
 use lsharp_types::intent::{NodeKind, StableIdError};
 use lsharp_types::metadata_contract::inventory_contract_suites;
-use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
+use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
 
 #[test]
 fn source_adapter_registers_typed_nodes_without_deriving_ids_from_span_or_order() {
@@ -272,7 +272,8 @@ fn source_adapter_rejects_whitespace_only_node_text() {
 
 #[test]
 fn source_adapter_rejects_unicode_whitespace_only_node_text() {
-    const SOURCE: &str = r#"(defn cancel [] :claim "claim:checkout/unicode-whitespace-text" " " true)"#;
+    const SOURCE: &str =
+        r#"(defn cancel [] :claim "claim:checkout/unicode-whitespace-text" " " true)"#;
     let program = parse(SOURCE).expect("Unicode whitespace node text fixture は parse できるべき");
 
     let error = source_program_to_intent_graph(&program)
