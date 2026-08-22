@@ -2988,16 +2988,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
 
-- [ ] `LSP-COL-CONV-02` 両 facet が要る 5 本の wire 位置を 0-indexed へ揃える — Issue `I-52` の残渣。
-  `LSP-COL-CONV-01` で 4 本は緑にしたが、facet B (`LSP-SNAPSHOT-SHAPE-01`) も要る 5 本は
-  位置が 1-indexed のまま残っている。A だけ直しても緑にならないため分離した。
-  修正値は測定済みで `ISSUES.md` の `I-52` に表として置いてある
-  (`:17533` / `:17614` / `:18966` / `:19232` / `:19490`)。
-  `..._uses_spec_changed_document_with_escaped_newline` と同 `_unicode_` 版は期待値が
-  snapshot file ではなく **inline の縮約形** (`selfhost_cli_core.rs:17568-17573`) なので、
-  `assert_lsp_stdio_snapshot` 側を直すだけでは緑にならない点に注意する。
-  受入条件: 上記 5 本が緑になること。**`LSP-SNAPSHOT-SHAPE-01` を先に閉じないと検証できない。**
-  wire の位置規約の正本は `AGENTS.md` の「LSP stdio wire の位置規約 (fixture の正本)」節。
+- [BLOCKED: LSP-SNAPSHOT-SHAPE-01] `LSP-COL-CONV-03` snapshot file を読む 3 本の wire 位置を
+  0-indexed へ揃える — Issue `I-52` の残渣。`:18966` / `:19232` / `:19490` の 3 本は facet A に加えて
+  facet B (`tests/snapshots/lsp/stdio/*.json` の縮約形) も踏むため、位置だけ直しても緑にならない。
+  修正値は**導出済み (未検証)** で `ISSUES.md` の `I-52` に表として置いてある。
+  受入条件: 上記 3 本が緑になること。**`LSP-SNAPSHOT-SHAPE-01` を先に閉じないと検証できない。**
 
 - [ ] `LSP-SNAPSHOT-SHAPE-01` LSP stdio snapshot の形式ドリフトを解消する — Issue `I-52` の facet B。
   `assert_lsp_stdio_snapshot` (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:80-84`) は
@@ -3006,7 +3001,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   止まっている。実出力が LSP 準拠の object 形へ変わったのは `5db1c2a4` (2026-08-03)。
   受入条件: `..._completion_schema_snapshot` (位置を送らないため facet A の影響を受けない) が
   緑になること。縮約器を入れる設計を採るなら「何を縮約対象とするか」を ADR に書いてから実装する。
-  **含めない範囲**: 位置規約の修正 (`LSP-COL-CONV-02`)。
+  **含めない範囲**: 位置規約の修正 (`LSP-COL-CONV-03`)。
   snapshot の無検討な一括再生成 (`cargo insta accept` 相当) はしない。
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

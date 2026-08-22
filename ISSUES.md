@@ -2927,20 +2927,44 @@
 - **規約の正本**: `AGENTS.md` の「LSP stdio wire の位置規約 (fixture の正本)」節
   (「テスト構成」直後) に 1 箇所だけ置いた。`docs/language/` には LSP を扱うファイルが無く、
   新規ファイルを孤立させるより既存の作業手順正本へ寄せる方が発見可能性が高い。
-- **残渣 (この slice で直していない)**: **両方の facet が要る 5 本は位置も 1-indexed のまま**である。
-  A だけを直しても緑にならないので、B を解消する slice で位置と同時に直す。値は測定済み:
+- **残渣の内訳**: 位置を 1-indexed のまま残していた fixture は 5 本あった。
+  うち **inline 期待値の 2 本は同日の第 2 slice で解決** (下記)、
+  snapshot file を読む 3 本は facet B の解決待ちである。
 
-  | 行 | test | 旧 | 新 |
-  |---|---|---|---|
-  | `:17533` | `..._uses_spec_changed_document_with_escaped_newline` | `"line": 2, "character": 4` | `"line": 1, "character": 3` |
-  | `:17614` | 同 `_unicode_` 版 | `"line": 2, "character": 4` | `"line": 1, "character": 3` |
-  | `:18966` | `..._completion_changed_document_schema_snapshot` | `"line":1,"col":23` | `"line":0,"col":22` |
-  | `:19232` | `..._completion_latest_reopened_schema_snapshot` | `"line":1,"col":21` | `"line":0,"col":20` |
-  | `:19490` | `..._completion_filesystem_import_schema_snapshot` | `find(..) + len + 1`、`"line":1` | `find(..) + len`、`"line":0` |
+  | 行 | test | 旧 | 新 | 状態 |
+  |---|---|---|---|---|
+  | `:17533` | `..._uses_spec_changed_document_with_escaped_newline` | `"line": 2, "character": 4` | `"line": 1, "character": 3` | 適用済・検証済 |
+  | `:17614` | 同 `_unicode_` 版 | `"line": 2, "character": 4` | `"line": 1, "character": 3` | 適用済・検証済 |
+  | `:18966` | `..._completion_changed_document_schema_snapshot` | `"line":1,"col":23` | `"line":0,"col":22` | 導出済 (未検証) |
+  | `:19232` | `..._completion_latest_reopened_schema_snapshot` | `"line":1,"col":21` | `"line":0,"col":20` | 導出済 (未検証) |
+  | `:19490` | `..._completion_filesystem_import_schema_snapshot` | `find(..) + len + 1`、`"line":1` | `find(..) + len`、`"line":0` | 導出済 (未検証) |
 
-  escaped_newline 系 2 本の期待値は snapshot file ではなく **inline の縮約形**
-  (`selfhost_cli_core.rs:17568-17573` の `"result": [["helper", 3, "helper"]]`) なので、
-  `assert_lsp_stdio_snapshot` を直すだけでは緑にならない。引き取り先は `TODO.md` の `LSP-COL-CONV-02`。
+  下 3 本の値は同じ導出規則で求めただけで、GREEN で検証したのは別の 6 本である。
+  引き取り先は `TODO.md` の `LSP-COL-CONV-03`。
+- **inline 期待値 2 本の解決** (2026-08-22、第 2 slice): この 2 本は facet A と B の**両方**を
+  踏むが、期待値が snapshot file ではなく **inline の `serde_json::json!`**
+  (`selfhost_cli_core.rs:17573` / `:17654`) で `assert_lsp_stdio_snapshot` を一切経由しない。
+  よって facet B の設計決定 (縮約器を入れるか否か) を待たずに単独で緑にできる。
+
+  - 位置: 上表の `:17533` / `:17614` を wire 規約へ
+  - 期待値: `"result": [["helper", 3, "helper"]]` →
+    `"result": [{"label": "helper", "kind": 3, "insertText": "helper"}]`
+
+  期待値の書き換えを正当化する根拠は facet A と同じで、object 形を契約にしたのは
+  `5db1c2a4` (2026-08-03) であり、三要素配列で書かれた test 側が陳腐化していたためである。
+  既に緑の `..._completion_uses_open_document` (`:17087`) が object 形を期待していることで、
+  現行契約が object 形であることは実測で裏が取れている。
+
+  検証 (`cargo test -p lsharp-wasm --test e2e -- --ignored
+  lsp_stdio_completion_uses_spec_changed_document`、2026-08-22):
+  **2 passed / 0 failed** (`221.10s`)。RED は同日の facet A GREEN run で
+  同 2 本が FAILED (左辺に keyword 7 件 + 右辺が三要素配列) であることを実測している。
+- **未監査 (合否を測っていない)**: 位置を送る fixture のうち、`LSP-COL-CONV-01` の filter
+  (`lsp_stdio_completion`) にも RED 時の 10 本 run にも一致しなかったものがある。
+  `..._lsp_stdio_wire_repeated_sequence` (`selfhost_cli_core.rs:6207` / `:6212`、id 81/82) が該当し、
+  hover / definition 族も同様に未確認である。**合否は推測しない。**
+  もし現在 pass しているなら、期待値がキーワード混入込みで書かれている可能性があり、
+  その場合は `AGENTS.md` の新しい規約と矛盾したまま緑という状態になる。監査は別 slice で行う。
 
 #### B: snapshot file が 2026-08-03 以前の縮約形のまま残っている
 
@@ -2949,7 +2973,7 @@
   正規化器は挟まっていない。ところが `tests/snapshots/lsp/stdio/*.json` は
   completion item を `["label", kind, "insertText"]` の**三要素配列**で、diagnostics を
   `{"col":1,"line":1,"messageHash":1,"rule":1,"severity":1,"source":2}` の**型タグ**で持つ、
-  実出力には存在しない縮約形で書かれている。したがって **A を直しても B の 6 本は緑にならない**。
+  実出力には存在しない縮約形で書かれている。したがって **A を直しても、snapshot file を読む test は緑にならない**。ただし inline 期待値の 2 本は `assert_lsp_stdio_snapshot` を経由しないので B の対象外であり、既に解決済みである (facet A の節を参照)。
 - **根拠**: `..._completion_schema_snapshot` の実測。左右の内容は同一 (keyword 7 件) で、形だけが違う。
 
   ```
@@ -2979,7 +3003,7 @@
   契約になる**ので ADR が要る。無検討な一括再生成はしない。
 - **状態の内訳**: facet A は resolved。**facet B が未解決なので issue 全体は open のまま**である。
 - **関連**: `I-49` (発見の経緯)。引き取り先は `TODO.md` の `LSP-SNAPSHOT-SHAPE-01` (B) と
-  `LSP-COL-CONV-02` (両 facet が要る 5 本の位置修正。B の解消と同時にしか検証できない)。
+  `LSP-COL-CONV-03` (snapshot file を読む 3 本の位置修正。B の解消と同時にしか検証できない)。
   wire 位置規約の正本は `AGENTS.md`。
 
 <a id="doc-01"></a>

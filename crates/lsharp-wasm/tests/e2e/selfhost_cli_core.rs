@@ -17530,8 +17530,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_docume
                 "uri": 42
             },
             "position": {
-                "line": 2,
-                "character": 4
+                "line": 1,
+                "character": 3
             }
         }
     })
@@ -17570,7 +17570,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_docume
         serde_json::json!({
             "jsonrpc": "2.0",
             "id": 170,
-            "result": [["helper", 3, "helper"]]
+            "result": [{"label": "helper", "kind": 3, "insertText": "helper"}]
         }),
     ];
 
@@ -17611,8 +17611,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_docume
                 "uri": 42
             },
             "position": {
-                "line": 2,
-                "character": 4
+                "line": 1,
+                "character": 3
             }
         }
     })
@@ -17651,7 +17651,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_docume
         serde_json::json!({
             "jsonrpc": "2.0",
             "id": 172,
-            "result": [["helper", 3, "helper"]]
+            "result": [{"label": "helper", "kind": 3, "insertText": "helper"}]
         }),
     ];
 
