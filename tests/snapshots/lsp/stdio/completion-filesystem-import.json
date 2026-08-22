@@ -3,36 +3,44 @@
     "jsonrpc": "2.0",
     "method": "textDocument/didOpen",
     "params": {
-      "sourceBytes": 58,
-      "uri": 200
+      "uri": 200,
+      "sourceBytes": 58
     }
   },
   {
     "jsonrpc": "2.0",
     "method": "textDocument/publishDiagnostics",
     "params": {
+      "uri": 200,
       "diagnostics": [
         {
-          "col": 1,
-          "line": 1,
-          "messageHash": 1,
-          "rule": 1,
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 50
+            },
+            "end": {
+              "line": 0,
+              "character": 56
+            }
+          },
           "severity": 1,
-          "source": 2
+          "code": "LS1001",
+          "source": "lsharp",
+          "message": "undefined symbol"
         }
-      ],
-      "uri": 200
+      ]
     }
   },
   {
-    "id": 192,
     "jsonrpc": "2.0",
+    "id": 192,
     "result": [
-      [
-        "mid-val",
-        3,
-        "mid-val"
-      ]
+      {
+        "label": "mid-val",
+        "kind": 3,
+        "insertText": "mid-val"
+      }
     ]
   }
 ]

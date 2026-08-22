@@ -16610,7 +16610,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting() {
         request_body.len(),
         request_body
     );
-    let response_body = r#"{"jsonrpc":"2.0","id":64,"result":[{"range":{"start":{"line":1,"character":1},"end":{"line":1,"character":17}},"newText":"(defn main [] 1)\n"}]}"#;
+    // wire は 0 始まり。fixture が内部 1 始まりのまま陳腐化していた (I-54)
+    let response_body = r#"{"jsonrpc":"2.0","id":64,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":16}},"newText":"(defn main [] 1)\n"}]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -16965,7 +16966,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_open_document() {
         source.len()
     );
     let formatting_response =
-        "{\"jsonrpc\":\"2.0\",\"id\":69,\"result\":[[1,1,1,17,\"(defn main [] 1)\\n\"]]}";
+        "{\"jsonrpc\":\"2.0\",\"id\":69,\"result\":[{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":16}},\"newText\":\"(defn main [] 1)\\n\"}]}";
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -17213,7 +17214,14 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
         serde_json::json!({
             "jsonrpc": "2.0",
             "id": 169,
-            "result": [[1, 1, 1, source.len() + 1, formatted]]
+            // wire は 0 始まりの LSP TextEdit object (旧 5-tuple は内部 1 始まり表現)
+            "result": [{
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": source.len()}
+                },
+                "newText": formatted
+            }]
         }),
     ];
 
@@ -17262,7 +17270,14 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
         serde_json::json!({
             "jsonrpc": "2.0",
             "id": 171,
-            "result": [[1, 1, 1, source.len() + 1, formatted]]
+            // wire は 0 始まりの LSP TextEdit object (旧 5-tuple は内部 1 始まり表現)
+            "result": [{
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": source.len()}
+                },
+                "newText": formatted
+            }]
         }),
     ];
 
@@ -17321,7 +17336,14 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_preserves_defn_metadata(
         serde_json::json!({
             "jsonrpc": "2.0",
             "id": 173,
-            "result": [[1, 1, 1, source.len() + 1, formatted]]
+            // wire は 0 始まりの LSP TextEdit object (旧 5-tuple は内部 1 始まり表現)
+            "result": [{
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": source.len()}
+                },
+                "newText": formatted
+            }]
         }),
     ];
 
@@ -18984,7 +19006,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_changed_document_schema_
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let completion_body = r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":0,"col":22}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -19250,7 +19272,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_latest_reopened_schema_s
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let completion_body = r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":0,"col":20}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -19508,9 +19530,10 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_filesystem_import_schema_snap
 #[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_filesystem_import_schema_snapshot() {
     let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-va))";
-    let completion_col = main_source.find("mid-va").expect("mid-va call") + "mid-va".len() + 1;
+    // wire は 0 始まり。カーソルは "mid-va" の直後 = find + len (I-52)
+    let completion_col = main_source.find("mid-va").expect("mid-va call") + "mid-va".len();
     let completion_body = format!(
-        r#"{{"jsonrpc":"2.0","id":192,"method":"textDocument/completion","params":{{"uri":200,"line":1,"col":{completion_col}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":192,"method":"textDocument/completion","params":{{"uri":200,"line":0,"col":{completion_col}}}}}"#
     );
 
     let output = run_lsp_filesystem_snapshot_request(
@@ -19613,28 +19636,29 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_schema
 
     let open_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
     let changed_source = "(module Main) (import Support.Mid) (defn main [] (mid-va))";
-    let symbol_col = open_source.find("(mid-val)").expect("mid-val call") + 2;
-    let completion_col = changed_source.find("mid-va").expect("mid-va call") + "mid-va".len() + 1;
+    // wire は 0 始まり。symbol は "(" の次 = find + 1、カーソルは "mid-va" の直後
+    let symbol_col = open_source.find("(mid-val)").expect("mid-val call") + 1;
+    let completion_col = changed_source.find("mid-va").expect("mid-va call") + "mid-va".len();
 
     let open_body = make_lsp_did_open_with_path(200, "src/Main.ls", open_source);
     let hover_body = format!(
-        r#"{{"jsonrpc":"2.0","id":196,"method":"textDocument/hover","params":{{"uri":200,"line":1,"col":{symbol_col}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":196,"method":"textDocument/hover","params":{{"uri":200,"line":0,"col":{symbol_col}}}}}"#
     );
     let definition_body = format!(
-        r#"{{"jsonrpc":"2.0","id":197,"method":"textDocument/definition","params":{{"uri":200,"line":1,"col":{symbol_col}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":197,"method":"textDocument/definition","params":{{"uri":200,"line":0,"col":{symbol_col}}}}}"#
     );
     let references_body = format!(
-        r#"{{"jsonrpc":"2.0","id":198,"method":"textDocument/references","params":{{"uri":200,"line":1,"col":{symbol_col}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":198,"method":"textDocument/references","params":{{"uri":200,"line":0,"col":{symbol_col}}}}}"#
     );
     let rename_body = format!(
-        r#"{{"jsonrpc":"2.0","id":199,"method":"textDocument/rename","params":{{"uri":200,"line":1,"col":{symbol_col},"newName":"mid-next"}}}}"#
+        r#"{{"jsonrpc":"2.0","id":199,"method":"textDocument/rename","params":{{"uri":200,"line":0,"col":{symbol_col},"newName":"mid-next"}}}}"#
     );
     let change_body = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":200,"source":"{}"}}}}"#,
         changed_source
     );
     let completion_body = format!(
-        r#"{{"jsonrpc":"2.0","id":200,"method":"textDocument/completion","params":{{"uri":200,"line":1,"col":{completion_col}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":200,"method":"textDocument/completion","params":{{"uri":200,"line":0,"col":{completion_col}}}}}"#
     );
     let stdin = format!(
         "{}{}{}{}{}{}{}",
@@ -19667,7 +19691,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_s
 
     let open_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
     let changed_source = "(module Main) (import Support.Mid) (defn main [] (mid-va))";
-    let symbol_col = open_source.find("(mid-val)").expect("mid-val call") + 2;
+    // wire は 0 始まり。symbol は "(" の次 = find + 1
+    let symbol_col = open_source.find("(mid-val)").expect("mid-val call") + 1;
     let completion_col = changed_source.find("mid-va").expect("mid-va call") + "mid-va".len();
 
     let open_body = serde_json::json!({
@@ -19693,7 +19718,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_s
                 "uri": 200
             },
             "position": {
-                "line": 1,
+                "line": 0,
                 "character": symbol_col
             }
         }
@@ -19708,7 +19733,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_s
                 "uri": 200
             },
             "position": {
-                "line": 1,
+                "line": 0,
                 "character": symbol_col
             }
         }
@@ -19723,7 +19748,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_s
                 "uri": 200
             },
             "position": {
-                "line": 1,
+                "line": 0,
                 "character": symbol_col
             }
         }
@@ -19738,7 +19763,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_s
                 "uri": 200
             },
             "position": {
-                "line": 1,
+                "line": 0,
                 "character": symbol_col
             },
             "newName": "mid-next"
@@ -19770,7 +19795,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_s
                 "uri": 200
             },
             "position": {
-                "line": 1,
+                "line": 0,
                 "character": completion_col
             }
         }

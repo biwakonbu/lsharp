@@ -2027,7 +2027,9 @@
         (push-object-vector-local with-uri (lsp-stdio-body-string-field body "\"source\":\""))
         (if (= (lsp-stdio-body-has-field body "\"text\":\"") 1)
           (push-object-vector-local with-uri (lsp-stdio-body-string-field body "\"text\":\""))
-          with-uri))]
+          ;; source も text も無い body でも slot は詰める。詰めないと path / uriText が
+          ;; 1 つずつ前へずれ、path が source として読まれる (I-56)
+          (push-object-vector-local with-uri "")))]
       (let [with-path
         (if (= (lsp-stdio-body-has-field body "\"path\":\"") 1)
           (push-object-vector-local with-source (lsp-stdio-body-string-field body "\"path\":\""))

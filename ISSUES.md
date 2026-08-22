@@ -183,11 +183,12 @@
 | [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | resolved | -- |
 | [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | resolved | -- |
 | [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | resolved | -- |
-| [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open (facet A のみ resolved) | -- |
+| [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | resolved | -- |
 | [I-53](#i-53) | `lsp_stdio` lane 93 本のうち 64 本が赤で、`I-52` の補完 9 本では説明できない | 中 | open | -- |
-| [I-54](#i-54) | LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている | 中 | open | -- |
+| [I-54](#i-54) | LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている | 中 | resolved | -- |
 | [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | resolved | -- |
-| [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | open | -- |
+| [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | resolved | -- |
+| [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2848,7 +2849,7 @@
 <a id="i-52"></a>
 ### I-52: LSP stdio 補完の e2e が 2 系統の理由で全滅している (位置規約の食い違い / snapshot 形式のドリフト)
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`I-49` の slice を閉じる際の sweep)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-22 (`I-49` の slice を閉じる際の sweep)
 - **範囲 (実測)**: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_completion`
   で 10 本が走り、**1 passed / 9 failed** (`finished in 839.52s`, 2026-08-22)。
   緑なのは `..._lsp_stdio_completion` のみ。失敗 9 本は **signature が 2 系統**に分かれ、
@@ -3023,6 +3024,37 @@
   **15 passed / 0 failed** (`738.62s`、2026-08-23)。
   これで facet B のうち**転記だけで解決する系統は打ち止め**である。残る 22 本は位置起因なので
   `I-55` / `LSP-COL-CONV-03` が先に要る。
+  (このうち 5 本 = completion 3 + `filesystem_document_sequence` 2 は第四段で解決した。
+  nav 系 17 本は `I-55` の第一〜第三段で解決済み。)
+- **解決の第四段** (2026-08-23): 位置起因と形式ドリフトが重畳していた 5 本を、
+  **位置を先に直し、実測してから転記した**。`LSP-COL-CONV-03` の完了。
+
+  | test | 位置の修正 | snapshot file |
+  |---|---|---|
+  | `..._completion_changed_document_schema_snapshot` | `"line":1,"col":23` → `"line":0,"col":22` | `completion-changed-document.json` |
+  | `..._completion_latest_reopened_schema_snapshot` | `"line":1,"col":21` → `"line":0,"col":20` | `completion-latest-reopened.json` |
+  | `..._completion_filesystem_import_schema_snapshot` | `find+len+1`, `"line":1` → `find+len`, `"line":0` | `completion-filesystem-import.json` |
+  | `..._filesystem_document_sequence_schema_snapshot` | 5 frame の `"line":1` → `0`、`symbol_col` = `find+1`、`completion_col` = `find+len` | `filesystem-document-sequence.json` |
+  | `..._filesystem_document_sequence_spec_style_snapshot` | 同上 (spec 形の `"position"` 5 箇所) | 同上 (**兄弟と同一 file を共有**) |
+
+  **兄弟 2 本が同じ snapshot file を読む**ので、`completion_col` の式が食い違っていた
+  (`+ 1` の有無) のは単なるバグである。片方を直して他方を放置すると、どちらの式が
+  正しくても必ず一方が落ちる。
+  転記した差分は 4 file 分あり、**いずれも item の集合は左右で一致し、形だけが違う**ことを
+  機械比較で確認した — completion `["helper",3,"helper"]` → object、
+  diagnostics の型タグ → LSP Diagnostic、hover の `range:[1,51,1,58]` → object `0,50`〜`0,57`、
+  rename の 5-tuple → TextEdit object。
+- **転記中に見つかった別系統** (`I-57` へ分離): `definition` / `references` の response だけが
+  縮約 array のままで、しかも line / col とも内部の 1 始まりが漏れている。
+  **fixture と実装が一致しているので assert は緑であり、転記では捕まらない。**
+  「転記は規約の検査にはならない」ことの実例なので、黙って写さず issue を切った。
+- **第四段の検証** (`cargo test -p lsharp-wasm --test e2e -- --ignored
+  lsp_stdio_completion_changed_document_schema_snapshot
+  lsp_stdio_completion_latest_reopened_schema_snapshot
+  lsp_stdio_completion_filesystem_import_schema_snapshot
+  lsp_stdio_filesystem_document_sequence`、2026-08-23):
+  **5 passed / 0 failed** (`477.09s`)。RED は同日の `I-56` GREEN run
+  (`13 passed; 5 failed`) で同 5 本が `selfhost_cli_core.rs:84` で落ちることを実測している。
 - **転記できるのは 31 本中 3 本だけだった**。`I-53` の lane ログの左右を機械比較したところ、
   値まで一致する (= 純粋な形式ドリフト) のは以下だけである。
 
@@ -3030,8 +3062,8 @@
   |---|---|---|
   | 形式のみ (completion / initialize) | 3 | 2026-08-23 転記済 (`I-52` 第一段 / 第二段) |
   | 形式のみ (diagnostics の縮約形) | 6 (`document_sequence_*_diagnostics_refresh_snapshot`) | 2026-08-23 転記済 (`I-52` 第三段) |
-  | 位置起因で値が違う | 20 (nav 系 17 + completion 3) | `I-55` / `LSP-COL-CONV-03` |
-  | 位置と形式の重畳 | 2 (`filesystem_document_sequence_*`) | `I-55` を先に解く |
+  | 位置起因で値が違う | 20 (nav 系 17 + completion 3) | `I-55` (nav 17) / `LSP-COL-CONV-03` (completion 3、第四段で解決) |
+  | 位置と形式の重畳 | 2 (`filesystem_document_sequence_*`) | `LSP-COL-CONV-03` (第四段で解決) |
 
   initialize 2 本は値の比較では差が出る (`[1,1,1,1,1,1,1]` 対 6 個の `Bool(true)` +
   `textDocumentSync:1` + `completionProvider:{}`) が、**能力の集合としては同一**であることを
@@ -3065,7 +3097,10 @@
   実測した左辺を読み、item の中身が期待どおりであることを確認したうえで転記する
   = レビュー済みの転記である。**中身が変わっている snapshot があれば、それは
   形式ドリフトではなく別の回帰なので、転記せず個別に issue を切る。**
-- **状態の内訳**: facet A は resolved。**facet B が未解決なので issue 全体は open のまま**である。
+- **状態の内訳**: facet A / facet B ともに resolved (2026-08-23)。
+  **`assert_lsp_stdio_snapshot` を経由する 31 本は全て決着した** —
+  形式のみ 9 本 (第一〜第三段)、位置と形式の重畳 5 本 (第四段)、
+  残る 17 本は nav 系で `I-55` が持つ。
 - **関連**: `I-49` (発見の経緯)。引き取り先は `TODO.md` の `LSP-SNAPSHOT-SHAPE-01` (B) と
   `LSP-COL-CONV-03` (snapshot file を読む 3 本の位置修正。B の解消と同時にしか検証できない)。
   wire 位置規約の正本は `AGENTS.md`。
@@ -3121,7 +3156,7 @@
 
 ### I-54: LSP の response 側の位置が wire 変換前の内部値で fixture に固定されている
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-53` の lane 監査)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-23 (`I-53` の lane 監査)
 - **内容**: `I-52` facet A は **request 側**の位置規約のずれだった。同じずれが
   **response 側**にもあり、しかも向きが test ごとに違う。どちらも fixture が
   `9175c6e5` (2026-08-03) の wire 正規化に追随していないことの表れである。
@@ -3173,10 +3208,26 @@
   **解決** (2026-08-23): 転記前に 9 本すべての左右をログで突き合わせ、object 形へ書き換えた。
   併せて `lsp_transport_document_sequence_*` 3 本の同型ドリフトも見つかり、計 12 本を修正した。
   検証は `I-52` facet B の「解決の第三段」に記録した (15 passed / 0 failed)。
+- **`..._main_with_lsp_stdio_formatting` の帰結** (2026-08-23、**fixture を直した**):
+  inline `source` を送る 1 本。response range は wire (0 始まり) へ正規化されているのに
+  期待だけが `1,1`〜`1,17` で止まっていた。`start 0,0` / `end 0,16` へ直し、併せて
+  5-tuple の期待を LSP TextEdit object へ転記した。
+  検証は `I-56` の解決節のランに含まれる (`..._lsp_stdio_formatting` は `ok`)。
 - **修正方針**: 位置の 7 本は fixture を直す。ただし**向きが逆の 2 群を同じ理由では直せない**ので、
   行ごとにどちらが正本かを決める。diagnostics 9 本は形式ドリフトとして転記する。
-- **関連**: `I-52` (request 側の同型問題、facet A で resolved)、`I-53` (実測の出所)。
-  引き取り先は `TODO.md` の `LSP-COL-CONV-04`。
+- **各行の帰結** (どちらを正本としたか):
+
+  | 対象 | 直した側 | 理由 |
+  |---|---|---|
+  | `..._body_hover_spec_position_character_params` | fixture | 変換**後**の内部値を見る test。同じ vector 内で座標系が混ざっていた |
+  | `..._body_rename_spec_position_character_params` | fixture | 同上 |
+  | `..._main_with_lsp_stdio_formatting` | fixture | 実装の response は既に wire (0 始まり)。期待だけが陳腐化 |
+  | formatting 5 本 (didOpen 参照) | **実装** | 陳腐化ではなく params slot のずれ (`I-56`) |
+  | diagnostics 9 本 | fixture | 位置ではなく形式ドリフト。値の対応は取れている |
+- **状態**: 位置 7 本 / diagnostics 9 本ともに決着した。**resolved**。
+- **関連**: `I-52` (request 側の同型問題、facet A で resolved)、`I-53` (実測の出所)、
+  `I-56` (formatting 5 本の実装バグ)。
+  引き取り先だった `TODO.md` の `LSP-COL-CONV-04` は削除済み。
 
 <a id="i-55"></a>
 
@@ -3267,7 +3318,7 @@
 <a id="i-56"></a>
 ### I-56: `source` を持たない document request で params の slot がずれ、open document state が参照されない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-54` の formatting 5 本を潰す過程)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-23 (`I-54` の formatting 5 本を潰す過程)
 - **内容**: `lsp --stdio` に `{"uri":42}` だけの `textDocument/formatting` を送ると、
   直前の `didOpen` で登録した source を使わず、空の TextEdit
   (`range` が `line:-1,character:-1`、`newText:""`) を返す。
@@ -3303,8 +3354,85 @@
   形式だけ転記しても `range -1,-1` は消えないので、**実装の修正が先**である。
 - **修正方針**: params の slot を常に固定長で詰め、`lsp-session-document-src` は
   inline source が空なら session state へ落ちる。実装を直す (fixture ではない)。
+- **解決** (2026-08-23、**実装を直した**): 2 箇所。
+
+  | file | 変更 |
+  |---|---|
+  | `selfhost/src/App/Cli.ls` (`lsp-stdio-document-params`) | `source` も `text` も無い body で `""` を push し、slot を常に固定長で詰める |
+  | `selfhost/src/Tools/Lsp/LspServerCore.ls` (`lsp-session-document-src`) | slot の有無ではなく **inline source の長さ**で判定し、空なら `server-state-source-for-uri` へ落ちる |
+
+  2 つ目が要るのは、1 つ目だけでは slot が `""` で埋まるため
+  `lsp-document-src` が空文字列を「inline source あり」として返してしまい、
+  didOpen 済みの内容が依然として無視されるからである。
+  **slot のずれ (原因) と、空 source の扱い (帰結) は別の bug であり、片方だけでは緑にならない。**
+- **検証** (`cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_formatting
+  lsp_stdio_completion_changed lsp_stdio_completion_latest lsp_stdio_completion_filesystem
+  lsp_stdio_filesystem_document_sequence`、2026-08-23):
+
+  ```
+  test result: FAILED. 13 passed; 5 failed; 0 ignored; 0 measured; 3056 filtered out; finished in 976.73s
+  ```
+
+  受入 5 本 (`..._formatting_uses_open_document` /
+  `..._formatting_uses_spec_document_text_with_escaped_quote` /
+  `..._formatting_uses_spec_document_text_with_unicode_escaped_quote` /
+  `..._formatting_preserves_defn_metadata` /
+  `..._formatting_open_document_schema_snapshot`) は**全て緑**。
+  残る 5 failed は `I-52` 第四段の転記対象であり、本 issue とは別系統である
+  (いずれも `selfhost_cli_core.rs:84` = `assert_lsp_stdio_snapshot` 内で落ちる)。
 - **関連**: `I-54` (formatting 5 本の出所)、`I-53` (実測の出所)。
-  引き取り先は `TODO.md` の `LSP-DOC-PARAM-SLOT-01`。
+  引き取り先だった `TODO.md` の `LSP-DOC-PARAM-SLOT-01` は削除済み。
+
+<a id="i-57"></a>
+### I-57: `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`LSP-COL-CONV-03` の snapshot 転記中)
+- **内容**: `lsp --stdio` の response は method によって形式と座標系が割れている。
+  同じ 1 つの document に対する同じ 1 slice の実測 (`filesystem-document-sequence.json`) で
+  以下が並んで出る。
+
+  | method | 実測 response | 形式 | line |
+  |---|---|---|---|
+  | `textDocument/hover` | `{"contents":"defn mid-val","range":{"start":{"line":0,"character":50},...}}` | LSP object | **0 始まり** |
+  | `textDocument/rename` | `[[200,[{"range":{"start":{"line":0,...}},"newText":"mid-next"}]],...]` | LSP TextEdit | **0 始まり** |
+  | `textDocument/formatting` | `[{"range":{...0 始まり...},"newText":"..."}]` | LSP TextEdit | **0 始まり** |
+  | `textDocument/publishDiagnostics` | `{"range":{"start":{"line":0,"character":50},...},"code":"LS1001",...}` | LSP Diagnostic | **0 始まり** |
+  | `textDocument/definition` | `[8091858770804166904,1,50]` | 縮約 array | **1 始まり** |
+  | `textDocument/references` | `[[200,1,51],[8091858770804166904,1,50]]` | 縮約 array | **1 始まり** |
+
+  (line 列と同様に **col も 1 始まり**である。下表を参照。)
+
+  1 行の文書なので `line:1` は wire 規約 (0 始まり、`AGENTS.md`) では 2 行目を指す。
+  **col も同じく 1 始まりである。** 同じ snapshot 内の rename が返す TextEdit と突き合わせると
+  ずれが 1 文字ぶんであることが確定する。
+
+  | document | rename TextEdit の start (wire) | definition / references の col |
+  |---|---|---|
+  | `uri:200` の `mid-val` 呼び出し | `character: 50` | `references` が **51** |
+  | `Support.Mid` の `mid-val` 定義 | `character: 49` | `definition` / `references` が **50** |
+
+  すなわち縮約 array は **内部表現 (line 1 始まり / col 1 始まり) が無変換で漏れている**。
+  「col は 0 始まりと一致している」と読めるのは数値の偶然で、
+  definition の内部 col 50 (定義側、wire 49) と hover の wire character 50 (呼び出し側) が
+  たまたま同じ値になるだけである。**別の document の別の token を比べている。**
+  形式も LSP の `Location` (`{uri, range}`) ではない。
+- **根拠**: 2026-08-23 の実測。`tests/snapshots/lsp/stdio/definition-filesystem-import.json` /
+  `references-filesystem-import.json` / `filesystem-document-sequence.json` の 3 file に
+  この形が入っている。いずれも **fixture と実装が一致している** (assert は緑) ので、
+  test では捕まらない。`I-55` / `I-52` の座標修正でも触れていない。
+- **なぜ今まで出なかったか**: `I-52` facet A / `I-55` は **request 側**の座標系の話で、
+  response 側は「実測に合わせて転記する」方針だったため、実測そのものが規約に反していても
+  そのまま snapshot へ入る。転記は規約の検査にはならない。
+- **`I-54` と何が違うか**: `I-54` は「fixture が内部値のまま陳腐化している」= 実装は正しい。
+  本 issue は逆で、**fixture は実測どおりだが実装の出力が規約に反している**。
+  したがって修正対象は実装であり、fixture は実装修正後に転記し直す。
+- **判断が要る点**: 縮約 array を LSP `Location` object へ寄せるかどうかは
+  互換性の判断を含む。`definition` / `references` の consumer は現状 test しかないが、
+  `lsp-offset-from-line-col` 等の内部 helper がこの形を前提にしていないかを先に見る必要がある。
+  **本 issue では形式変更まで決めない。** line の 1 始まり漏れは規約違反として確定させ、
+  形式は ADR で決める。
+- **関連**: `I-52` (request 側の同型問題)、`I-54` (逆向きの不一致)、`I-55` (nav 系の座標)。
+  引き取り先は `TODO.md` の `LSP-NAV-LOCATION-01`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

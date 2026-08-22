@@ -2988,39 +2988,30 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
 
-- [ ] `LSP-COL-CONV-03` snapshot file を読む 3 本の wire 位置を
-  0-indexed へ揃える — Issue `I-52` の残渣 (母集団は `I-53` の lane 監査)。`:18966` / `:19232` / `:19490` の 3 本は facet A に加えて
-  facet B (`tests/snapshots/lsp/stdio/*.json` の縮約形) も踏むため、位置だけ直しても緑にならない。
-  修正値は**導出済み (未検証)** で `ISSUES.md` の `I-52` に表として置いてある。
-  受入条件: 上記 3 本が緑になること。
-  **多段になる。** この 3 本は snapshot の値まで違う (facet A の keyword 混入が snapshot 側に
-  写っていない) ため、位置を直したあとに実測して snapshot を転記し直す必要がある。
-  転記手順は `completion.json` で確立済み (`ISSUES.md` の `I-52` facet B)。
+- [ ] `LSP-LANE-REVERIFY-01` `lsp_stdio` lane 93 本を再計測して `I-53` を閉じる — Issue `I-53`。
+  2026-08-23 の lane 監査は **29 passed / 64 failed** (`4346.02s`)。その後 64 本の内訳は
+  `I-52` (facet A / B)、`I-54`、`I-55`、`I-56` の 4 issue へ分解し、いずれも解決済みとして
+  記録した。ただし**個々の解決は部分 filter でしか検証していない**ため、
+  「lane 全体が緑になった」ことは一度も実測していない。
+  受入条件: `cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio` が
+  **93 passed / 0 failed** になること。緑にならない test が残った場合は、
+  それが既知 4 issue のどれにも属さない新規系統かどうかを判別して台帳へ起こす。
+  **含めない範囲**: `I-57` (`LSP-NAV-LOCATION-01`) — fixture と実装が一致しているので
+  この lane は緑のまま通る。lane の緑は `I-57` の解決を意味しない。
+  所要は 72 分。切り離しプロセスで回す。
 
-
-- [ ] `LSP-COL-CONV-04` LSP response 側の位置 fixture を wire 規約へ揃える — Issue `I-54`。
-  `..._lsp_stdio_formatting` の 1 本は期待が 1 始まりのまま陳腐化している
-  (実測 `start 0,0`/`end 0,16` に対し期待が `1,1`/`1,17`)。
-  受入条件: 当該 1 本が緑になり、`I-54` の表の各行に「実装を直したか fixture を直したか」が
-  理由つきで記録されていること。
-  **含めない範囲**: diagnostics refresh 系 — 形式ドリフトと判別が付き、2026-08-23 に
-  転記で解決済み (`I-52` facet B の第三段)。nav 系の退化 (`LSP-NAV-DEGRADE-01`)。
-  didOpen 済み document を参照する formatting 5 本 — 陳腐化ではなく実装バグと判別が付いた
-  (`LSP-DOC-PARAM-SLOT-01`)。body params 2 本は 2026-08-23 に fixture 修正で解決済み。
-
-- [ ] `LSP-DOC-PARAM-SLOT-01` `source` なし document request の params slot ずれを直す —
-  Issue `I-56`。`lsp-stdio-document-params` が source slot を詰めないため、
-  `{"uri":N}` だけの `textDocument/formatting` が path (空文字列) を source として読み、
-  open document state の fallback に入らず空の TextEdit を返す。
-  修正は実装側 — params を固定長で詰め、`lsp-session-document-src` は inline source が
-  空なら session state へ落ちる。
-  受入条件: `..._formatting_uses_open_document` /
-  `..._formatting_uses_spec_document_text_with_escaped_quote` /
-  `..._formatting_uses_spec_document_text_with_unicode_escaped_quote` /
-  `..._formatting_preserves_defn_metadata` /
-  `..._formatting_open_document_schema_snapshot` の 5 本が緑になること。
-  **含めない範囲**: response 形式のドリフト (5-tuple → TextEdit object) の転記は
-  実装修正後の実測に基づいて同 slice 内で行うが、位置規約そのものの再定義はしない。
+- [ ] `LSP-NAV-LOCATION-01` `definition` / `references` の response の line / col を wire 規約へ揃える —
+  Issue `I-57`。1 行の文書に対して `[uri, 1, 50]` を返しており、**line も col も内部の
+  1 始まりが無変換で漏れている** (同じ snapshot の rename TextEdit が返す wire 値と
+  1 文字ずれる)。hover / rename / formatting / publishDiagnostics は
+  すべて 0 始まりの LSP object なので、この 2 method だけが外れている。
+  修正は実装側 — fixture は実測どおりなので、実装を直したあとに snapshot を転記し直す。
+  受入条件: `definition-*.json` / `references-*.json` / `filesystem-document-sequence.json` の
+  当該 frame が **line / col の双方とも wire 規約 (0 始まり) へ変換された値**になり、
+  `lsp_stdio_definition` / `lsp_stdio_references` /
+  `lsp_stdio_filesystem_document_sequence` の lane が緑を維持すること。
+  **含めない範囲**: 縮約 array を LSP `Location` object (`{uri, range}`) へ変える形式変更。
+  互換性の判断を含むので ADR を別に立てる (`I-57` の「判断が要る点」)。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

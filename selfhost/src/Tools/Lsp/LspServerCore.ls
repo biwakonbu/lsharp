@@ -335,10 +335,14 @@
     (lsp-nav-src params)
     (server-state-source-for-uri state (lsp-nav-uri params))))
 
+;; inline の source slot が空なら open document state へ落ちる。
+;; slot の有無だけで判定すると、source を持たない request が空文字列を
+;; source として受け取り、didOpen 済みの内容を無視する (I-56)
 (defn lsp-session-document-src [params state]
-  (if (= (lsp-has-document-param params) 1)
-    (lsp-document-src params)
-    (server-state-source-for-uri state (lsp-nav-uri params))))
+  (let [inline (lsp-document-src params)]
+    (if (> (string-length inline) 0)
+      inline
+      (server-state-source-for-uri state (lsp-nav-uri params)))))
 
 ;; === 文字分類 ===
 

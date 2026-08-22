@@ -3,43 +3,55 @@
     "jsonrpc": "2.0",
     "method": "textDocument/didOpen",
     "params": {
-      "sourceBytes": 59,
-      "uri": 200
+      "uri": 200,
+      "sourceBytes": 59
     }
   },
   {
     "jsonrpc": "2.0",
     "method": "textDocument/publishDiagnostics",
     "params": {
+      "uri": 200,
       "diagnostics": [
         {
-          "col": 1,
-          "line": 1,
-          "messageHash": 1,
-          "rule": 1,
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 50
+            },
+            "end": {
+              "line": 0,
+              "character": 57
+            }
+          },
           "severity": 1,
-          "source": 2
+          "code": "LS1001",
+          "source": "lsharp",
+          "message": "undefined symbol"
         }
-      ],
-      "uri": 200
-    }
-  },
-  {
-    "id": 196,
-    "jsonrpc": "2.0",
-    "result": {
-      "contents": "defn mid-val",
-      "range": [
-        1,
-        51,
-        1,
-        58
       ]
     }
   },
   {
-    "id": 197,
     "jsonrpc": "2.0",
+    "id": 196,
+    "result": {
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 50
+        },
+        "end": {
+          "line": 0,
+          "character": 57
+        }
+      },
+      "contents": "defn mid-val"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 197,
     "result": [
       8091858770804166904,
       1,
@@ -47,8 +59,8 @@
     ]
   },
   {
-    "id": 198,
     "jsonrpc": "2.0",
+    "id": 198,
     "result": [
       [
         200,
@@ -63,31 +75,43 @@
     ]
   },
   {
-    "id": 199,
     "jsonrpc": "2.0",
+    "id": 199,
     "result": [
       [
         200,
         [
-          [
-            1,
-            51,
-            1,
-            58,
-            "mid-next"
-          ]
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 50
+              },
+              "end": {
+                "line": 0,
+                "character": 57
+              }
+            },
+            "newText": "mid-next"
+          }
         ]
       ],
       [
         8091858770804166904,
         [
-          [
-            1,
-            50,
-            1,
-            57,
-            "mid-next"
-          ]
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 49
+              },
+              "end": {
+                "line": 0,
+                "character": 56
+              }
+            },
+            "newText": "mid-next"
+          }
         ]
       ]
     ]
@@ -96,36 +120,44 @@
     "jsonrpc": "2.0",
     "method": "textDocument/didChange",
     "params": {
-      "sourceBytes": 58,
-      "uri": 200
+      "uri": 200,
+      "sourceBytes": 58
     }
   },
   {
     "jsonrpc": "2.0",
     "method": "textDocument/publishDiagnostics",
     "params": {
+      "uri": 200,
       "diagnostics": [
         {
-          "col": 1,
-          "line": 1,
-          "messageHash": 1,
-          "rule": 1,
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 50
+            },
+            "end": {
+              "line": 0,
+              "character": 56
+            }
+          },
           "severity": 1,
-          "source": 2
+          "code": "LS1001",
+          "source": "lsharp",
+          "message": "undefined symbol"
         }
-      ],
-      "uri": 200
+      ]
     }
   },
   {
-    "id": 200,
     "jsonrpc": "2.0",
+    "id": 200,
     "result": [
-      [
-        "mid-val",
-        3,
-        "mid-val"
-      ]
+      {
+        "label": "mid-val",
+        "kind": 3,
+        "insertText": "mid-val"
+      }
     ]
   }
 ]
