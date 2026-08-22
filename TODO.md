@@ -2913,19 +2913,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
   eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
-- [ ] `STATIC-CONTRACT-01` 静的 contract 判定を `if` / `let` / `do` / `match` へ届かせる — Issue `I-42`。
-  `crates/lsharp-types/src/canonical_contract_check/non_vacuity.rs` の `static_boolean_result`
-  (`:321`) が literal / `not` / `and` / `or` / Int 比較しか見ないため、
-  `(defn checked [] :assert [(if true true false)] true)` が診断 0 件で通る。
-  受入条件: `:assert` と `:property` の precondition の両方で、`if` / `let` / `do` / `match` に
-  包まれた静的 predicate が control (`:assert [true]`) と同じ診断を出すこと。
-  4 形すべてに RED test を先に書く。**probe は CLI ではなく `check_metadata` を直接叩くこと**
-  (`lsharp test` は selfhost runner 経由で vacuous と正当を判別できない)。
-  参照実装は `codex/v0.2-ec-m1-02-integration` の `17685bab` / `6771ca26` / `0593e1a6` /
-  `acd75035` / `60a7e736`。
-  **含めない範囲**: String 比較版 (main では型推論が先に落ちるため再現しない)、
-  selfhost 側の同判定、shrink / seed。
-
 - [ ] `CONTRACT-SCOPE-01` `:example` / `:invariant` / `:doc` の識別子検査の false positive を潰す — Issue `I-43`。
   `metadata_check.rs:64` の `all_names` が top-level 宣言名しか持たず、ADT variant 名 /
   trait method 名 / quote されたシンボル / builtin を知らないため、正当なプログラムが

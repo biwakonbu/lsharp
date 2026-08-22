@@ -173,7 +173,7 @@
 | [I-39](#i-39) | block 形式の module body が lowering されず、沈黙して無出力バイナリを出す | 高 | resolved | [block 形式 module body の reject](docs/adr/decisions-module-body-form-rejection.md) |
 | [I-40](#i-40) | DocTools の metadata 契約が parser の出力 slot 数と食い違う | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-41](#i-41) | compile cache の hit/miss を集計する手段が無い | 低 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
-| [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
+| [I-42](#i-42) | 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない | 中 | resolved | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | resolved | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-45](#i-45) | selfhost の canonical `:case` preflight が 0 引数 `defn` の呼び出しを型エラーにする | 中 | resolved | [0 引数 defn の型](docs/adr/decisions-selfhost-zero-arity-defn-type.md) |
@@ -2221,7 +2221,7 @@
 <a id="i-42"></a>
 ### I-42: 静的 contract 判定が `if` / `let` / `do` / `match` を貫通しない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
+- **影響度**: 中 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-22 (`WORKTREE-ABSORB-02` の判定中)
 - **内容**: `crates/lsharp-types/src/canonical_contract_check/non_vacuity.rs` の
   `static_boolean_result` (`:321`) が扱うのは Ann の unwrap / Bool literal / 単項 `not` /
   二項 `and` `or` / Int literal 比較だけである。`if` / `let` / `do` / `match` で包むと
@@ -2253,8 +2253,37 @@
 - **関連**: 参照実装は `codex/v0.2-ec-m1-02-integration` の `17685bab` (conditional) /
   `6771ca26` (sequenced) / `0593e1a6` (let) / `acd75035` (match) / `60a7e736` (checked
   static predicates)、および先行する `550f1851` / `b102e4f7` / `41ab5e44` / `ce5563bc`。
-  `STATIC-CONTRACT-01` (`TODO.md`) が引き取る。
+  `STATIC-CONTRACT-01` が引き取り、2026-08-23 に完了して `TODO.md` からは削除した。
   判定は [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md)。
+- **解決** (2026-08-23): `static_boolean_result` を `static_boolean_result_in(expr, env)` へ
+  作り替え、`if` / `let` / `do` / `match` を貫通させた。`env` は「静的に値が決まる束縛」の
+  スタックで、後ろから引くことで内側の再束縛が外側を覆う。
+
+  設計上の判断が 3 つある。
+
+  1. **`if` は条件が静的に決まらなくても、両枝が同じ値へ落ちるなら確定させる。**
+     片枝だけを見ると `(if flag true true)` が漏れる。`match` には評価できる条件が無いので
+     **常に全 arm の一致**を要求する。
+  2. **`let` / `match` が演算子名 (`not` `and` `or` `=` `==` `!=` `<` `>` `<=` `>=`) を
+     再束縛したら判定を諦める** (`None` を返す)。builtin の意味で計算すると
+     `(let [not f] (not false))` を vacuous と誤診する。
+  3. **pattern が束縛する名前は「値不明」として env へ積む。**
+     積まないと外側の静的束縛が arm body へ漏れる。
+
+  test は `crates/lsharp-types/src/canonical_contract_check/tests.rs` に 22 件
+  (`cargo test -p lsharp-types --lib canonical_contract_check` → 23 passed / 0 failed)。
+  内訳は control 2 / `:assert` 貫通 4 / precondition 貫通 4 / 非空虚性の negative control 4 /
+  shadowing の negative control 2 / 束縛値追跡 5 / fixture 訂正 1。
+  非空虚性は `lookup_static_binding` の `.rev()` を外す破壊で
+  `..._let_rebinding_shadows_outer_static_value` と
+  `..._match_arm_binding_shadows_outer_static_value` の 2 件が落ちることを実測して確認した。
+- **証拠表の訂正** (2026-08-23): 上表の `:assert [(match true (true true))]` は
+  **fixture の不備**であって穴ではない。`parse_match` (`crates/lsharp-syntax/src/parser/expr.rs:249`)
+  は arm に `[` を要求するので、この式はそもそも parse できず、診断が 0 件なのは当然だった。
+  正しい形は `(match true [_ true])`。この訂正は
+  `static_contract_issue_table_paren_match_arm_fixture_does_not_parse` で固定してある。
+  `:precondition` も同様に vector を取る (`crates/lsharp-syntax/src/parser/metadata.rs:483`)
+  ので、`:precondition false` と書いた probe は parse error になり RED の意味を持たない。
 
 <a id="i-43"></a>
 ### I-43: `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す

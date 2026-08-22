@@ -1,7 +1,7 @@
 //! canonical metadata contract の非空性検査。
 
 use crate::metadata_check::{MetadataDiagnostic, Severity};
-use lsharp_syntax::ast::{Decl, Expr, Literal, Program};
+use lsharp_syntax::ast::{Decl, Expr, Literal, Pattern, Program};
 use lsharp_syntax::metadata::MetadataFormKind;
 use std::collections::HashSet;
 
@@ -318,12 +318,141 @@ fn is_boolean_negation_pair(left: &Expr, right: &Expr) -> bool {
     is_not_of(left, right) || is_not_of(right, left)
 }
 
+/// `static_boolean_result` が意味を持つ演算子名。
+///
+/// `let` / `match` がこれらを再束縛していると、静的評価は影に隠れた定義ではなく
+/// builtin の意味で計算してしまう。判定を諦める (None) 側へ倒すための集合である。
+const STATIC_OPERATOR_NAMES: [&str; 10] =
+    ["not", "and", "or", "=", "==", "!=", "<", ">", "<=", ">="];
+
+/// 静的評価中に見えている束縛。値が静的に決まらない束縛は `None` で積み、
+/// **外側の同名束縛を覆う**。後ろから引くことで最新の束縛が勝つ。
+type StaticEnv<'a> = Vec<(&'a str, Option<bool>)>;
+
+fn lookup_static_binding(env: &StaticEnv<'_>, name: &str) -> Option<bool> {
+    env.iter()
+        .rev()
+        .find(|(bound, _)| *bound == name)
+        .and_then(|(_, value)| *value)
+}
+
+fn pattern_shadows_static_operator(pattern: &Pattern) -> bool {
+    match pattern {
+        Pattern::Wildcard(_) | Pattern::Lit(_, _) => false,
+        Pattern::Var(_, name) => STATIC_OPERATOR_NAMES.contains(&name.as_str()),
+        Pattern::Constructor(_, _, inner) => inner.iter().any(pattern_shadows_static_operator),
+        Pattern::RecordPat(_, _, fields) => fields
+            .iter()
+            .any(|(_, inner)| pattern_shadows_static_operator(inner)),
+    }
+}
+
+/// pattern が束縛する名前を「値不明」として env へ積む。
+///
+/// 積まないと、外側の静的な同名束縛が arm body へ漏れて誤判定になる。
+fn shadow_pattern_bindings<'a>(pattern: &'a Pattern, env: &mut StaticEnv<'a>) {
+    match pattern {
+        Pattern::Wildcard(_) | Pattern::Lit(_, _) => {}
+        Pattern::Var(_, name) => env.push((name.as_str(), None)),
+        Pattern::Constructor(_, _, inner) => {
+            for nested in inner {
+                shadow_pattern_bindings(nested, env);
+            }
+        }
+        Pattern::RecordPat(_, _, fields) => {
+            for (_, nested) in fields {
+                shadow_pattern_bindings(nested, env);
+            }
+        }
+    }
+}
+
+/// 分岐形の静的評価。全ての候補が同じ値へ落ちるときだけ確定させる。
+///
+/// `if` は条件が静的に決まればその枝だけを見る。決まらない場合と `match` は
+/// **全候補の一致**を要求する。片方しか見ないと、到達しうる別の枝を無視して
+/// vacuous と誤判定する。
+fn static_boolean_result_of_branches<'a>(
+    branches: impl IntoIterator<Item = &'a Expr>,
+    env: &StaticEnv<'a>,
+) -> Option<bool> {
+    let mut settled: Option<bool> = None;
+    for branch in branches {
+        let value = static_boolean_result_in(branch, env)?;
+        match settled {
+            None => settled = Some(value),
+            Some(previous) if previous == value => {}
+            Some(_) => return None,
+        }
+    }
+    settled
+}
+
 fn static_boolean_result(expr: &Expr) -> Option<bool> {
+    static_boolean_result_in(expr, &StaticEnv::new())
+}
+
+fn static_boolean_result_in<'a>(expr: &'a Expr, env: &StaticEnv<'a>) -> Option<bool> {
     if let Expr::Ann(_, inner, _) = expr {
-        return static_boolean_result(inner);
+        return static_boolean_result_in(inner, env);
     }
     if let Expr::Lit(_, Literal::Bool(value)) = expr {
         return Some(*value);
+    }
+    if let Expr::Var(_, name) = expr {
+        return lookup_static_binding(env, name);
+    }
+    if let Expr::If(_, condition, then_branch, else_branch) = expr {
+        return match static_boolean_result_in(condition, env) {
+            Some(true) => static_boolean_result_in(then_branch, env),
+            Some(false) => static_boolean_result_in(else_branch, env),
+            None => {
+                static_boolean_result_of_branches([then_branch.as_ref(), else_branch.as_ref()], env)
+            }
+        };
+    }
+    if let Expr::Let(_, bindings, body) = expr {
+        if bindings
+            .iter()
+            .any(|(pattern, _)| pattern_shadows_static_operator(pattern))
+        {
+            return None;
+        }
+        let mut scoped = env.clone();
+        for (pattern, value) in bindings {
+            match pattern {
+                Pattern::Var(_, name) => {
+                    let bound = static_boolean_result_in(value, &scoped);
+                    scoped.push((name.as_str(), bound));
+                }
+                other => shadow_pattern_bindings(other, &mut scoped),
+            }
+        }
+        return static_boolean_result_in(body, &scoped);
+    }
+    if let Expr::Do(_, exprs) = expr {
+        return static_boolean_result_in(exprs.last()?, env);
+    }
+    if let Expr::Match(_, _, arms) = expr {
+        if arms.is_empty()
+            || arms
+                .iter()
+                .any(|arm| pattern_shadows_static_operator(&arm.pattern))
+        {
+            return None;
+        }
+        let mut settled: Option<bool> = None;
+        for arm in arms {
+            let mut scoped = env.clone();
+            shadow_pattern_bindings(&arm.pattern, &mut scoped);
+            let value = static_boolean_result_in(&arm.body, &scoped)?;
+            match settled {
+                None => settled = Some(value),
+                Some(previous) if previous == value => {}
+                Some(_) => return None,
+            }
+        }
+        return settled;
     }
     let Expr::App(_, callee, args) = expr else {
         return static_integer_comparison_result(expr);
@@ -335,13 +464,13 @@ fn static_boolean_result(expr: &Expr) -> Option<bool> {
         let [operand] = args.as_slice() else {
             return static_integer_comparison_result(expr);
         };
-        return static_boolean_result(operand).map(|value| !value);
+        return static_boolean_result_in(operand, env).map(|value| !value);
     }
     let [left, right] = args.as_slice() else {
         return static_integer_comparison_result(expr);
     };
-    let left = static_boolean_result(left);
-    let right = static_boolean_result(right);
+    let left = static_boolean_result_in(left, env);
+    let right = static_boolean_result_in(right, env);
     match operator.as_str() {
         "and" => {
             if is_boolean_negation_pair(&args[0], &args[1]) {
