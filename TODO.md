@@ -947,21 +947,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   旧 first-fit 設計に紐づくので期待値に使わない。** size-class heads の下では違う数になる。
   **含めない範囲**: GC 側 free-list の再設計 (`I-04`。allocator 側の到達不能 path は `I-35` で削除済み)、GC アルゴリズムの変更。
 
-- [ ] `RUST-FILE-SIZE-GATE-01` workspace 全域の 800 行 gate を入れる — Issue `I-01`。
-  main は per-file の targeted guard 8 本 (`*_file_size.rs`) しか持たず、`crates/**/src/**` と
-  `crates/**/tests/**` を走査する gate が無い。**参照実装は
-  `codex/legacy-maintenance-docs-active-only` の tip** (`5af76ad3` / `6a13e066` / `d2734667` 系)。
-  `crates/lsharp-wasm/tests/rust_file_size_contract.rs` に per-file guard を足しつつ
-  `tests/rust-file-size-allowlist.txt` (src 用) と `tests/rust-test-file-size-allowlist.txt`
-  (tests 用) の **2 本立て**で src / tests を別走査する。
-  `codex/legacy-maintenance-stage-chain-integration` の `e6ae428e` / `3c37f574` は
-  allowlist 1 本の旧版なので、そちらは使わない (main の超過は src 6 / tests 33 と非対称)。
-  **2026-08-22 実測で main の allowlist は 39 件必要** (src 6 / tests 33)。最大は
-  `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の 62990 行、次が
-  `selfhost_cli_core.rs` 19412 行。branch の allowlist は 28 件だった。
-  受入条件: allowlist が単調減少すること (追加には ADR を要求する)。
-  **含めない範囲**: 超過 file の分割そのもの (`LEGACY-MAINT-01`)。gate と分割は別 slice。
-
 - [ ] `MODULE-DUP-FN-01` 別 module の同名 top-level function を衝突させない — Issue `I-37`。
   現状は `A.helper` と `B.helper` が 1 つに潰れ、**診断なしに誤った wasm を出す**
   (`1 + 20` が `20 + 20` = 40 になる実測あり)。import 順に依らないので、

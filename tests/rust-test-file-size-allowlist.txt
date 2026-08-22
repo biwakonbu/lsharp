@@ -1,0 +1,42 @@
+# crates/**/tests/**/*.rs のうち 800 行を超える file (Issue `I-01` / `RUST-FILE-SIZE-GATE-01`)
+#
+# この list は **単調減少だけが許される**。追加するには ADR が要る。
+# gate は `crates/lsharp-wasm/tests/rust_file_size_contract.rs`。
+# src と別 file にしてあるのは、超過の規模が桁で違うため
+# (2026-08-23 実測で src 6 / tests 33)。1 本にまとめると
+# 「tests を分割したら src の gate も緩んだ」という取り違えが起きる。
+#
+# 2026-08-23 実測 (33 件)。最大は selfhost_native_stage_chain.rs の 62990 行。
+crates/lsharp-driver/tests/default_path_delegation.rs
+crates/lsharp-driver/tests/review_input_cli.rs
+crates/lsharp-driver/tests/validate_cli.rs
+crates/lsharp-types/tests/validation_source/evidence.rs
+crates/lsharp-wasm/tests/doctools_parity.rs
+crates/lsharp-wasm/tests/e2e_selfhost_syntax.rs
+crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs
+crates/lsharp-wasm/tests/e2e/builtins_hof_collections.rs
+crates/lsharp-wasm/tests/e2e/runtime_allocator_closures.rs
+crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_contracts.rs
+crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs
+crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs
+crates/lsharp-wasm/tests/e2e/selfhost_doctools_cli_diagnostics.rs
+crates/lsharp-wasm/tests/e2e/selfhost_evidence_registry/validation.rs
+crates/lsharp-wasm/tests/e2e/selfhost_gc_runtime_bootstrap.rs
+crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs
+crates/lsharp-wasm/tests/e2e/selfhost_intent_source_adapter.rs
+crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs
+crates/lsharp-wasm/tests/e2e/selfhost_main_module_determinism.rs
+crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs
+crates/lsharp-wasm/tests/e2e/selfhost_parser_metadata_forms.rs
+crates/lsharp-wasm/tests/e2e/selfhost_rooting_parity.rs
+crates/lsharp-wasm/tests/e2e/selfhost_stage0_scripts.rs
+crates/lsharp-wasm/tests/e2e/selfhost_standalone_io.rs
+crates/lsharp-wasm/tests/e2e/selfhost_type_parser_parity.rs
+crates/lsharp-wasm/tests/e2e/selfhost_typeinfer_basic_errors.rs
+crates/lsharp-wasm/tests/e2e/selfhost_typeinfer_pipeline_bootstrap.rs
+crates/lsharp-wasm/tests/e2e/stdlib_modules_selfhost_lexer.rs
+crates/lsharp-wasm/tests/e2e/strings_patterns_compiler_integration.rs
+crates/lsharp-wasm/tests/e2e/support.rs
+crates/lsharp-wasm/tests/gc_metrics_contract.rs
+crates/lsharp-wasm/tests/lsp_stateful_parity.rs
+crates/lsharp-wasm/tests/native_cli_output.rs

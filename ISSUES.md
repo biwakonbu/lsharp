@@ -394,12 +394,26 @@
   ```
 
   規約は AGENTS.md のファイルサイズ制限。
-- **gate の不在**: workspace 全域を走査する行数 gate は無く、per-file の targeted guard が
-  7 本あるだけである (`*_file_size.rs`)。`RUST-FILE-SIZE-GATE-01` (`TODO.md`) が引き取る。
-  gate を入れると allowlist が初期 39 件になる。
+- **gate** (2026-08-23 に導入。`RUST-FILE-SIZE-GATE-01` の完了):
+  `crates/lsharp-wasm/tests/rust_file_size_contract.rs` が `crates/**/src/**` と
+  `crates/**/tests/**` を走査し、800 行超の実測集合が
+  `tests/rust-file-size-allowlist.txt` (src 6 件) /
+  `tests/rust-test-file-size-allowlist.txt` (tests 33 件) と
+  **双方向で一致する**ことを要求する。分割で 800 行以下になった file を list から
+  消し忘れても落ちるので、**list は単調減少しかしない**。
+  導入前は per-file の targeted guard 8 本 (`*_file_size.rs`) だけで、
+  新しく超過した file を検知できなかった。
+
+  検証は 4 段階 (RED / GREEN / 負の対照 2 本) を実測した。判断と却下理由は
+  [`decisions-rust-file-size-gate.md`](docs/adr/decisions-rust-file-size-gate.md)。
+  **allowlist への追加を機械的には禁止できていない** — 受入条件の後半を満たせなかった
+  事実として同 ADR に記録した。
+- **状態が `in-design` のままである理由**: gate は入ったが、**超過 39 件そのものは
+  1 件も減っていない**。分割は `LEGACY-MAINT-01` が持つ。gate の導入を
+  「file-size 問題の解決」と読まない。
 - **関連**: selfhost 側は ADR-168 (STR-01〜03) で分割実績あり (TypeInfer.ls 1093 → 290 行など)。
   Rust 側の分割設計は [imp-06](docs/development/planning/improvement-designs/imp-06-large-file-decomposition.md)。
-  分割そのものは `LEGACY-MAINT-01`、gate は `RUST-FILE-SIZE-GATE-01`。
+  分割そのものは `LEGACY-MAINT-01`。gate は 2026-08-23 に導入済み (上記)。
   **超過 13 file 分の分割軸は設計済みのものがある** — `codex/legacy-maintenance-docs-active-only`
   (2026-07-24) が同じ file を分割しており、追加された test 本体は全件 main にある
   (ミスは file-size guard 関数 1 個のみ)。軸の一覧は

@@ -370,6 +370,21 @@ hooks やスキルに問題が発生した場合は `.Codex/rules/hook-troublesh
 - これを超えるとエージェントの解析精度が落ちるため、早めにモジュール分割・リファクタリングを行う
 - 新規実装時も既存ファイルが肥大化しないよう注意する
 
+機械的な gate がある。
+
+```bash
+cargo test -p lsharp-wasm --test rust_file_size_contract
+```
+
+`crates/**/src/**` と `crates/**/tests/**` を走査し、800 行超の `.rs` が
+`tests/rust-file-size-allowlist.txt` (src) / `tests/rust-test-file-size-allowlist.txt` (tests)
+と**双方向で一致する**ことを要求する。分割して 800 行以下になった file を
+allowlist から消し忘れても落ちるので、list は単調減少しかしない。
+
+**allowlist への追加は ADR を要求する。** ただしこれは運用規約であって機械的な強制ではない
+(gate は list に行を足す変更自体は通す)。判断は
+[`decisions-rust-file-size-gate.md`](docs/adr/decisions-rust-file-size-gate.md) が正本。
+
 ## 主要依存関係
 
 - `miette`: ソーススパン付きリッチエラーレポート

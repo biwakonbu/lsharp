@@ -1,0 +1,14 @@
+# crates/**/src/**/*.rs のうち 800 行を超える file (Issue `I-01` / `RUST-FILE-SIZE-GATE-01`)
+#
+# この list は **単調減少だけが許される**。追加するには ADR が要る。
+# gate は `crates/lsharp-wasm/tests/rust_file_size_contract.rs`。
+# 差集合は双方向で検査するので、分割して 800 行以下になった file は
+# ここからも消さないと落ちる。
+#
+# 2026-08-23 実測 (6 件)。
+crates/lsharp-driver/src/main_tests.rs
+crates/lsharp-driver/src/main.rs
+crates/lsharp-driver/src/mcp_review_registry_tests.rs
+crates/lsharp-driver/src/mcp_tests.rs
+crates/lsharp-types/src/infer_tests.rs
+crates/lsharp-types/src/validation.rs
