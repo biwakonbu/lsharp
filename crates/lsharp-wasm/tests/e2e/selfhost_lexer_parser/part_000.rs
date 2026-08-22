@@ -404,8 +404,10 @@ fn test_e2e_selfhost_program_analysis_preserves_first_defn_type() {
 (defn main []
   (let [analysis
           (infer-program-analysis (parse-program "(defn main [] 42)"))
-        ty (infer-program-analysis-type analysis)]
+        fun-ty (infer-program-analysis-type analysis)
+        ty (ty-fr fun-ty)]
     (do
+      (print (ty-tag fun-ty))
       (print (ty-tag ty))
       (print (ty-name ty))
       0)))
@@ -423,7 +425,7 @@ fn test_e2e_selfhost_program_analysis_preserves_first_defn_type() {
 
     assert_eq!(
         lines,
-        ["1", "100"],
-        "program analysis は defn の Int 型を環境ベクタへ取り違えず保持すべき"
+        ["3", "1", "100"],
+        "0 引数 defn は Unit -> Int として登録され (I-45)、戻り型に Int を保持すべき"
     );
 }

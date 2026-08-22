@@ -692,7 +692,11 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     // Stage 4 (infer/TypeInfer): 型推論結果が Con(Int)
     let ty_tag: i64 = lines[28].parse().unwrap();
     let ty_name: i64 = lines[29].parse().unwrap();
-    assert_eq!(ty_tag, 1, "Stage 4 (infer/TypeInfer): 型タグ Con=1");
+    // I-45: 0 引数 defn は `Unit -> Int` として登録されるので Fun=3。
+    assert_eq!(
+        ty_tag, 3,
+        "Stage 4 (infer/TypeInfer): 型タグ Fun=3 (Unit -> Int)"
+    );
     assert_eq!(ty_name, 100, "Stage 4 (infer/TypeInfer): 型名 Int=100");
 }
 

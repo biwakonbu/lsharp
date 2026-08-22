@@ -99,6 +99,48 @@ selfhost 自身の entry を全モジュールごとコンパイルできる。
 `I-48` の前例で問題になった「修正パッチ下で selfhost 自身が型検査を通らなくなる」形は
 本修正では起きていない。
 
+### 契約変更に追随させた e2e 5 本 (2026-08-23)
+
+下の「計測していない範囲」に挙げた **workspace e2e lane** を後日 sweep したところ、
+本 ADR の契約変更前の型を pin していた e2e が赤のまま残っていた (`I-60`)。
+契約の正本は本 ADR なので、期待値の側を新契約へ張り直した。
+**「実装に合わせて期待値を変える」禁止則の例外**であり、根拠は
+「契約 ADR が先に変わっており、test が旧契約を pin していた」ことである。
+
+| test | 旧期待 | 新期待 |
+|---|---|---|
+| `selfhost_lexer_parser::..._program_analysis_preserves_first_defn_type` | `["1","100"]` | `["3","1","100"]` |
+| `selfhost_lexer_parser::..._gadt_constructor_registers_refined_return_type` | `["0","5","1","1","100"]` | `["0","3","5","1","1","100"]` |
+| `selfhost_typeinfer_pipeline_bootstrap::..._pipeline_complete_stages` | `ty_tag == 1` | `ty_tag == 3` |
+| `selfhost_main_module_determinism::..._pipeline_macroexpand_typeinfer_integration` | `ty_tag == 1` | `ty_tag == 3` |
+| `strings_patterns_compiler_integration::..._selfhost_main_integration` | `lines[28] == "1"` | `lines[28] == "3"` |
+
+前 2 本は harness が `.rs` 内の inline `.ls` なので、`ty-fr` / `type-fun-ret` で `Fun` を
+剥がしてから戻り型を pin する形へ書き換えた。**tag 3 (Fun) 自体も pin に残した**ので、
+新契約が壊れれば test が落ちる。
+
+後 3 本は `PipelineSmoke.ls` の `compile-full-pipeline` が出す 5 要素 summary を読む。
+ここは **summary の slot 1 の意味を変えた** — `(vector-get ty-result 1)` を素で出すと
+`Fun` の param slot (pointer) が出てしまうため、`Fun` (tag 3) のときは戻り型の名前ハッシュを
+出すようにした (`PipelineSmoke.ls:98-103`)。slot 0 は生の tag のままなので **新契約 (Fun=3) が
+pin され、値の型 (Int=100) の pin も残る**。
+
+**slot 数は 5 のまま変えていない。** print 回数を変えると `lines[30]` / `lines[31]` を読む
+別 test と `lines.len() >= 32` ガードが全部ずれる。
+
+```
+# 旧実装での RED (2026-08-23)
+/Users/biwakonbu/github/tmp/lint-span-01/base4.log   0 passed; 4 failed; 80.07s
+/Users/biwakonbu/github/tmp/i60/base5.log            0 passed; 2 failed; 88.93s
+# 張り直し後の GREEN
+/Users/biwakonbu/github/tmp/i60/green5.log           5 passed; 0 failed; 112.24s
+```
+
+**5 本は下限である。** sweep が覆ったのは e2e 約 3,075 本のうち 511 本で、
+`914bd9f1` 以降 full lane は一度も回っていない。全数確定は次の full lane に委ねる。
+`workspace-expected-failures.txt` へは追記していない — 同ファイルの正本は 2026-08-16/17 の
+計測で、その時点では 5 本とも緑だったからである。
+
 ### 計測していない範囲
 
 - **selfhost の自己適用 (stage chain)**。`#[ignore]` lane

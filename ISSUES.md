@@ -191,7 +191,7 @@
 | [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | open | -- |
 | [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | open | -- |
 | [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | open | -- |
-| [I-60](#i-60) | 0 引数 defn の型を pin する e2e 3 本が `I-45` の契約変更で赤のまま放置されている | 中 | open | -- |
+| [I-60](#i-60) | 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている | 中 | resolved | -- |
 
 ### ドキュメント (DOC)
 
@@ -3621,12 +3621,12 @@
 - **関連**: `I-43` の解決節、`CONTRACT-INVARIANT-QUOTE-01` (`TODO.md`)。
 
 <a id="i-60"></a>
-### I-60: 0 引数 defn の型を pin する e2e 3 本が `I-45` の契約変更で赤のまま放置されている
+### I-60: 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`LINT-SPAN-01` の広域 sweep 中)
+- **影響度**: 中 / **状態**: resolved / **発見**: 2026-08-23 (`LINT-SPAN-01` の広域 sweep 中)
 - **内容**: `914bd9f1` (`I-45`) が `infer-defn-predeclared` の param-count 0 分岐を
   `(mk-fun (mk-unit) body-ty)` へ変え、0 引数 `defn` は `Unit -> body` として env へ登録される
-  ようになった。**これは意図した契約変更である**が、変更前の型を pin していた e2e 3 本が
+  ようになった。**これは意図した契約変更である**が、変更前の型を pin していた e2e 5 本が
   赤に転じたまま、どの正本にも載っていない。
 
   | test | left (実測) | right (期待) |
@@ -3634,8 +3634,12 @@
   | `e2e::selfhost_lexer_parser::test_e2e_selfhost_gadt_constructor_registers_refined_return_type` | `["0","3","0","16777216","0"]` | `["0","5","1","1","100"]` |
   | `e2e::selfhost_lexer_parser::test_e2e_selfhost_program_analysis_preserves_first_defn_type` | `["3","-9223372036853747496"]` | `["1","100"]` |
   | `e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_selfhost_pipeline_complete_stages` | `3` | `1` |
+  | `e2e::selfhost_main_module_determinism::test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration` | `3` | `1` |
+  | `e2e::strings_patterns_compiler_integration::test_e2e_selfhost_main_integration` | `"3"` | `"1"` |
 
-  3 本の fixture はいずれも 0 引数 defn (`(defn make-int [] (IntLit 1))` /
+  後半 2 本は起票後に見つけた。3 本目と同じく `Main.ls` の 5 要素 summary の
+  `lines[28]` を読んでおり、`#[ignore]` も付いていない。
+  5 本の fixture はいずれも 0 引数 defn (`(defn make-int [] (IntLit 1))` /
   `(defn main [] 42)` ×2)。tag 3 は `Fun` (`selfhost/src/Types/Type.ls:52-57` の
   `(vector-push base 3)`) で、`ty-name` / `type-app-arg` が Fun ノードの pointer slot を
   読むため `16777216` / `-9223372036853747496` という値が出ている。
@@ -3654,10 +3658,17 @@
   「実装に合わせて期待値を変える」禁止則の例外 (契約変更に追随する書き換え) に当たる。
   ADR の Evidence 節へ、この 3 本を追随させた事実を戻すこと。
 - **これは下限である**: sweep が覆ったのは e2e 約 3,075 本のうち 511 本にすぎず、
-  `914bd9f1` 以降 full lane は一度も回っていない。**3 本は確定した下限で、全数は未了**。
+  `914bd9f1` 以降 full lane は一度も回っていない。**5 本は確定した下限で、全数は未了**。
   次に full lane を回したときに確定させる。
-- **関連**: `I-45`、`docs/adr/decisions-selfhost-zero-arity-defn-type.md`、
-  `INFER-ZERO-ARITY-PIN-01` (`TODO.md`)。
+- **解決** (2026-08-23): 5 本を新契約へ張り直し、`5 passed; 0 failed; 112.24s` を確認した
+  (`/Users/biwakonbu/github/tmp/i60/green5.log`)。inline harness の 2 本は `ty-fr` /
+  `type-fun-ret` で `Fun` を剥がしてから戻り型を pin し、**tag 3 も pin に残した**。
+  summary を読む 3 本については `PipelineSmoke.ls:98-103` で slot 1 の意味を
+  「値の型 (Fun なら戻り型) の名前ハッシュ」へ変えた。**slot 数は 5 のまま**である
+  (print 回数を変えると `lines[30]` / `lines[31]` を読む別 test がずれる)。
+  判断と実測値は `decisions-selfhost-zero-arity-defn-type.md` の Evidence 節が正本。
+  `workspace-expected-failures.txt` へは予告どおり追記していない。
+- **関連**: `I-45`、`docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

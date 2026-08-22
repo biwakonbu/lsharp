@@ -360,7 +360,7 @@ fn test_e2e_selfhost_main_integration() {
 
     // P11: 完全パイプライン (MacroExpand + TypeInfer 統合)
     assert_eq!(lines[27], "1"); // expanded AST tag = 1 (lit-int)
-    assert_eq!(lines[28], "1"); // 型推論結果: ty-tag = 1 (Con)
+    assert_eq!(lines[28], "3"); // 型推論結果: ty-tag = 3 (Fun, Unit -> Int / I-45)
     assert_eq!(lines[29], "100"); // 型推論結果: ty-name = 100 (Int)
     assert_eq!(lines[30], "1"); // IR 命令数 = 1
     assert_eq!(lines[31], "5"); // パイプラインステージ数 = 5

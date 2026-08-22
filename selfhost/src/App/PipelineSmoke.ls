@@ -100,7 +100,12 @@
                                             (vector-push
                                               (vector-push (vector-new 8) expanded-tag)
                                               (vector-get ty-result 0))
-                                            (vector-get ty-result 1))
+                                            ;; 0 引数 defn は `Unit -> body` として登録される (I-45)。
+                                            ;; slot 0 は Fun (tag 3) をそのまま出し、slot 1 は
+                                            ;; 値の型 (Fun なら戻り型) の名前ハッシュを出す。
+                                            (if (= (vector-get ty-result 0) 3)
+                                              (vector-get (vector-get ty-result 2) 1)
+                                              (vector-get ty-result 1)))
                                           (vector-length ir-list))
                                         5)]
                                       (do

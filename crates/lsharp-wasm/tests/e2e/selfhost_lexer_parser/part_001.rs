@@ -512,10 +512,12 @@ fn test_e2e_selfhost_gadt_constructor_registers_refined_return_type() {
             (parse-program "(type (Expr a) (: (IntLit Int) (Expr Int)) (: (BoolLit Bool) (Expr Bool))) (defn make-int [] (IntLit 1))"))
         env (infer-program-analysis-env analysis)
         scheme (type-env-lookup env (name-hash "make-int" 0 8))
-        ty (scheme-type scheme)
+        fun-ty (scheme-type scheme)
+        ty (type-fun-ret fun-ty)
         arg (type-app-arg ty 0)]
     (do
       (print (infer-program-analysis-diagnostic-count analysis))
+      (print (type-tag fun-ty))
       (print (type-tag ty))
       (print (if (= (type-app-name ty) (name-hash "Expr" 0 4)) 1 0))
       (print (type-tag arg))
@@ -535,8 +537,8 @@ fn test_e2e_selfhost_gadt_constructor_registers_refined_return_type() {
 
     assert_eq!(
         lines,
-        ["0", "5", "1", "1", "100"],
-        "GADT の IntLit constructor は Expr Int を返す scheme として登録されるべき",
+        ["0", "3", "5", "1", "1", "100"],
+        "0 引数の GADT constructor は Unit -> Expr Int として登録されるべき (I-45)",
     );
 }
 

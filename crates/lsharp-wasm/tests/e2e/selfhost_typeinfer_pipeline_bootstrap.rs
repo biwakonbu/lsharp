@@ -382,7 +382,9 @@ fn test_e2e_selfhost_pipeline_complete_stages() {
     // Stage 4 (infer): 型推論結果 = Con(Int) = [1, 100]
     let ty_tag: i64 = lines[28].parse().unwrap();
     let ty_name: i64 = lines[29].parse().unwrap();
-    assert_eq!(ty_tag, 1, "Stage 4 (infer): 型タグ Con=1");
+    // I-45: 0 引数 defn は `Unit -> Int` として登録されるので Fun=3。
+    // 値の型 (Int=100) は summary slot 1 が戻り型から取り出して出す。
+    assert_eq!(ty_tag, 3, "Stage 4 (infer): 型タグ Fun=3 (Unit -> Int)");
     assert_eq!(ty_name, 100, "Stage 4 (infer): 型名 Int=100");
 
     // Stage 5 (compile): IR 命令が生成されている
