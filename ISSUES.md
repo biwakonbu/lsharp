@@ -178,7 +178,7 @@
 | [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | resolved | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-45](#i-45) | canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-46](#i-46) | 前方参照された呼び出しは引数型も arity も検査されていない | 高 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
-| [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | open | -- |
+| [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | resolved | -- |
 | [I-48](#i-48) | selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている | 高 | open | -- |
 
 ### ドキュメント (DOC)
@@ -2546,7 +2546,23 @@
   別 ID で起票して範囲を明示する。
 - **CI の扱いは決めていない**: `I-31` / `I-34` と同じく、gate を緑にすることと
   CI で強制することは別の判断である。
-- **関連**: `I-34` / `I-31`。`FMT-WORKSPACE-01` (`TODO.md`) が引き取る。
+- **解決 (2026-08-22)**: `cargo fmt --all` を適用し、crate ごとに 5 commit へ分けた
+  (`e38726d1` / `f78b45ea` / `fb0e33d2` / `f3d9bd52` / `28a62f46`)。
+  59 file / 452 hunk。`rustfmt 1.8.0-stable`、`rustfmt.toml` は追加していない
+  (Cargo.toml の edition 2024 が決める既定 style_edition で緑になる)。
+  適用後 `cargo fmt --all -- --check` は exit 0。
+- **満たせなかった受入条件**: `FMT-WORKSPACE-01` は「適用後に
+  `cargo test --no-fail-fast --workspace` の FAIL 集合が増えないこと」を求めていたが、
+  **`lsharp-wasm` の e2e lane 全体は回していない** (`I-11` の実測で 5 時間超)。
+  実際に回したのは `cargo build --workspace --tests` (エラーなし) と、
+  `lsharp-types` / `lsharp-ir` / `lsharp-syntax` / `lsharp-tooling` / `lsharp-docs` /
+  `lsharp-driver` / `lsharp-lsp` の全 test、および e2e のうち
+  **ソース本文へ文字列 assertion する gate** (`file_size` 4 件 / `bounded_fragments` /
+  `ops03` 5 件 / `support::` 7 件) である。rustfmt は文字列リテラル内部を書き換えないが、
+  行数と `fn` の行頭位置を見る gate は存在するので、そこだけは直接確認した。
+  FAIL は 15 件でいずれも `workspace-expected-failures.txt` に既収載
+  (driver 11 + 1 / lsp 1 / syntax 1 / tooling 1)。**新規 FAIL 0 / 解消 0。**
+- **関連**: `I-34` / `I-31`。
 
 <a id="i-48"></a>
 ### I-48: selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている

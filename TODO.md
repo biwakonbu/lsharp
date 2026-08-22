@@ -2978,15 +2978,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: 相互再帰の多相化 (polymorphic recursion)。現状の `mutual` fixture は
   既に正しく落ちるので回帰だけ見る。
 
-- [ ] `FMT-WORKSPACE-01` `cargo fmt --check` を workspace 全域で緑にする — Issue `I-47`。
-  `lsharp-wasm` 346 / `lsharp-types` 66 / `lsharp-driver` 27 / `lsharp-syntax` 9 /
-  `lsharp-tooling` 4 の `Diff in` が出る。`I-34` は `lsharp-ir` だけを見て resolved にしていた。
-  受入条件: `cargo fmt --check` が workspace 全体で exit 0 になり、
-  適用後に `cargo test --no-fail-fast --workspace` の FAIL 集合が
-  `workspace-expected-failures.txt` から増えないこと。
-  crate ごとに独立した commit へ分け、**適用 commit に他の変更を混ぜない**。
-  **含めない範囲**: CI で `--check` を強制するかどうか (`I-31` / `I-34` と同じ理由で別判断)。
-
 - [ ] `CASE-ZERO-ARITY-01` canonical `:case` で 0 引数関数を呼べるようにする — Issue `I-45`。
   `:case [(expect (zero) 1)]` が `LS1001` (`UndefinedVar`) で `cases:0` / `executed:0` の
   `fail` になる。`:assert` と legacy `:example` は同じ呼び出しを解決できるので、
