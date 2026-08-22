@@ -2934,15 +2934,29 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `(module ...)` 本体の contract 検査 (main はそもそも module 本体へ降りない。
   `I-39` で compile 経路からは reject 済み)、nested owner の qualified 名解決。
 
-- [ ] `COMP-BUILDER-FORWARD-01` 前方参照された computation builder member の下でも
-  結果型を確定させる — Issue `I-46`。member が使用箇所より後ろに定義されていると
-  `main : forall a. () -> a` へ汎化され、`(string-length (main))` のような誤用が通る。
-  宣言順を入れ替えただけの同じ program は `Mismatch` で落ちるので、**順序だけが判定を変える**。
-  受入条件: 前方参照の有無で `infer_program` の結果が変わらないこと。
-  RED は `I-46` の 2 fixture (FORWARD / ORDERED) を同一 test に並べ、
-  どちらも `Mismatch` になることを見る。
-  **含めない範囲**: `bind_fn` の型そのものの検査 (`m a -> (a -> m b) -> m b` の形の強制)。
+- [ ] `INFER-FORWARD-GEN-01` 前方参照された関数の下で汎化された結果型を事後に確定させる —
+  Issue `I-46` の健全性側。callee が caller より後ろに定義されていると caller が
+  `forall a. () -> a` へ汎化され、`(string-length (main))` のような誤用が通る。
+  束縛自体は `Infer::global_subst` に累積されている (`infer/unify.rs:115`、`infer_program` の
+  間 reset されない) ので、`infer_decl_functions` のループ後に各 `TypeScheme` へ最終代入を
+  適用し、束縛済みになった変数を `vars` から落とす。
+  受入条件: `I-46` の `plain-forward` fixture が `plain-ordered` と同じ `Mismatch` で落ちること。
+  RED は plain な `defn` 版 (computation を含まない) と computation builder 版の両方を並べる。
+  適用後に `cargo test --no-fail-fast --workspace` の FAIL 集合が
+  `workspace-expected-failures.txt` から増えないこと。**`lsharp-wasm` の e2e を必ず含める** —
+  この pass は Rust pipeline がコンパイルする全 `.ls` の前方参照を再検査するので、
+  潜在的な Ok→Err が表に出るならそこである。
+  **含めない範囲**: 完全性側 (`INFER-FORWARD-POLY-01`)。宣言順に依存しない generalize。
   selfhost 側 `TypeInfer.ls` の同経路。
+
+- [ ] `INFER-FORWARD-POLY-01` 前方参照した多相関数を複数の型で使えるようにする —
+  Issue `I-46` の完全性側。`(defn f [] (id 1)) (defn g [] (id "s")) (defn id [x] x)` は
+  最初の使用が placeholder を単相化するため `g` で `Mismatch` になる。`id` を前に出せば通る。
+  宣言順に依存しない generalize (依存グラフの SCC 順で推論し、SCC 単位で generalize する) が要る。
+  受入条件: 上記 fixture が宣言順によらず通り、`INFER-FORWARD-GEN-01` の健全性 fixture が
+  引き続き `Mismatch` で落ちること。
+  **含めない範囲**: 相互再帰の多相化 (polymorphic recursion)。現状の `mutual` fixture は
+  既に正しく落ちるので回帰だけ見る。
 
 - [ ] `FMT-WORKSPACE-01` `cargo fmt --check` を workspace 全域で緑にする — Issue `I-47`。
   `lsharp-wasm` 346 / `lsharp-types` 66 / `lsharp-driver` 27 / `lsharp-syntax` 9 /

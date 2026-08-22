@@ -177,7 +177,7 @@
 | [I-43](#i-43) | `:example` / `:invariant` / `:doc` の識別子検査が false positive を出す | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
 | [I-44](#i-44) | 未定義の computation builder が型検査を通る | 中 | resolved | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-45](#i-45) | canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない | 中 | open | [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) |
-| [I-46](#i-46) | 前方参照された computation builder member の下で結果型が汎化され、誤用が通る | 中 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
+| [I-46](#i-46) | 前方参照された関数の下で呼び出し側の結果型が汎化され、宣言順が判定を変える | 高 | open | [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md) |
 | [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | open | -- |
 
 ### ドキュメント (DOC)
@@ -2320,6 +2320,8 @@
   e2e は `core_language_semantics::test_e2e_computation` と `..._let_bang_typecheck` が ok。
   `cargo clippy -p lsharp-types --all-targets` は警告なし。
 - **範囲外を 1 件起票した**: 前方参照下の結果型は直っていない (`I-46`)。
+  後の実測で **computation builder 固有ではなく plain な `defn` で再現する**ことが分かり、
+  `I-46` は一般の前方参照の問題として書き直した。別 issue には分けていない。
 
 <a id="i-45"></a>
 ### I-45: canonical `:case` の `expect` が 0 引数関数呼び出しを解決できない
@@ -2353,39 +2355,88 @@
   [worktree 取り込み判定](docs/adr/decisions-worktree-absorption-2026-08-20.md) の群 3。
 
 <a id="i-46"></a>
-### I-46: 前方参照された computation builder member の下で結果型が汎化され、誤用が通る
+### I-46: 前方参照された関数の下で呼び出し側の結果型が汎化され、宣言順が判定を変える
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`I-44` の実装中)
-- **内容**: computation builder の `bind_fn` / `return_fn` が使用箇所より**後ろ**に
-  定義されていると、`Expr::Computation` の結果型が束縛されない型変数のまま generalize され、
-  `main : forall a. () -> a` になる。**宣言順だけが違う同じ program が、片方は型エラーで
-  落ち、片方は通る。**
-- **根拠**: 2026-08-22 実測。`Infer::infer_program` の戻り値を直接読んだもの。
-  違いは `(defn main ...)` を member の defn より前に置くか後ろに置くかだけである。
+- **影響度**: 高 / **状態**: open / **発見**: 2026-08-22 (`I-44` の実装中。当初は
+  computation builder 固有と書いたが、後述の実測で **plain な `defn` で再現**した)
+- **内容**: 呼び出し先が呼び出し元より**後ろ**に定義されていると、呼び出し元の結果型は
+  束縛されない型変数のまま generalize され、`main : forall a. () -> a` になる。
+  computation expression は一切関与しない。**宣言順だけが違う同じ program が、
+  片方は型エラーで落ち、片方は通る。**
+
+  現れ方は 2 つある。方向が逆なので、片方だけを直しても他方は残る。
+
+  | 現れ方 | 症状 | 危険度 |
+  |---|---|---|
+  | 健全性 (unsoundness) | 誤用が**通ってしまう** (`(string-length (main))` が `Int` を受ける) | 高 |
+  | 完全性 (incompleteness) | 正しい program が**誤って落ちる** (前方参照した多相関数を 2 型で使えない) | 中 |
+
+- **根拠 (健全性)**: 2026-08-22 実測。`Infer::infer_program` の戻り値を直接読んだもの。
+  3 本の違いは `(defn main ...)` を callee の defn より前に置くか後ろに置くかだけである。
 
   ```
-  FORWARD: Ok(["main:Fun([], Var(28))", ..., "misuse:Fun([], Con(\"Int\"))"])
-  ORDERED: Err(Mismatch { expected: Con("String"), found: Con("Int"),
-                          span: 230..252, error_code: ArgMismatch })
+  plain-forward: Ok ["main:Fun([], Var(27))", "helper:Fun([Var(29)], Var(29))",
+                     "misuse:Fun([], Con(\"Int\"))"]
+  plain-ordered: Err Mismatch { expected: Con("String"), found: Con("Int"),
+                                span: 62..84, error_code: ArgMismatch }
+  fwd-noargs:    Ok ["main:Fun([], Var(27))", "helper:Fun([], Con(\"Int\"))",
+                     "misuse:Fun([], Con(\"Int\"))"]
   ```
 
   ```lisp
-  (computation-builder identity identity-bind identity-return)
-  (defn main [] (computation identity (return 42)))   ; ← member より前
-  (defn identity-return [x] x)
-  (defn identity-bind [m f] (f m))
-  (defn misuse [] (string-length (main)))             ; Int を String として使えてしまう
+  ;; plain-forward — 通ってしまう
+  (defn main [] (helper 1))
+  (defn helper [x] x)
+  (defn misuse [] (string-length (main)))   ; Int を String として使えてしまう
+
+  ;; plain-ordered — helper を前に出しただけで Mismatch になる
+  (defn helper [x] x)
+  (defn main [] (helper 1))
+  (defn misuse [] (string-length (main)))
   ```
 
-- **原因**: 結果型の推定は use-site の env に対して行うが、前方参照された member は
-  `infer_decl_functions` のパス 1 が入れた placeholder 型変数でしかない。
-  `unify(placeholder, Fun([Int], ret_result))` は placeholder 側を束縛するだけで、
-  `ret_result` は自由なまま残る。member の本推論が後から確定させても、
-  `main` は既に generalize 済みで戻ってこない。
+  `fwd-noargs` が示すのは、**callee 自身は正しく解決される** (`helper:Fun([], Con("Int"))`)
+  のに caller だけが `Var(27)` に取り残されるということである。caller は callee の型が
+  確定する前に generalize されている。
+
+- **根拠 (完全性)**: 同日実測。前方参照した多相関数を 2 つの型で使うと、
+  最初の使用が placeholder を単相化してしまい、2 番目が落ちる。
+
+  ```
+  poly-forward: Err Mismatch { expected: Con("Int"), found: Con("String"),
+                               span: 41..49, error_code: ArgMismatch }
+  poly-ordered: Ok ["id:Fun([Var(27)], Var(27))", "f:Fun([], Con(\"Int\"))",
+                    "g:Fun([], Con(\"String\"))"]
+  ```
+
+  ```lisp
+  (defn f [] (id 1))
+  (defn g [] (id "s"))   ; ← ここが落ちる。id を前に出せば通る
+  (defn id [x] x)
+  ```
+
+- **原因**: `infer_decl_functions` のパス 1 は全 defn を placeholder 型変数で仮登録し、
+  パス 2 が宣言順に本推論して**その場で generalize する** (`infer/decl.rs:298-333`)。
+  前方参照された callee はパス 2 の時点でまだ placeholder なので、
+  `unify(placeholder, Fun([Int], ret))` は placeholder 側を束縛するだけで `ret` は自由に残る。
+  `generalize` は `env_for_gen` から未推論の pending 名を除くため (`decl.rs:325-328`)、
+  `ret` は「env に現れない自由変数」と判定されて量化されてしまう。
+  callee の本推論が後から `ret` を確定させても、caller の `TypeScheme` は既に確定済みで戻らない。
+- **修復の手掛かり**: 束縛自体は失われていない。`unify` は全ての束縛を
+  `self.global_subst` へ累積し (`infer/unify.rs:115`)、これは `infer_program` の間
+  一度も reset されない (`decl.rs:128` の制約チェックが同じものを使う)。
+  したがって**健全性側は事後 pass で閉じられる可能性がある** — ループ後に各 scheme へ
+  最終代入を適用し、束縛済みになった変数を `vars` から落とす。
+  完全性側は宣言順に依存しない generalize (依存グラフの SCC 順) が要るので、これでは閉じない。
+- **発見経路**: computation builder の member を前方参照した fixture
+  (`(computation-builder identity identity-bind identity-return)` の member を
+  `(defn main ...)` より後ろに置く) で最初に観測した。computation expression 固有ではないので、
+  そちらは instance として扱う。
 - **`I-44` の修正で入った欠陥ではない**: 修正前の RED でも同じ `Fun([], Var(28))` が出ていた。
   `I-44` は「誤って incomplete 扱いにしないこと」までを閉じ、結果型は範囲外として残した。
-- **関連**: `COMP-BUILDER-FORWARD-01` (`TODO.md`) が引き取る。
-  判断は [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md)。
+- **関連**: `INFER-FORWARD-GEN-01` (健全性) と `INFER-FORWARD-POLY-01` (完全性) が
+  `TODO.md` で引き取る。発見経路の判断は
+  [computation builder の診断](docs/adr/decisions-computation-builder-diagnostics.md)。
 
 <a id="i-47"></a>
 ### I-47: `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった)

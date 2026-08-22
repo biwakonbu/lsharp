@@ -127,7 +127,10 @@ test の要求を「誤って incomplete 扱いにしないこと」へ縮め、
 
 - **`I-46`** — 前方参照された builder member の下では結果型が汎化され、
   `(string-length (main))` のような誤用が通る。宣言順だけが違う同じ program が
-  片方は `Mismatch` で落ち、片方は通る
+  片方は `Mismatch` で落ち、片方は通る。
+  **本 ADR を書いた後の実測で、これは computation builder 固有ではなく plain な `defn` の
+  前方参照で再現することが分かった。** `I-46` は一般の前方参照の問題として書き直してあり、
+  computation builder は発見経路として扱う。別 issue には分けていない
 - **selfhost 側 `TypeInfer.ls`** の同じ経路。Rust 側だけを直したので parity は未確認
 - **`bind_fn` の型検査**。`current_env.get(bind_fn)` で存在は見るが、
   `m a -> (a -> m b) -> m b` の形は依然として要求していない
