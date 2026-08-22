@@ -293,7 +293,6 @@ fn test_sync_artifact_parent_accepts_bare_file_name_without_directory_component(
     );
 }
 
-
 #[test]
 fn test_artifact_parent_dir_normalizes_bare_and_dotted_and_absolute_forms() {
     // 3 形が同じ artifact を生むための前提: 親 directory の解決が一致すること。

@@ -8825,7 +8825,11 @@ fn test_e2e_selfhost_cli_test_source_json_keeps_running_well_typed_assert_predic
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "健全な assert も report と exit code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "健全な assert も report と exit code を返すべき"
+    );
     let report: Value = serde_json::from_str(lines[0])
         .expect("健全な assert の selfhost test JSON は valid JSON であるべき");
     assert_eq!(report["implementation_conformance"]["status"], "pass");
@@ -8835,7 +8839,8 @@ fn test_e2e_selfhost_cli_test_source_json_keeps_running_well_typed_assert_predic
         "型検査を通った predicate は runtime 評価まで進むべき"
     );
     assert_eq!(
-        report["implementation_conformance"]["diagnostics"]["count"], 0
+        report["implementation_conformance"]["diagnostics"]["count"],
+        0
     );
     assert_eq!(lines[1], "0");
 }
@@ -16965,8 +16970,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         source.len()
     );
-    let formatting_response =
-        "{\"jsonrpc\":\"2.0\",\"id\":69,\"result\":[{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":16}},\"newText\":\"(defn main [] 1)\\n\"}]}";
+    let formatting_response = "{\"jsonrpc\":\"2.0\",\"id\":69,\"result\":[{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":16}},\"newText\":\"(defn main [] 1)\\n\"}]}";
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
