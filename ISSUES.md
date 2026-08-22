@@ -183,7 +183,7 @@
 | [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | resolved | -- |
 | [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | resolved | -- |
 | [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | resolved | -- |
-| [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open | -- |
+| [I-52](#i-52) | LSP stdio 補完の e2e が 2 系統の理由で全滅 (位置規約の食い違い / snapshot 形式のドリフト) | 中 | open (facet A のみ resolved) | -- |
 
 ### ドキュメント (DOC)
 
@@ -2897,6 +2897,50 @@
   `:686-694` (`lsp-prefix-at` / `lsp-prefix-matches`)。
 - **いつ壊れたか**: `+1` 正規化は `9175c6e5` 「fix: normalize native lsp wire positions」(2026-08-03)。
   fixture 側は `d32f9e91` (2026-04-01) 由来で、正規化に追随していない。
+- **解決** (2026-08-22): **実装ではなく fixture を直した。** `9175c6e5` の `+1` 正規化が
+  LSP 3.17 準拠であり、1-indexed のまま止まっていた fixture の側が誤りだったため。
+  `selfhost_cli_core.rs` の 4 行を wire 規約 (0-indexed) へ書き換えた。
+
+  | 行 | test | 旧 | 新 |
+  |---|---|---|---|
+  | `:17075` | `..._completion_uses_open_document` | `"line":1,"col":23` | `"line":0,"col":22` |
+  | `:17118` | `..._completion_uses_open_document_spec_params` | `"line":1,"character":23` | `"line":0,"character":22` |
+  | `:17445` | `..._completion_uses_changed_document` | `"line":1,"col":23` | `"line":0,"col":22` |
+  | `:17678` | `..._repeated_didopen_keeps_latest_source` | `"line":1,"col":21` | `"line":0,"col":20` |
+
+  値の求め方は「シンボル末尾の次の 0-based offset」。`(defn helper [] 1) (he)` は 23 byte で
+  `he` が 0-based 20..21 なので 22、`(defn beta [] 1) (be)` は 21 byte で `be` が 18..19 なので 20。
+  **`(b) 空 prefix を「補完しない」へ変える` は採らなかった** — params 無しの既定 keyword 補完
+  (`LspServerNav.ls:1105-1113`) と衝突し、実装側の契約を変えることになる。fixture の誤りを
+  実装の変更で覆うと、規約の正本がどちらなのかが永久に決まらない。
+- **検証** (`cargo test -p lsharp-wasm --test e2e -- --ignored --test-threads=1
+  lsp_stdio_completion_uses lsp_stdio_repeated_didopen`、2026-08-22):
+
+  | | RED | GREEN |
+  |---|---|---|
+  | 結果 | 0 passed / 6 failed (`1217.42s`) | **4 passed / 2 failed** (`1234.19s`) |
+  | 受入 4 本 | 全滅 (keyword 7 件混入、`Content-Length` 86 → 407 / 403) | 全緑 |
+  | 残り 2 本 | FAILED | FAILED (理由は下記) |
+
+  緑になったのは `..._completion_uses_open_document` / `..._completion_uses_open_document_spec_params` /
+  `..._completion_uses_changed_document` / `..._repeated_didopen_keeps_latest_source` の 4 本。
+- **規約の正本**: `AGENTS.md` の「LSP stdio wire の位置規約 (fixture の正本)」節
+  (「テスト構成」直後) に 1 箇所だけ置いた。`docs/language/` には LSP を扱うファイルが無く、
+  新規ファイルを孤立させるより既存の作業手順正本へ寄せる方が発見可能性が高い。
+- **残渣 (この slice で直していない)**: **両方の facet が要る 5 本は位置も 1-indexed のまま**である。
+  A だけを直しても緑にならないので、B を解消する slice で位置と同時に直す。値は測定済み:
+
+  | 行 | test | 旧 | 新 |
+  |---|---|---|---|
+  | `:17533` | `..._uses_spec_changed_document_with_escaped_newline` | `"line": 2, "character": 4` | `"line": 1, "character": 3` |
+  | `:17614` | 同 `_unicode_` 版 | `"line": 2, "character": 4` | `"line": 1, "character": 3` |
+  | `:18966` | `..._completion_changed_document_schema_snapshot` | `"line":1,"col":23` | `"line":0,"col":22` |
+  | `:19232` | `..._completion_latest_reopened_schema_snapshot` | `"line":1,"col":21` | `"line":0,"col":20` |
+  | `:19490` | `..._completion_filesystem_import_schema_snapshot` | `find(..) + len + 1`、`"line":1` | `find(..) + len`、`"line":0` |
+
+  escaped_newline 系 2 本の期待値は snapshot file ではなく **inline の縮約形**
+  (`selfhost_cli_core.rs:17568-17573` の `"result": [["helper", 3, "helper"]]`) なので、
+  `assert_lsp_stdio_snapshot` を直すだけでは緑にならない。引き取り先は `TODO.md` の `LSP-COL-CONV-02`。
 
 #### B: snapshot file が 2026-08-03 以前の縮約形のまま残っている
 
@@ -2929,14 +2973,14 @@
   `docs/development/validation/ignored-lane-expected-failures.txt` は宣言スコープが
   `selfhost_native_stage_chain.rs` 単体に限られる。`selfhost_cli_core.rs` の `--ignored` lane は
   **どちらの台帳の対象でもない**。「どちらの表にも無い = 落ちていない」とは読めない。
-- **修正方針の候補** (未決): A は (a) fixture の col を 0-indexed へ直す、
-  (b) 空 prefix を「全一致」ではなく「補完しない」へ変える、(c) 両方。
-  (b) 単独では params 無しの既定 keyword 補完 (`LspServerNav.ls:1105-1113`) と衝突する。
-  B は (d) snapshot file を現行の object 形へ書き直す、(e) `assert_lsp_stdio_snapshot` に
+- **修正方針**: A は (a) fixture の col を 0-indexed へ直す、で決着した (2026-08-22、上記)。
+  B は未決で、(d) snapshot file を現行の object 形へ書き直す、(e) `assert_lsp_stdio_snapshot` に
   縮約器を入れて生出力を縮約形へ落とす、のいずれか。**(e) を選ぶなら「何を縮約するか」が
   契約になる**ので ADR が要る。無検討な一括再生成はしない。
-- **関連**: `I-49` (発見の経緯)。引き取り先は `TODO.md` の `LSP-COL-CONV-01` (A) と
-  `LSP-SNAPSHOT-SHAPE-01` (B)。
+- **状態の内訳**: facet A は resolved。**facet B が未解決なので issue 全体は open のまま**である。
+- **関連**: `I-49` (発見の経緯)。引き取り先は `TODO.md` の `LSP-SNAPSHOT-SHAPE-01` (B) と
+  `LSP-COL-CONV-02` (両 facet が要る 5 本の位置修正。B の解消と同時にしか検証できない)。
+  wire 位置規約の正本は `AGENTS.md`。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

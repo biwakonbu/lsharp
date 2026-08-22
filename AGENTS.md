@@ -79,6 +79,32 @@ Source (.ls)
 - **スナップショットテスト**: `insta` クレートによる IR/型出力の回帰テスト
 - **メタデータテスト**: `:example` / `:invariant` アノテーションからの自動テスト生成
 
+### LSP stdio wire の位置規約 (fixture の正本)
+
+`lsharp lsp --stdio` が wire 上で受け取る `line` / `col` (`character`) は
+**0-indexed** である (LSP 3.17 準拠)。内部の走査は 1-indexed なので、
+`lsp-stdio-nav-params` (`selfhost/src/App/Cli.ls:2010-2020`) が受信時に `+1` して変換する。
+変換先の `lsp-offset-from-line-col` (`selfhost/src/Tools/Lsp/LspServerNav.ls:275-276`) は
+`line 1, col 1` から数え始める。
+
+**e2e fixture の JSON は wire 側なので 0-indexed で書く。** 1-indexed で書くと
+カーソルが 1 文字後ろへずれ、補完では `lsp-prefix-at` が `""` を返す。
+空 prefix は `lsp-prefix-matches` が全一致として扱うため、
+**server は error を返さず、絞り込みだけが無言で消えた結果**を返す。
+期待値を「キーワード込み」で書いてしまうと、その test は絞り込みを何も検証しなくなる。
+
+col の求め方 (単一行 source の場合):
+
+```
+source = "(defn beta [] 1) (be)"    ; 21 byte、`be` は 0-based 18..19
+狙うカーソル = `be` の直後 = 0-based offset 20
+wire col     = 20                    ; そのまま offset
+内部 col     = 21                    ; +1 された値
+```
+
+つまり **wire col には「シンボル末尾の次の 0-based offset」を書く**。
+経緯と実測は `ISSUES.md` の `I-52`。
+
 ## TDD ワークフロー (必須)
 
 実装タスクは必ず TDD (テスト駆動開発) で進める。テストなしの実装は完了と見なさない。

@@ -17072,7 +17072,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         source
     );
-    let completion_body = r#"{"jsonrpc":"2.0","id":71,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":71,"method":"textDocument/completion","params":{"uri":42,"line":0,"col":22}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -17115,7 +17115,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document_spec_
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         source
     );
-    let completion_body = r#"{"jsonrpc":"2.0","id":71,"method":"textDocument/completion","params":{"textDocument":{"uri":42},"position":{"line":1,"character":23}}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":71,"method":"textDocument/completion","params":{"textDocument":{"uri":42},"position":{"line":0,"character":22}}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -17442,7 +17442,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() 
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let completion_body = r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":0,"col":22}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -17675,7 +17675,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_repeated_didopen_keeps_latest_sourc
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let completion_body = r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":0,"col":20}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),

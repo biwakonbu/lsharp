@@ -2988,23 +2988,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
 
-- [ ] `LSP-COL-CONV-01` LSP stdio の位置規約を fixture と実装で一致させる — Issue `I-52` の facet A。
-  `lsp-stdio-nav-params` (`selfhost/src/App/Cli.ls:2010-2020`) が wire の `line`/`col` を
-  0-indexed とみなして `+1` する一方、`--ignored` lane の補完 e2e fixture は 1-indexed のまま
-  書かれており、カーソルが 1 文字後ろへずれて `lsp-prefix-at` が `""` を返す。
-  空 prefix は `lsp-prefix-matches` (`LspServerNav.ls:686-694`) が全一致として扱うため、
-  補完結果にキーワード 7 件が常に混ざる。
-  受入条件: **位置規約だけで説明できる 3 本** — `..._completion_uses_open_document` /
-  `..._completion_uses_open_document_spec_params` / `..._completion_uses_changed_document` —
-  と `..._repeated_didopen_keeps_latest_source` が緑になること。あわせて wire の位置規約
-  (0-indexed / LSP 3.17 準拠) を `docs/language/` か `AGENTS.md` のいずれか 1 箇所へ明記し、
-  fixture が参照できる正本を作ること。
-  **含めない範囲**: snapshot file の形式ドリフト (`LSP-SNAPSHOT-SHAPE-01`)。
-  `..._schema_snapshot` 系 6 本は本項目を完了しても緑にならない。
-  **両方が揃って初めて緑になる 5 本** (`..._latest_reopened_schema_snapshot` /
-  `..._changed_document_schema_snapshot` / `..._filesystem_import_schema_snapshot` /
-  `..._uses_spec_changed_document_with_escaped_newline` / 同 `_unicode_` 版) を
-  本項目の受入条件に含めてはならない。
+- [ ] `LSP-COL-CONV-02` 両 facet が要る 5 本の wire 位置を 0-indexed へ揃える — Issue `I-52` の残渣。
+  `LSP-COL-CONV-01` で 4 本は緑にしたが、facet B (`LSP-SNAPSHOT-SHAPE-01`) も要る 5 本は
+  位置が 1-indexed のまま残っている。A だけ直しても緑にならないため分離した。
+  修正値は測定済みで `ISSUES.md` の `I-52` に表として置いてある
+  (`:17533` / `:17614` / `:18966` / `:19232` / `:19490`)。
+  `..._uses_spec_changed_document_with_escaped_newline` と同 `_unicode_` 版は期待値が
+  snapshot file ではなく **inline の縮約形** (`selfhost_cli_core.rs:17568-17573`) なので、
+  `assert_lsp_stdio_snapshot` 側を直すだけでは緑にならない点に注意する。
+  受入条件: 上記 5 本が緑になること。**`LSP-SNAPSHOT-SHAPE-01` を先に閉じないと検証できない。**
+  wire の位置規約の正本は `AGENTS.md` の「LSP stdio wire の位置規約 (fixture の正本)」節。
 
 - [ ] `LSP-SNAPSHOT-SHAPE-01` LSP stdio snapshot の形式ドリフトを解消する — Issue `I-52` の facet B。
   `assert_lsp_stdio_snapshot` (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:80-84`) は
@@ -3013,7 +3006,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   止まっている。実出力が LSP 準拠の object 形へ変わったのは `5db1c2a4` (2026-08-03)。
   受入条件: `..._completion_schema_snapshot` (位置を送らないため facet A の影響を受けない) が
   緑になること。縮約器を入れる設計を採るなら「何を縮約対象とするか」を ADR に書いてから実装する。
-  **含めない範囲**: 位置規約の修正 (`LSP-COL-CONV-01`)。
+  **含めない範囲**: 位置規約の修正 (`LSP-COL-CONV-02`)。
   snapshot の無検討な一括再生成 (`cargo insta accept` 相当) はしない。
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が
