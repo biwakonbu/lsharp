@@ -2989,15 +2989,27 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `I-45` の 0 引数 `defn` 修正そのもの (解決済み)。
   assert lane の診断コード体系を Rust の `LS1001` へ揃えること。
 
-- [ ] `COMPILE-NO-SOURCE-WRITE-01` `lsharp compile` が入力ソースを書き換えないようにする —
-  Issue `I-50`。selfhost lane の `compile <file> -o <out>` が成功時に入力 `.ls` を
-  formatter 出力で上書きする。Rust host 経路 (`--emit-ir` /
-  `LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) では起きない。
-  受入条件: 整形前後で内容が変わる `.ls` を `compile -o` にかけたあと、
-  入力ファイルの中身が **byte 単位で不変**であること。RED はハッシュ比較で書き、
-  `check` / `test` / `fmt` を同じ fixture で control として並べる。
-  **含めない範囲**: formatter 出力そのものの是非 (`FMT-ROUNDTRIP-01`)。
-  `fmt --write` の明示的な書き込み。
+- [ ] `COMPILE-FORMAT-NOTICE-01` `lsharp compile` の入力ソース整形上書きを利用者へ通知する —
+  Issue `I-50`。`prepare_source_for_compile` (`crates/lsharp-tooling/src/compile.rs:222-234`) が
+  entry file を整形して書き戻した事実は `CompileArtifacts.formatted` (`compile.rs:30`) に
+  載っているが、`crates/lsharp-driver/src` に consumer が 0 件で、利用者には黙って
+  ソースが書き換わったように見える。
+  受入条件: 整形差分のある `.ls` を `compile -o` にかけたとき、`formatted == true` の場合にのみ
+  「入力を整形して書き戻した」旨が stderr に 1 行出ること。差分が無い場合は無音であること。
+  RED は driver 側の出力 assertion で書き、整形差分あり / 無しの 2 fixture を対比する。
+  **含めない範囲**: 書き戻しそのものの廃止。これは
+  `test_prepare_source_for_compile_rewrites_file_when_format_diff_exists`
+  (`compile_tests_outputs.rs:172`) が固定した仕様であり、`scripts/dev-loop.sh` の退避・復元は
+  その仕様を前提に組まれている。**起票時の受入条件「入力ファイルが byte 単位で不変」は
+  却下した** — 契約テストの削除と ADR による設計反転を伴うため、この slice の自律範囲を越える。
+  formatter 出力そのものの是非 (`FMT-ROUNDTRIP-01`)。`fmt --write` の明示的な書き込み。
+
+- [ ] `COMPILE-OUT-PARENT-01` `-o` にディレクトリ成分の無いファイル名を渡せるようにする —
+  Issue `I-51`。`compile x.ls -o out.wasm` が
+  `artifact parent directory の同期対象を開けません ()` で落ちる。`Path::parent()` の
+  空文字列を `.` へ正規化していないため。
+  受入条件: `-o out.wasm` / `-o ./out.wasm` / 絶対パスの 3 形が同じ artifact を生むこと。
+  **含めない範囲**: 書き込み順序 (`I-50`)。存在しない親ディレクトリの自動作成。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

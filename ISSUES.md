@@ -181,7 +181,8 @@
 | [I-47](#i-47) | `cargo fmt --check` が 5 crate で落ちる (`I-34` は `lsharp-ir` しか見ていなかった) | 低 | resolved | -- |
 | [I-48](#i-48) | selfhost のソースが `I-46` の穴に依存しており、vector をタプルとして使っている | 高 | open | -- |
 | [I-49](#i-49) | selfhost の `:assert` lane は predicate を型検査していない | 中 | open | -- |
-| [I-50](#i-50) | `lsharp compile <file> -o <out>` が入力ソースを書き換える | 高 | open | -- |
+| [I-50](#i-50) | `lsharp compile` の入力ソース整形上書きが利用者へ通知されない | 中 | open | -- |
+| [I-51](#i-51) | `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -2683,45 +2684,95 @@
 - **関連**: `ASSERT-TYPECHECK-01` (`TODO.md`) が引き取る。`I-45` と同じ preflight の話。
 
 <a id="i-50"></a>
-### I-50: `lsharp compile <file> -o <out>` が入力ソースを書き換える
+### I-50: `lsharp compile` の入力ソース整形上書きが利用者へ通知されない
 
-- **影響度**: 高 / **状態**: open / **発見**: 2026-08-22 (`CASE-ZERO-ARITY-01` の影響範囲計測中)
-- **内容**: selfhost lane の `compile` が **成功時に入力 `.ls` を整形して上書きする**。
-  ユーザーが書いたソースをコンパイラが黙って書き換える形であり、
-  レビュー中の diff や git の作業ツリーを汚す。実際、本 slice の計測中に
-  `selfhost/src/App/EmbeddedCli.ls` と `selfhost/src/App/Cli.ls` が
-  計測の副作用として書き換わった (どちらも復元済み)。
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-22 (`CASE-ZERO-ARITY-01` の影響範囲計測中)
+  / **訂正**: 2026-08-22 (下記「起票時の記述の訂正」)
+- **内容**: `lsharp compile` の **Rust host 経路**は、コンパイル前に entry file を formatter に
+  かけ、差分があれば**入力ファイルへ書き戻す**。この書き戻し自体は
+  `prepare_source_for_compile` (`crates/lsharp-tooling/src/compile.rs:222-234`) の仕様であり、
+  契約テスト `test_prepare_source_for_compile_rewrites_file_when_format_diff_exists`
+  (`crates/lsharp-tooling/src/compile_tests_outputs.rs:172`) が固定している。
+  **live な欠陥は書き戻しそのものではなく、それが利用者へ一切通知されない点**である。
+  `CompileArtifacts` は結果を `pub formatted: bool` (`compile.rs:30`) で運んでいるが、
+  `crates/lsharp-driver/src` 全域を grep しても **consumer が 0 件**で、
+  stdout にも stderr にも現れない。利用者から見るとコンパイラが黙ってソースを書き換える。
+  実際、本 slice の計測中に `selfhost/src/App/EmbeddedCli.ls` と
+  `selfhost/src/App/Cli.ls` が副作用として書き換わった (どちらも復元済み)。
 - **根拠**: 2026-08-22 実測。最小再現:
 
   ```bash
   printf '(defn f [x]\n  (let [a\n          (+ x 1)]\n    a))\n(defn main [] (f 1))\n' > input.ls
   md5 -q input.ls                       # d8158dd08c7169e4436faea89bea1722
-  lsharp compile input.ls -o out.wasm
+  lsharp compile input.ls -o out.wasm   # stdout に整形の言及は無い
   md5 -q input.ls                       # 9b18b91c5af42308c0ae8b44a6c166bb
   ```
 
   差分は `let` の束縛値のインデント (10 空白 → 4 空白) で、内容としては formatter 出力。
 
-- **コマンド別の切り分け** (同一 fixture、2026-08-22 実測):
+- **経路別の切り分け** (同一 fixture、2026-08-22 再実測)。
+  **stdout でどちらの lane を踏んだか判別する** — `wasm-size:` なら guest が完遂、
+  `コンパイル成功: ...` (`crates/lsharp-driver/src/main.rs:679`、Rust にしか存在しない文字列)
+  なら host が実行している:
 
-  | 実行 | 入力ファイル |
-  |---|---|
-  | `compile input.ls -o out.wasm` | **書き換わる** |
-  | `compile input.ls -o out.wasm` (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) | 変わらない |
-  | `compile input.ls --emit-ir` | 変わらない |
-  | `check input.ls` | 変わらない |
-  | `test input.ls` | 変わらない |
-  | `fmt input.ls` | 変わらない |
+  | 実行 | 実際に走った lane | 入力ファイル |
+  |---|---|---|
+  | `compile input.ls -o out.wasm` (既定 = `wasi-component`) | host (guest が拒否し fallback) | **書き換わる** |
+  | `compile input.ls -o out.wasm` (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) | host | **書き換わる** |
+  | `compile input.ls --emit-ir` | host | **書き換わる** |
+  | `compile input.ls --target wasi-preview1 -o out.wasm` | **guest が完遂** (`wasm-size:`) | 変わらない |
+  | `check` / `test` / `fmt` (引数なし) | -- | 変わらない |
 
-  `--emit-ir` と `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` はどちらも Rust host 経路なので、
-  **書き換えているのは embedded selfhost component 側**である。
-- **未特定**: 書き込んでいる正確な箇所。`EmbeddedCli.ls` の `run-compile-*` からは
-  `write-file-bytes output-path` しか見えておらず、入力パスへの `write-file` は未発見。
-  artifact cache / package 経路の副作用の可能性がある。
+  既定の `compile -o` が書き換わるのは guest が書いているからではなく、
+  guest が `wasi-component` を無条件に拒否して host compile へ落ちるためである
+  (`I-15` に設計として記録済み、`main.rs:900-928`)。
+  **guest が実際に compile を完遂する唯一のセル (`--target wasi-preview1`) では入力は不変**なので、
+  書き戻しは Rust host 経路にしか存在しない。ただし既定コマンドが常に host へ落ちる以上、
+  実利用ではほぼ常に書き換わる。
+- **起票時の記述の訂正** (2026-08-22): 初版の切り分け表は
+  `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` と `--emit-ir` を「変わらない」と記録し、
+  そこから「書き換えているのは embedded selfhost component 側」と結論していた。
+  **どちらも誤り**である。原因は計測手順で、セル間で fixture を復元しておらず、
+  先行セルが既に整形済みにしたファイルを後続セルが「変わらない」と読んでいた。
+  同じ初版が置いた「**未特定**: 書き込んでいる正確な箇所」も解消済みで、
+  上記の `compile.rs:222-234` が唯一の書き込み箇所 (production の呼び出しは
+  `compile.rs:368` の 1 箇所、対象は entry file のみで import 先 module は通らない)。
+- **既に記録されていた**: この副作用と「host / guest 双方に及ぶ」という判定は
+  [`decisions-dev-loop-rust-lane-speedup.md`](docs/adr/decisions-dev-loop-rust-lane-speedup.md)
+  の 106-109 行と
+  [`rust-boundary-reduction.md`](docs/development/operations/rust-boundary-reduction.md)
+  の 4999-5018 行に先行して存在した (`scripts/dev-loop.sh` が entry を退避・復元して
+  回避している)。本 issue はそれを未知の挙動として再発見したものではない。
+  なお ops 記録の「両方」は上表の再測により **host のみ**へ訂正される。
+- **書き戻しの二次被害**: 入力が read-only (`chmod 444`) の場合、compile は
+  `[LS5001] <path>: Permission denied (os error 13)` で **rc=1 になる** (host / guest 双方の
+  呼び出しで再現。guest 呼び出しは host へ落ちるため)。型検査以前に書き込みで落ちるので、
+  診断が出ない。また書き込みは compile の**前**に走るため、整形差分があって型エラーもある
+  ソースは「書き換えられたうえで失敗する」。
 - **なぜ気付かれていなかったか**: 整形結果が入力と同一なら差分が出ない。
   selfhost 自身のソースは formatter の現行出力と一致していないため露見した。
-- **関連**: `COMPILE-NO-SOURCE-WRITE-01` (`TODO.md`) が引き取る。
-  formatter 出力そのものの正しさは `FMT-ROUNDTRIP-01`。
+- **関連**: `COMPILE-FORMAT-NOTICE-01` (`TODO.md`) が引き取る。
+  formatter 出力そのものの正しさは `FMT-ROUNDTRIP-01`。fallback の設計は `I-15`。
+
+<a id="i-51"></a>
+### I-51: `compile -o <ディレクトリ成分の無いファイル名>` が artifact 同期で落ちる
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-22 (`I-50` の経路別切り分け中)
+- **内容**: `-o` にディレクトリ成分を持たないファイル名 (`out.wasm`) を渡すと、
+  component adapter が親ディレクトリを空文字列として開こうとして失敗する。
+  `-o ./out.wasm` や絶対パスでは起きない。
+- **根拠**: 2026-08-22 実測。
+
+  ```
+  $ LSHARP_DISABLE_EMBEDDED_COMPONENT=1 lsharp compile zz_probe.ls -o zz_out.wasm
+  Error: × [LS5001] zz_out.wasm: component adapter エラー:
+    artifact parent directory の同期対象を開けません (): No such file or directory (os error 2)
+  ```
+
+  エラーメッセージ中の `()` が空のパスで、`Path::parent()` が `""` を返すケースを
+  そのまま open している形。`I-50` の書き戻しはこの失敗の**前**に済んでいるため、
+  入力は書き換わったうえで rc=1 になる。
+- **関連**: `I-50` (書き込み順序)。引き取り先は未登録。
 
 <a id="doc-01"></a>
 <a id="i-31"></a>

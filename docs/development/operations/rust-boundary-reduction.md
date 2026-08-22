@@ -5006,7 +5006,16 @@ host integration 境界と TODO の `[~]` は維持する。
 (`crates/lsharp-tooling/src/compile_tests_outputs.rs:172`) が契約として固定している。
 呼び出しは `compile.rs:365` の 1 箇所で、対象は entry file のみ (import 先の module は通らない)。
 
-- 適用範囲: guest/sidecar path と Rust path (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) の**両方**
+- 適用範囲 (2026-08-22 訂正): **Rust host path のみ**。旧記述の「guest/sidecar path と
+  Rust path の**両方**」は取得条件を欠いていた。既定の `compile -o` は guest が
+  `wasi-component` を拒否して host compile へ落ちる (`I-15`) ため、guest 側でも起きるように
+  見えていただけである。guest が実際に compile を完遂するセル
+  (`compile x.ls --target wasi-preview1 -o out.wasm`、stdout が `wasm-size:`) では
+  入力 file は不変。lane の判別は stdout で行う — `コンパイル成功:`
+  (`crates/lsharp-driver/src/main.rs:679`) は Rust にしか存在しない文字列なので、
+  これが出ていれば host が走っている。詳細は `ISSUES.md` `I-50`
+- 実利用上の帰結: 上記のとおり既定コマンドは常に host へ落ちるので、
+  「Rust host path のみ」であっても**実利用ではほぼ常に書き換わる**。dev loop の対処は不要にならない
 - dev loop への影響: 何もしないと毎回 `selfhost/src` が dirty になる。すると build.rs の
   `rerun-if-changed=selfhost/src` が発火し、**待ち時間を減らすための script が次の `cargo build` に
   フル再コンパイルを予約してしまう**
