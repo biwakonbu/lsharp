@@ -21,8 +21,14 @@
 #   範囲を binary 全量へ広げる決定と、module 分割で回す方法は
 #   docs/adr/decisions-ignored-lane-ledger-scope.md と
 #   docs/development/operations/ignored-lane-sweep-2026-08-23.md が正本。
-#   下の 116 行は移行時点では stage_chain だけの実測であり、
+#   下の一覧 (113 行) は移行時点では stage_chain だけの実測であり、
 #   **他 module の行は sweep 完走後に追記する。**
+#
+#   なお下の表の main run は FAIL 116 件だが一覧は 113 行である (3 件は
+#   STALE-PIN-02 / STALE-PIN-03 の裁定で削除済み。同じ節に経緯がある)。
+#   **stage_chain の再測定では差分 0 を期待しない。** 台帳取得後に TestRunner.ls を
+#   2 slice 分編集しており、同 module の source-text assertion を動かしうる。
+#   出た差分は工具の不調ではなく、それ自体が本 sweep の成果である。
 #
 #   **この台帳は workspace の `#[ignore]` を網羅していない。** e2e binary の lane だけを
 #   測っている。範囲外で意図的に `#[ignore]` にしてある既知 FAIL:
@@ -52,7 +58,7 @@
 #     - 939e4ec9 (TESTGATE-03) が selfhost_native_stage_chain.rs に #[ignore] を 1 個追加。
 #       **main での分母は 615。** 増えた
 #       test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value
-#       は本測定に含まれておらず、下の 116 行にも載っていない (未測定であって pass ではない)。
+#       は本測定に含まれておらず、下の一覧にも載っていない (未測定であって pass ではない)。
 #     - 5e992d52 / 1855fa0b が LspServerNav.ls から 22 行削除。同ファイルは selfhost bundle の
 #       構成モジュール (tests/e2e/support.rs:37-39) で、下の 116 件のうち 78 件が bundle を
 #       組む系なので、サイズ・オフセットを pin する assertion のずれは排除できない。
@@ -61,7 +67,7 @@
 #     git grep -c '^\s*#\[ignore' <rev> -- \
 #       crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs
 #
-#   **main 実体での再実行 (2026-08-20 / IGNLANE-01) — 下の 116 行は main でそのまま再現した。**
+#   **main 実体での再実行 (2026-08-20 / IGNLANE-01) — 下の一覧 (113 行) は main でそのまま再現した。**
 #     宣言数 615 == 結果行ユニーク数 615、重複行 0 で完走判定 OK。
 #     新規 FAIL 0 / 解消 0 / 未出現 0。台帳外の結果行 499 件はすべて pass。
 #     突合は scripts/compare_ignored_lane.py。
