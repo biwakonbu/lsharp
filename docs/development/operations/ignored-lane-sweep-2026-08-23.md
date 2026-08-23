@@ -121,6 +121,23 @@ exit code で区別できなくなる。台帳は *修正しないと決めた�
 
 <!-- doc-GREEN: 残り 7 module 分をここへ追記する -->
 
+## この sweep が実際に捕まえたもの (2026-08-23)
+
+`I-64` の前提は「`#[ignore]` の下では回帰が観測されないので陳腐化 pin が溜まる」だった。
+sweep はそれを 1 件、**混入から 1 日で**実証した。
+
+`914bd9f1` (2026-08-22、`decisions-selfhost-zero-arity-defn-type.md` / `I-45`) が 0 引数 `defn` を
+`Unit -> body` として登録するようにした。この commit は生きている
+`selfhost_cli_actual_main_args::..._check_format_json` (`.rs:401`) の pin を `"Int"` → `"Fn"` へ
+更新し、`I-45` 由来である旨のコメントまで残している。一方で同じ変更に晒される
+`..._check_file` / `..._check_json_file` は `#[ignore]` 下にあり赤にならないため、
+**同じ人が同じ日に、見えている方だけを直して見えない方を残した。**
+
+つまりこの壊れ方は不注意ではなく、`#[ignore]` lane を既定で回さない運用の構造的な帰結である。
+sweep を回さなければ、次に誰かがこの 2 本を `#[ignore]` から外す日まで観測されなかった。
+
+引き取り先は `TODO.md` の `CHECK-TYPE-PIN-01`。
+
 ## 再実行の手順
 
 ```bash
