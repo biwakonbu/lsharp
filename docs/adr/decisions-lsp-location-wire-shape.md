@@ -1,6 +1,6 @@
 # ADR: `definition` / `references` の wire 形式を LSP `Location` に一本化する
 
-- Status: Proposed (doc-RED)
+- Status: Accepted (2026-08-23)
 - Date: 2026-08-23
 - Scope: `LSP-LOCATION-SHAPE-01` / `I-61` /
   `selfhost/src/Tools/Lsp/LspServerNav.ls` の `lsp-render-location-frame-with-state` /
@@ -105,8 +105,11 @@ uri 文字列は 3 段の fallback で決める。形式は 1 つ、変わるの
 ## 影響範囲 (実装時に必ず更新する)
 
 `I-57` の実測で判明した範囲がそのまま当てはまる。**縮約 array を pin している箇所は
-snapshot 8 ファイル / 10 frame + `selfhost_cli_core.rs` のインライン 13 箇所**で、
+snapshot 9 ファイル / 10 frame + `selfhost_cli_core.rs` のインライン 13 箇所**で、
 これらは全て object 形式へ書き換わる。`I-57` の解決節に一覧がある。
+
+**この file 数は doc-RED 時点では 8 と書いていた。** 実装時の実測で `references.json` (id 63) が
+漏れていたと分かったので 9 へ直した。経緯は Evidence 節。
 
 int の uri を送る test は、そのままでは 3 段目の `lsharp://document/<hash>` を
 受け取ることになる。**期待値を機械的に置換するのではなく、
@@ -114,4 +117,89 @@ int の uri を送る test は、そのままでは 3 段目の `lsharp://docume
 
 ## Evidence
 
-(実装時に埋める)
+### 実装
+
+`selfhost/src/Tools/Lsp/LspServerNav.ls`:
+
+- `lsp-render-location-frame-with-state` / `lsp-render-locations-frame-with-state` から
+  uri text の有無を見る guard を外し、常に `lsp-render-location-json-with-state` を通す。
+  事実 3 の位置依存はこれで消える。
+- 縮約 array のレンダラを削除した — Nav の `lsp-render-location-json` /
+  `lsp-render-locations-json-loop` / `lsp-render-locations-frame` と、
+  `LspServerCore.ls` の `lsp-render-location-frame`。呼び出し元は上記 guard だけだったので、
+  残すと到達不能な形式定義が実装に残る。
+  `render-rpc-int-vector-response-frame` (`JsonRpc.ls:200`) 自体は他の呼び出し元があるので残す。
+- `lsp-virtual-uri-for-path` が `lsp-path-key` へ落ちるとき、新設の
+  `lsp-register-file-uri-text` で `file://` + path を uri text map へ登録する (fallback 2 段目)。
+
+### 2 段目を絶対 path 限定にした判断 (Decision の但し書きの実測根拠)
+
+Decision は 2 段目を「path が絶対パスなら」と書いているが、**この条件は実装時に確かめた事実で決まった**。
+
+既存 fixture は didOpen の path を**相対**で送る (`selfhost_cli_core.rs` の
+`make_lsp_did_open_with_path(200, "src/Main.ls", ..)`)。import 先も `src/Support/Mid.ls` という
+相対 path のまま `lsp-virtual-uri-for-path` へ届く。ここで `file://` を前置すると
+`file://src/Support/Mid.ls` になり、これは host 部が `src` の**不正な URI** である。
+かといって cwd で絶対化すると、応答が fixture の temp directory (実行のたびに変わる) に依存し
+snapshot が非決定になる。
+
+したがって **相対 path では合成せず 3 段目へ落とす**。判断は source のコメントにも残した。
+この結果、既存 e2e はすべて 3 段目を受け取る。2 段目の被覆は新しい function レベル pin が持つ。
+
+### 期待値をどう判断したか (受入条件「機械的な置換で済ませない」)
+
+書き換えた 23 箇所は**すべて 3 段目 (`lsharp://document/<int>`) が正しい**。
+根拠は frame ごとに次の 2 点を確認した結果であって、置換規則から出したものではない。
+
+1. request が送る `"uri"` は int で uri text を伴わない → 1 段目に乗らない
+2. filesystem import 先の uri (`8091858770804166904` = `Support/Mid.ls` の `lsp-path-key`) は
+   相対 path の hash → 上記の判断により 2 段目にも乗らない
+
+| 書き換え先 | 件数 | 落ちる段 |
+|---|---|---|
+| `tests/snapshots/lsp/stdio/*.json` | 9 file / 10 frame | 3 段目 |
+| `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs` インライン | 13 箇所 | 3 段目 |
+
+**「影響範囲」節の見積もり (snapshot 8 file) は 1 file 少なかった。** 実測は 9 file で、
+`references.json` (id 63) が漏れていた。frame 数 10 とインライン 13 箇所は見積もりどおり。
+
+3 段すべてを 1 frame で踏む被覆は既存 fixture には作れないので、新しい pin
+`test_e2e_selfhost_lsp_locations_frame_always_renders_location_objects`
+(`selfhost_lsp_docs_ops.rs`) が開いた document / 絶対 path / 相対 path の 3 location を
+**この順で** (先頭が uri text を持たない順で) 1 つの応答へ混ぜる。
+空 list が `"result":[]` のままであることも同じ pin で押さえる。
+
+### 測定
+
+| 段階 | 実測 |
+|---|---|
+| RED (pin のみ) | `test result: FAILED. 0 passed; 1 failed` / 8.42s。`selfhost_lsp_docs_ops.rs:713` で panic。実際の出力は `"result":[[8091858770804166904,0,6],[5253187495188922191,1,2],[90369813871585817,2,4]]` で、**uri text を持つ 3 番目まで巻き込んで縮約 array へ落ちていた** — 事実 3 の位置依存が観測された |
+| GREEN (pin のみ) | `test result: ok. 1 passed; 0 failed` / 7.66s |
+| 回帰 lane (`--ignored`, 31 test) | `test result: ok. 31 passed; 0 failed` / 1655.18s |
+| pin lane (2 test) | `test result: ok. 2 passed; 0 failed` / 8.44s |
+| `cargo fmt -p lsharp-wasm` / `git diff --check` | 差分なし |
+| `bash scripts/audit_docs.sh` | エラー 0 件, 警告 0 件 |
+
+回帰 lane の filter に `lsp_stdio_rename` を入れたのは、**rename は本 ADR の対象外だが
+snapshot file を definition / references と共有している**ため。形式変更で巻き込み事故が
+起きていないことを同じ lane で示す必要がある。
+
+### 受入条件の判定
+
+| 受入条件 | 判定 |
+|---|---|
+| 縮約 array を廃止し常に `Location` object を返す | 満たした。レンダラ 4 本を削除したので形式が 2 つに戻る経路が実装に無い |
+| 位置依存が消えたことを function レベルの pin で示す | 満たした。RED で位置依存が観測され、GREEN で消えた |
+| 上記 lane が緑を維持する | 満たした。31 passed / 0 failed |
+| 期待値の書き換えを機械的な置換で済ませない | 満たした。全 23 箇所を 2 つの事実から 3 段目と判定し、見積もりとのズレ (snapshot 8 → 9 file) も検出した |
+
+### 残った問題
+
+`rename` (`lsp-render-rename-frame-with-state`, `LspServerNav.ls:222`) には
+**事実 3 とまったく同じ先頭要素依存が残っている**。本 ADR が scope を definition / references に
+限ったためで、`WorkspaceEdit` は `Location` と別の型なので `changes` / `documentChanges` の
+どちらへ寄せるかという別の判断が要る。`ISSUES.md` の `I-63` / `TODO.md` の
+`RENAME-WIRE-SHAPE-01` として起票した。
+
+なお 2 段目の追加によって uri text を持つ document が増えるため、**`I-63` の位置依存は
+本 ADR の実装で踏みやすくなっている**。

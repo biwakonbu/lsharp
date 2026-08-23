@@ -2826,6 +2826,18 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
   eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
+- [ ] `RENAME-WIRE-SHAPE-01` `rename` の wire 形式を決める — Issue `I-63`。
+  `I-61` で `definition` / `references` の縮約 array は廃止したが、`rename` は
+  先頭要素の uri text だけで `{"changes":{..}}` と `[[uri,[TextEdit..]],..]` を
+  切り替える実装のまま残っている。
+  受入条件: **先に ADR で `changes` / `documentChanges` のどちらへ寄せるかを決めてから実装する**。
+  そのうえで縮約形を廃止し、`I-61` と同じ 3 段の uri fallback を使う。
+  位置依存が消えたことを、uri text を持つ document と持たない document を混ぜた
+  function レベルの pin で示すこと (`I-61` の
+  `test_e2e_selfhost_lsp_locations_frame_always_renders_location_objects` と同型)。
+  **含めない範囲**: `definition` / `references` (`I-61` で解決済み)、
+  `handle-rename` の occurrence 収集ロジック、座標系 (`I-57` で決着済み)。
+
 - [ ] `EXAMPLE-QUOTE-01` `:example` に quote を書いたときの扱いを決める — Issue `I-62`。
   `I-59` で `:invariant` 側は `lsharp check` の段階で弾くようにしたが、`:example` は
   診断 0 件で通り、`lsharp test` が `failed 1` とだけ言って **message も診断も空**で落ちる
@@ -2890,22 +2902,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   case / property の同型 fixture を control として並べ、3 経路で同じ形になることを確認する。
   **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
   (`LS2004` の code text 追加を含む)。
-
-- [ ] `LSP-LOCATION-SHAPE-01` `definition` / `references` の wire 形式を一本化するか決める —
-  Issue `I-61`。client が `"uri"` を文字列で送れば LSP `Location` object、int で送れば
-  縮約 array (`[uri, line, col]`) が返る。分岐条件は `server-state-uri-text-for-uri` が
-  非空かどうかだけで、method でも capability でもない。**座標系は `I-57` で両経路とも
-  0 始まりに揃えたので、残っているのは形式の分岐だけ**である。
-  ADR は 2026-08-23 に書いた
-  ([`definition` / `references` の wire 形式](docs/adr/decisions-lsp-location-wire-shape.md))。
-  **縮約 array を廃止し、uri 文字列を 3 段 fallback で決める**方向で決着している。残るのは実装で、
-  `tests/snapshots/lsp/stdio/definition-*.json` / `references-*.json` /
-  `filesystem-document-sequence.json` と `selfhost_cli_core.rs` のインライン期待値が
-  すべて object 形式へ移る (`I-57` の実測で snapshot 8 file / インライン 13 箇所)。
-  受入条件: 上記 lane が緑を維持し、期待値の書き換えを機械的な置換で済ませないこと —
-  int uri を送る test がどの fallback 段に落ちるのが正しいかを test ごとに判断する。
-  **含めない範囲**: 座標変換 (`I-57` で完了)。`hover` / `rename` / `formatting` の形式
-  (すでに LSP object なので触らない)。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

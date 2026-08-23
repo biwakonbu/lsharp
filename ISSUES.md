@@ -192,8 +192,9 @@
 | [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | resolved | -- |
 | [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | resolved | -- |
 | [I-60](#i-60) | 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている | 中 | resolved | -- |
-| [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | open | -- |
+| [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | resolved | 2026-08-23 |
 | [I-62](#i-62) | `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる | 低 | open | -- |
+| [I-63](#i-63) | `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4358,7 +4359,7 @@
 
 ### I-61: `definition` / `references` の wire 形式が request の URI の送り方で分岐する
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-57` の修正中に分離)
+- **影響度**: 中 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-23 (`I-57` の修正中に分離)
 - **内容**: 同じ document の同じ token に対して、client が `"uri"` を**文字列**で送れば
   `lsp-render-location-json-with-uri` (`selfhost/src/Tools/Lsp/LspServerNav.ls:88-96`) を通って
   LSP の `Location` object (`{"uri":"..","range":{..}}`) が返り、**int** で送れば
@@ -4385,8 +4386,23 @@
   `lsharp://document/<hash>` の object になる — **描画が位置に依存する**。
   判断と却下理由は
   [`definition` / `references` の wire 形式](docs/adr/decisions-lsp-location-wire-shape.md) が正本。
+- **解決** (2026-08-23): 縮約 array のレンダラを実装から削除した — `LspServerNav.ls` の
+  `lsp-render-location-json` / `lsp-render-locations-json-loop` / `lsp-render-locations-frame` と
+  `LspServerCore.ls` の `lsp-render-location-frame`。`lsp-render-location-frame-with-state` /
+  `lsp-render-locations-frame-with-state` の guard も外したので、**形式が 2 つに戻る経路が実装に無い**。
+  uri 文字列は 3 段 fallback (`lsp-register-file-uri-text` が 2 段目を担う)。
+  pin は `test_e2e_selfhost_lsp_locations_frame_always_renders_location_objects`
+  (`crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs`) で、RED では
+  uri text を持つ 3 番目の location まで巻き込んで縮約 array へ落ちることを実測した。
+  書き換えた期待値は snapshot 9 file / 10 frame + インライン 13 箇所。
+  **`I-57` 由来の見積もり (snapshot 8 file) は 1 file 少なく、`references.json` が漏れていた。**
+  実測値と受入判定は
+  [ADR の Evidence](docs/adr/decisions-lsp-location-wire-shape.md#evidence) が正本。
+- **残渣**: `rename` に同じ先頭要素依存が残っている (`I-63`)。ADR が scope を
+  definition / references に限ったためで、しかも本 issue の 2 段目追加により
+  uri text を持つ document が増えたので**踏みやすくなっている**。
 - **関連**: `I-57` (座標の漏れ。解決済み)、`I-52` / `I-55` (座標規約の同系統)。
-  引き取り先は `TODO.md` の `LSP-LOCATION-SHAPE-01`。
+  残渣の引き取り先は `TODO.md` の `RENAME-WIRE-SHAPE-01` (`I-63`)。
 
 <a id="i-62"></a>
 ### I-62: `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる
@@ -4420,3 +4436,26 @@
   (b) は quote 以外の lowering 失敗も一緒に救うが、落ちる位置は後ろのままである。
   **どちらか一方で足りるのか両方要るのかは、この issue では決めない。**
 - **関連**: `I-59` (解決済み。`:invariant` 側)、`I-43`。引き取り先は `TODO.md` の `EXAMPLE-QUOTE-01`。
+
+<a id="i-63"></a>
+### I-63: `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`I-61` の実装中)
+- **内容**: `lsp-render-rename-frame-with-state`
+  (`selfhost/src/Tools/Lsp/LspServerNav.ls:222`) は `changes` の**先頭要素の uri text だけ**を見て、
+  非空なら `{"changes":{..}}` (LSP の `WorkspaceEdit`)、空なら `[[uri,[TextEdit..]],..]` という
+  縮約形へ list 全体を落とす。`I-61` が `definition` / `references` で潰した位置依存と
+  まったく同じ形が、method 違いでもう 1 箇所残っている。
+- **`I-61` で一緒に直さなかった理由**:
+  [ADR](docs/adr/decisions-lsp-location-wire-shape.md) は scope を `textDocument/definition` と
+  `textDocument/references` の応答形式に限り、`rename` を明示的に対象外と書いている。
+  `WorkspaceEdit` は `Location` と別の型で、縮約形を廃止するときに
+  **`changes` へ寄せるか `documentChanges` へ寄せるか**という別の判断が要る。
+  uri 文字列の決め方 (`I-61` の 3 段 fallback) は流用できるが、それだけでは閉じない。
+- **今すぐ壊れているわけではない**: 現行 e2e fixture は uri を int で送るので常に縮約形へ落ち、
+  期待値もそれで pin されている。位置依存が観測されるのは、**uri text を持つ document と
+  持たない document が同じ rename 結果に混ざったとき**である。
+- **根拠**: source 読み (2026-08-23)。`I-61` の実装で `lsp-virtual-uri-for-path` が
+  絶対 path の uri text を state へ登録するようになったため、混在は起きやすくなっている。
+- **関連**: `I-61` (`definition` / `references` 側。解決済み)、`I-57` (座標系)。
+  引き取り先は `TODO.md` の `RENAME-WIRE-SHAPE-01`。

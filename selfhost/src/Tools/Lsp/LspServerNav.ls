@@ -41,6 +41,17 @@
           (root_pop)
           next-map)))))
 
+(defn ref-map-insert-object-safe [map-ref key value]
+  (let [map-value (ref-get map-ref)]
+    (do
+      (root_push map-value)
+      (root_push value)
+      (let [next-map (map-insert map-value key value)]
+        (do
+          (root_pop)
+          (root_pop)
+          next-map)))))
+
 ;; LspServerNav.ls - LSP ナビゲーション・補完・シンボル解析
 ;;
 ;; JSON レンダリング (ナビゲーション部)、位置/オフセット変換、
@@ -52,39 +63,11 @@
 
 ;; === JSON レンダリング (ナビゲーション部) ===
 
-;; LSP wire の Position は zero-based。縮約 array も内部解析位置 (1-based) から
-;; render 境界で変換する (I-57)。`make-location` 側では変換しない —
+;; LSP wire の Position は zero-based。`lsp-render-wire-range-json` が render 境界で
+;; 内部解析位置 (1-based) から変換する (I-57)。`make-location` 側では変換しない —
 ;; handle-rename が同じ vector の line / col を内部値として読むため。
-(defn lsp-render-location-json [location]
-  (let [uri-text (int-to-string (vector-get location 0))
-    line-text (int-to-string (- (vector-get location 1) 1))
-    col-text (int-to-string (- (vector-get location 2) 1))
-    payload-0 "["
-    payload-1 (string-concat payload-0 uri-text)
-    payload-2 (string-concat payload-1 ",")
-    payload-3 (string-concat payload-2 line-text)
-    payload-4 (string-concat payload-3 ",")
-    payload-5 (string-concat payload-4 col-text)]
-    (string-concat payload-5 "]")))
-
-(defn lsp-render-locations-json-loop [locations idx len out]
-  (if (>= idx len)
-    out
-    (let [elem-text (lsp-render-location-json (vector-get locations idx))
-      next-out (if (= idx 0)
-        (string-concat out elem-text)
-        (string-concat out (string-concat "," elem-text)))]
-      (lsp-render-locations-json-loop locations (+ idx 1) len next-out))))
-
-(defn lsp-render-locations-frame [request-id locations]
-  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-    payload-1 (string-concat payload-0 (int-to-string request-id))
-    payload-2 (string-concat payload-1 ",\"result\":[")
-    payload-3 (string-concat payload-2
-      (lsp-render-locations-json-loop locations 0 (vector-length locations) ""))
-    payload (string-concat payload-3 "]}")]
-    (render-json-rpc-frame payload)))
-
+;; 縮約 array (`[uri, line, col]`) は LSP に無い形式なので I-61 で廃止した。
+;; 判断は `docs/adr/decisions-lsp-location-wire-shape.md`。
 (defn lsp-render-location-json-with-uri [location uri-text]
   (let [line (vector-get location 1)
     col (vector-get location 2)
@@ -116,26 +99,18 @@
       (lsp-render-locations-json-loop-with-state state locations (+ idx 1) len next-out))))
 
 (defn lsp-render-location-frame-with-state [request-id state location]
-  (let [uri-text (server-state-uri-text-for-uri state (vector-get location 0))]
-    (if (> (string-length uri-text) 0)
-      (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-        payload-1 (string-concat payload-0 (int-to-string request-id))
-        payload-2 (string-concat payload-1 ",\"result\":")
-        payload-3 (string-concat payload-2 (lsp-render-location-json-with-state state location))]
-        (render-json-rpc-frame (string-concat payload-3 "}")))
-      (lsp-render-location-frame request-id location))))
+  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":")
+    payload-3 (string-concat payload-2 (lsp-render-location-json-with-state state location))]
+    (render-json-rpc-frame (string-concat payload-3 "}"))))
 
 (defn lsp-render-locations-frame-with-state [request-id state locations]
-  (if (> (vector-length locations) 0)
-    (let [first-uri (server-state-uri-text-for-uri state (vector-get (vector-get locations 0) 0))]
-      (if (> (string-length first-uri) 0)
-        (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-          payload-1 (string-concat payload-0 (int-to-string request-id))
-          payload-2 (string-concat payload-1 ",\"result\":[")
-          payload-3 (string-concat payload-2 (lsp-render-locations-json-loop-with-state state locations 0 (vector-length locations) ""))]
-          (render-json-rpc-frame (string-concat payload-3 "]}")))
-        (lsp-render-locations-frame request-id locations)))
-    (lsp-render-locations-frame request-id locations)))
+  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":[")
+    payload-3 (string-concat payload-2 (lsp-render-locations-json-loop-with-state state locations 0 (vector-length locations) ""))]
+    (render-json-rpc-frame (string-concat payload-3 "]}"))))
 
 (defn lsp-render-completion-item-json [item]
   (let [label (vector-get item 0)
@@ -506,9 +481,40 @@
           (lsp-find-defn-in-imports-loop state name src path decls 0 (vector-length decls) seen-ref)))
       (- 0 1))))
 
+;; `I-61`: 開かれていない file を指す location の uri text をここで確定させる。
+;; path が絶対なら `file://` + path を state へ登録し、render 側の 1 段目
+;; (client が送った uri text) と同じ経路に乗せる。
+;; 相対 path では合成しない — `file://src/Main.ls` は host 部が `src` になる不正な URI で、
+;; cwd で絶対化すると応答が実行環境に依存する。その場合は render 側の 3 段目
+;; (`lsharp://document/<hash>`) へ落とす。判断は
+;; `docs/adr/decisions-lsp-location-wire-shape.md`。
+(defn lsp-absolute-path? [path]
+  (if (> (string-length path) 0)
+    (if (= (string-char-at path 0) 47) 1 0)
+    0))
+
+(defn lsp-register-file-uri-text [state uri path]
+  (if (= (lsp-absolute-path? path) 1)
+    (if (> (string-length (server-state-uri-text-for-uri state uri)) 0)
+      0
+      (do
+        (ref-set
+          (server-state-uri-texts-ref state)
+          (ref-map-insert-object-safe
+            (server-state-uri-texts-ref state)
+            uri
+            (string-concat "file://" path)))
+        0))
+    0))
+
 (defn lsp-virtual-uri-for-path [state path]
   (let [open-uri (lsp-uri-for-path state path)]
-    (if (>= open-uri 0) open-uri (lsp-path-key path))))
+    (if (>= open-uri 0)
+      open-uri
+      (let [virtual-uri (lsp-path-key path)]
+        (do
+          (lsp-register-file-uri-text state virtual-uri path)
+          virtual-uri)))))
 
 (defn lsp-find-defn-location-in-imports-loop [state name src path decls idx count seen-ref]
   (if (>= idx count)

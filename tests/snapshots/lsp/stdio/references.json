@@ -1,1 +1,1 @@
-[{"jsonrpc":"2.0","id":63,"result":[[10,0,6],[10,0,35],[10,0,46]]}]
+[{"jsonrpc":"2.0","id":63,"result":[{"uri":"lsharp://document/10","range":{"start":{"line":0,"character":6},"end":{"line":0,"character":6}}},{"uri":"lsharp://document/10","range":{"start":{"line":0,"character":35},"end":{"line":0,"character":35}}},{"uri":"lsharp://document/10","range":{"start":{"line":0,"character":46},"end":{"line":0,"character":46}}}]}]

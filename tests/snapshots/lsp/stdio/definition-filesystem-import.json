@@ -35,10 +35,18 @@
   {
     "id": 193,
     "jsonrpc": "2.0",
-    "result": [
-      8091858770804166904,
-      0,
-      49
-    ]
+    "result": {
+      "uri": "lsharp://document/8091858770804166904",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 49
+        },
+        "end": {
+          "line": 0,
+          "character": 49
+        }
+      }
+    }
   }
 ]

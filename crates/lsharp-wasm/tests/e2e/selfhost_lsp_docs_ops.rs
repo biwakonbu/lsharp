@@ -648,6 +648,74 @@ fn test_e2e_selfhost_lsp_state_preserves_wire_uri() {
     );
 }
 
+/// TEST-LSP-10e: definition / references の wire response は uri text の有無に
+/// かかわらず常に LSP `Location` object であること (`I-61`)
+///
+/// 縮約 array (`[uri,line,col]`) は LSP 3.17 に無い形式で、しかも先頭要素の
+/// uri text の有無だけで list 全体の形式が切り替わっていた。
+/// 判断は `docs/adr/decisions-lsp-location-wire-shape.md`。
+#[test]
+fn test_e2e_selfhost_lsp_locations_frame_always_renders_location_objects() {
+    let source = selfhost_lsp_runtime_bundle();
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        uri-key (lsp-uri-key-from-text "file:///tmp/lsharp-loc-shape.ls")
+        params (push-object-vector-local
+                 (push-object-vector-local
+                   (push-object-vector-local
+                     (push-int-vector-local (vector-new 2) uri-key)
+                     "(defn main [] 0)")
+                   "")
+                 "file:///tmp/lsharp-loc-shape.ls")
+        _ (handle-didOpen params state)
+        rel-uri (lsp-virtual-uri-for-path state "src/Support/Mid.ls")
+        abs-uri (lsp-virtual-uri-for-path state "/tmp/lsharp-loc-shape-import.ls")
+        locations (push-object-vector-local
+                    (push-object-vector-local
+                      (push-object-vector-local (vector-new 3) (make-location rel-uri 1 7))
+                      (make-location abs-uri 2 3))
+                    (make-location uri-key 3 5))]
+    (do
+      (print rel-uri)
+      (print-string (lsp-render-locations-frame-with-state 9 state locations))
+      (print-string "\n")
+      (print-string (lsp-render-locations-frame-with-state 10 state (vector-new 0)))
+      0)))
+"#;
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    let (rel_line, frames) = output.split_once('\n').expect("先頭行に仮想 uri が要る");
+    let rel_uri: i64 = rel_line
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("仮想 uri が int でない {:?}: {}", rel_line, e));
+
+    // 先頭要素は uri text を持たない (相対 path なので `file://` を合成できない) が、
+    // それでも list 全体が縮約 array へ落ちてはいけない。
+    let multi = format!(
+        concat!(
+            r#"{{"jsonrpc":"2.0","id":9,"result":["#,
+            r#"{{"uri":"lsharp://document/{rel}","range":{{"start":{{"line":0,"character":6}},"end":{{"line":0,"character":6}}}}}},"#,
+            r#"{{"uri":"file:///tmp/lsharp-loc-shape-import.ls","range":{{"start":{{"line":1,"character":2}},"end":{{"line":1,"character":2}}}}}},"#,
+            r#"{{"uri":"file:///tmp/lsharp-loc-shape.ls","range":{{"start":{{"line":2,"character":4}},"end":{{"line":2,"character":4}}}}}}"#,
+            r#"]}}"#
+        ),
+        rel = rel_uri
+    );
+    let empty = r#"{"jsonrpc":"2.0","id":10,"result":[]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}\nContent-Length: {}\r\n\r\n{}",
+        multi.len(),
+        multi,
+        empty.len(),
+        empty
+    );
+    assert_eq!(
+        frames, expected,
+        "locations wire は先頭要素の uri text に依らず Location object 配列であるべき"
+    );
+}
+
 /// TEST-LSP-10d: document 更新後の publishDiagnostics refresh が wire URI を保持すること
 #[test]
 fn test_e2e_selfhost_lsp_transport_diagnostics_preserves_wire_uri() {

@@ -52,26 +52,50 @@
   {
     "jsonrpc": "2.0",
     "id": 197,
-    "result": [
-      8091858770804166904,
-      0,
-      49
-    ]
+    "result": {
+      "uri": "lsharp://document/8091858770804166904",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 49
+        },
+        "end": {
+          "line": 0,
+          "character": 49
+        }
+      }
+    }
   },
   {
     "jsonrpc": "2.0",
     "id": 198,
     "result": [
-      [
-        200,
-        0,
-        50
-      ],
-      [
-        8091858770804166904,
-        0,
-        49
-      ]
+      {
+        "uri": "lsharp://document/200",
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 50
+          },
+          "end": {
+            "line": 0,
+            "character": 50
+          }
+        }
+      },
+      {
+        "uri": "lsharp://document/8091858770804166904",
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 49
+          },
+          "end": {
+            "line": 0,
+            "character": 49
+          }
+        }
+      }
     ]
   },
   {
