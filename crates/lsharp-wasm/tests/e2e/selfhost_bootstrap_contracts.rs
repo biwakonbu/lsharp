@@ -1092,3 +1092,49 @@ fn test_e2e_selfhost_preflight_diagnostic_message_builder_is_present_in_both_cli
         );
     }
 }
+
+/// `SELFHOST-QUOTE-PARITY-01`: contract quote の preflight が両 CLI 系統と TestRunner に載ること
+///
+/// 判断は `docs/adr/decisions-selfhost-contract-quote-parity.md` の D1 / D2 / D4。
+/// 検査本体は `TestRunner.ls` に置き、`Cli.ls` / `EmbeddedCli.ls` の両方から
+/// 同じ順序 (property boundary の次、assertion の前) で呼ぶ。
+#[test]
+fn test_e2e_selfhost_contract_quote_preflight_is_present_in_both_cli_sources() {
+    let runner = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Test/TestRunner.ls"),
+    )
+    .expect("TestRunner.ls が読み込めない");
+
+    assert!(
+        runner.contains("(defn check-contract-quote [program src]"),
+        "TestRunner.ls に contract quote の走査本体が必要"
+    );
+    assert!(
+        runner.contains("(defn canonical-contract-quote-code [] 2008)"),
+        "TestRunner.ls に新しい診断コード 2008 の定義が必要"
+    );
+    // D1: 走査対象は contract の 5 kind だけ。v0.3 evidence / review attestation
+    // (kind 15 / 20 / source-pair / source-triple) は契約の対象外なので弾く。
+    assert!(
+        runner.contains("(defn contract-quote-target-kind? [kind]"),
+        "TestRunner.ls に contract kind (1..5) への絞り込みが必要"
+    );
+
+    for relative in ["selfhost/src/App/Cli.ls", "selfhost/src/App/EmbeddedCli.ls"] {
+        let source = std::fs::read_to_string(selfhost_project_root().join(relative))
+            .unwrap_or_else(|e| panic!("{relative} が読み込めない: {e}"));
+
+        assert!(
+            source.contains("(check-contract-quote program src)"),
+            "{relative} は contract quote の preflight を呼ぶ必要がある"
+        );
+        assert!(
+            source.contains("\"LS2008\""),
+            "{relative} の preflight-diagnostic-code-text に LS2008 が必要"
+        );
+        assert!(
+            source.contains("contract に quote/unquote は書けません"),
+            "{relative} の preflight-diagnostic-headline に quote の見出しが必要"
+        );
+    }
+}

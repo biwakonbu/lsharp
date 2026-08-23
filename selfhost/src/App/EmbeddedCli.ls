@@ -968,7 +968,9 @@
             "LS2006"
             (if (= code (contract-diagnostic-unsupported-property))
               "LS3002"
-              "LS0000")))))))
+              (if (= code (canonical-contract-quote-code))
+                "LS2008"
+                "LS0000"))))))))
 (defn preflight-diagnostic-headline [code]
   (if (= code (canonical-assertion-type-error-code))
     "contract の述語が型検査を通りません"
@@ -982,7 +984,9 @@
             "contract が空です"
             (if (= code (contract-diagnostic-unsupported-property))
               "未接続の property runner 境界です"
-              "診断コードに対応する説明がありません")))))))
+              (if (= code (canonical-contract-quote-code))
+                "contract に quote/unquote は書けません"
+                "診断コードに対応する説明がありません"))))))))
 ;; `ASSERT-DIAG-MESSAGE-01`: preflight が検査から受け取るのは (code, span) の
 ;; スカラーだけで、識別子は name-hash (`TestRunner.ls:916`) でしか残っていない。
 ;; hash から文字列へ戻す経路が無いので、シンボル名は span でソース本文を切り出して載せる。
@@ -1120,9 +1124,19 @@
     assertion-first-error-code (vector-get assertion-check 1)
     assertion-first-error-start (vector-get assertion-check 2)
     assertion-first-error-end (vector-get assertion-check 3)
-    case-check (check-canonical-cases-with-analysis program analysis)]
+    case-check (check-canonical-cases-with-analysis program analysis)
+    ;; `SELFHOST-QUOTE-PARITY-01`: property boundary の次、assertion より前で弾く。
+    ;; 順序の理由は `docs/adr/decisions-selfhost-contract-quote-parity.md` の D3。
+    quote-check (check-contract-quote program src)]
     (if (> property-boundary-code 0)
       (run-test-source-json-preflight program src property-boundary-code 0 0)
+      (if (> (vector-get quote-check 0) 0)
+        (run-test-source-json-preflight
+          program
+          src
+          (vector-get quote-check 1)
+          (vector-get quote-check 2)
+          (vector-get quote-check 3))
       (if (> assertion-diagnostics-count 0)
         (run-test-source-json-preflight
           program
@@ -1137,7 +1151,7 @@
             (vector-get case-check 1)
             (vector-get case-check 2)
             (vector-get case-check 3))
-          (run-test-source-json-suite (generate-tests-from-source src)))))))
+          (run-test-source-json-suite (generate-tests-from-source src))))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -1194,13 +1208,22 @@
     assertion-first-error-start (vector-get assertion-check 2)
     assertion-first-error-end (vector-get assertion-check 3)
     case-check (check-canonical-cases-with-analysis program analysis)
-    case-diagnostics-count (vector-get case-check 0)]
+    case-diagnostics-count (vector-get case-check 0)
+    ;; `SELFHOST-QUOTE-PARITY-01`: 既定 lane。この lane の preflight は (count, code) しか
+    ;; 運べないので span は載らず、`diagnostics:1,LS2008` までを出す。
+    quote-check (check-contract-quote program src)]
     (if (> property-boundary-code 0)
       (run-test-source-case-preflight
         program
         (vector-push
           (vector-push (vector-new 2) 1)
           property-boundary-code))
+      (if (> (vector-get quote-check 0) 0)
+        (run-test-source-case-preflight
+          program
+          (vector-push
+            (vector-push (vector-new 2) (vector-get quote-check 0))
+            (vector-get quote-check 1)))
       (if (> assertion-diagnostics-count 0)
         (run-test-source-case-preflight
           program
@@ -1266,7 +1289,7 @@
           (print-string diagnostic-summary)
           (print-string "\n"))
         (print-string ""))
-      (if (> failed 0) 2 (exit-success)))))))))
+      (if (> failed 0) 2 (exit-success))))))))))
 (defn run-test-source [src opts]
   (if (= opts (test-option-json))
     (run-test-source-json src)

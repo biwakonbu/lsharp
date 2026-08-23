@@ -2839,17 +2839,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `TESTGATE-01` / `TESTGATE-03` で解決済み。本項目は「検査は生きているが
   `#[ignore]` の中身が観測されない」側だけを見る)。
 
-- [ ] `SELFHOST-QUOTE-PARITY-01` selfhost runner に contract metadata の quote 契約を載せる — Issue `I-65`。
-  既定の `lsharp test` は selfhost runner へ委譲され、`:invariant (= 'sym 'sym)` を
-  **`executed 5, failed 0` の緑**として報告する (2026-08-23 実測)。`I-59` / `I-62` が rust 側へ
-  入れた診断は既定経路から一切見えない。原因は `selfhost/src/Types/TypeInfer.ls:199` が
-  quote/unquote を inner expr へ委譲していること。
-  受入条件: **どこで弾くかを ADR で決めてから実装する** (TypeInfer で弾く / TestRunner の
-  preflight で弾く / rust の診断を委譲経路で運ぶ)。決めたうえで、上記 2 fixture が
-  既定経路で非緑になり、`:example` 側は非空の `diagnostics.message` を返すこと。
-  **含めない範囲**: selfhost に quote の実行時表現を入れること、
-  `:example` 側の空 message 一般 (`EXAMPLE-FAIL-REASON-01`)、rust 側の診断文言の変更。
-
 - [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
   `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —
   Issue `I-46` の健全性側。callee が caller より後ろに定義されていると、その呼び出しは
@@ -2894,16 +2883,32 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: 相互再帰の多相化 (polymorphic recursion)。現状の `mutual` fixture は
   既に正しく落ちるので回帰だけ見る。
 
+- [ ] `EMBEDDED-CLI-OPTION-SPACE-01` EmbeddedCli の test option と compile target の
+  番号空間が重なっているのを解く — Issue `I-66`。`lsharp test input.ls` (argc 2) は
+  option 解析を通らず `(default-compile-target)` を opts として渡すが、EmbeddedCli では
+  これが 1 = `(test-option-json)` と同値なので **`--format json` 抜きでも JSON lane に入る**。
+  `run-test-source-text` は `test` command から到達しない。`Cli.ls` は既定 0 なので text lane
+  に入り、**2 系統で既定 lane が食い違う**。
+  受入条件: `lsharp test input.ls` がどちらの系統でも同じ lane を通ることを、
+  live な e2e (`#[ignore]` でないもの) で両系統に対して固定すること。
+  どちらの lane へ寄せるかは ADR で決める。
+  **含めない範囲**: `compile` / `build` の target option の再設計。`Cli.ls` 側の
+  `#[ignore]` 解除そのもの (`IGNORED-STALE-PIN-01`)。出力形式の変更。
+
 - [ ] `EXAMPLE-FAIL-REASON-01` selfhost の suite 経路が `:example` の失敗理由を返さない —
-  Issue `I-65` の実測表にある `(defn caller [x] :example [(caller 'sym)] x)` は既定経路で
-  `status fail` / `executed 0, failed 1` / `count 0` / **`message` 空**を返す。
+  Issue `I-65` の実測表にあった quote 入り fixture は `I-65` の解決で
+  preflight (`LS2008`) へ移ったので、再現 fixture は **quote を含まない** 失敗例へ差し替える。
+  2026-08-23 実測 (`./target/debug/lsharp test ex_fail.ls`、fixture と同じ dir から相対パスで):
+  `(defn abs [x] :example [(= (abs 5) 6)] (if (< x 0) (- 0 x) x))` が
+  `status fail` / `executed 0, failed 1` / `count 0` / **`message` 空** / exit 1 を返す。
   preflight (`count 1`) 側は `ASSERT-DIAG-MESSAGE-01` で埋めた
   ([decisions-selfhost-preflight-diagnostic-message.md](docs/adr/decisions-selfhost-preflight-diagnostic-message.md))
   が、こちらは `run-test-source-json-suite` が `assurance-suite-diagnostic-message` を
   そのまま流す経路で、suite state 側が空を持っている。落ちること自体は利用者に見えるので
   preflight より軽いが、理由が無いので原因に辿り着けない。
   受入条件: 当該 fixture の selfhost JSON が非空の `diagnostics.message` を返すこと。
-  **含めない範囲**: quote を selfhost の型検査で弾くこと (`SELFHOST-QUOTE-PARITY-01` の担当)。
+  **含めない範囲**: contract metadata の quote 検査 (`I-65` で解決済み。正本は
+  [decisions-selfhost-contract-quote-parity.md](docs/adr/decisions-selfhost-contract-quote-parity.md))。
   Rust との逐語一致。`run-test-source-text` lane。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —

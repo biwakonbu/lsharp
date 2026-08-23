@@ -1900,3 +1900,129 @@ fn test_e2e_selfhost_embedded_cli_test_format_json_preflight_diagnostic_message(
         }
     }
 }
+
+/// `SELFHOST-QUOTE-PARITY-01`: contract metadata の quote を selfhost preflight が弾くこと
+///
+/// `I-65`: 既定の `lsharp test` は selfhost runner へ委譲されるが、この runner は
+/// contract metadata の quote 契約を持たず `:invariant (= 'sym 'sym)` を
+/// `executed 5, failed 0` の緑として報告していた。`I-59` / `I-62` が rust 側へ入れた
+/// 診断が既定経路から一切見えないという穴である。
+///
+/// 判断は `docs/adr/decisions-selfhost-contract-quote-parity.md`。
+/// 検出は payload ではなく contract directive の**ソース範囲をトークン列で**走査する。
+/// `:example` と `:property` の payload は AST ではなくソース文字列なので
+/// (`Parser.ls:1364` / `:1846`)、AST 走査では `:example` の fixture に届かない。
+///
+/// 2 fixture を 1 test にまとめるのは、bundle の compile + run が 1 fixture あたり
+/// 約 250s かかるため。
+#[test]
+fn test_e2e_selfhost_embedded_cli_test_format_json_contract_quote_preflight() {
+    // (経路名, source, message に載るべき directive 断片)
+    let fixtures: Vec<(&str, &str, &str)> = vec![
+        (
+            "invariant",
+            "(defn caller [x] :invariant (= 'sym 'sym) x)",
+            ":invariant (= 'sym 'sym)",
+        ),
+        (
+            "example",
+            "(defn caller [x] :example [(caller 'sym)] x)",
+            ":example [(caller 'sym)]",
+        ),
+    ];
+
+    for (lane, source, directive) in fixtures {
+        let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_format_json_contract_quote",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            )
+        });
+        assert_eq!(
+            output.exit_code, 2,
+            "{lane} の contract quote は preflight で exit 2 になるべき: {}",
+            output.stdout
+        );
+        let lines = output_lines(output.stdout);
+        assert_eq!(
+            lines.len(),
+            1,
+            "{lane} preflight は report 1 行だけを返すべき: {lines:?}"
+        );
+        let report: Value = serde_json::from_str(&lines[0])
+            .unwrap_or_else(|e| panic!("{lane} preflight report は valid JSON であるべき: {e}"));
+        let conformance = &report["implementation_conformance"];
+        assert_eq!(
+            conformance["status"], "fail",
+            "{lane} の contract quote は fail であるべき: {}",
+            lines[0]
+        );
+        assert_eq!(
+            conformance["diagnostics"]["count"], 1,
+            "{lane} の contract quote は診断 1 件を返すべき: {}",
+            lines[0]
+        );
+        let message = conformance["diagnostics"]["message"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{lane} preflight の message は文字列であるべき"));
+        assert!(
+            message.contains("LS2008"),
+            "{lane} の message は新しい診断コード LS2008 を含むべき: {message}"
+        );
+        assert!(
+            message.contains(directive),
+            "{lane} の message は quote を含む directive 範囲 {directive} を切り出すべき: {message}"
+        );
+    }
+
+    // 既定 lane (`--format json` を付けない `lsharp test input.ls`)。
+    // `I-65` が `status pass` を観測したのはこちらである。ADR の受入条件 1 は
+    // 「上記 2 fixture が既定経路で非緑」なので両方を通す。
+    //
+    // **EmbeddedCli の既定 lane は text ではなく JSON である** (`I-66`)。
+    // `main` は argc が 2 のとき `(default-compile-target)` を opts として渡すが
+    // (`EmbeddedCli.ls:1730`)、EmbeddedCli の既定 target は
+    // `(compile-target-component)` = 1 で、これが `(test-option-json)` = 1 と同値なので
+    // `run-test-source` の JSON 分岐に入る。`run-test-source-text` はこの経路では到達しない。
+    // したがって既定 lane でも message 付きの assurance JSON が出る。
+    let text_fixtures: Vec<(&str, &str)> = vec![
+        ("invariant", "(defn caller [x] :invariant (= 'sym 'sym) x)"),
+        ("example", "(defn caller [x] :example [(caller 'sym)] x)"),
+    ];
+    for (lane, source) in text_fixtures {
+        let text = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_default_lane_contract_quote",
+                source,
+                &["test", "input.ls"],
+            )
+        });
+        assert_eq!(
+            text.exit_code, 2,
+            "{lane} の既定 lane の contract quote は exit 2 になるべき: {}",
+            text.stdout
+        );
+        let lines = output_lines(text.stdout);
+        assert_eq!(
+            lines.len(),
+            1,
+            "{lane} の既定 lane は report 1 行だけを返すべき: {lines:?}"
+        );
+        let report: Value = serde_json::from_str(&lines[0])
+            .unwrap_or_else(|e| panic!("{lane} の既定 lane の report は valid JSON であるべき: {e}"));
+        let conformance = &report["implementation_conformance"];
+        assert_eq!(
+            conformance["status"], "fail",
+            "{lane} の既定 lane の contract quote は緑を返してはならない: {}",
+            lines[0]
+        );
+        assert_eq!(
+            conformance["diagnostics"]["firstErrorCode"], 2008,
+            "{lane} の既定 lane は診断コード 2008 を返すべき: {}",
+            lines[0]
+        );
+    }
+}

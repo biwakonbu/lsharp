@@ -404,6 +404,118 @@
 (defn metadata-test-runner-boundary-code [program]
   (property-runner-boundary-code program))
 
+;; === `SELFHOST-QUOTE-PARITY-01`: contract metadata の quote 契約 ===
+;;
+;; rust 側は `metadata_check` が `:invariant` / `:example` の quote を弾くが、既定の
+;; `lsharp test` は selfhost runner へ委譲されるので、その診断は利用者から見えない
+;; (`I-65`)。ここで同じ契約を selfhost 側にも持たせる。
+;;
+;; 走査対象は payload ではなく contract directive の **ソース範囲**である。
+;; ordered form の payload は kind ごとに型が違い、`:example` (kind 1) と
+;; `:property` (kind 5) は AST ではなくソース文字列でしか持っていない
+;; (`Parser.ls:1364` / `:1846`)。directive の (start, end) だけが 5 kind 共通なので、
+;; その範囲を lexer へ通して quote 系トークンを探す。文字列リテラル中の `'` を
+;; 誤検出しないために、文字ではなくトークン kind で見る。
+;; 判断は `docs/adr/decisions-selfhost-contract-quote-parity.md`。
+(defn canonical-contract-quote-code [] 2008) ;; LS2008: contract に quote/unquote は書けません
+
+(defn contract-quote-token-kind? [kind]
+  (if (= kind (tok-quote))
+    1
+    (if (= kind (tok-unquote))
+      1
+      (if (= kind (tok-splice-unquote)) 1 0))))
+
+(defn contract-quote-token-scan [spans idx count]
+  (if (>= idx count)
+    0
+    (if (= (contract-quote-token-kind? (span-kind spans idx)) 1)
+      1
+      (contract-quote-token-scan spans (+ idx 1) count))))
+
+;; directive 1 件ぶんだけを切り出して lex し直す。ソース全体のトークン列を走ると
+;; 走査の再帰深さが入力サイズに比例するが、directive の中はトークン数十個で収まる。
+;; 走査対象は contract の 5 kind (`AST.ls:45-49`: example 1 / invariant 2 / assert 3 /
+;; case 4 / property 5) だけ。同じ ordered-form 列には v0.3 の evidence (kind 15) や
+;; review attestation (kind 20)、source-pair / source-triple も載るが、これらは契約ではない
+;; ので走査しない。ADR の D1 が定める範囲と一致させるための絞り込みである。
+(defn contract-quote-target-kind? [kind]
+  (if (< kind 1)
+    0
+    (if (> kind 5)
+      0
+      1)))
+
+(defn contract-form-has-quote? [src form]
+  (if (= (contract-quote-target-kind? (vector-get form 0)) 0)
+    0
+    (let [lo (vector-get form 2)
+      hi (vector-get form 3)]
+      (if (>= lo hi)
+        0
+        (if (> hi (string-length src))
+          0
+          (let [spans (tokenize-with-spans (substring src lo hi))]
+            (contract-quote-token-scan spans 0 (/ (vector-length spans) 3))))))))
+
+(defn contract-quote-form-loop [src forms idx count]
+  (if (>= idx count)
+    0
+    (do
+      (root_push forms)
+      (let [form (vector-get forms idx)
+        found (contract-form-has-quote? src form)
+        hit (if (= found 1)
+          form
+          (contract-quote-form-loop src forms (+ idx 1) count))]
+        (do
+          (root_pop)
+          hit)))))
+
+(defn contract-quote-in-module-loop [src module-node idx count]
+  (if (>= idx count)
+    0
+    (let [hit (contract-quote-in-decl src (vector-get module-node (+ idx 3)))]
+      (if (= hit 0)
+        (contract-quote-in-module-loop src module-node (+ idx 1) count)
+        hit))))
+
+(defn contract-quote-in-decl [src decl]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (test-defn-ordered-forms decl)]
+        (if (= forms 0)
+          0
+          (contract-quote-form-loop src forms 0 (vector-length forms))))
+      (if (= tag (ast-private))
+        (contract-quote-in-decl src (vector-get decl 1))
+        (if (= tag (ast-module-decl))
+          (contract-quote-in-module-loop src decl 0 (vector-get decl 2))
+          0)))))
+
+(defn contract-quote-in-program-loop [src program idx count]
+  (if (>= idx count)
+    0
+    (let [hit (contract-quote-in-decl src (vector-get program idx))]
+      (if (= hit 0)
+        (contract-quote-in-program-loop src program (+ idx 1) count)
+        hit))))
+
+;; 戻り値は既存 preflight と同じ (count, code, start, end) の 4-vector。
+;; span は quote トークンではなく directive 範囲を返す。`preflight-diagnostic-message`
+;; がこの span でソース本文を切り出すので、`'` 1 文字ではなく
+;; `:invariant (= 'sym 'sym)` が丸ごと message に載る。
+(defn check-contract-quote [program src]
+  (let [hit (contract-quote-in-program-loop src program 0 (vector-length program))]
+    (if (= hit 0)
+      (vector-push-quad-rooted (vector-new 4) 0 0 0 0)
+      (vector-push-quad-rooted
+        (vector-new 4)
+        1
+        (canonical-contract-quote-code)
+        (vector-get hit 2)
+        (vector-get hit 3)))))
+
 (defn append-parser-ordered-invariant-form [form decl results]
   (if (= (vector-get form 0) 2)
     (vector-push
@@ -834,7 +946,9 @@
           "LS2006"
           (if (= code (contract-diagnostic-unsupported-property))
             "LS3002"
-            "LS0000"))))))
+            (if (= code (canonical-contract-quote-code))
+              "LS2008"
+              "LS0000")))))))
 
 (defn test-diagnostics-summary [examples invariants]
   (let [count (test-diagnostics-count examples invariants)

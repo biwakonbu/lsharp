@@ -196,7 +196,8 @@
 | [I-62](#i-62) | `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる | 低 | resolved | 2026-08-23 |
 | [I-63](#i-63) | `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる | 低 | resolved | 2026-08-23 |
 | [I-64](#i-64) | `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない | 中 | open | -- |
-| [I-65](#i-65) | selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する | 中 | open | -- |
+| [I-65](#i-65) | selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する | 中 | resolved | 2026-08-23 |
+| [I-66](#i-66) | EmbeddedCli の既定 test option が `--format json` と同値で、`run-test-source-text` が到達不能になっている | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4557,7 +4558,7 @@
 <a id="i-65"></a>
 ### I-65: selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-62` の裁定中)
+- **影響度**: 中 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-23 (`I-62` の裁定中)
 - **内容**: `lsharp test` は既定で selfhost runner へ委譲される
   (`provenance.runner = "selfhost"`)。この runner は contract metadata の quote 検査を持たず、
   `I-59` / `I-62` が rust 側へ入れた診断が既定経路からは**一切見えない**。
@@ -4585,6 +4586,50 @@
 - **本 issue で決めないこと**: selfhost 側に metadata contract 検査をどう載せるか
   (TypeInfer で弾く / TestRunner の preflight で弾く / rust の診断を委譲経路で運ぶ)。
   parity の取り方は設計判断なので ADR が要る。
+- **設計判断** (2026-08-23): [decisions-selfhost-contract-quote-parity.md](docs/adr/decisions-selfhost-contract-quote-parity.md)
+  が正本。TestRunner の preflight に `check-contract-quote` を足し、contract directive の
+  **ソース範囲をトークン列で**走査して quote / unquote / splice-unquote を弾く案を採った。
+  payload を AST として走査する案は、`:example` と `:property` の payload が AST ではなく
+  **ソース文字列**であるため (`Parser.ls:1364` / `:1846`) 上表 2 行目の fixture に届かず却下した。
+  `TypeInfer` を一般に厳しくする案は `I-48` の 262 defn 巻き添えと同じ性質なので別 slice へ送った。
+- **解決** (2026-08-23): `TestRunner.ls` に `check-contract-quote` を新設し、
+  contract directive のソース範囲をトークン列で走査して quote / unquote / splice-unquote を
+  `LS2008` で弾くようにした。`Cli.ls` / `EmbeddedCli.ls` の両方の
+  `run-test-source-json` / `run-test-source-text` へ差し込んである。
+  **上表 1 行目の `status pass` は再現しない** — 既定経路で `status fail` / exit 2 /
+  `firstErrorCode 2008` を返し、message に directive 範囲が載る。上表は発見時の記録として残す。
+  実測と受入判定は [decisions-selfhost-contract-quote-parity.md](docs/adr/decisions-selfhost-contract-quote-parity.md)
+  の Evidence 節が正本。**`Cli.ls` 側の分岐を実行した test は無い** (該当 e2e が 2 本とも
+  `#[ignore]`。`I-64` の範囲) ことも同節に明記した。
 - **関連**: `I-59` / `I-62` (rust 側でこの契約を実装した側)、`I-49` (selfhost preflight の
-  空 message。2026-08-23 解消)。引き取り先は `TODO.md` の `SELFHOST-QUOTE-PARITY-01` と
-  `EXAMPLE-FAIL-REASON-01` (`:example` 側の空 message)。
+  空 message。2026-08-23 解消)、`I-66` (本 issue の GREEN 中に見つけた既定 lane の食い違い)。
+  `:example` の quote **以外**の失敗理由は `TODO.md` の `EXAMPLE-FAIL-REASON-01` が引き取る。
+
+<a id="i-66"></a>
+### I-66: EmbeddedCli の既定 test option が `--format json` と同値で、`run-test-source-text` が到達不能になっている
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`SELFHOST-QUOTE-PARITY-01` の GREEN 中)
+- **内容**: `EmbeddedCli.ls` の `main` は `argc` が 2 のとき (`lsharp test input.ls`)
+  option 解析を通らず `(default-compile-target)` をそのまま opts として `run-command` へ渡す
+  (`EmbeddedCli.ls:1730`)。EmbeddedCli の既定 target は `(compile-target-component)` = **1**
+  (`:42,:44`) で、これが `(test-option-json)` = **1** (`:86`) と同値である。
+  結果として `run-test-source` (`:1293`) の JSON 分岐に入り、
+  **`--format json` を付けていないのに assurance JSON が出る**。
+  `run-test-source-text` (`:1201`) は `test` command からは到達しない。
+- **実測** (2026-08-23、e2e bundle `selfhost_embedded_cli_runtime_bundle()` に
+  `&["test", "input.ls"]`): 出力は 1 行の assurance JSON。`diagnostics.message` も載る。
+  `run-test-source-text` が出す `examples:N` / `failures:N` 形式は一切現れない。
+- **`Cli.ls` は違う**: `Cli.ls` の既定 target は `(compile-target-preview1)` = 0 (`Cli.ls:46`)
+  なので、同じ argv で `run-test-source-text` に入る。**2 系統で既定 lane が食い違っている。**
+  ただし `Cli.ls` の `test` を argv 経由で叩く e2e は 2 本とも `#[ignore]` なので
+  (`selfhost_cli_actual_main_args.rs` の `test_e2e_selfhost_cli_main_with_args_test_file` /
+  `..._test_format_json_file`)、この食い違いは live なテストでは観測されていない (`I-64`)。
+- **なぜ低いか**: 現状の出力は JSON なので情報量は多く、利用者が損をしていない。
+  `SELFHOST-QUOTE-PARITY-01` の受入判定にも影響しない (既定 lane は非緑になる)。
+  問題は「option の番号空間が 2 つ重なっている」という設計上の危うさで、
+  `compile-target` 側に値を足すと `test` の挙動が黙って変わる。
+- **直し方の方向** (未確定): option enum を command ごとに分ける、または
+  `test` command のとき `default-compile-target` ではなく明示の `test-option-text` を渡す。
+  後者は `Cli.ls` / `EmbeddedCli.ls` の既定 lane を揃える判断を伴うので ADR が要る。
+- **関連**: `I-64` (`#[ignore]` により観測されない)、`I-65` (発見の経緯)。
+  引き取り先は `TODO.md` の `EMBEDDED-CLI-OPTION-SPACE-01`。
