@@ -2026,3 +2026,88 @@ fn test_e2e_selfhost_embedded_cli_test_format_json_contract_quote_preflight() {
         );
     }
 }
+
+/// `EXAMPLE-FAIL-REASON-01`: 偽を返した `:example` の理由が suite 経路の JSON に載ること
+///
+/// `I-62` の残渣。`run-examples-loop` が `make-test-result` で結果を作っており
+/// diagnostic-code が常に 0、message の slot も無かったため、
+/// `assurance-suite-diagnostic-message` が空を返していた。`failed 1` は出るので
+/// 落ちたことは見えるが、どの式が落ちたのかが出ない。
+///
+/// 判断は `docs/adr/decisions-selfhost-example-fail-reason.md` (案 A)。
+/// **`diagnostics.count` は 0 のまま**である — rust runner も同じ fixture で 0 を返し、
+/// `:example` の偽は診断 (静的な契約違反) ではなく `coverage.failed` (実行時の不一致) だからである。
+/// この test はその契約ごと固定する。
+///
+/// 2 fixture を 1 test にまとめるのは、bundle の compile + run が 1 fixture あたり
+/// 約 250s かかるため。
+#[test]
+fn test_e2e_selfhost_embedded_cli_test_format_json_example_failure_message() {
+    // (経路名, source, message に必ず含まれるソース断片)
+    let fixtures: Vec<(&str, &str, &str)> = vec![
+        (
+            "single",
+            "(defn abs [x] :example [(= (abs 5) 6)] (if (< x 0) (- 0 x) x))",
+            "(= (abs 5) 6)",
+        ),
+        (
+            "second-of-two",
+            "(defn abs [x] :example [(= (abs 5) 5) (= (abs -3) 9)] (if (< x 0) (- 0 x) x))",
+            "(= (abs -3) 9)",
+        ),
+    ];
+
+    for (lane, source, fragment) in fixtures {
+        let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_format_json_example_failure_message",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            )
+        });
+        // bundle 内の `exit-runtime-error` は harness では 2 に写る
+        // (preflight test も同じ 2)。driver 経由の shipped binary は 1 を返す。
+        assert_eq!(
+            output.exit_code, 2,
+            "{lane} の :example 失敗は非 0 で落ちるべき: {}",
+            output.stdout
+        );
+        let lines = output_lines(output.stdout);
+        assert_eq!(
+            lines.len(),
+            1,
+            "{lane} は report 1 行だけを返すべき: {lines:?}"
+        );
+        let report: Value = serde_json::from_str(&lines[0])
+            .unwrap_or_else(|e| panic!("{lane} の report は valid JSON であるべき: {e}"));
+        let conformance = &report["implementation_conformance"];
+        assert_eq!(
+            conformance["status"], "fail",
+            "{lane} の :example 失敗は fail を返すべき: {}",
+            lines[0]
+        );
+        assert_eq!(
+            conformance["coverage"]["failed"], 1,
+            "{lane} は failed 1 を返すべき: {}",
+            lines[0]
+        );
+        assert_eq!(
+            conformance["diagnostics"]["count"], 0,
+            "{lane} の :example 失敗は診断ではないので count 0 のままであるべき (案 A): {}",
+            lines[0]
+        );
+        let message = conformance["diagnostics"]["message"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{lane} の message は文字列であるべき"));
+        assert!(
+            !message.is_empty(),
+            "{lane} の diagnostics.message は非空であるべき: {}",
+            lines[0]
+        );
+        assert!(
+            message.contains(fragment),
+            "{lane} の message は落ちた式のソース断片 {fragment} を含むべき: {message}"
+        );
+    }
+}

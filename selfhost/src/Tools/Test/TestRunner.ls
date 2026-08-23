@@ -890,7 +890,7 @@
         (test-result-diagnostic-message result)
         (first-diagnostic-message-loop results (+ idx 1) count)))))
 
-(defn first-test-diagnostic-message-with-properties
+(defn first-test-diagnostic-code-message-with-properties
   [examples invariants assertions cases properties]
   (let [example-message (first-diagnostic-message-loop examples 0 (vector-length examples))]
     (if (> (string-length example-message) 0)
@@ -905,6 +905,54 @@
                 (if (> (string-length case-message) 0)
                   case-message
                   (first-diagnostic-message-loop properties 0 (vector-length properties)))))))))))
+
+;; EXAMPLE-FAIL-REASON-01: 診断コードを持たない失敗 (`:example` の偽) も message を持つ。
+;; `first-diagnostic-message-loop` は `code > 0` を通過条件にするので拾えない。
+;; 正本は docs/adr/decisions-selfhost-example-fail-reason.md (案 A)。
+(defn first-failure-message-loop [results idx count]
+  (if (>= idx count)
+    ""
+    (let [result (vector-get results idx)]
+      (if (and
+          (= (vector-get result 1) 0)
+          (> (string-length (test-result-diagnostic-message result)) 0))
+        (test-result-diagnostic-message result)
+        (first-failure-message-loop results (+ idx 1) count)))))
+
+(defn first-test-failure-message-with-properties
+  [examples invariants assertions cases properties]
+  (let [example-message (first-failure-message-loop examples 0 (vector-length examples))]
+    (if (> (string-length example-message) 0)
+      example-message
+      (let [invariant-message (first-failure-message-loop invariants 0 (vector-length invariants))]
+        (if (> (string-length invariant-message) 0)
+          invariant-message
+          (let [assertion-message (first-failure-message-loop assertions 0 (vector-length assertions))]
+            (if (> (string-length assertion-message) 0)
+              assertion-message
+              (let [case-message (first-failure-message-loop cases 0 (vector-length cases))]
+                (if (> (string-length case-message) 0)
+                  case-message
+                  (first-failure-message-loop properties 0 (vector-length properties)))))))))))
+
+;; 診断由来の message を優先し、無ければ失敗由来の message へ落ちる。
+(defn first-test-diagnostic-message-with-properties
+  [examples invariants assertions cases properties]
+  (let [diagnostic-message
+      (first-test-diagnostic-code-message-with-properties
+        examples
+        invariants
+        assertions
+        cases
+        properties)]
+    (if (> (string-length diagnostic-message) 0)
+      diagnostic-message
+      (first-test-failure-message-with-properties
+        examples
+        invariants
+        assertions
+        cases
+        properties))))
 
 (defn contract-diagnostic-undefined [] 1) ;; LS1001: undefined-variable
 (defn contract-diagnostic-non-bool [] 2) ;; LS1002: invariant-predicate-must-be-bool
@@ -3629,6 +3677,61 @@
       (token-count tokens)
       target-hash)))
 
+;; AST は expression span を保持しないため、`:example` payload 内の n 番目の form の
+;; span はソース token を再走査して取り直す。invariant 側 (`find-invariant-source-span`)
+;; と同型で、違うのは payload が vector なので要素を数えて進む点だけである。
+(defn find-example-nth-span-loop [tokens idx end nth]
+  (if (>= idx end)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (let [form-end (consume-form tokens idx)]
+      (if (= nth 0)
+        (vector-push
+          (vector-push (vector-new 2) (token-start tokens idx))
+          (token-end tokens (- form-end 1)))
+        (find-example-nth-span-loop tokens form-end end (- nth 1))))))
+
+(defn find-example-source-span-loop [src tokens idx end nth]
+  (if (>= idx end)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (= (token-kind tokens idx) (tok-colon))
+      (if (< (+ idx 2) end)
+        (if (= (token-kind tokens (+ idx 1)) (tok-symbol))
+          (if (string-eq (token-text src tokens (+ idx 1)) "example")
+            (let [payload-start (+ idx 2)
+              payload-end (consume-form tokens payload-start)]
+              (if (< (+ payload-start 1) payload-end)
+                (find-example-nth-span-loop tokens (+ payload-start 1) (- payload-end 1) nth)
+                (find-example-source-span-loop src tokens (+ idx 1) end nth)))
+            (find-example-source-span-loop src tokens (+ idx 1) end nth))
+          (find-example-source-span-loop src tokens (+ idx 1) end nth))
+        (find-example-source-span-loop src tokens (+ idx 1) end nth))
+      (find-example-source-span-loop src tokens (+ idx 1) end nth))))
+
+(defn find-example-source-span-loop-by-defn [src tokens idx count target-hash nth]
+  (if (>= idx count)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (and
+        (and (= (token-kind tokens idx) (tok-lparen)) (< (+ idx 2) count))
+        (= (token-kind tokens (+ idx 1)) (tok-defn)))
+      (let [name-start (token-start tokens (+ idx 2))
+        name-end (token-end tokens (+ idx 2))
+        next-idx (consume-form tokens idx)]
+        (if (= (name-hash src name-start name-end) target-hash)
+          (find-example-source-span-loop src tokens (+ idx 3) (- next-idx 1) nth)
+          (find-example-source-span-loop-by-defn src tokens next-idx count target-hash nth)))
+      (find-example-source-span-loop-by-defn src tokens (+ idx 1) count target-hash nth))))
+
+(defn find-example-source-span [src target-hash nth]
+  (let [tokens (tokenize-with-spans src)]
+    (find-example-source-span-loop-by-defn
+      src
+      tokens
+      0
+      (token-count tokens)
+      target-hash
+      nth)))
+
+
 (defn find-invariant-unknown-source-span-loop-by-defn [src tokens idx count fn-hash target-hash]
   (if (>= idx count)
     (vector-push (vector-push (vector-new 2) 0) 0)
@@ -3997,7 +4100,46 @@
 (defn extract-invariants [src]
   (vector-get (extract-test-cases src) 1))
 
-(defn run-examples-loop [program test-cases idx count results]
+;; 同じ defn に属する何番目の :example かを数える。test-cases は defn をまたいで
+;; 一列に積まれるので、payload 内の位置は同一 fn-hash の出現回数で決まる。
+(defn example-ordinal-loop [test-cases idx limit target-hash acc]
+  (if (>= idx limit)
+    acc
+    (example-ordinal-loop
+      test-cases
+      (+ idx 1)
+      limit
+      target-hash
+      (if (= (vector-get (vector-get test-cases idx) 1) target-hash)
+        (+ acc 1)
+        acc))))
+
+;; EXAMPLE-FAIL-REASON-01: 文言は rust runner の per-case error
+;; (crates/lsharp-wasm/src/test_runner.rs:335) を oracle にする。
+;; span が取れないとき (src 無しで呼ばれた互換経路) は断片抜きで返す。
+(defn example-failure-message [src span]
+  (let [start (vector-get span 0)
+    end (vector-get span 1)]
+    (if (< start end)
+      (string-concat ":example 式が偽を返しました: " (substring src start end))
+      ":example 式が偽を返しました")))
+
+(defn make-example-failure-result [name src test-cases idx]
+  (let [fn-hash (vector-get (vector-get test-cases idx) 1)
+    span (find-example-source-span
+      src
+      fn-hash
+      (example-ordinal-loop test-cases 0 idx fn-hash 0))]
+    (make-test-result-with-diagnostic-span-message
+      name
+      0
+      0
+      0
+      (vector-get span 0)
+      (vector-get span 1)
+      (example-failure-message src span))))
+
+(defn run-examples-loop [program test-cases src idx count results]
   (if (>= idx count)
     results
     (let [tc (vector-get test-cases idx)
@@ -4014,17 +4156,22 @@
           next-results
             (vector-push-single-rooted
               results
-              (make-test-result name passed passed))]
+              (if (= passed 0)
+                (make-example-failure-result name src test-cases idx)
+                (make-test-result name passed passed)))]
           (do
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
-            (run-examples-loop program test-cases (+ idx 1) count next-results)))))))
+            (run-examples-loop program test-cases src (+ idx 1) count next-results)))))))
 
 (defn run-examples [program test-cases]
-  (run-examples-loop program test-cases 0 (vector-length test-cases) (vector-new 16)))
+  (run-examples-loop program test-cases "" 0 (vector-length test-cases) (vector-new 16)))
+
+(defn run-examples-from-source [program test-cases src]
+  (run-examples-loop program test-cases src 0 (vector-length test-cases) (vector-new 16)))
 
 (defn run-assertions-loop [program test-cases idx count results]
   (if (>= idx count)
@@ -5107,7 +5254,7 @@
     assertions (extract-assertions-from-program program)
     cases (extract-cases-from-program program)
     properties (extract-property-test-cases program)
-    example-results (run-examples program examples)
+    example-results (run-examples-from-source program examples src)
     invariant-results (run-invariants-from-source program invariants src)
     assertion-results (run-assertions program assertions)
     case-results (run-cases program cases)

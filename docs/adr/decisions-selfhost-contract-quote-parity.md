@@ -6,6 +6,7 @@
 - **Related**: `I-65`, `I-59`, `I-62`, `I-66`, [decisions-invariant-quote-handling.md](decisions-invariant-quote-handling.md),
   [decisions-example-quote-handling.md](decisions-example-quote-handling.md),
   [decisions-selfhost-preflight-diagnostic-message.md](decisions-selfhost-preflight-diagnostic-message.md)
+  [decisions-selfhost-example-fail-reason.md](decisions-selfhost-example-fail-reason.md) (quote 以外の `:example` 失敗理由)
 
 ## Context
 

@@ -2895,21 +2895,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `compile` / `build` の target option の再設計。`Cli.ls` 側の
   `#[ignore]` 解除そのもの (`IGNORED-STALE-PIN-01`)。出力形式の変更。
 
-- [ ] `EXAMPLE-FAIL-REASON-01` selfhost の suite 経路が `:example` の失敗理由を返さない —
-  Issue `I-65` の実測表にあった quote 入り fixture は `I-65` の解決で
-  preflight (`LS2008`) へ移ったので、再現 fixture は **quote を含まない** 失敗例へ差し替える。
-  2026-08-23 実測 (`./target/debug/lsharp test ex_fail.ls`、fixture と同じ dir から相対パスで):
-  `(defn abs [x] :example [(= (abs 5) 6)] (if (< x 0) (- 0 x) x))` が
-  `status fail` / `executed 0, failed 1` / `count 0` / **`message` 空** / exit 1 を返す。
-  preflight (`count 1`) 側は `ASSERT-DIAG-MESSAGE-01` で埋めた
-  ([decisions-selfhost-preflight-diagnostic-message.md](docs/adr/decisions-selfhost-preflight-diagnostic-message.md))
-  が、こちらは `run-test-source-json-suite` が `assurance-suite-diagnostic-message` を
-  そのまま流す経路で、suite state 側が空を持っている。落ちること自体は利用者に見えるので
-  preflight より軽いが、理由が無いので原因に辿り着けない。
-  受入条件: 当該 fixture の selfhost JSON が非空の `diagnostics.message` を返すこと。
-  **含めない範囲**: contract metadata の quote 検査 (`I-65` で解決済み。正本は
-  [decisions-selfhost-contract-quote-parity.md](docs/adr/decisions-selfhost-contract-quote-parity.md))。
-  Rust との逐語一致。`run-test-source-text` lane。
+- [ ] `EXAMPLE-COVERAGE-COUNT-01` selfhost の `cases` / `coverage.executed` が pass 数になっている —
+  Issue `I-67`。`assurance-result-actual-loop` が結果 vector の index 2 (`actual`) を合算するが、
+  `run-examples-loop` は `actual` に `passed` を入れているため、失敗した `:example` が
+  分母に数えられない。同じ fixture で selfhost は `cases 0` / `executed 0`、
+  rust runner は `cases 1` / `executed 1` を返す (2026-08-23 実測)。
+  受入条件: 失敗を 1 件含む `:example` fixture で selfhost の `cases` と `coverage.executed` が
+  どちらも 1 になり、live な e2e で固定されること。`:invariant` / `:assert` / `:case` /
+  property の `actual` の使われ方を洗ったうえで、直す層 (`actual` の意味を変えるか、
+  集計側を `vector-length` に変えるか) を ADR で決める。
+  **含めない範囲**: exit code の 1 / 2 の食い違い (意図的な使い分けか未確認)。
+  `diagnostics.message` (`EXAMPLE-FAIL-REASON-01` で解決済み)。rust runner 側の変更。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

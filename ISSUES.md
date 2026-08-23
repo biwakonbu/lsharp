@@ -198,6 +198,7 @@
 | [I-64](#i-64) | `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない | 中 | open | -- |
 | [I-65](#i-65) | selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する | 中 | resolved | 2026-08-23 |
 | [I-66](#i-66) | EmbeddedCli の既定 test option が `--format json` と同値で、`run-test-source-text` が到達不能になっている | 低 | open | -- |
+| [I-67](#i-67) | selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4467,7 +4468,7 @@
   一般の欠落だと分かった。裁定は
   [`:example` に書かれた quote の扱い](docs/adr/decisions-example-quote-handling.md) が正本で、
   **(a) だけを採る**。分解した残りは `I-49` 残差分 (preflight の空 message。2026-08-23 解消) と
-  `I-65` (`:example` の suite 経路。`EXAMPLE-FAIL-REASON-01`) が引き取る。
+  `I-65` (`:example` の suite 経路。`EXAMPLE-FAIL-REASON-01`。どちらも 2026-08-23 解消) が引き取る。
 - **解決** (2026-08-23): 案 (a) を実装した。`check_example`
   (`crates/lsharp-types/src/metadata_check/diagnostics.rs`) が `find_quote_span` で式全体を走査し、
   quote があれば `:invariant` と同型の metadata 固有 Error を 1 件返す。既存の識別子スコープ検査は
@@ -4483,8 +4484,13 @@
   判断と却下案の正本は
   [`:example` に書かれた quote の扱い](docs/adr/decisions-example-quote-handling.md)。
 - **残渣**: 既定経路 (selfhost runner) の挙動は変えていない。本 issue の冒頭の実測表が
-  そちらを見ていたので、**表の症状そのものは既定 CLI では残る**。引き取り先は `I-65`
-  (`:invariant` + quote が緑になる方) と `EXAMPLE-FAIL-REASON-01` (`:example` 側の空 message)。
+  そちらを見ていたので、**表の症状そのものは既定 CLI では残っていた**。引き取り先は `I-65`
+  (`:invariant` + quote が緑になる方。2026-08-23 解消) と `EXAMPLE-FAIL-REASON-01`
+  (`:example` 側の空 message。2026-08-23 解消。正本は
+  [`:example` の失敗理由](docs/adr/decisions-selfhost-example-fail-reason.md))。
+  **既定 CLI の空 message は解消した** — 同じ fixture が
+  `:example 式が偽を返しました: (caller 'sym)` 相当の message を返す。
+  残るのは `cases` / `coverage.executed` の数え方で、`I-67` が引き取る。
 - **関連**: `I-59` (解決済み。`:invariant` 側)、`I-43`、`I-65` (selfhost runner の quote 契約不在)、
   `I-49` (selfhost preflight の空 message。2026-08-23 解消)。
 
@@ -4572,8 +4578,10 @@
   | 同上 | rust | `[LS1001] テストプログラムの型チェックに失敗: [E0001] 未定義の変数 (undefined): quote/unquote はマクロ展開後に使用できません (63..67)` |
 
 - **なぜ message 欠落より重いか**: `:example` 側は「落ちるが理由が空」なので、
-  利用者は少なくとも失敗に気付ける。これは `EXAMPLE-FAIL-REASON-01` の担当範囲である
-  (preflight 側の空 message は `I-49` 残差分として 2026-08-23 に解消済み)。**`:invariant` 側は緑を返す。** 実行できないはずの contract が
+  利用者は少なくとも失敗に気付ける。これは `EXAMPLE-FAIL-REASON-01` の担当範囲で、
+  2026-08-23 に解消した (正本は
+  [`:example` の失敗理由](docs/adr/decisions-selfhost-example-fail-reason.md))。
+  preflight 側の空 message も `I-49` 残差分として 2026-08-23 に解消済みである。**`:invariant` 側は緑を返す。** 実行できないはずの contract が
   「5 件実行して 0 件失敗」と報告されるので、利用者は穴の存在に気付けない。
   原因は `selfhost/src/Types/TypeInfer.ls:199` の「quote/unquote 系は現状すべて inner expr へ
   委譲する」という扱いで、`'sym` が中身の型として通ってしまうことにある。
@@ -4603,7 +4611,9 @@
   `#[ignore]`。`I-64` の範囲) ことも同節に明記した。
 - **関連**: `I-59` / `I-62` (rust 側でこの契約を実装した側)、`I-49` (selfhost preflight の
   空 message。2026-08-23 解消)、`I-66` (本 issue の GREEN 中に見つけた既定 lane の食い違い)。
-  `:example` の quote **以外**の失敗理由は `TODO.md` の `EXAMPLE-FAIL-REASON-01` が引き取る。
+  `:example` の quote **以外**の失敗理由は `EXAMPLE-FAIL-REASON-01` が引き取り、
+  2026-08-23 に解消した (正本は
+  [`:example` の失敗理由](docs/adr/decisions-selfhost-example-fail-reason.md))。
 
 <a id="i-66"></a>
 ### I-66: EmbeddedCli の既定 test option が `--format json` と同値で、`run-test-source-text` が到達不能になっている
@@ -4633,3 +4643,41 @@
   後者は `Cli.ls` / `EmbeddedCli.ls` の既定 lane を揃える判断を伴うので ADR が要る。
 - **関連**: `I-64` (`#[ignore]` により観測されない)、`I-65` (発見の経緯)。
   引き取り先は `TODO.md` の `EMBEDDED-CLI-OPTION-SPACE-01`。
+
+<a id="i-67"></a>
+### I-67: selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`EXAMPLE-FAIL-REASON-01` の原因調査中)
+- **内容**: `:example` が 1 件あって偽を返す fixture で、2 つの runner の assurance JSON が
+  `message` 以外にも 3 箇所食い違う。実測 (2026-08-23、
+  `(defn abs [x] :example [(= (abs 5) 6)] (if (< x 0) (- 0 x) x))`、
+  fixture と同じ dir から相対パスで `./target/debug/lsharp test ex_fail.ls`):
+
+  | フィールド | selfhost (既定) | rust (`--format json`) |
+  |---|---|---|
+  | `cases` | **0** | 1 |
+  | `coverage.executed` | **0** | 1 |
+  | `coverage.failed` | 1 | 1 |
+  | exit code | **1** | 2 |
+
+- **原因**: `EmbeddedCli.ls:846` の `assurance-result-actual-loop` が結果 vector の
+  index 2 (`actual`) を合算して `executed` を作る。ところが
+  `TestRunner.ls:4000` の `run-examples-loop` は `(make-test-result name passed passed)` と
+  書いており、**`actual` に `passed` を入れている**。したがって失敗した `:example` は
+  `actual = 0` を寄与し、`executed` にも `cases` にも数えられない。
+  「実行した数」ではなく「通った数」を数えている。
+- **なぜ低いか**: `coverage.failed` と `status` は正しいので、成否の判定自体は誤らない。
+  食い違うのは分母側の 2 つと exit code である。ただし
+  [zero-arity defn の型](docs/adr/decisions-selfhost-zero-arity-defn-type.md) のように
+  **`coverage.executed` を受入判定の gate に使う運用が既にある**ので、
+  失敗を含む fixture でこれを gate にすると意図しない値を見ることになる。
+- **exit code の 1 / 2 は別の話かもしれない**。selfhost は `exit-runtime-error` で 1、
+  rust runner は 2 を返す。これが意図的な使い分けなのかは未確認で、本 issue では決めない。
+- **本 issue で決めないこと**: `actual` の意味を「実行数」に直すのか、
+  `executed` の集計側を `vector-length` に変えるのか。前者は `:invariant` が
+  `actual` に sample 数を入れている (`TestRunner.ls` の `materialize-invariant`) のと
+  整合するが、他の kind の `actual` の使われ方を洗う必要がある。
+- **関連**: `I-62` (同じ fixture 系列)、`EXAMPLE-FAIL-REASON-01` (`message` 側。
+  こちらは本 issue と切り離して解決した。正本は
+  [`:example` の失敗理由](docs/adr/decisions-selfhost-example-fail-reason.md))。
+  引き取り先は `TODO.md` の `EXAMPLE-COVERAGE-COUNT-01`。
