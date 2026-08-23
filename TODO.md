@@ -2843,15 +2843,25 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 - [ ] `REPL-TYPE-TAG-01` `repl-session-eval` の型名取得を型タグ分岐へ寄せる — Issue `I-69`。
   `selfhost/src/App/Cli.ls:1463` が `(ty-name ty)` を型タグを見ずに呼び、Con 以外では
   引数型オブジェクトの tagged handle が session slot 1 へ入る。`lsharp repl` は
-  `type:type--9223372036718940184` を印字する (`run-repl` `:1472` → CLI dispatch `:2275`)。
-  受入条件: `lsharp repl` が `(defn main [] 42)` に対し `type:Int` を印字する RED を先に立て、
-  `render-type-text` (`Cli.ls:715`) と同じ `ty-tag` 分岐へ寄せて GREEN にすること。
-  同時に `selfhost_gc_stateful_soak` の 5 件と
-  `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload` が緑になること。
-  **先に決めること**: `infer` が Fun を返す現状が契約なのか変更なのか。
-  契約変更だったなら直す先は `repl-session-eval` ではなく `infer` 側になる。
+  `type:type-<負の巨大値>` を印字する (`run-repl` `:1472` → CLI dispatch `:2275`)。
+  CLI 経路での実測値は `-9223372036853734056` だが**アドレスなので pin できない**。
+  **層が 2 つあることが sweep で確定した (2026-08-23)。両方直す。**
+    - **L1** `infer` (`Types/TypeInfer.ls:1712`) が最初の decl の型 (`Unit -> Int`) を返す。
+      契約は body の型 (`Int`)。`..._check_file` / `..._check_json_file` が `"Int"` の pin へ
+      `"Fn"` を返したのが直接証拠 (`render-type-text` は tag 3 を `"Fn"` と印字する正しい実装)。
+      由来は `fd786316` (2026-07-14) の program-level analysis 化。
+    - **L2** `repl-session-eval` (`Cli.ls:1463`) が tag を見ずに `ty-name` を呼ぶ。
+      **L1 を直せば L2 の症状も消えるが独立の欠陥である** — 型が本当に Fun である program で再発する。
+  受入条件: 先に RED を立てる。(a) `lsharp check` が `(defn main [] 42)` に `Int` を返すこと、
+  (b) `lsharp repl` が `type:Int` を印字すること。GREEN 後、以下が緑になること —
+  `selfhost_cli_actual_main_args` の 3 件 (`..._check_file` / `..._check_json_file` /
+  `..._repl_summary`)、`selfhost_gc_stateful_soak` の 5 件、
+  `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload`。
+  **L2 は L1 の GREEN で症状が消えても別途 `ty-tag` 分岐へ寄せること** (`Cli.ls:715` と同形)。
   **含めない範囲**: `selfhost_gc_stateful_soak` の LSP stdio frame 3 件 (別原因)、
   `EmbeddedCli.ls:113-114` の同型コード (`repl` 経路を持たないなら触らない)。
+  **`EMBEDDED-CLI-OPTION-SPACE-01` とは無関係** — `..._check_json_file` は `--json` を明示する
+  argc 3 の経路で、argc 2 の fallthrough を通らない。
 
 - [ ] `IGNORED-STALE-PIN-01` `#[ignore]` の e2e に溜まった陳腐化 pin を一度洗う — Issue `I-64`。
   `I-63` の影響範囲調査で `test_e2e_selfhost_cli_lsp_transport_rename_frame` が

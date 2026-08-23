@@ -4762,9 +4762,22 @@
   `:2275` から到達可能で、`repl-summary-type-text` → `builtin-type-name-text` (`:714`) を通る。
   `builtin-type-name-text` は 100/200/300/400/500 以外を
   `(string-concat "type-" (int-to-string type-hash))` へ落とすので、
-  `lsharp repl` も同型の壊れた型名 (`type:type-<負の巨大値>`) を印字するはずである。
-  **経路は実測、印字値は未実測** — 上記の `-9223372036718940184` は e2e harness の
-  bundle 上のアドレスであり、CLI 単体では再現しない。**握り潰されて気付けない。**
+  `lsharp repl` も同型の壊れた型名を印字する。**2026-08-23 に CLI 経路で実測した** —
+  `selfhost_cli_actual_main_args::..._repl_summary` (argv `["repl"]`) が
+  `type:type--9223372036853734056` を出した。gc_stateful_soak 側の
+  `-9223372036718940184` とは値が違う。**値そのものはアドレスなので pin できない**が、
+  経路も症状も CLI で再現する。**握り潰されて気付けない。**
+- **層が 2 つある (2026-08-23 追記)**。同 sweep の `..._check_file` /
+  `..._check_json_file` が `(defn main [] 42)` に対し `"Int"` の pin へ `"Fn"` を返した。
+  `render-type-text` (`Cli.ls:715`) は tag 3 を `"Fn"` と印字する正しい実装なので、
+  これは **`infer` が Fun を返している**ことの直接証拠であり、本 issue 記載の
+  「`infer` が Fun を返すようになったのが変化かどうか未確定」はこれで埋まった。
+    - **L1**: `infer` (`TypeInfer.ls:1712`) は `infer-program-analysis-type` =
+      最初の decl の型を返す。`(defn main [] 42)` なら `Unit -> Int`。契約は body の型
+      (`Int`) を要求している。由来は `fd786316` (2026-07-14) の program-level analysis 化。
+    - **L2**: `repl-session-eval` が tag を見ずに `ty-name` を呼ぶ (本 issue の当初の指摘)。
+  **L1 を直せば L2 の症状も消えるが、L2 は独立の欠陥である。** 型が本当に Fun である
+  program を評価した瞬間に同じアドレス印字が再発する。
 - **直し方はリポジトリ内にある**: 同じ `Cli.ls:715` の `render-type-text` は
   `(ty-tag ty)` で分岐し、Con のときだけ `builtin-type-name-text` を通す。
   `repl-session-eval` をこの形へ寄せればよい。新規設計は要らない。
