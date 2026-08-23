@@ -2934,12 +2934,20 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   selfhost の `cases` / `coverage.executed` にはサンプル数が載る。rust oracle
   (`MetadataTestRun::total()`) は contract 数を返すので、`:cases 5` の property で
   selfhost 5 / rust 1 に割れる。
-  受入条件: どちらの契約を正とするかを ADR で決め、両 runner が同じ fixture で同じ
-  `cases` / `coverage.executed` を返すこと。サンプル数を残すなら載せ先のフィールドを決めること。
-  既存 pin (`selfhost_cli_actual_main_args.rs:436` / `native_cli_output.rs:438`) は
-  サンプル数側を前提に書かれているので、決定に合わせて更新する。
+  **`:case` は式の値を入れており更に悪い。本項目に含める** (`(expect (f) 0)` は実行数から消える)。
+  契約は ADR で確定済み (2026-08-23):
+  [`decisions-assurance-cases-contract-count.md`](docs/adr/decisions-assurance-cases-contract-count.md)。
+  **集計 report の `cases` / `coverage.executed` は実行した contract 数**とし、
+  `:case` / `:invariant` / property の `actual` を 1 に揃える。
+  診断で 0 を入れる分岐は変えない (`assert_non_bool_invariant_json` が live で固定)。
+  サンプル数用のフィールドは足さない (同 ADR 決定 3)。
+  受入条件: 両 runner が同じ fixture で同じ `cases` / `coverage.executed` を返すことを
+  RED から固定すること。既存 pin (`selfhost_cli_actual_main_args.rs:436` /
+  `native_cli_output.rs:438`) の `cases 5` を 1 へ更新する。
   **含めない範囲**: `:example` の `actual` (`EXAMPLE-COVERAGE-COUNT-01` で解決)。
   exit code の 1 / 2 の食い違い。property generator の品質 (`PROP-GEN-01`)。
+  per-contract Evidence レコードの出力 (同 ADR 決定 3 の再検討引き金)。
+  `seed` / `generator` / `shrinks` の stub 解消。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

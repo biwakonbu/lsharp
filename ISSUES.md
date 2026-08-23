@@ -4723,10 +4723,20 @@
   こちらは**どちらの契約を正とするかがまだ決まっていない**。
   「サンプル数を出したい」という要求そのものは妥当であり、
   だとすれば載せる先が `cases` でよいのか (別フィールドを立てるべきか) を先に決める必要がある。
-- **決めるべきこと**: (a) `cases` を contract 数へ寄せて rust と揃えるか、
-  (b) selfhost の契約を正としてサンプル数を載せ続け rust 側を変えるか、
-  (c) サンプル数を `cases` から外し別フィールドへ移すか。
-  上の pin 2 件はいずれも (b) を前提に書かれている。
+- **`:case` はもっと悪い** (2026-08-23 追記): `:case` の `actual` には**式の値**が入る。
+  `(expect (f) 3)` は `executed` へ 3 を寄与し、`(expect (f) 0)` は 0 を寄与して
+  実行数から消える。サンプル数でも contract 数でもなく、値と個数を混同している。
+  **本 issue の範囲に `:case` を含める。**
+- **設計時の記述とも割れている** (2026-08-23 追記): `docs/development/planning/v0.2-evidence-contracts.md:159,170`
+  は `"cases": 256` とサンプル数を書く。つまり 3 者 (設計記述 / rust / selfhost) が
+  別のことを言っている状態である。
+- **決着** (2026-08-23): (a) を採る。集計 report の `cases` / `coverage.executed` は
+  **実行した contract 数**とし、全 kind で `actual` に 1 を入れる。
+  設計記述の「サンプル数」は **per-contract Evidence レコード**のフィールドであって
+  ファイル単位の集計ではない (kind をまたいで足せる量は contract 数しかない)。
+  サンプル数用のフィールドは足さない。判断と却下 4 案は
+  [集計 assurance report の `cases`](docs/adr/decisions-assurance-cases-contract-count.md)。
+  上の pin 2 件は契約変更に追随させる (実装に合わせるのではない)。
 - **関連**: `I-67` (`:example` 側。切り離して解決)。正本は
   [`cases` / `coverage.executed` の意味](docs/adr/decisions-selfhost-example-coverage-count.md)
   の「却下した案 / 案 D」。引き取り先は `TODO.md` の `SAMPLE-COVERAGE-CONTRACT-01`。
