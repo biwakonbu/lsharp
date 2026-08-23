@@ -2846,31 +2846,35 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `type:type-<負の巨大値>` を印字する (`run-repl` `:1472` → CLI dispatch `:2275`)。
   CLI 経路での実測値は `-9223372036853734056` だが**アドレスなので pin できない**。
   **層が 2 つあることが sweep で確定した (2026-08-23)。両方直す。**
-    - **L1** `infer` (`Types/TypeInfer.ls:1712`) が最初の decl の型 (`Unit -> Int`) を返す。
-      `..._check_file` / `..._check_json_file` が `"Int"` の pin へ `"Fn"` を返した
-      (`render-type-text` は tag 3 を `"Fn"` と印字する正しい実装)。由来は
-      `fd786316` (2026-07-14) の program-level analysis 化。
-      **L1 は契約の衝突であって単純なバグではない (2026-08-23 訂正)。** 同 sweep で
-      `..._check_recursive_fib` / `..._check_mutual_recursion_even_odd` は `"Fn"` を pin して
-      **pass しており、この 2 本を足したのは `fd786316` 自身**。両側とも `#[ignore]` 下に
-      あったため矛盾が観測されなかった。裁定の根拠は pin ではなく
-      `docs/adr/decisions-v0.3-native-cli-check-file-e2e.md` (Evidence 節が `Int` と書く)。
-      → **先に ADR を書いて契約を確定させること。** `Int` へ寄せるなら fd786316 の 2 pin が
-      動き、`Fn` へ寄せるなら既存 ADR と `..._check_file` 側が動く。どちらでも既存 test の
-      期待値が動くので、ADR 無しに pin を書き換えてはならない。
-    - **L2** `repl-session-eval` (`Cli.ls:1463`) が tag を見ずに `ty-name` を呼ぶ。
-      **L1 を直せば L2 の症状も消えるが独立の欠陥である** — 型が本当に Fun である program で再発する。
-  受入条件: **(0) L1 の契約裁定 ADR を先に書く** (採用理由と却下理由、動かす pin の一覧)。
-  そのうえで RED を立てる。(a) `lsharp check` が `(defn main [] 42)` に ADR で確定した型名を
-  返すこと、(b) `lsharp repl` が `type:Int` を印字すること (L2 は裁定に依らず `Int`)。GREEN 後、以下が緑になること —
-  `selfhost_cli_actual_main_args` の 3 件 (`..._check_file` / `..._check_json_file` /
-  `..._repl_summary`)、`selfhost_gc_stateful_soak` の 5 件、
-  `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload`。
-  **L2 は L1 の GREEN で症状が消えても別途 `ty-tag` 分岐へ寄せること** (`Cli.ls:715` と同形)。
+    - **L1 は本項目から外した (2026-08-23)。** `..._check_file` / `..._check_json_file` が
+      `"Fn"` を返すのは infer のバグではなく、`decisions-selfhost-zero-arity-defn-type.md`
+      (2026-08-22 accepted / `914bd9f1` / `I-45`) が Rust parity を根拠に選んだ契約どおりの挙動。
+      赤 2 件は同 commit が更新し漏らした陳腐化 pin なので `CHECK-TYPE-PIN-01` へ移した。
+    - **L2** `repl-session-eval` (`Cli.ls:1463`) が tag を見ずに `ty-name` を呼ぶ。本項目の本体。
+  受入条件: 先に RED を立てる。`lsharp repl` が `(defn main [] 42)` に対し **`type:Fn`** を
+  印字すること (`type:Int` ではない — `I-45` の契約で `Unit -> Int` になり、
+  `render-type-text` は tag 3 を `"Fn"` と印字するのが正しい)。GREEN 後、`..._repl_summary` と
+  `selfhost_gc_stateful_soak` の 5 件、
+  `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload` が緑になること。
+  直し方は `Cli.ls:715` の `render-type-text` と同形 (`(ty-tag ty)` で分岐し Con のときだけ
+  `builtin-type-name-text` を通す)。新規設計は要らない。
   **含めない範囲**: `selfhost_gc_stateful_soak` の LSP stdio frame 3 件 (別原因)、
-  `EmbeddedCli.ls:113-114` の同型コード (`repl` 経路を持たないなら触らない)。
-  **`EMBEDDED-CLI-OPTION-SPACE-01` とは無関係** — `..._check_json_file` は `--json` を明示する
-  argc 3 の経路で、argc 2 の fallthrough を通らない。
+  `EmbeddedCli.ls:113-114` の同型コード (`repl` 経路を持たないなら触らない)、
+  `check` の型名 pin (`CHECK-TYPE-PIN-01`)。
+
+- [ ] `CHECK-TYPE-PIN-01` `I-45` が更新し漏らした `check` の型名 pin を追随させる — Issue `I-69` / `I-64`。
+  `914bd9f1` (2026-08-22、`decisions-selfhost-zero-arity-defn-type.md`) が 0 引数 `defn` を
+  `Unit -> body` へ変えた際、生きている `..._check_format_json`
+  (`selfhost_cli_actual_main_args.rs:401`) の pin は `"Fn"` へ更新され `I-45` 由来のコメントまで
+  残っているのに、`#[ignore]` 下の 2 本は赤にならないので取り残された。
+  **`I-64` が想定していた壊れ方そのもので、混入から 1 日で観測された。**
+  受入条件: (a) `..._check_file` と `..._check_json_file` の型名 pin を
+  `decisions-selfhost-zero-arity-defn-type.md` を根拠に `"Fn"` へ更新し、両者が緑になること。
+  (b) `decisions-v0.3-native-cli-check-file-e2e.md` の Evidence 節 (`Int` / `diagnostics:0` と
+  書いている行) を実測値へ訂正し、**`#[ignore]` 下の test の自称期待値を Evidence にしていた**
+  旨を残すこと。
+  **含めない範囲**: `infer` / `render-type-text` の挙動変更 (契約は `I-45` で確定済み。実装は
+  触らない)、`repl` のアドレス印字 (`REPL-TYPE-TAG-01`)。
 
 - [ ] `IGNORED-STALE-PIN-01` `#[ignore]` の e2e に溜まった陳腐化 pin を一度洗う — Issue `I-64`。
   `I-63` の影響範囲調査で `test_e2e_selfhost_cli_lsp_transport_rename_frame` が

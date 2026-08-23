@@ -4775,34 +4775,35 @@
     - **L1**: `infer` (`TypeInfer.ls:1712`) は `infer-program-analysis-type` =
       最初の decl の型を返す。`(defn main [] 42)` なら `Unit -> Int`。由来は
       `fd786316` (2026-07-14) の program-level analysis 化。
-      **ただし L1 は「バグ」ではなく契約の衝突である (2026-08-23 訂正)。** 同 sweep で
-      `..._check_recursive_fib` / `..._check_mutual_recursion_even_odd` は **`"Fn"` を pin して
-      pass している**。この 2 本を足したのは `fd786316` 自身で、つまり fd786316 は
-      program-level 型を返すことを**意図して**新 pin へ書いた。一方で `"Int"` を pin する
-      `..._check_file` は `80db0240` (2026-04-02、fd786316 より前) 由来、
-      `..._check_json_file` は `b02c30b0` (2026-07-18、fd786316 より後) 由来で、
-      後者は既に古くなっていた期待値をそのまま複製している。
-      **どちらの側も `#[ignore]` 下にあったため、両者が矛盾していることに誰も気付けなかった。**
-      裁定の根拠は pin ではなく
+      **ただし L1 は infer のバグではない (2026-08-23 再訂正)。** `(defn main [] 42)` が
+      `Unit -> Int` になるのは
+      [`decisions-selfhost-zero-arity-defn-type.md`](docs/adr/decisions-selfhost-zero-arity-defn-type.md)
+      (2026-08-22 accepted / `914bd9f1` / `I-45`) が **Rust 実装 (`Fun([], _)`) との parity を根拠に
+      意図して選んだ契約**であり、同 ADR は「Rust 側を selfhost に合わせる」案を
+      「正しい方を壊す向き」として明示的に却下している。したがって `check` が `"Fn"` を
+      印字するのは正しい。
+      赤 2 件の正体は **`914bd9f1` (2026-08-22) が更新し漏らした陳腐化 pin** である。
+      同 commit は生きている `..._check_format_json` (`selfhost_cli_actual_main_args.rs:401`)
+      の pin を `"Fn"` へ更新し、`I-45` 由来である旨のコメントまで残しているのに、
+      `#[ignore]` 下の `..._check_file` / `..._check_json_file` は赤にならないので見えなかった。
+      **`I-64` (`IGNORED-STALE-PIN-01`) が想定していた壊れ方そのもので、混入から 1 日で観測された。**
+      陳腐化しているのはもう 1 件ある —
       [`decisions-v0.3-native-cli-check-file-e2e.md`](docs/adr/decisions-v0.3-native-cli-check-file-e2e.md)
-      にある。同 ADR の Evidence 節は `..._check_file` が `Int` / `diagnostics:0` を返すと書き、
-      Decision 節は「output contract が green になったら normal test にする」と書いている。
-      **記録された契約は `Int` であり、fd786316 はそれを改訂せずに反対の pin を足した。**
-      これは doc-sync 違反 (決定を正本へ書かずに test へ書いた) であって、
-      本 issue で test 期待値を書き換えて閉じてよい種類のものではない。
+      の Evidence 節が `..._check_file` は `Int` を返すと書いている。同 ADR は
+      「output contract が green になったら normal test にする」と書いており、
+      **ignore 下の test の自称期待値をそのまま Evidence にした**ため再検証されていない。
+      引き取り先は `TODO.md` の `CHECK-TYPE-PIN-01` で、`REPL-TYPE-TAG-01` からは外す。
     - **L2**: `repl-session-eval` が tag を見ずに `ty-name` を呼ぶ (本 issue の当初の指摘)。
   **L1 を直せば L2 の症状も消えるが、L2 は独立の欠陥である。** 型が本当に Fun である
   program を評価した瞬間に同じアドレス印字が再発する。
 - **直し方はリポジトリ内にある**: 同じ `Cli.ls:715` の `render-type-text` は
   `(ty-tag ty)` で分岐し、Con のときだけ `builtin-type-name-text` を通す。
   `repl-session-eval` をこの形へ寄せればよい。新規設計は要らない。
-- **L1 の裁定は ADR を先に書く (2026-08-23)。** `Int` へ寄せる (= fd786316 の 2 pin を動かす)
-  のか、`Fn` へ寄せる (= ADR と 2 pin を改訂する) のかは設計判断であり、
-  どちらを採っても**既存 test の期待値が動く**。TDD 規約は「テストの期待値を実装に合わせて
-  変更すること」を禁じているので、先に ADR で契約を確定させ、その ADR を根拠に pin を動かす。
-  引き取り先は `TODO.md` の `REPL-TYPE-TAG-01`。
-- **L2 は裁定を待たない。** `type:type--9223372036853734056` はどちらの契約の下でも
-  ゴミであり、`repl-session-eval` を `ty-tag` 分岐へ寄せる修正は L1 の結論と独立に正しい。
+- **L2 だけが本 issue の欠陥である (2026-08-23 確定)。** `type:type--9223372036853734056` は
+  どの契約の下でもゴミであり、`repl-session-eval` を `ty-tag` 分岐へ寄せる修正は L1 と独立に正しい。
+  ただし **repl の受入値は `type:Int` ではなく `type:Fn`** になる —
+  `(defn main [] 42)` は `I-45` の契約で `Unit -> Int` であり、`render-type-text` は tag 3 を
+  `"Fn"` と印字するのが正しい実装だからである。
 - **なぜ今まで観測されなかったか**: 該当 6 test は全て `#[ignore]` 付きで、
   `I-64` が指摘した「検査は生きているが中身が観測されない」領域にあった。
   `workspace-expected-failures.txt` にも `--ignored` 台帳にも載っていない。
