@@ -35,10 +35,9 @@
   {
     "id": 195,
     "jsonrpc": "2.0",
-    "result": [
-      [
-        200,
-        [
+    "result": {
+      "changes": {
+        "lsharp://document/200": [
           {
             "range": {
               "start": {
@@ -52,11 +51,8 @@
             },
             "newText": "mid-next"
           }
-        ]
-      ],
-      [
-        8091858770804166904,
-        [
+        ],
+        "lsharp://document/8091858770804166904": [
           {
             "range": {
               "start": {
@@ -71,7 +67,7 @@
             "newText": "mid-next"
           }
         ]
-      ]
-    ]
+      }
+    }
   }
 ]

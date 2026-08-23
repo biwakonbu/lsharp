@@ -716,6 +716,81 @@ fn test_e2e_selfhost_lsp_locations_frame_always_renders_location_objects() {
     );
 }
 
+/// TEST-LSP-10f: rename の wire response は changes の要素順・uri text の有無に
+/// かかわらず常に LSP `WorkspaceEdit` であること (`I-63`)
+///
+/// 縮約 array (`[[uri,[TextEdit..]],..]`) は LSP 3.17 に無い形式で、しかも先頭要素の
+/// uri text の有無だけで応答全体の形式が切り替わっていた。
+/// 判断は `docs/adr/decisions-lsp-rename-wire-shape.md`。
+#[test]
+fn test_e2e_selfhost_lsp_rename_frame_always_renders_workspace_edit() {
+    let source = selfhost_lsp_runtime_bundle();
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        uri-key (lsp-uri-key-from-text "file:///tmp/lsharp-rename-shape.ls")
+        params (push-object-vector-local
+                 (push-object-vector-local
+                   (push-object-vector-local
+                     (push-int-vector-local (vector-new 2) uri-key)
+                     "(defn main [] 0)")
+                   "")
+                 "file:///tmp/lsharp-rename-shape.ls")
+        _ (handle-didOpen params state)
+        rel-uri (lsp-virtual-uri-for-path state "src/Support/Mid.ls")
+        abs-uri (lsp-virtual-uri-for-path state "/tmp/lsharp-rename-shape-import.ls")
+        changes (push-object-vector-local
+                  (push-object-vector-local
+                    (push-object-vector-local (vector-new 3)
+                      (make-workspace-change rel-uri
+                        (push-object-vector-local (vector-new 1)
+                          (make-text-edit 1 7 1 13 "cube"))))
+                    (make-workspace-change abs-uri
+                      (push-object-vector-local (vector-new 1)
+                        (make-text-edit 2 3 2 9 "cube"))))
+                  (make-workspace-change uri-key
+                    (push-object-vector-local (vector-new 1)
+                      (make-text-edit 3 5 3 11 "cube"))))]
+    (do
+      (print rel-uri)
+      (print-string (lsp-render-rename-frame-with-state 11 state changes))
+      (print-string "\n")
+      (print-string (lsp-render-rename-frame-with-state 12 state (vector-new 0)))
+      0)))
+"#;
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    let (rel_line, frames) = output.split_once('\n').expect("先頭行に仮想 uri が要る");
+    let rel_uri: i64 = rel_line
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("仮想 uri が int でない {:?}: {}", rel_line, e));
+
+    // 先頭要素は uri text を持たない (相対 path なので `file://` を合成できない) が、
+    // それでも応答全体が縮約 array へ落ちてはいけない。
+    let multi = format!(
+        concat!(
+            r#"{{"jsonrpc":"2.0","id":11,"result":{{"changes":{{"#,
+            r#""lsharp://document/{rel}":[{{"range":{{"start":{{"line":0,"character":6}},"end":{{"line":0,"character":12}}}},"newText":"cube"}}],"#,
+            r#""file:///tmp/lsharp-rename-shape-import.ls":[{{"range":{{"start":{{"line":1,"character":2}},"end":{{"line":1,"character":8}}}},"newText":"cube"}}],"#,
+            r#""file:///tmp/lsharp-rename-shape.ls":[{{"range":{{"start":{{"line":2,"character":4}},"end":{{"line":2,"character":10}}}},"newText":"cube"}}]"#,
+            r#"}}}}}}"#
+        ),
+        rel = rel_uri
+    );
+    let empty = r#"{"jsonrpc":"2.0","id":12,"result":{"changes":{}}}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}\nContent-Length: {}\r\n\r\n{}",
+        multi.len(),
+        multi,
+        empty.len(),
+        empty
+    );
+    assert_eq!(
+        frames, expected,
+        "rename wire は先頭要素の uri text に依らず WorkspaceEdit であるべき"
+    );
+}
+
 /// TEST-LSP-10d: document 更新後の publishDiagnostics refresh が wire URI を保持すること
 #[test]
 fn test_e2e_selfhost_lsp_transport_diagnostics_preserves_wire_uri() {

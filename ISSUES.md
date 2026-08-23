@@ -194,7 +194,8 @@
 | [I-60](#i-60) | 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている | 中 | resolved | -- |
 | [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | resolved | 2026-08-23 |
 | [I-62](#i-62) | `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる | 低 | open | -- |
-| [I-63](#i-63) | `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる | 低 | open | -- |
+| [I-63](#i-63) | `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる | 低 | resolved | 2026-08-23 |
+| [I-64](#i-64) | `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4398,11 +4399,13 @@
   **`I-57` 由来の見積もり (snapshot 8 file) は 1 file 少なく、`references.json` が漏れていた。**
   実測値と受入判定は
   [ADR の Evidence](docs/adr/decisions-lsp-location-wire-shape.md#evidence) が正本。
-- **残渣**: `rename` に同じ先頭要素依存が残っている (`I-63`)。ADR が scope を
+- **残渣**: `rename` に同じ先頭要素依存が残っていた (`I-63`)。ADR が scope を
   definition / references に限ったためで、しかも本 issue の 2 段目追加により
-  uri text を持つ document が増えたので**踏みやすくなっている**。
-- **関連**: `I-57` (座標の漏れ。解決済み)、`I-52` / `I-55` (座標規約の同系統)。
-  残渣の引き取り先は `TODO.md` の `RENAME-WIRE-SHAPE-01` (`I-63`)。
+  uri text を持つ document が増えたので**踏みやすくなっていた**。
+  **2026-08-23 に `I-63` で解決済み** —
+  [ADR: `rename` の wire 形式](docs/adr/decisions-lsp-rename-wire-shape.md)。
+- **関連**: `I-57` (座標の漏れ。解決済み)、`I-52` / `I-55` (座標規約の同系統)、
+  `I-63` (`rename` 側。解決済み)。
 
 <a id="i-62"></a>
 ### I-62: `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる
@@ -4440,7 +4443,7 @@
 <a id="i-63"></a>
 ### I-63: `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`I-61` の実装中)
+- **影響度**: 低 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-23 (`I-61` の実装中)
 - **内容**: `lsp-render-rename-frame-with-state`
   (`selfhost/src/Tools/Lsp/LspServerNav.ls:222`) は `changes` の**先頭要素の uri text だけ**を見て、
   非空なら `{"changes":{..}}` (LSP の `WorkspaceEdit`)、空なら `[[uri,[TextEdit..]],..]` という
@@ -4457,5 +4460,49 @@
   持たない document が同じ rename 結果に混ざったとき**である。
 - **根拠**: source 読み (2026-08-23)。`I-61` の実装で `lsp-virtual-uri-for-path` が
   絶対 path の uri text を state へ登録するようになったため、混在は起きやすくなっている。
-- **関連**: `I-61` (`definition` / `references` 側。解決済み)、`I-57` (座標系)。
-  引き取り先は `TODO.md` の `RENAME-WIRE-SHAPE-01`。
+- **解決** (2026-08-23): guard を削除して `lsp-render-rename-frame-with-state` を単一経路にし、
+  縮約側 3 関数 (`lsp-render-rename-frame` / `lsp-render-workspace-changes-json-loop` /
+  `lsp-render-workspace-change-json`) を削除した。空 `changes` は `{"changes":{}}` を返す。
+  判断と却下理由は
+  [ADR: `rename` の wire 形式](docs/adr/decisions-lsp-rename-wire-shape.md) が正本。
+  位置依存が消えたことは
+  `test_e2e_selfhost_lsp_rename_frame_always_renders_workspace_edit` が pin する
+  (uri text を持たない document を**先頭に**置いた混在ケース)。
+  回帰 lane は `--ignored` 32 test が `ok. 32 passed; 0 failed` / 1638.95s。
+  実測は [ADR の Evidence](docs/adr/decisions-lsp-rename-wire-shape.md#evidence) が正本。
+- **残渣**: `test_e2e_selfhost_cli_lsp_transport_rename_frame` が本変更より**前から**赤だった
+  ことがこの作業中に判明した。期待値は本 slice で直したが、`#[ignore]` の赤が
+  どの台帳にも載らない仕組みのほうは `I-64` へ切り出した。
+- **関連**: `I-61` (`definition` / `references` 側。解決済み)、`I-57` (座標系)、
+  `I-64` (この作業で見つかった `#[ignore]` の陳腐化 pin)。
+
+<a id="i-64"></a>
+### I-64: `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-63` の影響範囲 grep 中)
+- **内容**: `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:5290`
+  `test_e2e_selfhost_cli_lsp_transport_rename_frame` は `#[ignore]` が付いており、
+  **`I-63` の作業で単独実行するまで誰も回していなかった。実行すると FAIL する。**
+  期待値は TextEdit を `[1,7,1,13,"cube"]` という縮約 array で pin しているが、
+  現行 renderer (`lsp-render-text-edit-json`) は `{"range":{..},"newText":".."}` の
+  object を出す。期待値は 2026-03-27 の Phase 12 commit `9deab1ce` 以来据え置かれており、
+  その後 renderer 側だけが変わった。
+- **実測** (2026-08-23):
+
+  ```
+  test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3076 filtered out; finished in 259.16s
+    left: ...,"result":[[99,[{"range":{"start":{"line":0,"character":6},...},"newText":"cube"},...]]]
+   right: ...,"result":[[99,[[1,7,1,13,"cube"],[2,16,2,22,"cube"],[2,27,2,33,"cube"]]]]
+  ```
+
+  **この FAIL は `I-63` の変更より前から存在する。** `I-63` の実装で期待値は
+  `WorkspaceEdit` 形へ書き換えるので、この 1 本自体は同時に GREEN になる。
+- **問題は 1 本ではなく仕組みのほう**: `#[ignore]` の e2e は既定 lane で走らず、
+  `workspace-expected-failures.txt` にも載っていないので、**赤いことすら台帳に無い**。
+  `I-60` (0 引数 defn の pin 5 本が契約変更で赤のまま放置) と同じ壊れ方であり、
+  同じことが再発している。1 本ずつ見つけるのではなく、
+  **`#[ignore]` 付き e2e を一度全部走らせて赤を列挙し、expected-failure か修正かを決める**必要がある。
+- **今回この issue で直さない理由**: `--ignored` の全量は e2e 単独で 5 時間規模
+  (`I-11` の実測)。`I-63` の slice に載せると計測も判断も混ざる。
+- **関連**: `I-63` (この test の期待値を書き換える側)、`I-60` (同型の放置)、
+  `I-11` (workspace 恒常 FAIL の baseline)。引き取り先は `TODO.md` の `IGNORED-STALE-PIN-01`。

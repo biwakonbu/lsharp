@@ -169,35 +169,6 @@
     payload (string-concat payload-3 "]}")]
     (render-json-rpc-frame payload)))
 
-(defn lsp-render-workspace-change-json [change]
-  (let [uri-text (int-to-string (vector-get change 0))
-    edits (vector-get change 1)
-    payload-0 "["
-    payload-1 (string-concat payload-0 uri-text)
-    payload-2 (string-concat payload-1 ",[")
-    payload-3 (string-concat payload-2
-      (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))
-    payload-4 (string-concat payload-3 "]")]
-    (string-concat payload-4 "]")))
-
-(defn lsp-render-workspace-changes-json-loop [changes idx len out]
-  (if (>= idx len)
-    out
-    (let [elem-text (lsp-render-workspace-change-json (vector-get changes idx))
-      next-out (if (= idx 0)
-        (string-concat out elem-text)
-        (string-concat out (string-concat "," elem-text)))]
-      (lsp-render-workspace-changes-json-loop changes (+ idx 1) len next-out))))
-
-(defn lsp-render-rename-frame [request-id changes]
-  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-    payload-1 (string-concat payload-0 (int-to-string request-id))
-    payload-2 (string-concat payload-1 ",\"result\":[")
-    payload-3 (string-concat payload-2
-      (lsp-render-workspace-changes-json-loop changes 0 (vector-length changes) ""))
-    payload (string-concat payload-3 "]}")]
-    (render-json-rpc-frame payload)))
-
 (defn lsp-render-workspace-change-member-with-uri [change uri-text]
   (let [edits (vector-get change 1)
     payload-0 "\""
@@ -219,19 +190,15 @@
         (string-concat out (string-concat "," elem-text)))]
       (lsp-render-rename-changes-json-loop-with-state state changes (+ idx 1) len next-out))))
 
+;; wire 形式は常に LSP `WorkspaceEdit`。changes が空でも `{"changes":{}}` を返し、
+;; 縮約 array へ落ちる経路は持たない (`docs/adr/decisions-lsp-rename-wire-shape.md`)。
 (defn lsp-render-rename-frame-with-state [request-id state changes]
-  (if (> (vector-length changes) 0)
-    (let [first-uri (vector-get (vector-get changes 0) 0)
-      first-uri-text (server-state-uri-text-for-uri state first-uri)]
-      (if (> (string-length first-uri-text) 0)
-        (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-          payload-1 (string-concat payload-0 (int-to-string request-id))
-          payload-2 (string-concat payload-1 ",\"result\":{\"changes\":{")
-          payload-3 (string-concat payload-2
-            (lsp-render-rename-changes-json-loop-with-state state changes 0 (vector-length changes) ""))]
-          (render-json-rpc-frame (string-concat payload-3 "}}}")))
-        (lsp-render-rename-frame request-id changes)))
-    (lsp-render-rename-frame request-id changes)))
+  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":{\"changes\":{")
+    payload-3 (string-concat payload-2
+      (lsp-render-rename-changes-json-loop-with-state state changes 0 (vector-length changes) ""))]
+    (render-json-rpc-frame (string-concat payload-3 "}}}"))))
 
 ;; === 位置/オフセット変換 ===
 

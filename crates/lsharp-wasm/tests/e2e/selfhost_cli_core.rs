@@ -5290,7 +5290,7 @@ fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_rename_frame() {
-    let body = r#"{"jsonrpc":"2.0","id":13,"result":[[99,[[1,7,1,13,"cube"],[2,16,2,22,"cube"],[2,27,2,33,"cube"]]]]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":13,"result":{"changes":{"lsharp://document/99":[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":1,"character":15},"end":{"line":1,"character":21}},"newText":"cube"},{"range":{"start":{"line":1,"character":26},"end":{"line":1,"character":32}},"newText":"cube"}]}}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
     let harness = format!(
@@ -16645,7 +16645,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename() {
         request_body.len(),
         request_body
     );
-    let response_body = r#"{"jsonrpc":"2.0","id":65,"result":[[10,[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"newText":"cube"},{"range":{"start":{"line":0,"character":46},"end":{"line":0,"character":52}},"newText":"cube"}]]]}"#;
+    let response_body = r#"{"jsonrpc":"2.0","id":65,"result":{"changes":{"lsharp://document/10":[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"newText":"cube"},{"range":{"start":{"line":0,"character":46},"end":{"line":0,"character":52}},"newText":"cube"}]}}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -17011,7 +17011,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document() {
         source.len()
     );
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":55},"end":{"line":0,"character":56}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}]}}"#;
-    let rename_response = r#"{"jsonrpc":"2.0","id":70,"result":[[42,[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"newText":"cube"},{"range":{"start":{"line":0,"character":46},"end":{"line":0,"character":52}},"newText":"cube"}]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":70,"result":{"changes":{"lsharp://document/42":[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"newText":"cube"},{"range":{"start":{"line":0,"character":46},"end":{"line":0,"character":52}},"newText":"cube"}]}}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -17056,7 +17056,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document_spec_para
         source.len()
     );
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"range":{"start":{"line":0,"character":55},"end":{"line":0,"character":56}},"severity":1,"code":"LS0101","source":"lsharp","message":"unexpected token )"}]}}"#;
-    let rename_response = r#"{"jsonrpc":"2.0","id":70,"result":[[42,[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"newText":"cube"},{"range":{"start":{"line":0,"character":46},"end":{"line":0,"character":52}},"newText":"cube"}]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":70,"result":{"changes":{"lsharp://document/42":[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":35},"end":{"line":0,"character":41}},"newText":"cube"},{"range":{"start":{"line":0,"character":46},"end":{"line":0,"character":52}},"newText":"cube"}]}}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -18014,7 +18014,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_changed_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         changed_source.len()
     );
-    let rename_response = r#"{"jsonrpc":"2.0","id":84,"result":[[42,[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":39},"end":{"line":0,"character":45}},"newText":"cube"},{"range":{"start":{"line":0,"character":50},"end":{"line":0,"character":56}},"newText":"cube"}]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":84,"result":{"changes":{"lsharp://document/42":[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":39},"end":{"line":0,"character":45}},"newText":"cube"},{"range":{"start":{"line":0,"character":50},"end":{"line":0,"character":56}},"newText":"cube"}]}}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -18179,7 +18179,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_latest_reopened_documen
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         latest_source.len()
     );
-    let rename_response = r#"{"jsonrpc":"2.0","id":85,"result":[[42,[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":39},"end":{"line":0,"character":45}},"newText":"cube"},{"range":{"start":{"line":0,"character":50},"end":{"line":0,"character":56}},"newText":"cube"}]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":85,"result":{"changes":{"lsharp://document/42":[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"newText":"cube"},{"range":{"start":{"line":0,"character":39},"end":{"line":0,"character":45}},"newText":"cube"},{"range":{"start":{"line":0,"character":50},"end":{"line":0,"character":56}},"newText":"cube"}]}}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_response.len(),

@@ -2826,17 +2826,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
   eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
-- [ ] `RENAME-WIRE-SHAPE-01` `rename` の wire 形式を決める — Issue `I-63`。
-  `I-61` で `definition` / `references` の縮約 array は廃止したが、`rename` は
-  先頭要素の uri text だけで `{"changes":{..}}` と `[[uri,[TextEdit..]],..]` を
-  切り替える実装のまま残っている。
-  受入条件: **先に ADR で `changes` / `documentChanges` のどちらへ寄せるかを決めてから実装する**。
-  そのうえで縮約形を廃止し、`I-61` と同じ 3 段の uri fallback を使う。
-  位置依存が消えたことを、uri text を持つ document と持たない document を混ぜた
-  function レベルの pin で示すこと (`I-61` の
-  `test_e2e_selfhost_lsp_locations_frame_always_renders_location_objects` と同型)。
-  **含めない範囲**: `definition` / `references` (`I-61` で解決済み)、
-  `handle-rename` の occurrence 収集ロジック、座標系 (`I-57` で決着済み)。
+- [ ] `IGNORED-STALE-PIN-01` `#[ignore]` の e2e に溜まった陳腐化 pin を一度洗う — Issue `I-64`。
+  `I-63` の影響範囲調査で `test_e2e_selfhost_cli_lsp_transport_rename_frame` が
+  **2026-03-27 以来ずっと赤だったのに誰も観測していなかった**ことが分かった
+  (`#[ignore]` 付きで既定 lane に乗らず、`workspace-expected-failures.txt` にも無い)。
+  `I-60` と同型の再発。
+  受入条件: `#[ignore]` 付き e2e を全量実行して赤を列挙し、1 本ずつ
+  「修正する / expected-failure として理由付きで記録する」のどちらかへ振り分ける。
+  実測所要と取得条件を `docs/development/operations/` へ残すこと。
+  **含めない範囲**: 個々の赤の修正 (振り分けの結果として別項目に切る)、
+  `#[ignore]` 検査自体の壊れ (`ops03b` / `ops03c` の mod 分割問題は別項目)。
 
 - [ ] `EXAMPLE-QUOTE-01` `:example` に quote を書いたときの扱いを決める — Issue `I-62`。
   `I-59` で `:invariant` 側は `lsharp check` の段階で弾くようにしたが、`:example` は
