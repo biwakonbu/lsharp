@@ -124,12 +124,25 @@ fn contract_scope_quoted_symbol_in_invariant_reports_metadata_error() {
     );
 }
 
+/// `I-62`: `:example` も `test_runner.rs:78` で生成ソースへ差し込まれて**実行される**ので、
+/// quote を通しても lowering で落ちる。`:invariant` と同型の metadata 固有 Error を出す。
+///
+/// 判断は `docs/adr/decisions-example-quote-handling.md`。
 #[test]
-fn contract_scope_quoted_symbol_in_example_is_accepted() {
+fn contract_scope_quoted_symbol_in_example_reports_metadata_error() {
     let source = r#"
 (defn caller [x] :example [(caller 'sym)] x)
 "#;
-    assert_eq!(errors_of(source), Vec::<String>::new());
+    let errors = errors_of(source);
+    assert_eq!(errors.len(), 1, "診断はちょうど 1 件のはず: {errors:?}");
+    assert!(
+        !errors[0].contains("未定義の識別子") && !errors[0].contains("未定義の変数"),
+        "識別子スコープ / 未定義変数 由来の見出しは残らないはず: {errors:?}"
+    );
+    assert!(
+        errors[0].contains(":example") && errors[0].contains("quote"),
+        ":example と quote に言及する metadata 固有のメッセージのはず: {errors:?}"
+    );
 }
 
 #[test]
@@ -173,12 +186,24 @@ fn contract_scope_undefined_identifier_in_doc_backticks_still_warns() {
 }
 
 /// `I-43`: quote の内側でも `~` で戻した式は本物の参照なので検査を続ける。
+///
+/// `I-62` 以降は quote 自体の Error も並んで出る。件数ではなく**両方を名指しして**、
+/// 識別子スコープ検査が quote 検出に飲まれていないことを確かめる。
 #[test]
 fn contract_scope_unquoted_reference_inside_quote_still_errors() {
     let source = r#"
 (defn caller [x] :example [(caller '(a ~nonexistent))] x)
 "#;
     let errors = errors_of(source);
-    assert_eq!(errors.len(), 1, "{errors:?}");
-    assert!(errors[0].contains("nonexistent"), "{errors:?}");
+    assert_eq!(errors.len(), 2, "識別子と quote で 2 件のはず: {errors:?}");
+    assert!(
+        errors.iter().any(|error| error.contains("nonexistent")),
+        "`~` で戻した参照の Error が残るはず: {errors:?}"
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains(":example") && error.contains("quote")),
+        "quote の Error も出るはず: {errors:?}"
+    );
 }

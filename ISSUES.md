@@ -193,9 +193,10 @@
 | [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | resolved | -- |
 | [I-60](#i-60) | 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている | 中 | resolved | -- |
 | [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | resolved | 2026-08-23 |
-| [I-62](#i-62) | `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる | 低 | open | -- |
+| [I-62](#i-62) | `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる | 低 | resolved | 2026-08-23 |
 | [I-63](#i-63) | `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる | 低 | resolved | 2026-08-23 |
 | [I-64](#i-64) | `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない | 中 | open | -- |
+| [I-65](#i-65) | selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4410,7 +4411,7 @@
 <a id="i-62"></a>
 ### I-62: `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`I-59` の裁定中)
+- **影響度**: 低 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-23 (`I-59` の裁定中)
 - **内容**: `I-59` で `:invariant` 側は quote を `lsharp check` の段階で弾くようにしたが、
   `:example` 側は素通しのままである。実測 (2026-08-23):
 
@@ -4438,7 +4439,30 @@
   `:invariant` と違って任意の呼び出し列なので検出範囲の設計が要る。
   (b) は quote 以外の lowering 失敗も一緒に救うが、落ちる位置は後ろのままである。
   **どちらか一方で足りるのか両方要るのかは、この issue では決めない。**
-- **関連**: `I-59` (解決済み。`:invariant` 側)、`I-43`。引き取り先は `TODO.md` の `EXAMPLE-QUOTE-01`。
+- **2026-08-23 追記**: 上の実測表は**既定の runner 1 経路だけ**を見ていた。
+  rust runner を分けて測ると (b) は既に成立しており、空 message は selfhost runner 側の
+  一般の欠落だと分かった。裁定は
+  [`:example` に書かれた quote の扱い](docs/adr/decisions-example-quote-handling.md) が正本で、
+  **(a) だけを採る**。分解した残りは `ASSERT-DIAG-MESSAGE-01` (`I-49` 残差分) と `I-65` が引き取る。
+- **解決** (2026-08-23): 案 (a) を実装した。`check_example`
+  (`crates/lsharp-types/src/metadata_check/diagnostics.rs`) が `find_quote_span` で式全体を走査し、
+  quote があれば `:invariant` と同型の metadata 固有 Error を 1 件返す。既存の識別子スコープ検査は
+  据え置いたので `'(a ~nonexistent)` は 2 件になる。
+  pin は `contract_scope_quoted_symbol_in_example_reports_metadata_error` と、
+  書き換えた `contract_scope_unquoted_reference_inside_quote_still_errors`
+  (`metadata_check/diagnostics_tests.rs`)。
+  rust runner の `lsharp test --format json` は `firstErrorCode` 1001 → 1002、
+  `message` が `[E0001] 未定義の変数 (undefined)` から
+  `[LS1002] [error] caller: :example に quote/unquote は書けません …` へ置き換わり、
+  span も生成ソース `63..67` から元ソース `37..41` へ移った。
+  `cargo test -p lsharp-types` は test binary 41 本すべて緑、clippy 警告 0。
+  判断と却下案の正本は
+  [`:example` に書かれた quote の扱い](docs/adr/decisions-example-quote-handling.md)。
+- **残渣**: 既定経路 (selfhost runner) の挙動は変えていない。本 issue の冒頭の実測表が
+  そちらを見ていたので、**表の症状そのものは既定 CLI では残る**。引き取り先は `I-65`
+  (`:invariant` + quote が緑になる方) と `ASSERT-DIAG-MESSAGE-01` (`:example` 側の空 message)。
+- **関連**: `I-59` (解決済み。`:invariant` 側)、`I-43`、`I-65` (selfhost runner の quote 契約不在)、
+  `I-49` (`ASSERT-DIAG-MESSAGE-01`)。
 
 <a id="i-63"></a>
 ### I-63: `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる
@@ -4506,3 +4530,37 @@
   (`I-11` の実測)。`I-63` の slice に載せると計測も判断も混ざる。
 - **関連**: `I-63` (この test の期待値を書き換える側)、`I-60` (同型の放置)、
   `I-11` (workspace 恒常 FAIL の baseline)。引き取り先は `TODO.md` の `IGNORED-STALE-PIN-01`。
+
+<a id="i-65"></a>
+### I-65: selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-62` の裁定中)
+- **内容**: `lsharp test` は既定で selfhost runner へ委譲される
+  (`provenance.runner = "selfhost"`)。この runner は contract metadata の quote 検査を持たず、
+  `I-59` / `I-62` が rust 側へ入れた診断が既定経路からは**一切見えない**。
+  実測 (2026-08-23、`./target/debug/lsharp`、fixture は 1 ファイル 1 defn):
+
+  | fixture | runner | 結果 |
+  |---|---|---|
+  | `(defn caller [x] :invariant (= 'sym 'sym) x)` | selfhost (既定) | **`status pass` / `executed 5, failed 0` / exit 0** |
+  | 同上 | rust (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1`) | `[LS1002] [error] caller: :invariant に quote/unquote は書けません (…) (33..37)` / exit 1 |
+  | `(defn caller [x] :example [(caller 'sym)] x)` | selfhost (既定) | `status fail` / `executed 0, failed 1` / **`message` 空** / `count 0` |
+  | 同上 | rust | `[LS1001] テストプログラムの型チェックに失敗: [E0001] 未定義の変数 (undefined): quote/unquote はマクロ展開後に使用できません (63..67)` |
+
+- **なぜ message 欠落より重いか**: `:example` 側は「落ちるが理由が空」なので、
+  利用者は少なくとも失敗に気付ける。これは `ASSERT-DIAG-MESSAGE-01` (`I-49` 残差分) の
+  担当範囲である。**`:invariant` 側は緑を返す。** 実行できないはずの contract が
+  「5 件実行して 0 件失敗」と報告されるので、利用者は穴の存在に気付けない。
+  原因は `selfhost/src/Types/TypeInfer.ls:199` の「quote/unquote 系は現状すべて inner expr へ
+  委譲する」という扱いで、`'sym` が中身の型として通ってしまうことにある。
+- **`lsharp check` も同様**: `check` は selfhost shadow command (`main.rs:809`) なので、
+  rust の `check_metadata` は既定経路では走らない。両 fixture とも
+  `diagnostics.count = 0` / exit 0 を返す (`migration` 配列に `LS2002` / `LS2003` は載る)。
+  [`:invariant` ADR](docs/adr/decisions-invariant-quote-handling.md) の
+  「`lsharp test` まで待たずに `lsharp check` の段階で分かる」は
+  **rust 側の層についての記述**であり、既定 CLI には当てはまらない。
+- **本 issue で決めないこと**: selfhost 側に metadata contract 検査をどう載せるか
+  (TypeInfer で弾く / TestRunner の preflight で弾く / rust の診断を委譲経路で運ぶ)。
+  parity の取り方は設計判断なので ADR が要る。
+- **関連**: `I-59` / `I-62` (rust 側でこの契約を実装した側)、`I-49` (`ASSERT-DIAG-MESSAGE-01`
+  が `:example` 側の空 message を引き取る)。引き取り先は `TODO.md` の `SELFHOST-QUOTE-PARITY-01`。

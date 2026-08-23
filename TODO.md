@@ -2835,18 +2835,20 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   「修正する / expected-failure として理由付きで記録する」のどちらかへ振り分ける。
   実測所要と取得条件を `docs/development/operations/` へ残すこと。
   **含めない範囲**: 個々の赤の修正 (振り分けの結果として別項目に切る)、
-  `#[ignore]` 検査自体の壊れ (`ops03b` / `ops03c` の mod 分割問題は別項目)。
+  `#[ignore]` 検査自体の壊れ (`ops03b` / `ops03c` の mod 分割問題は
+  `TESTGATE-01` / `TESTGATE-03` で解決済み。本項目は「検査は生きているが
+  `#[ignore]` の中身が観測されない」側だけを見る)。
 
-- [ ] `EXAMPLE-QUOTE-01` `:example` に quote を書いたときの扱いを決める — Issue `I-62`。
-  `I-59` で `:invariant` 側は `lsharp check` の段階で弾くようにしたが、`:example` は
-  診断 0 件で通り、`lsharp test` が `failed 1` とだけ言って **message も診断も空**で落ちる
-  (2026-08-23 実測)。締め方が 2 つある — (a) `check_metadata` に `:example` 用の quote 検出を足す /
-  (b) `lsharp test` の失敗 message に lowering の理由を伝搬させる。
-  受入条件: **まず ADR で (a) / (b) / 両方 のどれを採るかを決めてから実装する**。
-  `I-59` と違い `:example` の式は任意の呼び出し列なので、検出範囲の設計判断が先に要る。
-  ADR を書かずに (a) だけ実装して閉じない。
-  **含めない範囲**: quote/unquote のマクロ展開そのもの、`:invariant` 側 (`I-59` で解決済み)、
-  lowering 失敗一般の message 整備 (quote 以外へ広げない)。
+- [ ] `SELFHOST-QUOTE-PARITY-01` selfhost runner に contract metadata の quote 契約を載せる — Issue `I-65`。
+  既定の `lsharp test` は selfhost runner へ委譲され、`:invariant (= 'sym 'sym)` を
+  **`executed 5, failed 0` の緑**として報告する (2026-08-23 実測)。`I-59` / `I-62` が rust 側へ
+  入れた診断は既定経路から一切見えない。原因は `selfhost/src/Types/TypeInfer.ls:199` が
+  quote/unquote を inner expr へ委譲していること。
+  受入条件: **どこで弾くかを ADR で決めてから実装する** (TypeInfer で弾く / TestRunner の
+  preflight で弾く / rust の診断を委譲経路で運ぶ)。決めたうえで、上記 2 fixture が
+  既定経路で非緑になり、`:example` 側は非空の `diagnostics.message` を返すこと。
+  **含めない範囲**: selfhost に quote の実行時表現を入れること、
+  `:example` 側の空 message 一般 (`ASSERT-DIAG-MESSAGE-01`)、rust 側の診断文言の変更。
 
 - [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
   `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —

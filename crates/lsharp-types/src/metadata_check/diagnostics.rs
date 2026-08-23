@@ -2,7 +2,8 @@ use lsharp_syntax::ast::{Expr, Metadata, Param};
 use lsharp_syntax::span::Span;
 
 use super::references::{
-    collect_scoped_var_references, collect_var_references, extract_doc_identifiers, is_builtin,
+    collect_scoped_var_references, collect_var_references, extract_doc_identifiers,
+    find_quote_span, is_builtin,
 };
 use super::{MetadataDiagnostic, Severity};
 
@@ -131,6 +132,7 @@ fn check_invariant(
 
 /// :example 式の構造検証
 ///
+/// - 例示式に quote/unquote が含まれていないことを確認
 /// - 例示式内で参照されている変数が、関数の引数または既知の関数名であることを確認
 fn check_example(
     diagnostics: &mut Vec<MetadataDiagnostic>,
@@ -140,6 +142,21 @@ fn check_example(
     span: Span,
     all_names: &[String],
 ) {
+    // `I-62`: `:example` は `test_runner.rs:78` で生成ソースへ差し込まれて実行されるので、
+    // マクロ展開後に残らない quote が書かれていたらここで弾く。lowering まで通すと
+    // 「未定義の変数」という原因と噛み合わない見出しになり、span も生成ソースを指す。
+    // 検出は式全体。lowering (`ir/lower/expr/quote_expr.rs:9`) が位置によらず拒否するため、
+    // 部分的に許す検出範囲は選べない。判断は
+    // `docs/adr/decisions-example-quote-handling.md`。
+    if let Some(quote_span) = find_quote_span(example) {
+        diagnostics.push(MetadataDiagnostic {
+            severity: Severity::Error,
+            message: ":example に quote/unquote は書けません (実行される例であり、quote はマクロ展開後に残らないため)".to_string(),
+            span: quote_span,
+            function_name: fn_name.to_string(),
+        });
+    }
+
     let var_refs = collect_var_references(example);
 
     for (ref_name, _ref_span) in &var_refs {
