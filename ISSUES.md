@@ -4773,17 +4773,36 @@
   これは **`infer` が Fun を返している**ことの直接証拠であり、本 issue 記載の
   「`infer` が Fun を返すようになったのが変化かどうか未確定」はこれで埋まった。
     - **L1**: `infer` (`TypeInfer.ls:1712`) は `infer-program-analysis-type` =
-      最初の decl の型を返す。`(defn main [] 42)` なら `Unit -> Int`。契約は body の型
-      (`Int`) を要求している。由来は `fd786316` (2026-07-14) の program-level analysis 化。
+      最初の decl の型を返す。`(defn main [] 42)` なら `Unit -> Int`。由来は
+      `fd786316` (2026-07-14) の program-level analysis 化。
+      **ただし L1 は「バグ」ではなく契約の衝突である (2026-08-23 訂正)。** 同 sweep で
+      `..._check_recursive_fib` / `..._check_mutual_recursion_even_odd` は **`"Fn"` を pin して
+      pass している**。この 2 本を足したのは `fd786316` 自身で、つまり fd786316 は
+      program-level 型を返すことを**意図して**新 pin へ書いた。一方で `"Int"` を pin する
+      `..._check_file` は `80db0240` (2026-04-02、fd786316 より前) 由来、
+      `..._check_json_file` は `b02c30b0` (2026-07-18、fd786316 より後) 由来で、
+      後者は既に古くなっていた期待値をそのまま複製している。
+      **どちらの側も `#[ignore]` 下にあったため、両者が矛盾していることに誰も気付けなかった。**
+      裁定の根拠は pin ではなく
+      [`decisions-v0.3-native-cli-check-file-e2e.md`](docs/adr/decisions-v0.3-native-cli-check-file-e2e.md)
+      にある。同 ADR の Evidence 節は `..._check_file` が `Int` / `diagnostics:0` を返すと書き、
+      Decision 節は「output contract が green になったら normal test にする」と書いている。
+      **記録された契約は `Int` であり、fd786316 はそれを改訂せずに反対の pin を足した。**
+      これは doc-sync 違反 (決定を正本へ書かずに test へ書いた) であって、
+      本 issue で test 期待値を書き換えて閉じてよい種類のものではない。
     - **L2**: `repl-session-eval` が tag を見ずに `ty-name` を呼ぶ (本 issue の当初の指摘)。
   **L1 を直せば L2 の症状も消えるが、L2 は独立の欠陥である。** 型が本当に Fun である
   program を評価した瞬間に同じアドレス印字が再発する。
 - **直し方はリポジトリ内にある**: 同じ `Cli.ls:715` の `render-type-text` は
   `(ty-tag ty)` で分岐し、Con のときだけ `builtin-type-name-text` を通す。
   `repl-session-eval` をこの形へ寄せればよい。新規設計は要らない。
-- **未確定**: `infer` が Fun を返すようになったのが変更なのか元からなのかは特定していない。
-  仮に `infer` 側の契約変更なら、直す先が `repl-session-eval` ではなく `infer` になりうる。
-  引き取り先で判定する。
+- **L1 の裁定は ADR を先に書く (2026-08-23)。** `Int` へ寄せる (= fd786316 の 2 pin を動かす)
+  のか、`Fn` へ寄せる (= ADR と 2 pin を改訂する) のかは設計判断であり、
+  どちらを採っても**既存 test の期待値が動く**。TDD 規約は「テストの期待値を実装に合わせて
+  変更すること」を禁じているので、先に ADR で契約を確定させ、その ADR を根拠に pin を動かす。
+  引き取り先は `TODO.md` の `REPL-TYPE-TAG-01`。
+- **L2 は裁定を待たない。** `type:type--9223372036853734056` はどちらの契約の下でも
+  ゴミであり、`repl-session-eval` を `ty-tag` 分岐へ寄せる修正は L1 の結論と独立に正しい。
 - **なぜ今まで観測されなかったか**: 該当 6 test は全て `#[ignore]` 付きで、
   `I-64` が指摘した「検査は生きているが中身が観測されない」領域にあった。
   `workspace-expected-failures.txt` にも `--ignored` 台帳にも載っていない。

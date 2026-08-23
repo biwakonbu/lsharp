@@ -2847,13 +2847,22 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   CLI 経路での実測値は `-9223372036853734056` だが**アドレスなので pin できない**。
   **層が 2 つあることが sweep で確定した (2026-08-23)。両方直す。**
     - **L1** `infer` (`Types/TypeInfer.ls:1712`) が最初の decl の型 (`Unit -> Int`) を返す。
-      契約は body の型 (`Int`)。`..._check_file` / `..._check_json_file` が `"Int"` の pin へ
-      `"Fn"` を返したのが直接証拠 (`render-type-text` は tag 3 を `"Fn"` と印字する正しい実装)。
-      由来は `fd786316` (2026-07-14) の program-level analysis 化。
+      `..._check_file` / `..._check_json_file` が `"Int"` の pin へ `"Fn"` を返した
+      (`render-type-text` は tag 3 を `"Fn"` と印字する正しい実装)。由来は
+      `fd786316` (2026-07-14) の program-level analysis 化。
+      **L1 は契約の衝突であって単純なバグではない (2026-08-23 訂正)。** 同 sweep で
+      `..._check_recursive_fib` / `..._check_mutual_recursion_even_odd` は `"Fn"` を pin して
+      **pass しており、この 2 本を足したのは `fd786316` 自身**。両側とも `#[ignore]` 下に
+      あったため矛盾が観測されなかった。裁定の根拠は pin ではなく
+      `docs/adr/decisions-v0.3-native-cli-check-file-e2e.md` (Evidence 節が `Int` と書く)。
+      → **先に ADR を書いて契約を確定させること。** `Int` へ寄せるなら fd786316 の 2 pin が
+      動き、`Fn` へ寄せるなら既存 ADR と `..._check_file` 側が動く。どちらでも既存 test の
+      期待値が動くので、ADR 無しに pin を書き換えてはならない。
     - **L2** `repl-session-eval` (`Cli.ls:1463`) が tag を見ずに `ty-name` を呼ぶ。
       **L1 を直せば L2 の症状も消えるが独立の欠陥である** — 型が本当に Fun である program で再発する。
-  受入条件: 先に RED を立てる。(a) `lsharp check` が `(defn main [] 42)` に `Int` を返すこと、
-  (b) `lsharp repl` が `type:Int` を印字すること。GREEN 後、以下が緑になること —
+  受入条件: **(0) L1 の契約裁定 ADR を先に書く** (採用理由と却下理由、動かす pin の一覧)。
+  そのうえで RED を立てる。(a) `lsharp check` が `(defn main [] 42)` に ADR で確定した型名を
+  返すこと、(b) `lsharp repl` が `type:Int` を印字すること (L2 は裁定に依らず `Int`)。GREEN 後、以下が緑になること —
   `selfhost_cli_actual_main_args` の 3 件 (`..._check_file` / `..._check_json_file` /
   `..._repl_summary`)、`selfhost_gc_stateful_soak` の 5 件、
   `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload`。

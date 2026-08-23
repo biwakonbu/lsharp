@@ -304,6 +304,6 @@ lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_stateful_single_ses
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry  # 保留: LSP stdio frame 系。selfhost_lsp_docs_ops のログ待ち
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry  # 保留: 同上
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak  # 保留: 同上
-lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_file  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1 ("Fn" vs "Int")
-lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_json_file  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1 (--json 経路)
+lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_file  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1。契約が衝突中 (ADR は Int、fd786316 の 2 pin は Fn)。ADR 裁定待ちで pin は動かさない
+lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_json_file  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1 (--json 経路)。同上、ADR 裁定待ち
 lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_repl_summary  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L2 (アドレス印字)
