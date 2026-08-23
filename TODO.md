@@ -2925,12 +2925,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     `progress.txt` へ `DONE <mod> rc=<n> elapsed=<s> at=<time>` を追記する。
     `selfhost_native_stage_chain` (615 件) だけは `chain_stage_chain.py` (PID 98738) が
     `LANE-COMPLETE` の後に引き取る。ログは `mod-<module>.log`。
-  - 進捗: 宣言 **1,431 件 / 18 module** のうち **12 module 完了**。
-    赤は現時点で **24 件** (`selfhost_gc_stateful_soak` 8 /
+  - 進捗: 宣言 **1,431 件 / 18 module** のうち **14 module 完了** (2026-08-23 16:42)。
+    赤は現時点で **25 件** (`selfhost_gc_stateful_soak` 8 /
     `selfhost_bootstrap_acceptance` 7 / `runtime_allocator_closures` 4 /
-    `selfhost_cli_actual_main_args` 3 / `selfhost_native_stage23_gap` 2)。
-  - 残り 6 module: `selfhost_doctools_cli_diagnostics` 38 / `selfhost_lsp_docs_ops` 54 /
-    `selfhost_native_differential` 104 / `selfhost_bootstrap_four_layer` 146 /
+    `selfhost_cli_actual_main_args` 3 / `selfhost_native_stage23_gap` 2 /
+    `selfhost_lsp_docs_ops` 1)。`selfhost_doctools_cli_diagnostics` 38 件は全緑。
+  - 残り 4 module: `selfhost_native_differential` 104 / `selfhost_bootstrap_four_layer` 146 /
     `selfhost_cli_core` 381 / `selfhost_native_stage_chain` 615。
   - **`cargo` を並走させないこと。** 所要が歪み、`docs/development/operations/` に載る実測値が
     使えなくなる。cargo 依存の項目 (`CHECK-TYPE-PIN-01` / `REPL-TYPE-TAG-01` /
@@ -2940,10 +2940,19 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     **fix 待ちの赤を台帳から消さないこと** — `compare_ignored_lane.py` は
     「台帳にあってログに無い」を未出現、「ログで FAIL なのに台帳に無い」を新規 FAIL (exit 1)
     として扱うため、消すと次回 sweep で新規 FAIL に化ける。
-  - 保留が 1 件ある: `selfhost_lsp_docs_ops.rs:577` の hover 3 件は
-    `"type-info:10:5"` を期待しており、`type-info:L:C` が現行 contents 形式なら陳腐化 pin。
-    ただし range が `{-1,-1}` に潰れる点は形式変更では説明できない。
-    **同 module (54 件) のログが出るまで判定を保留する。**
+  - **保留していた hover の判定は付いた (2026-08-23 16:42、`selfhost_lsp_docs_ops` 完走)。**
+    同 module の hover 4 件 (`..._hover_resolves_open_document` = `.rs:577` の
+    `"type-info:10:5"` pin を含む) は**全て緑**。さらに `selfhost_gc_stateful_soak` の
+    実測出力自身が `"contents":"type-info:2:22"` を返している。
+    → **`type-info:L:C` が現行の contents 形式であることは確定。陳腐化 pin 仮説は否定された。**
+    残るのは range が `{-1,-1}` に潰れている点で、これは**実測出力側**に現れており
+    形式変更では説明できない。**本物の欠陥候補として別項目へ切る**のが正しい (未着手)。
+    なお `selfhost_gc_stateful_soak` の赤 8 件は hover の形式 pin ではなく
+    「長寿命 session でも各 frame を決定的に返すべき」という決定性 / telemetry の
+    assertion なので、**hover の判定とは別に振り分ける**こと。
+  - **未振り分けの新しい赤が 1 件** (2026-08-23 16:42):
+    `selfhost_lsp_docs_ops::test_e2e_selfhost_formatter_format_program_module_decl`。
+    同 module 54 件中の唯一の赤。台帳未登録。
   - 完走後にやること: 全 18 ログへ `compare_ignored_lane.py` を流し
     (宣言数 1,431 と完走判定を確認)、振り分けを閉じ、
     `ADR-EVIDENCE-IGNORED-01` の未 sweep 32 件を確定させ、
