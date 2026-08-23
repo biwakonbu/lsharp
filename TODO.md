@@ -2853,9 +2853,21 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     - **L2** `repl-session-eval` (`Cli.ls:1463`) が tag を見ずに `ty-name` を呼ぶ。本項目の本体。
   受入条件: 先に RED を立てる。`lsharp repl` が `(defn main [] 42)` に対し **`type:Fn`** を
   印字すること (`type:Int` ではない — `I-45` の契約で `Unit -> Int` になり、
-  `render-type-text` は tag 3 を `"Fn"` と印字するのが正しい)。GREEN 後、`..._repl_summary` と
-  `selfhost_gc_stateful_soak` の 5 件、
-  `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload` が緑になること。
+  `render-type-text` は tag 3 を `"Fn"` と印字するのが正しい)。
+    - **pin も同時に動かす必要がある (2026-08-23 追記)。** `..._repl_summary`
+      (`selfhost_cli_actual_main_args.rs:1786`) と `selfhost_cli_core.rs:4792` は
+      いずれも `type:Int` を pin している。実装を直すとこの 2 本は
+      `type:Fn` を印字するので、**pin を据え置いたままでは GREEN に到達できない**。
+      受入条件を「実装を直す」と「`..._repl_summary` が緑」の両方に置くと矛盾するため、
+      **pin `type:Int` → `type:Fn` への更新を本項目の作業に含める**。
+      これは実装に合わせて期待値を緩めるのではなく、`I-45` の契約
+      (`decisions-selfhost-zero-arity-defn-type.md`) に pin を追随させる訂正である
+      (`CHECK-TYPE-PIN-01` の 2 本と同じ根拠、同じ fixture `(defn main [] 42)` = 17 byte)。
+      `selfhost_cli_core` は未 sweep なので、着手前に同ファイルの `type:` pin を grep し直すこと。
+  GREEN 後、`..._repl_summary` と `selfhost_gc_stateful_soak` の 5 件、
+  `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload` が緑になること
+  (`selfhost_gc_stateful_soak` の 5 件についても、着手時に `type:` pin の有無を確認し、
+  同じ fixture を使っているなら同様に追随させる)。
   直し方は `Cli.ls:715` の `render-type-text` と同形 (`(ty-tag ty)` で分岐し Con のときだけ
   `builtin-type-name-text` を通す)。新規設計は要らない。
   **含めない範囲**: `selfhost_gc_stateful_soak` の LSP stdio frame 3 件 (別原因)、
@@ -2878,10 +2890,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 
 - [ ] `CHECK-TYPE-PIN-01` `I-45` が更新し漏らした `check` の型名 pin を追随させる — Issue `I-69` / `I-64`。
   `914bd9f1` (2026-08-22、`decisions-selfhost-zero-arity-defn-type.md`) が 0 引数 `defn` を
-  `Unit -> body` へ変えた際、生きている `..._check_format_json`
-  (`selfhost_cli_actual_main_args.rs:401`) の pin は `"Fn"` へ更新され `I-45` 由来のコメントまで
-  残っているのに、`#[ignore]` 下の 2 本は赤にならないので取り残された。
+  `Unit -> body` へ変えた際、同一ファイルの型名 pin を全部取り残した。翌日の陳腐化 pin 修復パス
+  `13a505b2` (2026-08-23、`I-60`) が `..._check_format_json` の pin だけを `"Fn"` へ直したが、
+  **同ファイルの兄弟 3 本は取り残されたまま**である (`..._check_file` / `..._check_json_file` /
+  `..._repl_summary`。最後の 1 本は `REPL-TYPE-TAG-01` が引き取る)。直された 1 本も
+  `#[ignore]` 下にあり、赤で気付いたのではない。
   **`I-64` が想定していた壊れ方そのもので、混入から 1 日で観測された。**
+  赤を狙った修復パスですら取りこぼしている点が本件の重さである。
   受入条件: (a) `..._check_file` と `..._check_json_file` の型名 pin を
   `decisions-selfhost-zero-arity-defn-type.md` を根拠に `"Fn"` へ更新し、両者が緑になること。
   (b) `decisions-v0.3-native-cli-check-file-e2e.md` の Evidence 節 (`Int` / `diagnostics:0` と
@@ -2902,6 +2917,37 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `#[ignore]` 検査自体の壊れ (`ops03b` / `ops03c` の mod 分割問題は
   `TESTGATE-01` / `TESTGATE-03` で解決済み。本項目は「検査は生きているが
   `#[ignore]` の中身が観測されない」側だけを見る)。
+
+  **中断時点の状態 (2026-08-23 16:27、ユーザー指示により作業を一旦停止)。**
+  sweep 自体は切り離しプロセスで継続中なので、**再開時にまず `progress.txt` を見ること**。
+
+  - 実行体: `/Users/biwakonbu/github/tmp/i64/run_lane.py` (PID 97710) が module 単位で回し、
+    `progress.txt` へ `DONE <mod> rc=<n> elapsed=<s> at=<time>` を追記する。
+    `selfhost_native_stage_chain` (615 件) だけは `chain_stage_chain.py` (PID 98738) が
+    `LANE-COMPLETE` の後に引き取る。ログは `mod-<module>.log`。
+  - 進捗: 宣言 **1,431 件 / 18 module** のうち **12 module 完了**。
+    赤は現時点で **24 件** (`selfhost_gc_stateful_soak` 8 /
+    `selfhost_bootstrap_acceptance` 7 / `runtime_allocator_closures` 4 /
+    `selfhost_cli_actual_main_args` 3 / `selfhost_native_stage23_gap` 2)。
+  - 残り 6 module: `selfhost_doctools_cli_diagnostics` 38 / `selfhost_lsp_docs_ops` 54 /
+    `selfhost_native_differential` 104 / `selfhost_bootstrap_four_layer` 146 /
+    `selfhost_cli_core` 381 / `selfhost_native_stage_chain` 615。
+  - **`cargo` を並走させないこと。** 所要が歪み、`docs/development/operations/` に載る実測値が
+    使えなくなる。cargo 依存の項目 (`CHECK-TYPE-PIN-01` / `REPL-TYPE-TAG-01` /
+    `NATIVE-I32SUB-01` / `EMBEDDED-CLI-OPTION-SPACE-01` / `SAMPLE-COVERAGE-CONTRACT-01`) は
+    sweep 完走まで着手できない。
+  - 振り分け済みは台帳 `ignored-lane-expected-failures.txt` に **130 行**。
+    **fix 待ちの赤を台帳から消さないこと** — `compare_ignored_lane.py` は
+    「台帳にあってログに無い」を未出現、「ログで FAIL なのに台帳に無い」を新規 FAIL (exit 1)
+    として扱うため、消すと次回 sweep で新規 FAIL に化ける。
+  - 保留が 1 件ある: `selfhost_lsp_docs_ops.rs:577` の hover 3 件は
+    `"type-info:10:5"` を期待しており、`type-info:L:C` が現行 contents 形式なら陳腐化 pin。
+    ただし range が `{-1,-1}` に潰れる点は形式変更では説明できない。
+    **同 module (54 件) のログが出るまで判定を保留する。**
+  - 完走後にやること: 全 18 ログへ `compare_ignored_lane.py` を流し
+    (宣言数 1,431 と完走判定を確認)、振り分けを閉じ、
+    `ADR-EVIDENCE-IGNORED-01` の未 sweep 32 件を確定させ、
+    `ignored-lane-sweep-2026-08-23.md` の doc-GREEN を仕上げてから本項目を削除する。
 
 - [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
   `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —

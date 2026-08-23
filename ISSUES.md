@@ -4783,10 +4783,26 @@
       意図して選んだ契約**であり、同 ADR は「Rust 側を selfhost に合わせる」案を
       「正しい方を壊す向き」として明示的に却下している。したがって `check` が `"Fn"` を
       印字するのは正しい。
-      赤 2 件の正体は **`914bd9f1` (2026-08-22) が更新し漏らした陳腐化 pin** である。
-      同 commit は生きている `..._check_format_json` (`selfhost_cli_actual_main_args.rs:401`)
-      の pin を `"Fn"` へ更新し、`I-45` 由来である旨のコメントまで残しているのに、
-      `#[ignore]` 下の `..._check_file` / `..._check_json_file` は赤にならないので見えなかった。
+      赤 2 件の正体は **`914bd9f1` (2026-08-22) が契約を変えた際に更新し漏らした陳腐化 pin** である。
+
+      **機構の訂正 (2026-08-23、3 度目)。** 当初「同 commit が生きている pin だけ直した」と
+      書いたが誤り。`..._check_format_json` の pin を `"Fn"` へ直したのは `914bd9f1` ではなく
+      **`13a505b2` (2026-08-23、`I-60` の陳腐化 pin 修復パス)** であり、その test 自身も
+      `#[ignore]` 下にある (sweep ログに `... ok` として出る)。つまり
+      `914bd9f1` は同一ファイルの pin を**全部**取り残し、翌日の専用修復パス `13a505b2` が
+      **4 兄弟のうち 1 本しか直さなかった**。所見はこの訂正で**弱まるのではなく強まる**:
+      赤を狙って走らせた修復パスですら、既定 lane で回らない兄弟を取りこぼしている。
+
+      取り残された兄弟は確認できただけで 3 本ある。
+
+      | pin 位置 | 期待値 | 引き取り先 |
+      |---|---|---|
+      | `selfhost_cli_actual_main_args.rs` `..._check_file` | `Int` → `Fn` | `CHECK-TYPE-PIN-01` |
+      | `selfhost_cli_actual_main_args.rs` `..._check_json_file` | `Int` → `Fn` | `CHECK-TYPE-PIN-01` |
+      | `selfhost_cli_actual_main_args.rs:1786` `..._repl_summary` | `type:Int` → `type:Fn` | `REPL-TYPE-TAG-01` |
+      | `selfhost_cli_core.rs:4792` (repl 系、未 sweep) | `type:Int` → `type:Fn` | `REPL-TYPE-TAG-01` |
+
+      いずれも `input-bytes:17` = `(defn main [] 42)` ちょうど 17 byte で、同一 fixture である。
       **`I-64` (`IGNORED-STALE-PIN-01`) が想定していた壊れ方そのもので、混入から 1 日で観測された。**
       陳腐化しているのはもう 1 件ある —
       [`decisions-v0.3-native-cli-check-file-e2e.md`](docs/adr/decisions-v0.3-native-cli-check-file-e2e.md)
