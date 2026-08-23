@@ -2896,12 +2896,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   縮約 array (`[uri, line, col]`) が返る。分岐条件は `server-state-uri-text-for-uri` が
   非空かどうかだけで、method でも capability でもない。**座標系は `I-57` で両経路とも
   0 始まりに揃えたので、残っているのは形式の分岐だけ**である。
-  先に **ADR を書く** — object 経路は既に実装されているので、決定は「新形式の追加」ではなく
-  「縮約 array fallback の廃止」になる。廃止するなら
+  ADR は 2026-08-23 に書いた
+  ([`definition` / `references` の wire 形式](docs/adr/decisions-lsp-location-wire-shape.md))。
+  **縮約 array を廃止し、uri 文字列を 3 段 fallback で決める**方向で決着している。残るのは実装で、
   `tests/snapshots/lsp/stdio/definition-*.json` / `references-*.json` /
   `filesystem-document-sequence.json` と `selfhost_cli_core.rs` のインライン期待値が
   すべて object 形式へ移る (`I-57` の実測で snapshot 8 file / インライン 13 箇所)。
-  受入条件: ADR に採用案と却下理由が書かれ、実装するなら上記 lane が緑を維持すること。
+  受入条件: 上記 lane が緑を維持し、期待値の書き換えを機械的な置換で済ませないこと —
+  int uri を送る test がどの fallback 段に落ちるのが正しいかを test ごとに判断する。
   **含めない範囲**: 座標変換 (`I-57` で完了)。`hover` / `rename` / `formatting` の形式
   (すでに LSP object なので触らない)。
 

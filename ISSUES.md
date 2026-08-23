@@ -4375,6 +4375,16 @@
 - **決める前に見るもの**: `definition` / `references` の consumer は現状 test だけだが、
   `lsp-offset-from-line-col` 等の内部 helper が縮約 array の形を前提にしていないかを先に確認する。
   object 経路は既に実装されているので、決定は「新形式の追加」ではなく「fallback の廃止」になる。
+- **裁定** (2026-08-23、doc-RED): 縮約 array を廃止し、常に LSP `Location` object を返す。
+  uri 文字列は「client が送った uri text → `file://` + 絶対 path → `lsharp://document/<hash>`」の
+  3 段 fallback で決める。決め手は 3 つ。(1) 縮約 array は LSP 3.17 に無く、読める client が無い。
+  (2) `lsp-virtual-uri-for-path` (`LspServerNav.ls:509-511`) 経由で**実 client から到達する** —
+  開いていないファイルへの定義ジャンプで踏み、しかもその時点で path は既知である。
+  (3) `lsp-render-locations-frame-with-state` の guard は**先頭要素しか見ない**ため、
+  uri text を持たない同一 location が先頭なら縮約 array、2 番目以降なら
+  `lsharp://document/<hash>` の object になる — **描画が位置に依存する**。
+  判断と却下理由は
+  [`definition` / `references` の wire 形式](docs/adr/decisions-lsp-location-wire-shape.md) が正本。
 - **関連**: `I-57` (座標の漏れ。解決済み)、`I-52` / `I-55` (座標規約の同系統)。
   引き取り先は `TODO.md` の `LSP-LOCATION-SHAPE-01`。
 
