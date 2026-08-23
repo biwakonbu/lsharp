@@ -182,6 +182,44 @@ fn collect_unquoted_references(expr: &Expr, visit: &mut impl FnMut(&Expr)) {
     }
 }
 
+/// `I-59`: 式の中に最初に現れる quote / unquote / unquote-splice の span を返す。
+///
+/// `:invariant` は検査されるだけでなく `lsharp test` で**実行される** contract なので、
+/// マクロ展開後に残らない quote が書かれていたら型推論へ渡す前に弾く。
+/// 判断は `docs/adr/decisions-invariant-quote-handling.md`。
+pub(super) fn find_quote_span(expr: &Expr) -> Option<Span> {
+    match expr {
+        Expr::Quote(span, _) | Expr::Unquote(span, _) | Expr::UnquoteSplice(span, _) => Some(*span),
+        Expr::Var(_, _) | Expr::Lit(_, _) => None,
+        Expr::App(_, func, args) => {
+            find_quote_span(func).or_else(|| args.iter().find_map(find_quote_span))
+        }
+        Expr::If(_, cond, then_branch, else_branch) => find_quote_span(cond)
+            .or_else(|| find_quote_span(then_branch))
+            .or_else(|| find_quote_span(else_branch)),
+        Expr::Do(_, exprs) => exprs.iter().find_map(find_quote_span),
+        Expr::Ann(_, inner, _) | Expr::FieldAccess(_, inner, _) => find_quote_span(inner),
+        Expr::Let(_, bindings, body) => bindings
+            .iter()
+            .find_map(|(_, value)| find_quote_span(value))
+            .or_else(|| find_quote_span(body)),
+        Expr::Lambda(_, _, body) => find_quote_span(body),
+        Expr::Match(_, scrutinee, arms) => find_quote_span(scrutinee)
+            .or_else(|| arms.iter().find_map(|arm| find_quote_span(&arm.body))),
+        Expr::RecordLit(_, _, fields) => {
+            fields.iter().find_map(|(_, value)| find_quote_span(value))
+        }
+        Expr::RecordUpdate(_, base, fields) => find_quote_span(base)
+            .or_else(|| fields.iter().find_map(|(_, value)| find_quote_span(value))),
+        Expr::Computation(_, _, steps) => steps.iter().find_map(|step| match step {
+            ComputationStep::LetBang(_, _, inner)
+            | ComputationStep::DoBang(_, inner)
+            | ComputationStep::Return(_, inner)
+            | ComputationStep::Expr(inner) => find_quote_span(inner),
+        }),
+    }
+}
+
 /// lexical scope を考慮して、式の自由変数参照だけを収集する。
 pub(super) fn collect_scoped_var_references(expr: &Expr) -> Vec<(String, Span)> {
     let mut refs = Vec::new();

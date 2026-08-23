@@ -101,19 +101,26 @@ fn contract_scope_trait_method_in_example_is_accepted() {
     assert_eq!(errors_of(source), Vec::<String>::new());
 }
 
-/// `I-43`: 識別子スコープ検査からは quote されたシンボルが消える。
+/// `I-43` + `I-59`: 識別子スコープ検査からは quote されたシンボルが消え、
+/// 代わりに metadata 固有の Error がちょうど 1 件出る。
 ///
-/// `:invariant` にはこの後に型推論が走り、quote はマクロ展開後にしか使えないので
-/// 別系統のエラーが 1 件残る。それは `I-59` として別に立てた。
+/// `:invariant` は `test_runner.rs:85` で生成ソースへ差し込まれて**実行される**ので、
+/// quote を通しても `lsharp test` の lowering で落ちる。早く・正確に落とす。
+/// 判断は `docs/adr/decisions-invariant-quote-handling.md`。
 #[test]
-fn contract_scope_quoted_symbol_in_invariant_is_accepted() {
+fn contract_scope_quoted_symbol_in_invariant_reports_metadata_error() {
     let source = r#"
 (defn caller [x] :invariant (= 'sym 'sym) x)
 "#;
     let errors = errors_of(source);
+    assert_eq!(errors.len(), 1, "診断はちょうど 1 件のはず: {errors:?}");
     assert!(
-        !errors.iter().any(|e| e.contains("未定義の識別子")),
-        "識別子スコープ由来のエラーは残らないはず: {errors:?}"
+        !errors[0].contains("未定義の識別子") && !errors[0].contains("未定義の変数"),
+        "識別子スコープ / 未定義変数 由来の見出しは残らないはず: {errors:?}"
+    );
+    assert!(
+        errors[0].contains(":invariant") && errors[0].contains("quote"),
+        ":invariant と quote に言及する metadata 固有のメッセージのはず: {errors:?}"
     );
 }
 

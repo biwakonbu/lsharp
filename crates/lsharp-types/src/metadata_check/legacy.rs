@@ -3,7 +3,9 @@ use crate::types::Type;
 use lsharp_syntax::ast::{Decl, Expr, Pattern, Program};
 use lsharp_syntax::span::Span;
 
-use super::references::{collect_scoped_var_references, is_builtin, span_contains};
+use super::references::{
+    collect_scoped_var_references, find_quote_span, is_builtin, span_contains,
+};
 use super::{MetadataDiagnostic, Severity};
 
 struct LegacyInvariantProbe {
@@ -22,6 +24,7 @@ pub(super) fn check_legacy_invariant_types(
 ) -> Vec<MetadataDiagnostic> {
     let mut check_program = program.clone();
     let mut probes = Vec::new();
+    let mut quote_diagnostics = Vec::new();
 
     for decl in &program.decls {
         let actual_decl = match decl {
@@ -40,6 +43,19 @@ pub(super) fn check_legacy_invariant_types(
         let Some(invariant) = metadata.invariant.as_ref() else {
             continue;
         };
+
+        // `I-59`: `:invariant` は生成ソースへ差し込まれて実行されるので、マクロ展開後に
+        // 残らない quote が書かれていたら probe を組み立てずにここで弾く。
+        // 型推論へ渡すと「未定義の変数」という原因と噛み合わない見出しになる。
+        if let Some(quote_span) = find_quote_span(invariant) {
+            quote_diagnostics.push(MetadataDiagnostic {
+                severity: Severity::Error,
+                message: ":invariant に quote/unquote は書けません (実行可能な contract であり、quote はマクロ展開後に残らないため)".to_string(),
+                span: quote_span,
+                function_name: name.clone(),
+            });
+            continue;
+        }
 
         let param_names: Vec<&str> = params.iter().map(|param| param.name.as_str()).collect();
         let has_unknown_reference =
@@ -84,11 +100,11 @@ pub(super) fn check_legacy_invariant_types(
     }
 
     if probes.is_empty() {
-        return Vec::new();
+        return quote_diagnostics;
     }
 
     let mut infer = Infer::new();
-    match infer.infer_program(&check_program) {
+    let inferred = match infer.infer_program(&check_program) {
         Ok(results) => {
             let bool_type = Type::bool();
             probes
@@ -110,22 +126,22 @@ pub(super) fn check_legacy_invariant_types(
                 })
                 .collect()
         }
-        Err(error) => {
-            let Some(error_span) = error.span() else {
-                return Vec::new();
-            };
-            let Some(probe) = probes
+        Err(error) => match error.span().and_then(|error_span| {
+            probes
                 .iter()
                 .find(|probe| span_contains(probe.span, error_span))
-            else {
-                return Vec::new();
-            };
-            vec![MetadataDiagnostic {
+                .map(|probe| (error_span, probe))
+        }) {
+            None => Vec::new(),
+            Some((error_span, probe)) => vec![MetadataDiagnostic {
                 severity: Severity::Error,
                 message: format!(":invariant の型推論に失敗しました: {error}"),
                 span: error_span,
                 function_name: probe.owner.clone(),
-            }]
-        }
-    }
+            }],
+        },
+    };
+
+    quote_diagnostics.extend(inferred);
+    quote_diagnostics
 }

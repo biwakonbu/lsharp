@@ -2826,16 +2826,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
   eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
-- [ ] `CONTRACT-INVARIANT-QUOTE-01` `:invariant` に quote を書いたときの扱いを決める — Issue `I-59`。
-  識別子スコープ検査は `CONTRACT-SCOPE-01` で直ったが、後段の型推論
-  (`check_legacy_invariant_types`) が quote を扱えず
-  `[E0001] quote/unquote はマクロ展開後に使用できません` が 1 件残る。
-  受入条件: **先に判断を ADR へ書く**こと。(a) 型推論を quote 対応させる /
-  (b) `:invariant` を `:example` と同じく型推論の対象外にする、のどちらを採り、
-  もう一方をなぜ却下したかを書く。そのうえで
-  `contract_scope_quoted_symbol_in_invariant_is_accepted` の緩い assert を
-  決めた側の厳密な assert へ差し替える。
-  **含めない範囲**: quote/unquote のマクロ展開そのもの、`:example` 側 (既に 0 件で通る)。
+- [ ] `EXAMPLE-QUOTE-01` `:example` に quote を書いたときの扱いを決める — Issue `I-62`。
+  `I-59` で `:invariant` 側は `lsharp check` の段階で弾くようにしたが、`:example` は
+  診断 0 件で通り、`lsharp test` が `failed 1` とだけ言って **message も診断も空**で落ちる
+  (2026-08-23 実測)。締め方が 2 つある — (a) `check_metadata` に `:example` 用の quote 検出を足す /
+  (b) `lsharp test` の失敗 message に lowering の理由を伝搬させる。
+  受入条件: **まず ADR で (a) / (b) / 両方 のどれを採るかを決めてから実装する**。
+  `I-59` と違い `:example` の式は任意の呼び出し列なので、検出範囲の設計判断が先に要る。
+  ADR を書かずに (a) だけ実装して閉じない。
+  **含めない範囲**: quote/unquote のマクロ展開そのもの、`:invariant` 側 (`I-59` で解決済み)、
+  lowering 失敗一般の message 整備 (quote 以外へ広げない)。
 
 - [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
   `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —

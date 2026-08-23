@@ -190,9 +190,10 @@
 | [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | resolved | -- |
 | [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | resolved | -- |
 | [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | resolved | -- |
-| [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | open | -- |
+| [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | resolved | -- |
 | [I-60](#i-60) | 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている | 中 | resolved | -- |
 | [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | open | -- |
+| [I-62](#i-62) | `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -3655,7 +3656,7 @@
 <a id="i-59"></a>
 ### I-59: `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`CONTRACT-SCOPE-01` の実装中)
+- **影響度**: 低 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-23 (`CONTRACT-SCOPE-01` の実装中)
 - **内容**: `I-43` で `:invariant` の識別子スコープ検査から quote されたシンボルを外したが、
   その後段に走る型推論 (`check_legacy_invariant_types`) が quote を扱えず、
   `(defn caller [x] :invariant (= 'sym 'sym) x)` は
@@ -3670,6 +3671,20 @@
 - **判断が要る点**: 直し方が 2 つあり、どちらも contract の意味論に関わる。
   (a) `:invariant` の型推論を quote 対応させる。(b) `:invariant` は `:example` と同じく
   型推論の対象外とする。**どちらが正しいかは本 issue では決めない。**
+- **裁定** (2026-08-23): (a) も (b) も却下し、metadata 固有の Error を出す (c) を採った。
+  決め手は「`:invariant` は `test_runner.rs:85` で生成ソースへ差し込まれて**実行される**」
+  ことで、どちらの案も診断を消すのではなく `lsharp test` の lowering へ**後ろ倒しする**だけ
+  になる。判断と却下理由は
+  [`:invariant` に書かれた quote の扱い](docs/adr/decisions-invariant-quote-handling.md) が正本。
+- **解決** (2026-08-23): `find_quote_span` (`metadata_check/references.rs`) を足し、
+  `check_legacy_invariant_types` が `has_unknown_reference` skip と同じ位置で quote を検出して
+  probe を組み立てずに metadata 固有の Error を 1 件返すようにした。
+  見出しは「未定義の変数」ではなく
+  「`:invariant` に quote/unquote は書けません (実行可能な contract であり、quote はマクロ展開後に残らないため)」
+  になり、span は生成ソースではなく元の `:invariant` を指す。
+  test は `contract_scope_quoted_symbol_in_invariant_reports_metadata_error` へ改名して
+  受入条件の 3 つの assert (件数ちょうど 1 / 旧見出しを含まない / `:invariant` と quote に言及) を置いた。
+  RED `0 passed; 1 failed` → GREEN `1 passed; 0 failed`、`cargo test -p lsharp-types` 全 binary 緑。
 - **関連**: `I-43` の解決節、`CONTRACT-INVARIANT-QUOTE-01` (`TODO.md`)。
 
 <a id="i-60"></a>
@@ -4362,3 +4377,36 @@
   object 経路は既に実装されているので、決定は「新形式の追加」ではなく「fallback の廃止」になる。
 - **関連**: `I-57` (座標の漏れ。解決済み)、`I-52` / `I-55` (座標規約の同系統)。
   引き取り先は `TODO.md` の `LSP-LOCATION-SHAPE-01`。
+
+<a id="i-62"></a>
+### I-62: `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`I-59` の裁定中)
+- **内容**: `I-59` で `:invariant` 側は quote を `lsharp check` の段階で弾くようにしたが、
+  `:example` 側は素通しのままである。実測 (2026-08-23):
+
+  ```
+  (defn caller [x] :example [(caller 'sym)] x)
+  ```
+
+  | コマンド | 結果 |
+  |---|---|
+  | `lsharp check` | exit 0、`diagnostics.count = 0` |
+  | `lsharp test` | exit 1、`status = "fail"` / `executed 0, failed 1` / **`message` は空文字列** |
+
+- **なぜ穴なのか**: `:example` も `crates/lsharp-wasm/src/test_runner.rs:78` で生成ソースへ
+  差し込まれて**実行される**。quote は `ir/lower/expr/quote_expr.rs:9` が拒否するので、
+  `:invariant` とまったく同じ理由で落ちる。違うのは落ちる場所と、
+  **落ちた理由がどこにも出ないこと**である。`lsharp test` は `failed 1` とだけ言い、
+  診断も message も空なので、利用者は原因に辿り着けない。
+- **`:example` が 0 件で通ることは対称性の根拠にならない**。
+  [`:invariant` に書かれた quote の扱い](docs/adr/decisions-invariant-quote-handling.md)
+  の案 (b) 却下理由で「正しさの証拠ではなく同種の穴」と判定済みで、
+  揃えるなら `:invariant` を緩める方向ではなく `:example` を締める方向である。
+- **本 issue で決めないこと**: 締め方が 2 つある。(a) `check_metadata` に `:example` 用の
+  quote 検出を足して `I-59` と同型の Error を出す。(b) `lsharp test` の失敗 message を
+  埋めて lowering の理由を伝搬させる。(a) は早く落ちるが `:example` の式は
+  `:invariant` と違って任意の呼び出し列なので検出範囲の設計が要る。
+  (b) は quote 以外の lowering 失敗も一緒に救うが、落ちる位置は後ろのままである。
+  **どちらか一方で足りるのか両方要るのかは、この issue では決めない。**
+- **関連**: `I-59` (解決済み。`:invariant` 側)、`I-43`。引き取り先は `TODO.md` の `EXAMPLE-QUOTE-01`。
