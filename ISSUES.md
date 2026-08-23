@@ -2786,10 +2786,14 @@
   Rust oracle と同じ向きへ揃った。健全な predicate は `executed=1` / rc=0 のまま。
   **欠けていたのは実装ではなく接続**で、検査関数自体は `check` lane が既に使っていた。
   判断と却下理由は [decisions-selfhost-assert-preflight-typecheck.md](docs/adr/decisions-selfhost-assert-preflight-typecheck.md)。
-- **残る差分**: 診断 `message` は空文字列のまま。Rust oracle は
-  `[LS1001] [error] caller: :assert predicate の型推論に失敗しました: ...` を返す。
-  selfhost の preflight は case / property でも message を空で返す設計なので、
-  これは assert 固有ではない。`ASSERT-DIAG-MESSAGE-01` (`TODO.md`) が引き取る。
+- **残る差分の解消** (2026-08-23): preflight 3 経路 (assertion / case / property) の
+  診断 `message` を `(code, span)` から合成するようにした。selfhost は識別子を name-hash で
+  持ち hash から文字列へ戻せないため、シンボル名は **span でソース本文を切り出して**載せている。
+  実測は `[LS1001] contract の述語が型検査を通りません: (> (nope) 0) (25..37)`。
+  判断と却下理由は [decisions-selfhost-preflight-diagnostic-message.md](docs/adr/decisions-selfhost-preflight-diagnostic-message.md)。
+  **なお残るもの**: message の文字列は Rust oracle
+  (`[LS1001] [error] caller: :assert predicate の型推論に失敗しました: ...`) と逐語一致しない。
+  逐語一致は当該 ADR で明示的に却下している。`run-test-source-text` lane の message も空のまま。
 - **関連**: `I-45` と同じ preflight の話。
 
 <a id="i-50"></a>
@@ -4443,7 +4447,8 @@
   rust runner を分けて測ると (b) は既に成立しており、空 message は selfhost runner 側の
   一般の欠落だと分かった。裁定は
   [`:example` に書かれた quote の扱い](docs/adr/decisions-example-quote-handling.md) が正本で、
-  **(a) だけを採る**。分解した残りは `ASSERT-DIAG-MESSAGE-01` (`I-49` 残差分) と `I-65` が引き取る。
+  **(a) だけを採る**。分解した残りは `I-49` 残差分 (preflight の空 message。2026-08-23 解消) と
+  `I-65` (`:example` の suite 経路。`EXAMPLE-FAIL-REASON-01`) が引き取る。
 - **解決** (2026-08-23): 案 (a) を実装した。`check_example`
   (`crates/lsharp-types/src/metadata_check/diagnostics.rs`) が `find_quote_span` で式全体を走査し、
   quote があれば `:invariant` と同型の metadata 固有 Error を 1 件返す。既存の識別子スコープ検査は
@@ -4460,9 +4465,9 @@
   [`:example` に書かれた quote の扱い](docs/adr/decisions-example-quote-handling.md)。
 - **残渣**: 既定経路 (selfhost runner) の挙動は変えていない。本 issue の冒頭の実測表が
   そちらを見ていたので、**表の症状そのものは既定 CLI では残る**。引き取り先は `I-65`
-  (`:invariant` + quote が緑になる方) と `ASSERT-DIAG-MESSAGE-01` (`:example` 側の空 message)。
+  (`:invariant` + quote が緑になる方) と `EXAMPLE-FAIL-REASON-01` (`:example` 側の空 message)。
 - **関連**: `I-59` (解決済み。`:invariant` 側)、`I-43`、`I-65` (selfhost runner の quote 契約不在)、
-  `I-49` (`ASSERT-DIAG-MESSAGE-01`)。
+  `I-49` (selfhost preflight の空 message。2026-08-23 解消)。
 
 <a id="i-63"></a>
 ### I-63: `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる
@@ -4548,8 +4553,8 @@
   | 同上 | rust | `[LS1001] テストプログラムの型チェックに失敗: [E0001] 未定義の変数 (undefined): quote/unquote はマクロ展開後に使用できません (63..67)` |
 
 - **なぜ message 欠落より重いか**: `:example` 側は「落ちるが理由が空」なので、
-  利用者は少なくとも失敗に気付ける。これは `ASSERT-DIAG-MESSAGE-01` (`I-49` 残差分) の
-  担当範囲である。**`:invariant` 側は緑を返す。** 実行できないはずの contract が
+  利用者は少なくとも失敗に気付ける。これは `EXAMPLE-FAIL-REASON-01` の担当範囲である
+  (preflight 側の空 message は `I-49` 残差分として 2026-08-23 に解消済み)。**`:invariant` 側は緑を返す。** 実行できないはずの contract が
   「5 件実行して 0 件失敗」と報告されるので、利用者は穴の存在に気付けない。
   原因は `selfhost/src/Types/TypeInfer.ls:199` の「quote/unquote 系は現状すべて inner expr へ
   委譲する」という扱いで、`'sym` が中身の型として通ってしまうことにある。
@@ -4562,5 +4567,6 @@
 - **本 issue で決めないこと**: selfhost 側に metadata contract 検査をどう載せるか
   (TypeInfer で弾く / TestRunner の preflight で弾く / rust の診断を委譲経路で運ぶ)。
   parity の取り方は設計判断なので ADR が要る。
-- **関連**: `I-59` / `I-62` (rust 側でこの契約を実装した側)、`I-49` (`ASSERT-DIAG-MESSAGE-01`
-  が `:example` 側の空 message を引き取る)。引き取り先は `TODO.md` の `SELFHOST-QUOTE-PARITY-01`。
+- **関連**: `I-59` / `I-62` (rust 側でこの契約を実装した側)、`I-49` (selfhost preflight の
+  空 message。2026-08-23 解消)。引き取り先は `TODO.md` の `SELFHOST-QUOTE-PARITY-01` と
+  `EXAMPLE-FAIL-REASON-01` (`:example` 側の空 message)。

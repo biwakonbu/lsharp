@@ -2848,7 +2848,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   preflight で弾く / rust の診断を委譲経路で運ぶ)。決めたうえで、上記 2 fixture が
   既定経路で非緑になり、`:example` 側は非空の `diagnostics.message` を返すこと。
   **含めない範囲**: selfhost に quote の実行時表現を入れること、
-  `:example` 側の空 message 一般 (`ASSERT-DIAG-MESSAGE-01`)、rust 側の診断文言の変更。
+  `:example` 側の空 message 一般 (`EXAMPLE-FAIL-REASON-01`)、rust 側の診断文言の変更。
 
 - [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
   `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —
@@ -2894,15 +2894,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: 相互再帰の多相化 (polymorphic recursion)。現状の `mutual` fixture は
   既に正しく落ちるので回帰だけ見る。
 
-- [ ] `ASSERT-DIAG-MESSAGE-01` selfhost preflight の診断 message を埋める — Issue `I-49` の残差分。
-  `run-test-source-json-preflight` は `assurance-report-json` へ message を `""` で渡すため、
-  型検査で落ちた assert / case / property は code と span しか返さない。Rust oracle は
-  `[LS1001] [error] <fn>: :assert predicate の型推論に失敗しました: [E0001] ...` を返す。
-  受入条件: `(defn caller [] :assert [(> (nope) 0)] 0)` の selfhost JSON が
-  非空の `diagnostics.message` を返し、少なくとも診断コードと未定義シンボル名を含むこと。
-  case / property の同型 fixture を control として並べ、3 経路で同じ形になることを確認する。
-  **含めない範囲**: message の文字列を Rust と逐語一致させること。診断コード体系の変更
-  (`LS2004` の code text 追加を含む)。
+- [ ] `EXAMPLE-FAIL-REASON-01` selfhost の suite 経路が `:example` の失敗理由を返さない —
+  Issue `I-65` の実測表にある `(defn caller [x] :example [(caller 'sym)] x)` は既定経路で
+  `status fail` / `executed 0, failed 1` / `count 0` / **`message` 空**を返す。
+  preflight (`count 1`) 側は `ASSERT-DIAG-MESSAGE-01` で埋めた
+  ([decisions-selfhost-preflight-diagnostic-message.md](docs/adr/decisions-selfhost-preflight-diagnostic-message.md))
+  が、こちらは `run-test-source-json-suite` が `assurance-suite-diagnostic-message` を
+  そのまま流す経路で、suite state 側が空を持っている。落ちること自体は利用者に見えるので
+  preflight より軽いが、理由が無いので原因に辿り着けない。
+  受入条件: 当該 fixture の selfhost JSON が非空の `diagnostics.message` を返すこと。
+  **含めない範囲**: quote を selfhost の型検査で弾くこと (`SELFHOST-QUOTE-PARITY-01` の担当)。
+  Rust との逐語一致。`run-test-source-text` lane。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

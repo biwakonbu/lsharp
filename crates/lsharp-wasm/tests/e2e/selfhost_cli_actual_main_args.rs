@@ -1819,3 +1819,79 @@ fn test_e2e_selfhost_cli_main_with_args_fmt_file() {
         "Cli main fmt argv は canonical text を返すべき",
     );
 }
+
+/// `ASSERT-DIAG-MESSAGE-01`: preflight 3 経路の assurance JSON が非空の診断 message を返すこと
+///
+/// selfhost は識別子を name-hash で持ち文字列へ戻せないので、シンボル名は span で
+/// ソース本文を切り出して載せる。判断は
+/// `docs/adr/decisions-selfhost-preflight-diagnostic-message.md`。
+///
+/// 3 経路を 1 test にまとめるのは、bundle の compile + run が 1 fixture あたり
+/// 約 250s かかるため。test を分けても観測対象は変わらない。
+#[test]
+fn test_e2e_selfhost_embedded_cli_test_format_json_preflight_diagnostic_message() {
+    // (経路名, source, message に必ず含まれる code text, message に必ず含まれる source fragment)
+    let fixtures: Vec<(&str, &str, &str, Option<&str>)> = vec![
+        (
+            "assert",
+            "(defn caller [] :assert [(> (nope) 0)] 0)",
+            "LS1001",
+            Some("nope"),
+        ),
+        (
+            "case",
+            "(defn identity [x] :case [(expect missing 1)] x)",
+            "LS1001",
+            Some("missing"),
+        ),
+        (
+            "property",
+            "(defn abs [x] :property [(for-all [x Int] :cases 12 :seed 81042 :shrink false :precondition [(>= x -100)] :postcondition (>= result 0))] (if (< x 0) (- 0 x) x))",
+            "LS3002",
+            None,
+        ),
+    ];
+
+    for (lane, source, code_text, fragment) in fixtures {
+        let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_format_json_preflight_message",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            )
+        });
+        assert_eq!(
+            output.exit_code, 2,
+            "{lane} preflight は exit 2 を返すべき: {}",
+            output.stdout
+        );
+        let lines = output_lines(output.stdout);
+        assert_eq!(
+            lines.len(),
+            1,
+            "{lane} preflight は report 1 行だけを返すべき: {lines:?}"
+        );
+        let report: Value = serde_json::from_str(&lines[0])
+            .unwrap_or_else(|e| panic!("{lane} preflight report は valid JSON であるべき: {e}"));
+        let message = report["implementation_conformance"]["diagnostics"]["message"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{lane} preflight の message は文字列であるべき"));
+
+        assert!(
+            !message.is_empty(),
+            "{lane} preflight の diagnostics.message は非空であるべき: {}",
+            lines[0]
+        );
+        assert!(
+            message.contains(code_text),
+            "{lane} preflight の message は診断コード {code_text} を含むべき: {message}"
+        );
+        if let Some(fragment) = fragment {
+            assert!(
+                message.contains(fragment),
+                "{lane} preflight の message は span が指すソース断片 {fragment} を含むべき: {message}"
+            );
+        }
+    }
+}

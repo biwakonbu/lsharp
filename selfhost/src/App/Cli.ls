@@ -1006,7 +1006,56 @@
     fields2 (docjson-append fields1
       (docjson-object-field "intent_validation" (assurance-intent-json)))]
     (docjson-object-wrap fields2)))
-(defn run-test-source-json-preflight [program diagnostic-code diagnostic-start diagnostic-end]
+(defn preflight-diagnostic-code-text [code]
+  (if (= code (canonical-assertion-type-error-code))
+    "LS1001"
+    (if (= code (canonical-assertion-non-bool-code))
+      "LS1002"
+      (if (= code (canonical-assertion-empty-code))
+        "LS2004"
+        (if (= code (canonical-assertion-vacuous-code))
+          "LS2005"
+          (if (= code (canonical-case-empty-code))
+            "LS2006"
+            (if (= code (contract-diagnostic-unsupported-property))
+              "LS3002"
+              "LS0000")))))))
+(defn preflight-diagnostic-headline [code]
+  (if (= code (canonical-assertion-type-error-code))
+    "contract の述語が型検査を通りません"
+    (if (= code (canonical-assertion-non-bool-code))
+      "contract の述語が Bool になりません"
+      (if (= code (canonical-assertion-empty-code))
+        "contract が空です"
+        (if (= code (canonical-assertion-vacuous-code))
+          "contract の述語が常に真になります"
+          (if (= code (canonical-case-empty-code))
+            "contract が空です"
+            (if (= code (contract-diagnostic-unsupported-property))
+              "未接続の property runner 境界です"
+              "診断コードに対応する説明がありません")))))))
+;; `ASSERT-DIAG-MESSAGE-01`: preflight が検査から受け取るのは (code, span) の
+;; スカラーだけで、識別子は name-hash (`TestRunner.ls:916`) でしか残っていない。
+;; hash から文字列へ戻す経路が無いので、シンボル名は span でソース本文を切り出して載せる。
+;; span を持たない property boundary は見出しと code だけを返す。判断は
+;; `docs/adr/decisions-selfhost-preflight-diagnostic-message.md`。
+(defn preflight-diagnostic-message [src code start end]
+  (let [head (string-concat "["
+      (string-concat (preflight-diagnostic-code-text code)
+        (string-concat "] " (preflight-diagnostic-headline code))))]
+    (if (< start 0)
+      head
+      (if (>= start end)
+        head
+        (if (> end (string-length src))
+          head
+          (string-concat head
+            (string-concat ": "
+              (string-concat (substring src start end)
+                (string-concat " ("
+                  (string-concat (int-to-string start)
+                    (string-concat ".." (string-concat (int-to-string end) ")"))))))))))))
+(defn run-test-source-json-preflight [program src diagnostic-code diagnostic-start diagnostic-end]
   (let [examples (extract-examples-from-program program)
     invariants (extract-invariants-from-program program)
     assertions (extract-assertions-from-program program)
@@ -1028,7 +1077,7 @@
       diagnostic-code
       diagnostic-start
       diagnostic-end
-      "")]
+      (preflight-diagnostic-message src diagnostic-code diagnostic-start diagnostic-end))]
     (do
       (print-string rendered)
       (print-string "\n")
@@ -1128,7 +1177,7 @@
     case-check-root-slot (root_push case-check)]
     (if (> property-boundary-code 0)
       (do
-        (run-test-source-json-preflight program property-boundary-code 0 0)
+        (run-test-source-json-preflight program src property-boundary-code 0 0)
         (root_pop)
         (root_pop)
         (root_pop)
@@ -1138,6 +1187,7 @@
         (do
           (run-test-source-json-preflight
             program
+            src
             assertion-first-error-code
             assertion-first-error-start
             assertion-first-error-end)
@@ -1150,6 +1200,7 @@
         (do
           (run-test-source-json-preflight
             program
+            src
             (vector-get case-check 1)
             (vector-get case-check 2)
             (vector-get case-check 3))

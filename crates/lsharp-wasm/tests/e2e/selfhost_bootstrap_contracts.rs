@@ -1058,3 +1058,37 @@ fn test_e2e_selfhost_hkt_gadt_alias_record() {
         "TypeInfer.ls には TypeInferCore へ分割した helper を重複定義すべきではない"
     );
 }
+
+/// `ASSERT-DIAG-MESSAGE-01`: preflight 診断 message builder が Cli / EmbeddedCli の両系統に載ること
+///
+/// `Cli.ls` と `EmbeddedCli.ls` は意図的な重複であり、片系統だけ直すと
+/// e2e bundle lane (EmbeddedCli 側) が緑でも配布 CLI 側 (Cli.ls) が置き去りになる。
+/// 判断は `docs/adr/decisions-selfhost-preflight-diagnostic-message.md` の D3。
+#[test]
+fn test_e2e_selfhost_preflight_diagnostic_message_builder_is_present_in_both_cli_sources() {
+    for relative in ["selfhost/src/App/Cli.ls", "selfhost/src/App/EmbeddedCli.ls"] {
+        let source = std::fs::read_to_string(selfhost_project_root().join(relative))
+            .unwrap_or_else(|e| panic!("{relative} が読み込めない: {e}"));
+
+        assert!(
+            source.contains("(defn preflight-diagnostic-message "),
+            "{relative} に preflight 診断 message builder が必要"
+        );
+        assert!(
+            source.contains("(defn preflight-diagnostic-code-text "),
+            "{relative} に preflight 診断コードの text 化が必要"
+        );
+        assert!(
+            source.contains("(defn preflight-diagnostic-headline "),
+            "{relative} に preflight 診断コードの見出しが必要"
+        );
+        assert!(
+            source.contains("(defn run-test-source-json-preflight [program src "),
+            "{relative} の preflight は message 合成のため src を受け取る必要がある"
+        );
+        assert!(
+            !source.contains("(run-test-source-json-preflight program property-boundary-code"),
+            "{relative} の property boundary 呼び出しは src を渡す新シグネチャへ移行済みである必要がある"
+        );
+    }
+}
