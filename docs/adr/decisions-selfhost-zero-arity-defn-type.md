@@ -136,7 +136,39 @@ pin され、値の型 (Int=100) の pin も残る**。
 /Users/biwakonbu/github/tmp/i60/green5.log           5 passed; 0 failed; 112.24s
 ```
 
-**5 本は下限である。** sweep が覆ったのは e2e 約 3,075 本のうち 511 本で、
+### 6 本目 (2026-08-23)
+
+予告どおり、下限は下限だった。`ASSERT-DIAG-MESSAGE-01` の回帰 lane
+(`cargo test -p lsharp-wasm --test e2e selfhost_cli_actual_main_args`) で 6 本目が出た。
+
+| test | 旧期待 | 新期待 |
+|---|---|---|
+| `selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_check_json_aliases` (`EC-M1-03`) | `reports[0]["type"] == "Int"` | `== "Fn"` |
+
+fixture は `(defn main [] 42)`。`render-type-text` (`Cli.ls:715` / `EmbeddedCli.ls:114`) は
+ty-fun (tag 3) を `"Fn"` へ潰すので、`Unit -> Int` になった `main` は `"Fn"` を返す。
+**この test は前 5 本と違い、型そのものではなく `check --json` の利用者向け出力を見ている。**
+つまり本 ADR の契約変更は `lsharp check` の `type` フィールドという **user-visible な出力**まで
+変えていた。前回の追随ではそこまで届いていなかった。
+
+```
+# RED (回帰 lane で観測、2026-08-23)
+/Users/biwakonbu/github/tmp/assertdiag/reg2.log   FAILED. 17 passed; 1 failed; 25 ignored; 1182.20s
+                                                  left: String("Fn") / right: "Int"
+# 張り直し後の GREEN
+/Users/biwakonbu/github/tmp/i60b/green.log        ok. 1 passed; 0 failed; 262.18s
+```
+
+`ASSERT-DIAG-MESSAGE-01` の回帰でないことは、当該 slice の編集を一切含まない凍結済み
+`target/debug/lsharp` が既に `{"command":"check","type":"Fn",...}` を返すことで確認した。
+
+**`"Fn"` は情報量が乏しい**が、これは 0 引数 defn に固有の問題ではない。
+`render-type-text` は arity を問わず全ての関数型を `"Fn"` へ潰しており、
+`I-45` はその bucket に 0 引数 defn を加えただけである。arrow 型を描画する話は
+本 ADR の範囲外。
+
+**6 本もまだ下限である。** sweep が覆ったのは e2e 約 3,075 本のうち 511 本 + 今回の
+2 lane (`selfhost_cli_actual_main_args` 43 本 / `selfhost_cli_core` 442 本) で、
 `914bd9f1` 以降 full lane は一度も回っていない。全数確定は次の full lane に委ねる。
 `workspace-expected-failures.txt` へは追記していない — 同ファイルの正本は 2026-08-16/17 の
 計測で、その時点では 5 本とも緑だったからである。

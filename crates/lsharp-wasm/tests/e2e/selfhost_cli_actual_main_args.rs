@@ -393,7 +393,12 @@ fn test_e2e_selfhost_cli_main_check_json_aliases() {
         "--json と --format json は同じ report を返すべき"
     );
     assert_eq!(reports[0]["command"], "check");
-    assert_eq!(reports[0]["type"], "Int");
+    // `I-60` の 6 本目: `I-45` (`914bd9f1`) が 0 引数 defn を `Unit -> body` で env へ
+    // 登録するようにしたので、`(defn main [] 42)` は `Unit -> Int` になる。
+    // `render-type-text` (`Cli.ls:715`) は ty-fun (tag 3) を `"Fn"` へ潰すため
+    // `check --json` の `type` は `"Int"` ではなく `"Fn"` を返す。契約変更への追随であり、
+    // 正本は `docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
+    assert_eq!(reports[0]["type"], "Fn");
 }
 
 /// EC-M1-06: actual selfhost CLI の test --format json が assurance の二軸 report を返すこと

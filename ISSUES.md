@@ -3742,6 +3742,24 @@
   (print 回数を変えると `lines[30]` / `lines[31]` を読む別 test がずれる)。
   判断と実測値は `decisions-selfhost-zero-arity-defn-type.md` の Evidence 節が正本。
   `workspace-expected-failures.txt` へは予告どおり追記していない。
+- **6 本目** (2026-08-23): `ASSERT-DIAG-MESSAGE-01` の回帰 lane
+  (`cargo test -p lsharp-wasm --test e2e selfhost_cli_actual_main_args`) で
+  `test_e2e_selfhost_cli_main_check_json_aliases` (`EC-M1-03`) が
+  `left: "Fn" / right: "Int"` で落ちた。fixture は `(defn main [] 42)` で、
+  `check --json` の `type` フィールドを読んでいる。`render-type-text`
+  (`Cli.ls:715` / `EmbeddedCli.ls:114`) は ty-fun (tag 3) を `"Fn"` へ潰すため、
+  `Unit -> Int` になった `main` は `"Fn"` を返す。
+  **本件が `ASSERT-DIAG-MESSAGE-01` の回帰でないことの根拠**: 当該 slice の編集を
+  一切含まない凍結済み `target/debug/lsharp` が既に
+  `{"command":"check","type":"Fn",...}` を返す。また当該 slice の `Cli.ls` 差分は
+  preflight 4 関数だけで `check` 経路に触れていない。
+  起票時に書いた「5 本は確定した下限で、全数は未了」のとおりの追加分である。
+  **前 5 本と違い、この 1 本は型そのものではなく `check --json` の利用者向け出力を
+  見ている** — つまり `I-45` の契約変更は user-visible な出力まで変えていた。
+  **解決** (2026-08-23): 期待値を `"Fn"` へ張り直し、`ok. 1 passed; 0 failed; 262.18s`
+  を確認した (`/Users/biwakonbu/github/tmp/i60b/green.log`)。
+  実測は `decisions-selfhost-zero-arity-defn-type.md` の「6 本目」節が正本。
+  **6 本もまだ下限である**ことは変わらない。全数確定は full lane に委ねる。
 - **関連**: `I-45`、`docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
 
 <a id="doc-01"></a>
