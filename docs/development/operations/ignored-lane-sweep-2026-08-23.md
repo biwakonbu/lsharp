@@ -46,10 +46,36 @@ grep 由来の暫定値ではなく `--list` の実数に対して判定する)�
 
 ## 結果
 
-<!-- doc-GREEN: sweep 完走後に module 別の所要・passed・failed と、
-     compare_ignored_lane.py の 4 種差分の判定を埋める -->
+**sweep 実行中 (18 module 中 11 完了、2026-08-23 16:03 時点)。** 完了分を先に記録する。
+残り 6 module (`selfhost_bootstrap_acceptance` 28 / `selfhost_doctools_cli_diagnostics` 38 /
+`selfhost_lsp_docs_ops` 54 / `selfhost_native_differential` 104 /
+`selfhost_bootstrap_four_layer` 146 / `selfhost_cli_core` 381) と、
+別プロセスが待機している `selfhost_native_stage_chain` 615。
 
-未取得 (sweep 実行中)。
+| module | 分母 | passed | failed | 所要 (s) | 完了時刻 |
+|---|---:|---:|---:|---:|---|
+| `incremental_benchmark` | 1 | 1 | 0 | 127.14 | 15:15:50 |
+| `selfhost_bootstrap_contracts` | 1 | 1 | 0 | 53.85 | 15:16:44 |
+| `selfhost_macro_compiler` | 2 | 2 | 0 | 22.58 | 15:17:06 |
+| `selfhost_main_module_determinism` | 2 | 2 | 0 | 146.38 | 15:19:33 |
+| `selfhost_rooting_parity` | 2 | 2 | 0 | 19.46 | 15:19:52 |
+| `selfhost_native_stage23_gap` | 3 | 1 | **2** | 114.90 | 15:21:47 |
+| `runtime_allocator_closures` | 4 | 0 | **4** | 228.39 | 15:25:35 |
+| `selfhost_typeinfer_pipeline_bootstrap` | 5 | 5 | 0 | 276.80 | 15:30:12 |
+| `selfhost_gc_stateful_soak` | 8 | 0 | **8** | 399.82 | 15:36:52 |
+| `bootstrap_selfhost_lsp_integration` | 12 | 12 | 0 | 281.50 | 15:41:34 |
+| `selfhost_cli_actual_main_args` | 25 | 22 | **3** | 1279.36 | 16:02:53 |
+| **小計** | **65** | **48** | **17** | 2950.22 | -- |
+
+分母の和 65 は「対象の分母」表の同 11 module の宣言数と**過不足なく一致する**。
+module 名の書き落としも filter の綴り違いも今のところ無い。
+
+**1 件あたりの所要は module によって桁が違う。** `selfhost_rooting_parity` は 2 件 19.46s
+(9.7s/件)、`selfhost_cli_actual_main_args` は 25 件 1279.36s (51.2s/件)。
+後者は CLI bundle を毎回組み立てる test で、残る `selfhost_cli_core` 381 件が同水準なら
+それだけで 5 時間規模になる。**全体の完走見込みは 12 時間以上**であり、
+「module 分割の利点は時間短縮ではなく、途中で殺されても部分成果が残ること」という
+`I-11` 時点の判断がここでもそのまま当てはまる。
 
 ## 振り分け
 
@@ -76,11 +102,24 @@ exit code で区別できなくなる。台帳は *修正しないと決めた�
 含む)、新 module も同じ形へ揃える。fix が入って緑になった行はその時点で削除する
 — 削除の根拠は「振り分けたから」ではなく「実測が緑になったから」である。
 
-### 結果
+### 結果 (11 module 分 / 赤 17 件)
 
-<!-- doc-GREEN: 赤 1 本ずつの割り当て結果を上記の書式で書く -->
+| 引き取り先 / 分類 | 件数 | 内訳 |
+|---|---:|---|
+| `NATIVE-I32SUB-01` | 2 | `selfhost_native_stage23_gap` の 2 件。`NativeCodegen.ls` に `i32.sub` が無い**真の gap**。**表を直して閉じない** |
+| `REPL-TYPE-TAG-01` | 9 | `runtime_allocator_closures` 1 + `selfhost_gc_stateful_soak` 5 + `selfhost_cli_actual_main_args` 3。`I-69` の L1/L2 |
+| `[d] 診断用足場` | 3 | `runtime_allocator_closures` の `test_v2_12_*` 3 件。`2214bd49` が既知 gap の可視化として追加したもの |
+| **保留** | 3 | `selfhost_gc_stateful_soak` の LSP stdio frame 系。`selfhost_lsp_docs_ops` のログ待ち |
 
-未取得。
+17 件すべてに `ignored-lane-expected-failures.txt` の行を足した。
+`compare_ignored_lane.py` を該当 4 ログへ流し、**新規 FAIL 0 / 解消 0** を確認済み
+(残る `判定: NG` は未実行 module 113 件の「未出現」によるもので、sweep 完走で解消する)。
+
+**`selfhost_cli_actual_main_args` の 3 件は `EMBEDDED-CLI-OPTION-SPACE-01` ではない。**
+`..._check_json_file` は `--json` を明示する argc 3 の経路で、argc 2 の fallthrough を通らない。
+この module が `I-69` の未確定点を埋めた経緯は `ISSUES.md` の `I-69` 本文にある。
+
+<!-- doc-GREEN: 残り 7 module 分をここへ追記する -->
 
 ## 再実行の手順
 

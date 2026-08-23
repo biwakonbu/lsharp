@@ -286,3 +286,24 @@ lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_pipeline_smoke_r
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_loop_last_char_only
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_seed_argv_probe  # diagnostic: inspect load-imports argv probe with actual seed
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_x86_int_to_string_import_sets_rdi  # 完全な selfhost harness の型推論を要するため、Linux source-file smoke で実行検証する。STALE-PIN-03 [A] 裁定済 (2026-08-19 に原因を訂正): 原因は harness seed の import placeholder = ISSUES.md I-28
+
+# ---- sweep 2026-08-23 で追記 (stage_chain 以外の module) ----
+# 注記の書式は docs/development/operations/ignored-lane-sweep-2026-08-23.md の「振り分け」節。
+# `# 引き取り先: <ID>` = 修正すると振り分けた赤。実測が緑になった時点で行を削除する。
+lsharp-wasm::e2e selfhost_native_stage23_gap::test_e2e_native_actual_stage23_gap_report_for_representative_entry  # 引き取り先: NATIVE-I32SUB-01 -- NativeCodegen.ls に i32.sub が無い真の gap。表は直さない
+lsharp-wasm::e2e selfhost_native_stage23_gap::test_e2e_native_actual_stage23_gap_report_has_zero_aarch64_selfhost_blockers  # 引き取り先: NATIVE-I32SUB-01 -- 同上 (aarch64 側)
+lsharp-wasm::e2e runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1/L2 の型名破損
+lsharp-wasm::e2e runtime_allocator_closures::test_v2_12_diagnose_s15_proof_fields  # [d] 診断用足場 (2214bd49 で追加。落ちること自体が意図された出力)
+lsharp-wasm::e2e runtime_allocator_closures::test_v2_12_stage2_production_output_size  # [d] 診断用足場 (同上)
+lsharp-wasm::e2e runtime_allocator_closures::test_v2_12_stage2_six_import_debug_probe  # [d] 診断用足場 (同上)
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_session_batch_metrics  # 引き取り先: REPL-TYPE-TAG-01
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_stateful_long_session_in_session_collector_telemetry  # 引き取り先: REPL-TYPE-TAG-01
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_stateful_long_session_metrics  # 引き取り先: REPL-TYPE-TAG-01
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_stateful_long_session_postsession_collector_telemetry  # 引き取り先: REPL-TYPE-TAG-01
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_stateful_single_session_metrics  # 引き取り先: REPL-TYPE-TAG-01
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry  # 保留: LSP stdio frame 系。selfhost_lsp_docs_ops のログ待ち
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry  # 保留: 同上
+lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak  # 保留: 同上
+lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_file  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1 ("Fn" vs "Int")
+lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_json_file  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1 (--json 経路)
+lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_repl_summary  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L2 (アドレス印字)
