@@ -100,6 +100,19 @@
 #       -- 環境を揃えても落ちる。**真の陳腐化 pin はこの中にしか無い。**
 #   帰属不能 0 件。
 #
+#   上記 [a]-[c] は stage_chain 単独時代の分類である。sweep で他 module を測った結果、
+#   もう 1 種類が要る:
+#   [d] 診断用足場 -- 実装の欠陥ではなく、既知の gap を可視化するために置かれた test。
+#       落ちること自体が意図された出力であり、直す対象は test でも pin でもなく gap の側。
+#       (例: runtime_allocator_closures の V2-12 系 3 件、2214bd49 で追加)
+#
+#   **振り分けが「修正する」でも行は消さない。** compare_ignored_lane.py は台帳に無い
+#   FAIL を新規 FAIL (exit 1) と読むので、修正待ちを外すと sweep の完走検証が通らない。
+#   この台帳は「直さないと決めたもの」ではなく「この revision で赤いと分かっているもの」の
+#   一覧である。修正する側の行は注記に `# 引き取り先: <TODO-ID>` を書き、実測が緑に
+#   なった時点で削除する。規則の正本は
+#   docs/development/operations/ignored-lane-sweep-2026-08-23.md の「振り分け」節。
+#
 # ---- 期待値の更新について ----
 #   **pin 側の陳腐化と確定していたのは 1 件だけで、それは修正済みである (2026-08-19)。**
 #   test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer が

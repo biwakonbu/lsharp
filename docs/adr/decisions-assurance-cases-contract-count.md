@@ -110,9 +110,39 @@ per-contract Evidence レコードを出すようになったら、そちらの 
   の記述とも名前が食い違う。`I-68` の影響度は**低**であり、schema 変更に見合わない。
   決定 1 で 2 runner は一致するので、割る必要が無い。
 
+## 波及する pin の事前分類 (doc-RED / 2026-08-23、cargo 非依存の grep で確定)
+
+実装前に、`implementation_conformance.cases` と `coverage.executed` を pin している箇所を
+fixture の中身まで見て分類した。**pin 値だけでは「contract 数 2」と「サンプル数 2」を
+区別できない**ため、後から突き合わせると考古学になる。
+
+| 位置 | pin | fixture | 変わるか |
+|---|---|---|---|
+| `native_cli_output.rs:438,440` | `cases`/`executed` == 5 | property 1 本 (`:cases 5`) | **5 → 1** |
+| `native_cli_output.rs:708` | `cases > 0` | 同上 (EmbeddedCli 側) | 変わらない (1 > 0) |
+| `selfhost_cli_core.rs:8438,8440` | == 0 | 非 bool `:invariant` 1 本 | 変わらない (diagnostic-0 枝) |
+| `selfhost_cli_core.rs:8750,8752` | == 2 | `:assert [(truth) (falsehood)]` 1 本 = 述語 2 個 | **2 → 1** |
+| `selfhost_cli_core.rs:8806` | `executed` == 0 | 型エラーを含む `:assert` | 変わらない (diagnostic-0 枝) |
+| `selfhost_cli_core.rs:8838` | `executed` == 1 | `:assert` 1 本 = 述語 1 個 | 変わらない (両解釈が一致) |
+| `selfhost_cli_actual_main_args.rs:436,443` | == 5 | property 1 本 (`:cases 5`) | **5 → 1** |
+| `selfhost_cli_actual_main_args.rs:480,482` | == 0 | 非 bool `:invariant` 1 本 | 変わらない (diagnostic-0 枝) |
+| `selfhost_cli_actual_main_args.rs:2101,2106` | `cases == executed` | 関係のみを見る | 変わらない (両者が同時に動く) |
+| `native-selfhost-dev-source-file-smoke.sh:1483` | `cases`/`executed` == 5 | `$PROPERTY` = property 1 本 (`:cases 5`) | **5 → 1** |
+| `metadata_test_cli.rs:60,62,94,96,127` | 2 / 1 / 0 | rust driver 経由 | 変わらない (rust は既に contract 数) |
+| `metadata_test_selfhost_case_arity.rs` | `executed() >= 1` | `:case` 各種 | 変わらない (下限比較) |
+
+**更新が要るのは 4 箇所 (test 3 + smoke script 1)**、いずれも「property 1 本の `:cases N` を
+N と読んでいた」か「`:assert` の述語数を読んでいた」もの。決定 1 の
+「kind をまたいで足せる量は contract 数しかない」を、pin の側から裏返しに示している。
+
+なお `evidence[*].execution.sampling.cases` (`selfhost_evidence_registry/runtime.rs:433`,
+`mcp_schema.rs:613`, `native-selfhost-mcp.py:1197` ほか) は**別スキーマで、本 ADR の対象外**。
+こちらは contract 単位の Evidence record が持つサンプル数であり、決定 2 が言う粒度の
+違いがそのままスキーマ上でも分かれている。触らない。
+
 ## Evidence
 
-<!-- doc-GREEN: 実装後に埋める。RED の test 名 / 両 runner の実測 / 更新した pin -->
+<!-- doc-GREEN: 実装後に埋める。RED の test 名 / 両 runner の実測 / 上表の「変わるか」の実測結果 -->
 
 ## 満たしていないこと
 

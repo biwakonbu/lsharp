@@ -4762,7 +4762,9 @@
   `:2275` から到達可能で、`repl-summary-type-text` → `builtin-type-name-text` (`:714`) を通る。
   `builtin-type-name-text` は 100/200/300/400/500 以外を
   `(string-concat "type-" (int-to-string type-hash))` へ落とすので、
-  `lsharp repl` は `type:type--9223372036718940184` を印字する。**握り潰されて気付けない。**
+  `lsharp repl` も同型の壊れた型名 (`type:type-<負の巨大値>`) を印字するはずである。
+  **経路は実測、印字値は未実測** — 上記の `-9223372036718940184` は e2e harness の
+  bundle 上のアドレスであり、CLI 単体では再現しない。**握り潰されて気付けない。**
 - **直し方はリポジトリ内にある**: 同じ `Cli.ls:715` の `render-type-text` は
   `(ty-tag ty)` で分岐し、Con のときだけ `builtin-type-name-text` を通す。
   `repl-session-eval` をこの形へ寄せればよい。新規設計は要らない。

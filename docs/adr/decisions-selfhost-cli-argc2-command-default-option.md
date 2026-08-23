@@ -44,6 +44,26 @@
 **`I-66` は `test` だけを記録していたが、`check` も同じ機構で同じように割れている。**
 `check-option-json` (`EmbeddedCli.ls:86`) も 1 だからである。
 
+### 同じ fallthrough を通るが影響を受けない command
+
+`run-command` (`EmbeddedCli.ls:1677`) が受ける command は 10 個あり、argc 2 では
+**その全部**が `(default-compile-target)` を第 3 引数として受け取る。ただし option 値を
+実際に見ているのは以下だけで、比較先の定数が 0/1 と重ならないものは影響を受けない。
+
+| command | 見ている定数 | 値 | 0/1 と重なるか |
+|---|---|---|---|
+| `test` | `test-option-json` | 1 | **重なる** |
+| `check` | `check-option-json` | 1 | **重なる** |
+| `review` | `review-option-json` | 2 | 重ならない |
+| `doc-ack` | `doc-option-trailer-only` | 10 | 重ならない |
+| `doc-check` | `doc-option-strict-check` | 11 | 重ならない |
+| `compile` / `build` | compile target | 0 / 1 | 本来の受け手 |
+| `parse` / `fmt` / `validate` | 参照しない | -- | -- |
+
+`review` / `doc-ack` / `doc-check` は 0 でも 1 でも既定枝 (`print-doc-payload` /
+非 JSON review) へ落ちるので、**本 ADR の scope は `test` と `check` の 2 command に限る**。
+番号空間を 10 番台へ離した `doc-*` が無傷である事実は、決定 3 の「離せば解ける」根拠でもある。
+
 ## 決定
 
 ### 1. 正は text lane とする
