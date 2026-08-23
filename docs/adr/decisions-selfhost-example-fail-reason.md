@@ -7,7 +7,8 @@
 - **Related**: [`I-62`](../../ISSUES.md#i-62) (本件の親。`:example` + quote の残渣として登録)、
   [`I-65`](../../ISSUES.md#i-65) / [contract metadata の quote 契約](decisions-selfhost-contract-quote-parity.md)、
   [preflight の診断 message](decisions-selfhost-preflight-diagnostic-message.md) (`ASSERT-DIAG-MESSAGE-01`)、
-  [`I-67`](../../ISSUES.md#i-67) (本件の計測中に見つけた `coverage` 系の食い違い)
+  [`I-67`](../../ISSUES.md#i-67) (本件の計測中に見つけた `coverage` 系の食い違い) /
+  [`cases` / `coverage.executed` の意味](decisions-selfhost-example-coverage-count.md) (その解決)
 
 ## 問題
 
@@ -165,7 +166,8 @@ pin している契約は `status = fail` / `coverage.failed = 1` /
 
 exit code は harness (`run_main_with_input_file_capture`) では **2** に写る。
 preflight の pin も同じ 2 を見ている。driver 経由の shipped binary は 1 を返す
-(`exit-runtime-error`)。この 1 / 2 の差は本 slice の対象外で、`I-67` が引き取る。
+(`exit-runtime-error`)。この 1 / 2 の差は本 slice の対象外。`I-67` は実測としてこの差を
+記録するだけで、**解決の引き取り先はまだ決まっていない**。
 
 ### shipped binary の実測 (2026-08-23、`cargo build` 後の `./target/debug/lsharp`)
 

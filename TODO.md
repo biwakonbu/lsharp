@@ -2895,17 +2895,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `compile` / `build` の target option の再設計。`Cli.ls` 側の
   `#[ignore]` 解除そのもの (`IGNORED-STALE-PIN-01`)。出力形式の変更。
 
-- [ ] `EXAMPLE-COVERAGE-COUNT-01` selfhost の `cases` / `coverage.executed` が pass 数になっている —
-  Issue `I-67`。`assurance-result-actual-loop` が結果 vector の index 2 (`actual`) を合算するが、
-  `run-examples-loop` は `actual` に `passed` を入れているため、失敗した `:example` が
-  分母に数えられない。同じ fixture で selfhost は `cases 0` / `executed 0`、
-  rust runner は `cases 1` / `executed 1` を返す (2026-08-23 実測)。
-  受入条件: 失敗を 1 件含む `:example` fixture で selfhost の `cases` と `coverage.executed` が
-  どちらも 1 になり、live な e2e で固定されること。`:invariant` / `:assert` / `:case` /
-  property の `actual` の使われ方を洗ったうえで、直す層 (`actual` の意味を変えるか、
-  集計側を `vector-length` に変えるか) を ADR で決める。
-  **含めない範囲**: exit code の 1 / 2 の食い違い (意図的な使い分けか未確認)。
-  `diagnostics.message` (`EXAMPLE-FAIL-REASON-01` で解決済み)。rust runner 側の変更。
+- [ ] `SAMPLE-COVERAGE-CONTRACT-01` `cases` がサンプル数か contract 数かを決める —
+  Issue `I-68`。`:invariant` は `actual` に `sample-count` を、property は実行サンプル数を入れるため、
+  selfhost の `cases` / `coverage.executed` にはサンプル数が載る。rust oracle
+  (`MetadataTestRun::total()`) は contract 数を返すので、`:cases 5` の property で
+  selfhost 5 / rust 1 に割れる。
+  受入条件: どちらの契約を正とするかを ADR で決め、両 runner が同じ fixture で同じ
+  `cases` / `coverage.executed` を返すこと。サンプル数を残すなら載せ先のフィールドを決めること。
+  既存 pin (`selfhost_cli_actual_main_args.rs:436` / `native_cli_output.rs:438`) は
+  サンプル数側を前提に書かれているので、決定に合わせて更新する。
+  **含めない範囲**: `:example` の `actual` (`EXAMPLE-COVERAGE-COUNT-01` で解決)。
+  exit code の 1 / 2 の食い違い。property generator の品質 (`PROP-GEN-01`)。
 
 - [ ] `PROP-GEN-01` property generator を移行期 profile の外へ広げる —
   `crates/lsharp-types/src/metadata_check/test_generation.rs:44-49` が

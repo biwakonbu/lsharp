@@ -198,7 +198,8 @@
 | [I-64](#i-64) | `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない | 中 | open | -- |
 | [I-65](#i-65) | selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する | 中 | resolved | 2026-08-23 |
 | [I-66](#i-66) | EmbeddedCli の既定 test option が `--format json` と同値で、`run-test-source-text` が到達不能になっている | 低 | open | -- |
-| [I-67](#i-67) | selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う | 低 | open | -- |
+| [I-67](#i-67) | selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う | 低 | resolved | 2026-08-23 |
+| [I-68](#i-68) | `:invariant` / property の `cases` はサンプル数を載せており、rust oracle の contract 数と食い違う | 低 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4647,7 +4648,7 @@
 <a id="i-67"></a>
 ### I-67: selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`EXAMPLE-FAIL-REASON-01` の原因調査中)
+- **影響度**: 低 / **状態**: resolved / **発見**: 2026-08-23 (`EXAMPLE-FAIL-REASON-01` の原因調査中)
 - **内容**: `:example` が 1 件あって偽を返す fixture で、2 つの runner の assurance JSON が
   `message` 以外にも 3 箇所食い違う。実測 (2026-08-23、
   `(defn abs [x] :example [(= (abs 5) 6)] (if (< x 0) (- 0 x) x))`、
@@ -4673,11 +4674,48 @@
   失敗を含む fixture でこれを gate にすると意図しない値を見ることになる。
 - **exit code の 1 / 2 は別の話かもしれない**。selfhost は `exit-runtime-error` で 1、
   rust runner は 2 を返す。これが意図的な使い分けなのかは未確認で、本 issue では決めない。
-- **本 issue で決めないこと**: `actual` の意味を「実行数」に直すのか、
-  `executed` の集計側を `vector-length` に変えるのか。前者は `:invariant` が
-  `actual` に sample 数を入れている (`TestRunner.ls` の `materialize-invariant`) のと
-  整合するが、他の kind の `actual` の使われ方を洗う必要がある。
+  **本 issue の解決後も残る**。実測として記録するだけで、引き取り先は未定である。
+- **解決** (2026-08-23): `actual` の意味を「実行した contract 数」に確定させ、
+  `run-examples-loop` を `:assert` (`actual = 1`) と同じ形へ揃えた。集計側は無変更。
+  他の kind の `actual` を洗った結果は ADR の表にある。実測で
+  `cases` / `coverage.executed` / `coverage.failed` が 3 fixture すべて 2 runner 一致になった。
+  live e2e は `test_e2e_selfhost_embedded_cli_test_format_json_example_failure_message`。
+  正本は [`cases` / `coverage.executed` の意味](docs/adr/decisions-selfhost-example-coverage-count.md)。
+- **切り出したもの**: `:invariant` / property / `:case` の `actual` はサンプル数や式の値を
+  入れたままで、rust oracle (contract 数) と食い違う。`I-68` へ分けた。
 - **関連**: `I-62` (同じ fixture 系列)、`EXAMPLE-FAIL-REASON-01` (`message` 側。
   こちらは本 issue と切り離して解決した。正本は
-  [`:example` の失敗理由](docs/adr/decisions-selfhost-example-fail-reason.md))。
-  引き取り先は `TODO.md` の `EXAMPLE-COVERAGE-COUNT-01`。
+  [`:example` の失敗理由](docs/adr/decisions-selfhost-example-fail-reason.md))、
+  `I-68` (残りの kind)。
+
+<a id="i-68"></a>
+### I-68: `:invariant` / property の `cases` はサンプル数を載せており、rust oracle の contract 数と食い違う
+
+- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`I-67` の原因調査中)
+- **内容**: assurance JSON の `cases` / `coverage.executed` が何を数えるかについて、
+  2 つの runner が別の契約を持っている。rust は
+  `MetadataTestRun::total()` (`crates/lsharp-tooling/src/metadata_test.rs:19`) が
+  `results.len()` であり、**contract 1 件を 1 と数える**。サンプルを何本回したかは載らない。
+  selfhost は結果 vector の `actual` slot を総和するので、
+  `:invariant` は `sample-count`、property は実行サンプル数を載せる。
+- **根拠**: `TestRunner.ls` の `materialize-invariant` は
+  `actual (if (= diagnostic-code 0) sample-count 0)`、
+  `materialize-property-with-span` は `actual (if (= diagnostic-code 0) actual-count 0)` と書く。
+  結果として `:cases 5` の property は selfhost で `cases 5` / `executed 5`
+  (`crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs:436`,
+  `crates/lsharp-wasm/tests/native_cli_output.rs:438` が固定) になるが、
+  同じ fixture の rust runner は `1` を返す。
+- **なぜ低いか**: 分母の意味の食い違いであって、`status` と `coverage.failed` は
+  どちらの runner でも一致する。成否の判定は誤らない。
+- **`I-67` との違い**: `I-67` は `:example` が `actual` に `passed` を入れていた
+  「実行数を通過数と取り違えた」バグで、rust に寄せる向きが一意に決まる。
+  こちらは**どちらの契約を正とするかがまだ決まっていない**。
+  「サンプル数を出したい」という要求そのものは妥当であり、
+  だとすれば載せる先が `cases` でよいのか (別フィールドを立てるべきか) を先に決める必要がある。
+- **決めるべきこと**: (a) `cases` を contract 数へ寄せて rust と揃えるか、
+  (b) selfhost の契約を正としてサンプル数を載せ続け rust 側を変えるか、
+  (c) サンプル数を `cases` から外し別フィールドへ移すか。
+  上の pin 2 件はいずれも (b) を前提に書かれている。
+- **関連**: `I-67` (`:example` 側。切り離して解決)。正本は
+  [`cases` / `coverage.executed` の意味](docs/adr/decisions-selfhost-example-coverage-count.md)
+  の「却下した案 / 案 D」。引き取り先は `TODO.md` の `SAMPLE-COVERAGE-CONTRACT-01`。

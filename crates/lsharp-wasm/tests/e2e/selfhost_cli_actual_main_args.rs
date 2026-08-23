@@ -2043,21 +2043,23 @@ fn test_e2e_selfhost_embedded_cli_test_format_json_contract_quote_preflight() {
 /// 約 250s かかるため。
 #[test]
 fn test_e2e_selfhost_embedded_cli_test_format_json_example_failure_message() {
-    // (経路名, source, message に必ず含まれるソース断片)
-    let fixtures: Vec<(&str, &str, &str)> = vec![
+    // (経路名, source, message に必ず含まれるソース断片, 実行した :example 数)
+    let fixtures: Vec<(&str, &str, &str, u64)> = vec![
         (
             "single",
             "(defn abs [x] :example [(= (abs 5) 6)] (if (< x 0) (- 0 x) x))",
             "(= (abs 5) 6)",
+            1,
         ),
         (
             "second-of-two",
             "(defn abs [x] :example [(= (abs 5) 5) (= (abs -3) 9)] (if (< x 0) (- 0 x) x))",
             "(= (abs -3) 9)",
+            2,
         ),
     ];
 
-    for (lane, source, fragment) in fixtures {
+    for (lane, source, fragment, executed) in fixtures {
         let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
             run_main_with_input_file_capture(
                 selfhost_embedded_cli_runtime_bundle(),
@@ -2090,6 +2092,19 @@ fn test_e2e_selfhost_embedded_cli_test_format_json_example_failure_message() {
         assert_eq!(
             conformance["coverage"]["failed"], 1,
             "{lane} は failed 1 を返すべき: {}",
+            lines[0]
+        );
+        // `EXAMPLE-COVERAGE-COUNT-01` (`I-67`): 分母は「通った数」ではなく「実行した数」。
+        // rust oracle (`MetadataTestRun::total()`) は contract 1 件を 1 と数える。
+        // 正本は docs/adr/decisions-selfhost-example-coverage-count.md (案 A)。
+        assert_eq!(
+            conformance["cases"], executed,
+            "{lane} の cases は実行した :example 数 {executed} であるべき: {}",
+            lines[0]
+        );
+        assert_eq!(
+            conformance["coverage"]["executed"], executed,
+            "{lane} の coverage.executed は実行した :example 数 {executed} であるべき: {}",
             lines[0]
         );
         assert_eq!(

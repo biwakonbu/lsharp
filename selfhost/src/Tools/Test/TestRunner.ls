@@ -4130,10 +4130,12 @@
       src
       fn-hash
       (example-ordinal-loop test-cases 0 idx fn-hash 0))]
+    ;; EXAMPLE-COVERAGE-COUNT-01: actual は「実行した contract 数」なので、失敗しても 1。
+    ;; 正本は docs/adr/decisions-selfhost-example-coverage-count.md (案 A)。
     (make-test-result-with-diagnostic-span-message
       name
       0
-      0
+      1
       0
       (vector-get span 0)
       (vector-get span 1)
@@ -4158,7 +4160,9 @@
               results
               (if (= passed 0)
                 (make-example-failure-result name src test-cases idx)
-                (make-test-result name passed passed)))]
+                ;; EXAMPLE-COVERAGE-COUNT-01: `passed` ではなく実行数 1 を入れる
+                ;; (`run-assertions-loop` と同じ形)。
+                (make-test-result name passed 1)))]
           (do
             (root_pop)
             (root_pop)
