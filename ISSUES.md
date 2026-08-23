@@ -200,6 +200,7 @@
 | [I-66](#i-66) | EmbeddedCli の既定 test option が `--format json` と同値で、`run-test-source-text` が到達不能になっている | 低 | open | -- |
 | [I-67](#i-67) | selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う | 低 | resolved | 2026-08-23 |
 | [I-68](#i-68) | `:invariant` / property の `cases` はサンプル数を載せており、rust oracle の contract 数と食い違う | 低 | open | -- |
+| [I-69](#i-69) | `repl-session-last-type-name` が型タグを見ずにスロット 1 を読み、`lsharp repl` が壊れた型名を出す | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4719,3 +4720,36 @@
 - **関連**: `I-67` (`:example` 側。切り離して解決)。正本は
   [`cases` / `coverage.executed` の意味](docs/adr/decisions-selfhost-example-coverage-count.md)
   の「却下した案 / 案 D」。引き取り先は `TODO.md` の `SAMPLE-COVERAGE-CONTRACT-01`。
+
+<a id="i-69"></a>
+### I-69: `repl-session-last-type-name` が型タグを見ずにスロット 1 を読み、`lsharp repl` が壊れた型名を出す
+
+- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-64` の `--ignored` 全量 sweep)
+- **内容**: `selfhost/src/App/Cli.ls:1463` の `repl-session-eval` が
+  `(ty-name ty)` を**型タグを確かめずに**呼び、その結果を session slot 1 へ格納する。
+  `ty-name` は `Type.ls:249` で `(vector-get ty 1)` なので、`ty` が Con (`[1, name-hash]`)
+  でない限りスロット 1 は名前ハッシュではない。Fun (`[3, param-type, ret-type]`) なら
+  slot 1 は**引数型オブジェクトそのもの**であり、tagged handle が漏れる。
+- **根拠**: `--ignored` sweep で **2 module / 6 test** が同一の値 `-9223372036718940184`
+  (`0x800000000818afe8`) を出す。bit 63 が立っており整数タグではない。
+  - `selfhost_gc_stateful_soak.rs:83` (Int=100 期待) / `:118` (**Bool=200 期待**) /
+    `:172` / `:232` / `:307`
+  - `runtime_allocator_closures.rs:313` (Int=100 期待)
+  - **Bool を期待する行まで同じ値になる**ことが決定的である。入力 (`(defn main [] 42)` /
+    `(defn main [] true)`) が違うのに同値になるのは、読んでいるのが戻り値型ではなく
+    引数型スロットだからと考えると整合する。
+- **user 影響**: test だけの問題ではない。`run-repl` (`Cli.ls:1472`) は CLI dispatch
+  `:2275` から到達可能で、`repl-summary-type-text` → `builtin-type-name-text` (`:714`) を通る。
+  `builtin-type-name-text` は 100/200/300/400/500 以外を
+  `(string-concat "type-" (int-to-string type-hash))` へ落とすので、
+  `lsharp repl` は `type:type--9223372036718940184` を印字する。**握り潰されて気付けない。**
+- **直し方はリポジトリ内にある**: 同じ `Cli.ls:715` の `render-type-text` は
+  `(ty-tag ty)` で分岐し、Con のときだけ `builtin-type-name-text` を通す。
+  `repl-session-eval` をこの形へ寄せればよい。新規設計は要らない。
+- **未確定**: `infer` が Fun を返すようになったのが変更なのか元からなのかは特定していない。
+  仮に `infer` 側の契約変更なら、直す先が `repl-session-eval` ではなく `infer` になりうる。
+  引き取り先で判定する。
+- **なぜ今まで観測されなかったか**: 該当 6 test は全て `#[ignore]` 付きで、
+  `I-64` が指摘した「検査は生きているが中身が観測されない」領域にあった。
+  `workspace-expected-failures.txt` にも `--ignored` 台帳にも載っていない。
+- **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `REPL-TYPE-TAG-01`。

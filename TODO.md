@@ -2826,6 +2826,33 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: cache の envelope 形式・invalidation 規則の変更、
   eviction の自動化 (`LEGACY-MODULE-01`)、CI での閾値化。
 
+- [ ] `NATIVE-I32SUB-01` selfhost native codegen に `i32.sub` を足す — Issue `I-64` の振り分け結果。
+  `selfhost_native_stage23_gap` の 2 件 (`part_003.rs:243` / `:270`) が
+  `aarch64 lowered IR の native unsupported blocker: ["I32Sub"]` で赤。
+  `selfhost/src/Backend/Native/NativeCodegen.ls` は `i32.add` (`:8630`) / `i32.mul` (`:8633`) /
+  `i32.and` (`:8636`) / `i32.or` (`:8639`) を持つが `i32.sub` を持たない。
+  表 (`supported_native_opcodes_aarch64` / `_x86_64`) 側の書き落としではない —
+  表を入れた `b76be058` が同時に触ったのは `NativeCodegen.ls` であり、
+  その差分にも `i32.sub` は無い。**表を直して閉じないこと。**
+  受入条件: 上記 2 件が緑になること。x86_64 側の表も `I32Sub` を持たないので**両アーキ**を足す。
+  **先に調べること**: lowering が `I32Sub` を出し始めた時期。
+  b76be058 時点では blocker 0 だったはずなので、途中で lowering 側が変わっている。
+  **含めない範囲**: 他 opcode の gap (blocker は現状 `I32Sub` 1 件のみ)、
+  `lsharp-tooling/src/native_emitter.rs` (Rust 側の別経路。既に I32Sub を持つ)。
+
+- [ ] `REPL-TYPE-TAG-01` `repl-session-eval` の型名取得を型タグ分岐へ寄せる — Issue `I-69`。
+  `selfhost/src/App/Cli.ls:1463` が `(ty-name ty)` を型タグを見ずに呼び、Con 以外では
+  引数型オブジェクトの tagged handle が session slot 1 へ入る。`lsharp repl` は
+  `type:type--9223372036718940184` を印字する (`run-repl` `:1472` → CLI dispatch `:2275`)。
+  受入条件: `lsharp repl` が `(defn main [] 42)` に対し `type:Int` を印字する RED を先に立て、
+  `render-type-text` (`Cli.ls:715`) と同じ `ty-tag` 分岐へ寄せて GREEN にすること。
+  同時に `selfhost_gc_stateful_soak` の 5 件と
+  `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload` が緑になること。
+  **先に決めること**: `infer` が Fun を返す現状が契約なのか変更なのか。
+  契約変更だったなら直す先は `repl-session-eval` ではなく `infer` 側になる。
+  **含めない範囲**: `selfhost_gc_stateful_soak` の LSP stdio frame 3 件 (別原因)、
+  `EmbeddedCli.ls:113-114` の同型コード (`repl` 経路を持たないなら触らない)。
+
 - [ ] `IGNORED-STALE-PIN-01` `#[ignore]` の e2e に溜まった陳腐化 pin を一度洗う — Issue `I-64`。
   `I-63` の影響範囲調査で `test_e2e_selfhost_cli_lsp_transport_rename_frame` が
   **2026-03-27 以来ずっと赤だったのに誰も観測していなかった**ことが分かった
