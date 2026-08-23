@@ -4643,6 +4643,16 @@
 - **直し方の方向** (未確定): option enum を command ごとに分ける、または
   `test` command のとき `default-compile-target` ではなく明示の `test-option-text` を渡す。
   後者は `Cli.ls` / `EmbeddedCli.ls` の既定 lane を揃える判断を伴うので ADR が要る。
+- **`check` も同じ**  (2026-08-23 追記): `check-option-json` (`EmbeddedCli.ls:86`) も 1 なので、
+  `lsharp check input.ls` (argc 2) も `EmbeddedCli` では JSON lane、`Cli.ls` では text lane に入る。
+  fallthrough (`EmbeddedCli.ls:1730` / `Cli.ls:2682`) は 1 箇所で両 command を賄っており、
+  機構が同じである。**本 issue の範囲に `check` を含める。**
+- **方向は確定した** (2026-08-23): 参照実装 `crates/lsharp-driver/src/main.rs:201` の
+  `Test.format` が `default_value = "text"` なので、**text lane が正**であり
+  寄せるのは `EmbeddedCli` 側である。`default-compile-target` は触らない
+  (component 既定は意図であり、変えると `compile` の契約が壊れる)。
+  判断と却下理由は
+  [argc 2 の command 既定 option](docs/adr/decisions-selfhost-cli-argc2-command-default-option.md)。
 - **関連**: `I-64` (`#[ignore]` により観測されない)、`I-65` (発見の経緯)。
   引き取り先は `TODO.md` の `EMBEDDED-CLI-OPTION-SPACE-01`。
 

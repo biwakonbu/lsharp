@@ -2916,10 +2916,17 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   これが 1 = `(test-option-json)` と同値なので **`--format json` 抜きでも JSON lane に入る**。
   `run-test-source-text` は `test` command から到達しない。`Cli.ls` は既定 0 なので text lane
   に入り、**2 系統で既定 lane が食い違う**。
-  受入条件: `lsharp test input.ls` がどちらの系統でも同じ lane を通ることを、
-  live な e2e (`#[ignore]` でないもの) で両系統に対して固定すること。
-  どちらの lane へ寄せるかは ADR で決める。
-  **含めない範囲**: `compile` / `build` の target option の再設計。`Cli.ls` 側の
+  **`check` も同じ機構で割れている** (`check-option-json` も 1)。本項目に含める。
+  受入条件: `lsharp test input.ls` と `lsharp check input.ls` がどちらの系統でも
+  text lane を通ることを、live な e2e (`#[ignore]` でないもの) で両系統に対して固定すること。
+  実装は fallthrough (`Cli.ls:2682` / `EmbeddedCli.ls:1730`) を
+  `default-option-for-command` へ差し替え、`test-option-text` / `check-option-text` を
+  0 として明示的に定義する。**`default-compile-target` は触らない。**
+  判断と却下理由は
+  [`decisions-selfhost-cli-argc2-command-default-option.md`](docs/adr/decisions-selfhost-cli-argc2-command-default-option.md)
+  に確定済み (2026-08-23)。
+  **含めない範囲**: `compile` / `build` の target option の再設計。command ごとの
+  option enum 分割 (同 ADR 却下案 C)。`Cli.ls` 側の
   `#[ignore]` 解除そのもの (`IGNORED-STALE-PIN-01`)。出力形式の変更。
 
 - [ ] `SAMPLE-COVERAGE-CONTRACT-01` `cases` がサンプル数か contract 数かを決める —
