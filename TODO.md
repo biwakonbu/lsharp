@@ -2862,6 +2862,20 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `EmbeddedCli.ls:113-114` の同型コード (`repl` 経路を持たないなら触らない)、
   `check` の型名 pin (`CHECK-TYPE-PIN-01`)。
 
+- [ ] `ADR-EVIDENCE-IGNORED-01` ADR の Evidence が `#[ignore]` 下 test に依存している箇所を洗う — Issue `I-70`。
+  `docs/adr/*.md` の `## Evidence` 節から `test_*` を拾い `#[ignore]` 付き test 名と突き合わせると
+  **14 ADR / 36 件**が該当する (2026-08-23、cargo 非依存の grep で確定)。
+  ただし heavy CI gate は意図的に `#[ignore]` を付けて `scripts/ci/*` から回す運用があるので、
+  該当するだけでは欠陥ではない。
+  受入条件: 36 件を (1) どの script も回していない / (2) script が回している の 2 つへ分け、
+  (1) のうち `IGNORED-STALE-PIN-01` の sweep で赤だったものを列挙し、
+  **当該 ADR の Evidence 節を実測値へ訂正する** (訂正であって削除ではない。
+  「何を根拠に書いたつもりだったか」を残す)。
+  **含めない範囲**: 赤そのものの修正 (`IGNORED-STALE-PIN-01` の振り分け先へ)、
+  `#[ignore]` を外すかどうかの判断 (実行時間の問題であり本項目では決めない)、
+  ADR の Decision / 却下節の再検討。
+  **前提**: `IGNORED-STALE-PIN-01` の sweep 完走 (未 sweep の 32 件が確定しないと (1) を閉じられない)。
+
 - [ ] `CHECK-TYPE-PIN-01` `I-45` が更新し漏らした `check` の型名 pin を追随させる — Issue `I-69` / `I-64`。
   `914bd9f1` (2026-08-22、`decisions-selfhost-zero-arity-defn-type.md`) が 0 引数 `defn` を
   `Unit -> body` へ変えた際、生きている `..._check_format_json`

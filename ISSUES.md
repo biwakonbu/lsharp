@@ -201,6 +201,7 @@
 | [I-67](#i-67) | selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う | 低 | resolved | 2026-08-23 |
 | [I-68](#i-68) | `:invariant` / property の `cases` はサンプル数を載せており、rust oracle の contract 数と食い違う | 低 | open | -- |
 | [I-69](#i-69) | `repl-session-last-type-name` が型タグを見ずにスロット 1 を読み、`lsharp repl` が壊れた型名を出す | 中 | open | -- |
+| [I-70](#i-70) | ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4808,3 +4809,31 @@
   `I-64` が指摘した「検査は生きているが中身が観測されない」領域にあった。
   `workspace-expected-failures.txt` にも `--ignored` 台帳にも載っていない。
 - **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `REPL-TYPE-TAG-01`。
+
+<a id="i-70"></a>
+### I-70: ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない
+
+- **状態**: open
+- **発見**: 2026-08-23 (`I-64` の `#[ignore]` 全量 sweep の副産物)
+
+`docs/adr/decisions-v0.3-native-cli-check-file-e2e.md` の Evidence 節は
+`test_e2e_selfhost_cli_main_with_args_check_file` が `Int` / `diagnostics:0` を返すと書いている。
+同 ADR の Decision 節は「output contract が green になったら normal test にする」と書いており、
+つまり **ADR を書いた時点でその test は `#[ignore]` 下にあった**。sweep で実測すると `Fn` を返す。
+Evidence として書かれていたのは実測値ではなく、test の自称期待値だった。
+
+- **一般化して数えた (2026-08-23、cargo 非依存の grep)**。`docs/adr/*.md` の `## Evidence` 節から
+  `test_*` を拾い、`#[ignore]` 付き test 名 (1,493 件) と突き合わせた結果、
+  **14 ADR が計 36 件の `#[ignore]` 下 test を Evidence に引いている**。
+  内訳の最大は `decisions-native-root-pop-empty-guard.md` の 19 件。
+- **「引いている」だけでは欠陥ではない。** heavy CI gate は意図的に `#[ignore]` を付けて
+  `scripts/ci/*` から回す運用 (`ops03c`) があり、その場合は別経路で検証されている。
+  **問題なのは「どの script も回しておらず、かつ赤」の組み合わせ**である。
+- **sweep 済み 11 module の範囲で確定した赤は 2 件**:
+  - `decisions-v0.3-native-cli-check-file-e2e.md` → `..._check_file` (引き取り先 `CHECK-TYPE-PIN-01`)
+  - `decisions-test-gate-staleness-repair.md` → `test_e2e_bootstrap_fixed_point_stage2_stage3`
+  残り 32 件は未 sweep の module にあり、完走後に確定する。
+- **`I-60` / `I-64` と同型だが層が違う。** あちらは test の pin が陳腐化する話、
+  こちらは **ADR という判断の正本が陳腐化する**話である。ADR は後続の判断の根拠として
+  引かれるので、誤った Evidence は test 1 本より遠くまで伝播する。
+- 引き取り先は `TODO.md` の `ADR-EVIDENCE-IGNORED-01`。
