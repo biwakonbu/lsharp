@@ -189,7 +189,7 @@
 | [I-55](#i-55) | hover / definition / references / rename の fixture が内部 1 始まり座標のまま止まっている | 中 | resolved | -- |
 | [I-56](#i-56) | `source` を持たない document request で params の slot がずれ、open document state が参照されない | 中 | resolved | -- |
 | [I-57](#i-57) | `definition` / `references` の response だけ LSP Location ではなく縮約 array で、line / col とも内部の 1 始まりが漏れている | 中 | resolved | -- |
-| [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | open | -- |
+| [I-58](#i-58) | lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う | 低 | resolved | -- |
 | [I-59](#i-59) | `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る | 低 | open | -- |
 | [I-60](#i-60) | 0 引数 defn の型を pin する e2e 5 本が `I-45` の契約変更で赤のまま放置されている | 中 | resolved | -- |
 | [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | open | -- |
@@ -3594,7 +3594,7 @@
 
 ### I-58: lint 診断の dedup 意味論を pin する test が、real span 導入と同時に前提を失う
 
-- **影響度**: 低 / **状態**: open / **発見**: 2026-08-23 (`LINT-SPAN-01` の doc-RED)
+- **影響度**: 低 / **状態**: resolved (2026-08-23) / **発見**: 2026-08-23 (`LINT-SPAN-01` の doc-RED)
 - **内容**: `I-24` は「同一開始位置でも rule が異なる lint 診断は dedup しない」を裁定し、
   `test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics`
   (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:18762`) がそれを pin している。
@@ -3627,6 +3627,30 @@
 - **これは `LINT-SPAN-01` を止める理由にはならない**。`0:0..0:0` は実利用者に見える不具合で、
   pin の副作用のほうを保存するのは本末転倒である。**pin の再建を別項目へ分けて追跡する**
   ことでカバレッジの黙殺を防ぐ。追跡は `LINT-DEDUP-PIN-01`。
+- **2026-08-23 の追加調査: 当初の受入条件は満たせない**。`dedup-diag-same-span` は
+  2 引数が非対称で、`dedup-find-span` (`LspServerNav.ls:1241-1246`) は
+  「既に result にある診断」を第 1 引数、「これから入れる診断」を第 2 引数に渡す。
+  第 1 引数が lint でない場合は **無条件に 1 (重複) を返す** ので、
+  同一開始位置の type + lint ペアでは type が lint を吸収する。
+  さらに `sort-diagnostics` の order key は `source*100000000 + ...` で
+  type (`source=2`) が lint (`source=3`) より必ず先に並ぶため、実運用経路
+  (`Cli.ls:1474` / `:1739` / `:1754`) ではこの吸収が**決定的に起きる**。
+  したがって「type 診断と lint 診断を突き合わせる」攻め筋で書いた test は
+  `I-24` の裁定と**逆の契約**を pin することになり、採れない。
+  lint 同士で同一 span を作れないことと合わせ、**e2e ソース fixture 経由で
+  この裁定を pin する手段は存在しない**。
+  代替として `dedup-diagnostics` を直接呼ぶ関数レベル pin を採る。
+  判断と却下理由、受入条件との差の扱いは
+  [診断 dedup の rule identity](docs/adr/decisions-lint-diagnostic-dedup-identity.md)
+  の追記節が正本。
+
+- **解決** (2026-08-23): `dedup-diagnostics` を直接呼ぶ関数レベル pin
+  `test_e2e_selfhost_lsp_dedup_diagnostics_keeps_distinct_lint_rules`
+  (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`) を 1 本置いた。
+  rule 相違 → 2 件 / 完全一致 → 1 件 / end 相違 → 2 件 の 3 分岐を検査する。
+  実測は `1 passed; 0 failed` (255.30s)。**RED は取っていない** — 実装は既に正しく、
+  本 slice は pin の再建だからである。失敗力は分岐の向きを揃えないことで確保した。
+  AN32j は削除せず、「開始位置が異なる 2 lint が順序どおりに publish される」検査として残す。
 
 <a id="i-59"></a>
 ### I-59: `:invariant` の型推論が quote を扱えず、識別子検査を直しても診断が残る

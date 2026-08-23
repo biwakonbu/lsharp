@@ -151,3 +151,120 @@ type diagnostic の range が `0:13..0:23` を期待されるのに `0:0..0:0` �
 `check-workspace-baseline.sh` は「expected が pass に転じても非 0」を含む 5 方向で落ちるため、
 **この更新を同じ commit に含めないと baseline gate が壊れる**。
 実 test 行数は e2e 50 + 非 e2e 31 = 81 で、ヘッダの申告値と一致することを確認した。
+
+---
+
+## 追記 (2026-08-23): pin の再建方法 — `LINT-DEDUP-PIN-01` / `I-58`
+
+本 ADR の裁定を pin していた AN32j
+(`test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics`) は、
+`LINT-SPAN-01` で real span が入った結果、fixture の 2 診断が同一開始位置ではなくなり
+(`L0001` = 20..26 / `L0002` = 28..30)、**pass したまま裁定に触れなくなった**。
+再建にあたって、`TODO.md` の `LINT-DEDUP-PIN-01` が当初書いていた受入条件
+
+> 開始位置が実際に一致する 2 診断を含む fixture を作り、rule が異なれば両方 publish される
+> ことを検査する test を 1 本置くこと
+
+は、**そのままでは満たせない**ことが実装読解で判明した。
+
+### 受入条件が満たせない理由 (実装の非対称性)
+
+`dedup-diag-same-span` は 2 引数が対称ではない。`dedup-find-span`
+(`LspServerNav.ls:1241-1246`) が `(dedup-diag-same-span (vector-get result idx) diag)` と
+呼ぶので、第 1 引数 `a` は**既に result に入っている診断**、第 2 引数 `b` は**これから
+入れる診断**である。同一 start に対する分岐は次のとおり。
+
+| result 側 `a` | 入力側 `b` | 判定 | 結果 |
+|---|---|---|---|
+| lint (`source=3`) | lint | `dedup-diag-same-lint-identity` — rule と end が全一致した時だけ 1 | rule が違えば**両方残る** |
+| lint (`source=3`) | type / parse | 0 | 両方残る |
+| type / parse | 何でも | **1 (無条件)** | severity 高い方だけ残る |
+
+3 行目は AC-209 の元の意味論 (「parse/type の既存 same-start precedence は維持し」の
+コメントが実装に付いている) をそのまま保存したものである。
+
+そして実運用経路は `(dedup-diagnostics (sort-diagnostics diagnostics))`
+(`Cli.ls:1474` / `:1739` / `:1754`) であり、`sort-diagnostics` の order key は
+`source*100000000 + ...` なので **type (`source=2`) は lint (`source=3`) より必ず先に並ぶ**。
+つまり同一開始位置の type + lint ペアを作れたとしても、type が先に result へ入り、
+3 行目の分岐が効いて **lint のほうが黙って消える**。
+
+したがって「type 診断と lint 診断を突き合わせる」という当初の攻め筋で書いた test は、
+本 ADR の裁定 (rule が違えば両方残す) **とは逆の契約**を pin することになる。
+lint 同士で同一 span を作れない (`let` / `do` が互いに素な kind) ことは `I-58` が既に
+記録しており、e2e ソース fixture 経由でこの裁定を pin する手段は**存在しない**。
+
+### 決定: `dedup-diagnostics` を直接呼ぶ関数レベル pin にする
+
+`selfhost_cli_runtime_bundle()` に harness を連結して `dedup-diagnostics` を直接呼び、
+診断ベクタを合成して契約を pin する。既存の
+`test_e2e_selfhost_lsp_position_from_offset_covers_line_boundaries`
+(`selfhost_cli_core.rs:18773`) が同じ形式で `lsp-position-from-offset` を pin しており、
+新しい仕組みは要らない。
+
+pin する分岐は 3 つで、片側だけでは通らないようにする。
+
+1. lint + lint / 同一 start / **rule 相違** → 2 件残る (本 ADR の裁定そのもの)
+2. lint + lint / 同一 start / 同一 rule / 同一 end → 1 件へ潰れる (dedup が実際に効く)
+3. lint + lint / 同一 start / 同一 rule / **end 相違** → 2 件残る (end が判定に参加する)
+
+1 だけだと「dedup が常に何もしない」実装でも通る。2 を足すことで失敗力を持たせる。
+
+### 却下した選択肢
+
+#### 案 B: 同一開始位置の type + lint fixture を作り、両方 publish を要求する
+
+**却下。本 ADR の裁定と逆の契約を pin することになる。** 上表 3 行目のとおり、
+実装は同一 start の type を lint より優先して lint を落とす。これは AC-209 の
+既存 precedence であって bug ではない。この test を書けば FAIL し、通すには
+precedence を壊す実装変更が要る — `I-24` が扱っていない範囲への越境である。
+`LS1002` の span 決定規則を調べる作業も、この時点で不要になる。
+
+#### 案 C: 3 つ目の lint rule が入るまで待つ
+
+**却下。期限が無い。** `review-*-diagnostic` は 2 rule しかなく、追加の予定も無い。
+本 ADR は「未使用かつ shadowing」のような将来の同一 span 発火を裁定の根拠に挙げており、
+**その将来が来る前に契約が守られていることを検査できなければ pin の意味が無い**。
+
+#### 案 D: `merge-duplicate-diagnostics` 側に寄せる
+
+**却下。** そちらは rule を問わず潰す逆の意味論で、実運用の publish 経路に入っていない
+(本 ADR「派生して見つかった問題」節)。pin 対象として誤り。
+
+### 受入条件との差 (doc-sync の明示)
+
+**文言どおりには満たしていない。** 当初の受入条件は「fixture を作り」「publish される」
+を要求しており、本決定はソース fixture も publish 経路も通らない。
+**意図は満たしていると判断する**。意図は「`I-24` の裁定 — rule が違えば別の指摘として
+両方残す — に失敗力のある検査を置くこと」であり、それは `dedup-diagnostics` の
+契約そのものである。publish 経路が `dedup-diagnostics` を通ることは
+`test_e2e_selfhost_cli_lsp_stdio_didopen_publishes_multiple_diagnostics_in_stable_order`
+が引き続き覆っており、経路と契約の両方に検査がある状態になる。
+
+AN32j 自身は削除しない。real span 導入後は「開始位置が異なる 2 lint が順序どおりに
+publish される」ことの検査として残り、これは依然として意味がある。
+ただし「same-start の pin である」という役割は失ったので、doc コメントで明示する
+(実施済み)。
+
+### Evidence (`LINT-DEDUP-PIN-01`)
+
+2026-08-23、`/Users/biwakonbu/github/lsharp` (branch `main`、`310eb6a6` の上) で実測。
+
+```
+cargo test -p lsharp-wasm --test e2e -- --ignored lsp_dedup_diagnostics_keeps_distinct_lint_rules
+```
+
+`test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3075 filtered out; finished in 255.30s`
+
+**RED は取っていない。** 本 slice は pin の再建であり、実装は既に採用する意味論を
+実装している (本 ADR「実装範囲」節のとおりコード変更は無い)。初回から緑になるのが正しい。
+偽の RED を作るために実装を一時的に壊すことはしなかった。
+
+失敗力は分岐の作り方で確保している。3 分岐のうち 2 番目
+(同一 rule / 同一 end → 1 件) は dedup が実際に働くことを要求するので、
+「常に何もしない」実装では落ちる。1 番目と 3 番目は逆向きで、
+「常に潰す」実装で落ちる。したがってこの test は両方向に失敗する。
+
+同 slice で `I-57` の回帰確認も取った
+(`cargo test -p lsharp-wasm --test e2e -- --ignored lsp_stdio_rename lsp_stdio_hover`
+→ `19 passed; 0 failed`、1037.03s)。座標変換が rename / hover を乱していないことの確認である。

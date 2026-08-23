@@ -18799,6 +18799,67 @@ fn test_e2e_selfhost_lsp_position_from_offset_covers_line_boundaries() {
     );
 }
 
+/// `LINT-DEDUP-PIN-01` / `I-58`: `I-24` の裁定 (lint は rule が違えば同一 span でも別の指摘) を
+/// `dedup-diagnostics` の契約として直接 pin する。
+///
+/// AN32j は `LINT-SPAN-01` の real span 導入で「同一開始位置」という前提を失った。
+/// 同じ形を e2e ソース fixture で作り直すことはできない — lint rule は `let` / `do` という
+/// 互いに素な kind に紐づき、type + lint ペアは `dedup-diag-same-span` の非対称性
+/// (result 側が lint 以外なら無条件で重複) により逆の契約を pin してしまう。
+/// 判断と却下理由は `docs/adr/decisions-lint-diagnostic-dedup-identity.md` の追記節。
+///
+/// 3 分岐を検査して失敗力を確保する: rule 相違は残す / 完全一致は潰す / end 相違は残す。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_lsp_dedup_diagnostics_keeps_distinct_lint_rules() {
+    let harness = r#"
+(defn make-lint-dedup-diag [rule-id line col msg-hash end-line end-col]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local
+              (push-int-vector-local
+                (push-int-vector-local (vector-new 8) 2)
+                rule-id)
+              line)
+            col)
+          msg-hash)
+        3)
+      end-line)
+    end-col))
+
+(defn lint-dedup-pair [left right]
+  (push-object-vector-local
+    (push-object-vector-local (vector-new 2) left)
+    right))
+
+(defn show-lint-dedup [left right]
+  (print (vector-length (dedup-diagnostics (lint-dedup-pair left right)))))
+
+(defn main []
+  (let [base (make-lint-dedup-diag 100 5 7 11 5 13)
+    other-rule (make-lint-dedup-diag 104 5 7 22 5 13)
+    same-rule (make-lint-dedup-diag 100 5 7 33 5 13)
+    other-end (make-lint-dedup-diag 100 5 7 44 5 20)]
+    (do
+      (show-lint-dedup base other-rule)
+      (show-lint-dedup base same-rule)
+      (show-lint-dedup base other-end)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output.trim().lines().collect::<Vec<_>>(),
+        vec!["2", "1", "2"],
+        "lint 同士の dedup は rule と start/end が全一致した場合だけ潰すべき: {output}"
+    );
+}
+
 /// TEST-CLI-02-AN32j: actual Cli は同一開始位置でも異なる lint diagnostics を dedup しないこと
 ///
 /// `LINT-SPAN-01` (ADR 決定 6) で real span が入り、この fixture の 2 診断は

@@ -764,19 +764,6 @@ Track 0 (Rust 側 dev loop の即効高速化) と Track 1 の `DEVLOOP-T1-1` / 
   **cargo と native 実行が要る。** cargo 非依存でできるのは起票と、
   2026-08-19 に実施した後続事例 3 件の履歴突き合わせ (`I-27` の表) までである。
 
-- [ ] `LINT-DEDUP-PIN-01` lint 診断 dedup の rule identity 規則に pin を作り直す — Issue `I-58`。
-  `I-24` の裁定 ([診断 dedup の rule identity](docs/adr/decisions-lint-diagnostic-dedup-identity.md)、
-  実装は `LspServerNav.ls:1225-1245` の AC-209) を pin していた
-  `test_e2e_selfhost_cli_lsp_stdio_didopen_preserves_distinct_same_start_diagnostics` は、
-  `LINT-SPAN-01` で real span が入ると **同一開始位置という前提を失う**。
-  **受入条件**: 開始位置が実際に一致する 2 診断を含む fixture を作り、rule が異なれば
-  両方 publish されることを検査する test を 1 本置くこと。既存 test の rename では足りない
-  (前提が消えているため)。
-  **難所**: lint rule は 2 つしかなく、それぞれ `let` (tag 7) / `do` (tag 9) という互いに素な
-  kind に紐づくので **lint 同士では同一 span を作れない**。type 診断と lint 診断を突き合わせる
-  必要があり、`LS1002` の span 決定規則 (実測では if 式全体) の調査が先に要る。
-  **含めない範囲**: dedup 規則そのものの是非 (`I-24` で裁定済み)、span の範囲決定 (`LINT-SPAN-01`)。
-  **着手順**: `LINT-SPAN-01` の後。前に置くと今の fixture でしか通らない pin をもう 1 本作ることになる。
 - [BLOCKED: CI 自動実行が 2026-07-12 から停止中で、push では 1 run も起動しない]
   `SMOKE-GATE-03` `default-path-smoke` job が緑になることの 1 run 観測 — Issue `I-15` / `I-19`。
   受入条件 (a) skipped の原因特定は **2026-08-18 に達成**した。原因は job 側の条件ではなく
