@@ -245,18 +245,27 @@ production 未使用でも test から名前ごと参照されている defn が
 `crates/lsharp-wasm/tests/e2e.rs` の `#[ignore]` 群は native 実行や重い selfhost 経路を要する
 ので通常 lane から外してある。**落ちることが分かっているもの**は
 `docs/development/validation/ignored-lane-expected-failures.txt` が正本。
+台帳は e2e binary の `#[ignore]` 全量 (1,431 件 / 18 module) を範囲とし、
+test 名は `<module>::<test>` で持つ (`decisions-ignored-lane-ledger-scope.md`)。
 
 ```bash
-python3 scripts/compare_ignored_lane.py <lane.log>   # 台帳との差分を 4 種に分けて出す
+python3 scripts/compare_ignored_lane.py <lane.log> [<lane.log> ...]  # 台帳との差分を 4 種に分けて出す
+bash scripts/ci/test-compare-ignored-lane.sh                         # 上記の契約テスト (cargo 非依存)
 ```
 
-**完走判定は「宣言数 (`running N tests`) == 結果行のユニーク数」で行う。**
+**完走判定は「宣言数 (`running N tests`) == 結果行のユニーク数」を*ログごとに*行う。**
 Summary 行の passed + failed では足りない。中断すると Summary が出ないか部分集計になる。
 重複行が出たら同じログに 2 回分の run が混ざっているので、集計してはいけない
 (スクリプトは重複 0 も完走判定に含める)。差分が無ければ exit 0、あれば exit 1。
+台帳行に module 名が無ければ移行漏れとして exit 2。
 
-lane 自体は数時間かかるので、**必ず切り離して回す** (`nohup` + `os.setsid()`。
-ハーネス配下だと途中で止められる)。走らせている間は同じマシンで `cargo` を回さない。
+module 分割で回したときは**全 module のログをまとめて渡す**。宣言数は和を取り、
+ログ間で同じ `module::test` が出たらエラーになる。渡し忘れた module の台帳エントリは
+「未出現」で非 0 になるので、**ログが揃っていることは検査であって運用の約束ではない**。
+
+lane 自体は全量で 12 時間規模なので、**必ず切り離して回す** (`nohup` + `os.setsid()`。
+ハーネス配下だと途中で止められる)。走らせている間は同じマシンで `cargo` を回さない
+(binary が差し替わると revision が混ざり、所要も CPU 競合で歪む)。
 
 ### AST に slot を足す前の長さ probe 確認 (cargo 無し)
 
