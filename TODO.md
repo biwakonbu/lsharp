@@ -2863,7 +2863,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
       これは実装に合わせて期待値を緩めるのではなく、`I-45` の契約
       (`decisions-selfhost-zero-arity-defn-type.md`) に pin を追随させる訂正である
       (`CHECK-TYPE-PIN-01` の 2 本と同じ根拠、同じ fixture `(defn main [] 42)` = 17 byte)。
-      `selfhost_cli_core` は未 sweep なので、着手前に同ファイルの `type:` pin を grep し直すこと。
+      **sweep で実測が付いた (2026-08-24)。** `selfhost_cli_core.rs:4790` の実測は
+      `type:type--9223372036853734496`、`..._repl_summary` (`:1786`) は
+      `type:type--9223372036853734056`。**値が run ごとに違う**のでアドレス由来という
+      本項目の見立てが実測で裏付けられた。`selfhost_cli_core::test_e2e_selfhost_cli_repl_core`
+      は本 sweep の新規赤で、`--ignored` 台帳の引き取り先を本項目にしてある。
   GREEN 後、`..._repl_summary` と `selfhost_gc_stateful_soak` の 5 件、
   `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload` が緑になること
   (`selfhost_gc_stateful_soak` の 5 件についても、着手時に `type:` pin の有無を確認し、
@@ -2875,18 +2879,31 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `check` の型名 pin (`CHECK-TYPE-PIN-01`)。
 
 - [ ] `ADR-EVIDENCE-IGNORED-01` ADR の Evidence が `#[ignore]` 下 test に依存している箇所を洗う — Issue `I-70`。
+  **前提だった sweep は完走した (2026-08-24)。全 36 件が実測で判定可能になった。**
+  未 sweep を理由に保留していた 32 件はもう保留できない。
+  **sweep が新しい失敗モードを 1 つ足した。** `decisions-test-gate-staleness-repair.md` が
+  引く `test_e2e_bootstrap_fixed_point_stage2_stage3` は **2 module に同名で存在**し
+  (`selfhost_bootstrap_acceptance/part_001.rs:151` と
+  `selfhost_typeinfer_pipeline_bootstrap.rs:280`)、**前者は赤・後者は緑**である。
+  ADR が裸の test 名を書いているため、**どちらを指すかで Evidence の真偽が反転する**。
+  他の 35 件についても、突き合わせる前に**名前が一意かを先に確かめること**。
+  一意でない Evidence は「陳腐化」ではなく「そもそも参照になっていない」ので、
+  訂正の仕方 (module 名を足す) が違う。
   `docs/adr/*.md` の `## Evidence` 節から `test_*` を拾い `#[ignore]` 付き test 名と突き合わせると
   **14 ADR / 36 件**が該当する (2026-08-23、cargo 非依存の grep で確定)。
   ただし heavy CI gate は意図的に `#[ignore]` を付けて `scripts/ci/*` から回す運用があるので、
   該当するだけでは欠陥ではない。
   受入条件: 36 件を (1) どの script も回していない / (2) script が回している の 2 つへ分け、
-  (1) のうち `IGNORED-STALE-PIN-01` の sweep で赤だったものを列挙し、
+  (1) のうち 2026-08-24 の full sweep (`I-64`) で赤だったものを列挙し、
   **当該 ADR の Evidence 節を実測値へ訂正する** (訂正であって削除ではない。
   「何を根拠に書いたつもりだったか」を残す)。
-  **含めない範囲**: 赤そのものの修正 (`IGNORED-STALE-PIN-01` の振り分け先へ)、
+  **含めない範囲**: 赤そのものの修正 (`I-71`〜`I-75` の各引き取り先へ)、
   `#[ignore]` を外すかどうかの判断 (実行時間の問題であり本項目では決めない)、
   ADR の Decision / 却下節の再検討。
-  **前提**: `IGNORED-STALE-PIN-01` の sweep 完走 (未 sweep の 32 件が確定しないと (1) を閉じられない)。
+  **前提は満たされた。** sweep は 2026-08-24 に完走し、実測は
+  [`ignored-lane-sweep-2026-08-23.md`](docs/development/operations/ignored-lane-sweep-2026-08-23.md)
+  と [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
+  (274 行) にある。
 
 - [ ] `CHECK-TYPE-PIN-01` `I-45` が更新し漏らした `check` の型名 pin を追随させる — Issue `I-69` / `I-64`。
   `914bd9f1` (2026-08-22、`decisions-selfhost-zero-arity-defn-type.md`) が 0 引数 `defn` を
@@ -2897,91 +2914,102 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `#[ignore]` 下にあり、赤で気付いたのではない。
   **`I-64` が想定していた壊れ方そのもので、混入から 1 日で観測された。**
   赤を狙った修復パスですら取りこぼしている点が本件の重さである。
-  受入条件: (a) `..._check_file` と `..._check_json_file` の型名 pin を
-  `decisions-selfhost-zero-arity-defn-type.md` を根拠に `"Fn"` へ更新し、両者が緑になること。
+  **射程が `selfhost_cli_core` にも広がった (2026-08-24、sweep 完走)。** 同じ壊れ方が
+  3 本追加で見つかった。**`13a505b2` が取り残した兄弟は 3 本ではなく 6 本だった**ことになる。
+
+  | test | 実測 | pin |
+  |---|---|---|
+  | `selfhost_cli_core::..._check_file_handler` | `Fn` | `Int` |
+  | `selfhost_cli_core::..._check_source_core` | `Fn` | `Int` |
+  | `selfhost_cli_core::..._check_source_builtin_application_type_contract` (`:1157`) | `Fn` | `Bool` |
+
+  3 本目は期待が `Int` ではなく `Bool` である点に注意する。`(not x)` の**戻り値**型を
+  見ているので、`Unit -> body` 契約とは別に **`render-type-text` が適用結果ではなく
+  関数型そのものを潰している可能性**がある。**pin を直す前にどちらか判別すること。**
+  判別せずに `"Fn"` へ書き換えると、本物の型付けバグを pin で塗り潰す。
+
+  受入条件: (a) `..._check_file` / `..._check_json_file` および上表の
+  `selfhost_cli_core` 3 本の型名 pin を
+  `decisions-selfhost-zero-arity-defn-type.md` を根拠に更新し、全て緑になること。
+  ただし `..._check_source_builtin_application_type_contract` は上記の判別を先に行い、
+  **実装側の誤りだった場合は pin を動かさず別項目へ切る**こと。
   (b) `decisions-v0.3-native-cli-check-file-e2e.md` の Evidence 節 (`Int` / `diagnostics:0` と
   書いている行) を実測値へ訂正し、**`#[ignore]` 下の test の自称期待値を Evidence にしていた**
   旨を残すこと。
   **含めない範囲**: `infer` / `render-type-text` の挙動変更 (契約は `I-45` で確定済み。実装は
   触らない)、`repl` のアドレス印字 (`REPL-TYPE-TAG-01`)。
 
-- [ ] `IGNORED-STALE-PIN-01` `#[ignore]` の e2e に溜まった陳腐化 pin を一度洗う — Issue `I-64`。
-  `I-63` の影響範囲調査で `test_e2e_selfhost_cli_lsp_transport_rename_frame` が
-  **2026-03-27 以来ずっと赤だったのに誰も観測していなかった**ことが分かった
-  (`#[ignore]` 付きで既定 lane に乗らず、`workspace-expected-failures.txt` にも無い)。
-  `I-60` と同型の再発。
-  受入条件: `#[ignore]` 付き e2e を全量実行して赤を列挙し、1 本ずつ
-  「修正する / expected-failure として理由付きで記録する」のどちらかへ振り分ける。
-  実測所要と取得条件を `docs/development/operations/` へ残すこと。
-  **含めない範囲**: 個々の赤の修正 (振り分けの結果として別項目に切る)、
-  `#[ignore]` 検査自体の壊れ (`ops03b` / `ops03c` の mod 分割問題は
-  `TESTGATE-01` / `TESTGATE-03` で解決済み。本項目は「検査は生きているが
-  `#[ignore]` の中身が観測されない」側だけを見る)。
+- [ ] `STAGE-WASM-TRANSLATE-01` stage-N 生成 Wasm の `expected i64 but nothing on stack` を潰す — Issue `I-71`。
+  `--ignored` 全量 sweep (2026-08-24) の最大収量。**赤 72 件**が
+  `Invalid input WebAssembly code at offset N: type mismatch: expected i64 but nothing on stack`
+  で落ちる。distinct な offset は **329391 / 457947 / 310805 の 3 つだけ**。
+  内訳は `selfhost_bootstrap_four_layer` 68 / `selfhost_bootstrap_acceptance` 4。
+  **まず ftable / function index の解決を疑う。** 同一メッセージの先行事例が 2 件あり、
+  どちらも index の誤解決だった (`workspace-expected-failures.txt:102` の
+  `selfhost_standalone_io` offset 2456、`rust-boundary-reduction.md:3106` の
+  `EC-M1-01` offset 2929)。stack が空なのに i64 が要求される形は signature 取り違えで素直に出る。
+  受入条件: 先に RED を立てる。3 offset それぞれについて、**どの命令列が
+  どの関数を呼ぼうとして stack を空にしているか**を特定し、原因ごとに fix を分けること。
+  72 件が 3 offset に収束することは**同一原因の証拠ではない**ので、
+  「1 つ直したら全部緑になった」を期待して 1 本だけ検証して閉じないこと。
+  GREEN 後、`ignored-lane-expected-failures.txt` の該当 72 行を削除する。
+  **含めない範囲**: `I-72` の import 数不一致 (層が違う。あちらは instantiation)、
+  `#[ignore]` を外すかどうかの判断 (原因が付いてから別途決める)。**cargo が要る。**
 
-  **中断時点の状態 (2026-08-23 16:27、ユーザー指示により作業を一旦停止)。**
-  sweep 自体は切り離しプロセスで継続中なので、**再開時にまず `progress.txt` を見ること**。
+- [ ] `STAGE-WASM-IMPORT-COUNT-01` stage-N 生成 Wasm の import 数不一致を直す — Issue `I-72`。
+  `インスタンス化に失敗: expected 11 imports, found 10`。**赤 8 件**、全て
+  `selfhost_bootstrap_four_layer`。**8 件とも数値が `11` / `10` で完全に一致**する。
+  生成バイナリ自体は正しく、host が渡す import 集合と compiler 側の import 宣言が
+  1 本ずれている。import を足した / 落とした変更が片側にしか入っていない形を疑う。
+  受入条件: 先に RED を立てる。**`11` 側と `10` 側それぞれの import 名を列挙して差分を取り**、
+  どちらが正しいかを根拠付きで決めてから直すこと。数を合わせるだけの修正はしない。
+  GREEN 後、`ignored-lane-expected-failures.txt` の該当 8 行を削除する。
+  **含めない範囲**: `I-71` の translation error。**cargo が要る。**
 
-  - 実行体: `/Users/biwakonbu/github/tmp/i64/run_lane.py` (PID 97710) が module 単位で回し、
-    `progress.txt` へ `DONE <mod> rc=<n> elapsed=<s> at=<time>` を追記する。
-    `selfhost_native_stage_chain` (615 件) だけは `chain_stage_chain.py` (PID 98738) が
-    `LANE-COMPLETE` の後に引き取る。ログは `mod-<module>.log`。
-  - 進捗: 宣言 **1,431 件 / 18 module** のうち **14 module 完了** (2026-08-23 16:42)。
-    赤は現時点で **25 件** (`selfhost_gc_stateful_soak` 8 /
-    `selfhost_bootstrap_acceptance` 7 / `runtime_allocator_closures` 4 /
-    `selfhost_cli_actual_main_args` 3 / `selfhost_native_stage23_gap` 2 /
-    `selfhost_lsp_docs_ops` 1)。`selfhost_doctools_cli_diagnostics` 38 件は全緑。
-  - 残り 4 module: `selfhost_native_differential` 104 / `selfhost_bootstrap_four_layer` 146 /
-    `selfhost_cli_core` 381 / `selfhost_native_stage_chain` 615。
-  - **`cargo` を並走させないこと。** 所要が歪み、`docs/development/operations/` に載る実測値が
-    使えなくなる。cargo 依存の項目 (`CHECK-TYPE-PIN-01` / `REPL-TYPE-TAG-01` /
-    `NATIVE-I32SUB-01` / `EMBEDDED-CLI-OPTION-SPACE-01` / `SAMPLE-COVERAGE-CONTRACT-01`) は
-    sweep 完走まで着手できない。
-  - 振り分け済みは台帳 `ignored-lane-expected-failures.txt` に **130 行**。
-    **fix 待ちの赤を台帳から消さないこと** — `compare_ignored_lane.py` は
-    「台帳にあってログに無い」を未出現、「ログで FAIL なのに台帳に無い」を新規 FAIL (exit 1)
-    として扱うため、消すと次回 sweep で新規 FAIL に化ける。
-  - **保留していた hover の判定は付いた (2026-08-23 16:42、`selfhost_lsp_docs_ops` 完走)。**
-    同 module の hover 4 件 (`..._hover_resolves_open_document` = `.rs:577` の
-    `"type-info:10:5"` pin を含む) は**全て緑**。さらに `selfhost_gc_stateful_soak` の
-    実測出力自身が `"contents":"type-info:2:22"` を返している。
-    → **`type-info:L:C` が現行の contents 形式であることは確定。陳腐化 pin 仮説は否定された。**
-    残るのは range が `{-1,-1}` に潰れている点で、これは**実測出力側**に現れており
-    形式変更では説明できない。**本物の欠陥候補として別項目へ切る**のが正しい (未着手)。
-    なお `selfhost_gc_stateful_soak` の赤 8 件は hover の形式 pin ではなく
-    「長寿命 session でも各 frame を決定的に返すべき」という決定性 / telemetry の
-    assertion なので、**hover の判定とは別に振り分ける**こと。
-  - **未振り分けの新しい赤が 1 件** (2026-08-23 16:42):
-    `selfhost_lsp_docs_ops::test_e2e_selfhost_formatter_format_program_module_decl`。
-    同 module 54 件中の唯一の赤。台帳未登録。
-  - 完走後にやること: 全 18 ログへ `compare_ignored_lane.py` を流し
-    (宣言数 1,431 と完走判定を確認)、振り分けを閉じ、
-    `ADR-EVIDENCE-IGNORED-01` の未 sweep 32 件を確定させ、
-    `ignored-lane-sweep-2026-08-23.md` の doc-GREEN を仕上げてから本項目を削除する。
+- [ ] `NATIVE-DIFF-PIN-01` native differential の exact-byte pin 33 件のずれを裁定する — Issue `I-73`。
+  `selfhost_native_differential` の赤 33 件。ずれ方に規則性がある (`I-73` に実測)。
+  (1) frame displacement が一律 8 少ない (実測 -16 / pin -8)、
+  (2) epilogue 最終 byte が `92` (0x5C) vs `93` (0x5D)、
+  (3) 長さ assertion は実測が桁違いに大きい (payload ではなく bundle 全体を測っている疑い)。
+  **本項目の仕事は裁定であって、pin を書き換えることではない。**
+  ADR に裏付けられた意図的な frame layout 変更なら pin を追随させる。
+  そうでなければ regression であり、pin は正しく実装を直す。
+  受入条件: (a) frame layout を 8 byte 動かした変更を git 履歴から特定し、
+  対応する ADR の有無を示すこと。(b) その結果として
+  「pin を直す」か「実装を直す」かを 33 件それぞれについて決めること
+  (3 つの形は原因が別かもしれないので、まとめて 1 つの結論にしない)。
+  (c) `..._nine_arg_bundle_bytes` の `NotFound` と
+  `..._fifty_nine_arg_bundle_bytes` の `support.rs:1685` panic は
+  assertion ですらないので、別途原因を付けること。
+  **含めない範囲**: `NATIVE-I32SUB-01` (値そのものの誤り、別原因)。**cargo が要る。**
 
-- [BLOCKED: `I-48` — selfhost が同じ穴に依存しており、当てると 262 defn が推論に失敗する]
-  `INFER-FORWARD-GEN-01` 前方参照された呼び出しを型検査する —
-  Issue `I-46` の健全性側。callee が caller より後ろに定義されていると、その呼び出しは
-  引数型も arity も検査されず、caller は `forall a. () -> a` へ汎化される。
-  **実装は済んでいて RED も GREEN も取れている。当てられないのは selfhost 側の理由である。**
-  - 直し方 (2026-08-22 実測で確定、`I-46` に diff を逐語で保存):
-    `infer/decl.rs:317` の unify 相手を生の `placeholder_ty` から `env` 側の登録型へ変え、
-    `decl.rs:325-328` の pending 名除外を「裸の型変数のときだけ」に絞る。**両方要る** —
-    片方だけでは 3 本の RED が 3 本とも RED のまま。
-  - **`global_subst` の事後 pass 案は否定済み。** `insert` で積むため上書きされ、
-    誤用の検査はループ途中で走るので事後 pass では届かない。同じ案を再提案しないこと。
-  - 当てた場合の実測: 推論に失敗する selfhost の defn が **0 件 → 262 件**
-    (`Mismatch` 177 / `UndefinedVar` 89、`ArgMismatch` 170 / `IfBranch` 6 / `General` 1)。
-    `lsharp-ir` の `test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds`
-    が落ちる。構造的原因は `selfhost/src/Backend/Wasm/CompilerBase.ls:498` 等の
-    異種 vector をタプルとして使う表現 (`I-48`)。
-  - Rust 側だけ直すと selfhost の checker と食い違う。`selfhost/src/Types/TypeInfer.ls:485`
-    と `:912` が同じ形なので、**両側同時に**直す。
-  - 契約は `crates/lsharp-types/tests/forward_reference_generalization.rs` に保存済み。
-    検出側 5 件は `#[ignore]`、退行防止側 3 件は live。unblock 時は `#[ignore]` を外す。
-  受入条件: 上記 5 件の `#[ignore]` を外して GREEN になり、`cargo test --no-fail-fast --workspace`
-  の FAIL 集合が `workspace-expected-failures.txt` から増えないこと。
-  **`lsharp-wasm` の e2e を必ず含める**。
-  **含めない範囲**: 完全性側 (`INFER-FORWARD-POLY-01`)。宣言順に依存しない generalize。
+- [ ] `ROOT-IMBALANCED-HELPER-01` verifier が非 `main` helper を拒否する件を判別する — Issue `I-74`。
+  `selfhost_cli_core` の赤 9 件が `ImbalancedExit { function: compile-file-state | compile-pair-state, depth: 1 }`。
+  `I-14` の案 E (`decisions-root-lifetime-main-exit-exemption.md`) は
+  `is_export && name == "main"` しか免除しないので、この 2 本は射程外。
+  **fixture 自身には明示的な `root_push` が無い** (`selfhost_cli_core.rs:256-265`)。
+  呼び先の `push-object-vector` (`App/CompilerMode.ls:83`) は均衡しており、
+  verifier は intra-procedural なので算入しない。
+  **したがって `depth: 1` は lowering が挿入した root に由来する疑いが濃く、
+  その場合 verifier は本物の欠陥を捕まえている側になる** (`I-14` と向きが逆)。
+  受入条件: 先に **`I-14` と同じ判別測定** (verifier を一時無効化した対照 build) を行い、
+  9 件が verifier 起因か、その裏に本物の欠陥があるかを数字で示すこと。
+  patch は測定用スクリプト内で適用し、終了時に必ず逆適用して tracked diff 空を事後確認する。
+  **判別が付く前に案 E の述語を緩めないこと。** 緩めれば赤は消えるが、
+  もし lowering の漏れなら検査を殺したことになる。
+  **含めない範囲**: `main` の免除 (案 E で確定済み)、
+  `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
+
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 19 件に原因を付ける — Issue `I-75`。
+  新規赤 145 件のうち `I-71`〜`I-74` / `CHECK-TYPE-PIN-01` / `REPL-TYPE-TAG-01` の
+  どれにも収まらなかった分。症状が 1 件ずつ違う。
+  内訳は `ignored-lane-expected-failures.txt` の `引き取り先: I-75` 行が正本。
+  **先に `exit code 1` 3 件の stderr を拾えるようにする。** `support.rs:188` が
+  exit code だけを文字列化して捨てているので、現状は診断の材料が無い。
+  受入条件: 19 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
+  `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
+  **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
+  **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
 
 - [ ] `SELFHOST-TUPLE-REC-01` selfhost の異種 vector タプルをレコードへ移す — Issue `I-48`。
   `push-int-vector` / `push-object-vector` / `vector-push-*-rooted-v3` はいずれも
@@ -3019,7 +3047,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   に確定済み (2026-08-23)。
   **含めない範囲**: `compile` / `build` の target option の再設計。command ごとの
   option enum 分割 (同 ADR 却下案 C)。`Cli.ls` 側の
-  `#[ignore]` 解除そのもの (`IGNORED-STALE-PIN-01`)。出力形式の変更。
+  `#[ignore]` 解除そのもの。出力形式の変更。
 
 - [ ] `SAMPLE-COVERAGE-CONTRACT-01` `cases` がサンプル数か contract 数かを決める —
   Issue `I-68`。`:invariant` は `actual` に `sample-count` を、property は実行サンプル数を入れるため、

@@ -195,13 +195,18 @@
 | [I-61](#i-61) | `definition` / `references` の wire 形式が request の URI の送り方で分岐する (縮約 array / `Location` object) | 中 | resolved | 2026-08-23 |
 | [I-62](#i-62) | `:example` は quote を含んでも診断 0 件で通り、`lsharp test` が message 無しで落ちる | 低 | resolved | 2026-08-23 |
 | [I-63](#i-63) | `rename` の wire 形式も先頭要素の uri text だけで list 全体が切り替わる | 低 | resolved | 2026-08-23 |
-| [I-64](#i-64) | `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない | 中 | open | -- |
+| [I-64](#i-64) | `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない | 中 | resolved | 2026-08-24 |
 | [I-65](#i-65) | selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する | 中 | resolved | 2026-08-23 |
 | [I-66](#i-66) | EmbeddedCli の既定 test option が `--format json` と同値で、`run-test-source-text` が到達不能になっている | 低 | open | -- |
 | [I-67](#i-67) | selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う | 低 | resolved | 2026-08-23 |
 | [I-68](#i-68) | `:invariant` / property の `cases` はサンプル数を載せており、rust oracle の contract 数と食い違う | 低 | open | -- |
 | [I-69](#i-69) | `repl-session-last-type-name` が型タグを見ずにスロット 1 を読み、`lsharp repl` が壊れた型名を出す | 中 | open | -- |
 | [I-70](#i-70) | ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない | 中 | open | -- |
+| [I-71](#i-71) | stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる | 高 | open | -- |
+| [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | open | -- |
+| [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
+| [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
+| [I-75](#i-75) | sweep で露出した未分類の赤 19 件 | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4536,7 +4541,7 @@
 <a id="i-64"></a>
 ### I-64: `#[ignore]` の e2e が陳腐化した期待値を抱えたまま誰にも観測されない
 
-- **影響度**: 中 / **状態**: open / **発見**: 2026-08-23 (`I-63` の影響範囲 grep 中)
+- **影響度**: 中 / **状態**: resolved (2026-08-24) / **発見**: 2026-08-23 (`I-63` の影響範囲 grep 中)
 - **内容**: `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:5290`
   `test_e2e_selfhost_cli_lsp_transport_rename_frame` は `#[ignore]` が付いており、
   **`I-63` の作業で単独実行するまで誰も回していなかった。実行すると FAIL する。**
@@ -4561,8 +4566,31 @@
   **`#[ignore]` 付き e2e を一度全部走らせて赤を列挙し、expected-failure か修正かを決める**必要がある。
 - **今回この issue で直さない理由**: `--ignored` の全量は e2e 単独で 5 時間規模
   (`I-11` の実測)。`I-63` の slice に載せると計測も判断も混ざる。
+- **解決 (2026-08-24)**: `#[ignore]` lane を **18 module / 1,431 件**全量実行し、
+  赤 274 件を 1 本残らず台帳へ振り分けた。実測は
+  [`ignored-lane-sweep-2026-08-23.md`](docs/development/operations/ignored-lane-sweep-2026-08-23.md)、
+  台帳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt) (274 行)。
+  `compare_ignored_lane.py` を 18 ログへ流し
+  **完走判定 OK / 新規 FAIL 0 / 解消 0 / 未出現 0 (exit 0)**。所要は通算 41,043s (約 11.4 時間)。
+
+  **この sweep が実際に捕まえたもの**:
+
+  | 収量 | 件数 |
+  |---|---:|
+  | 新規に露出した赤 | 145 |
+  | うち新規 issue を要した cluster | 5 (`I-71`〜`I-75`) |
+  | 既存項目の射程が広がったもの | `CHECK-TYPE-PIN-01` +3 / `REPL-TYPE-TAG-01` +1 |
+  | 緑に転じて台帳から外したもの | 1 |
+
+  **懸念そのものが実測で裏付けられた。** `I-45` の契約変更 (`914bd9f1`、2026-08-22) が
+  取り残した型名 pin は、翌日の専用修復パス `13a505b2` を経てなお **6 本**残っていた。
+  赤を狙った修復パスですら取りこぼす。**網羅は「気を付ける」では達成されず、
+  lane を回すことでしか達成されない。**
+- **残った未診断は本 issue に持たせない。** 145 件の原因追及は `I-71`〜`I-75` が持つ。
+  本 issue の受入条件は「全量実行して振り分ける」であり、それは満たした。
 - **関連**: `I-63` (この test の期待値を書き換える側)、`I-60` (同型の放置)、
-  `I-11` (workspace 恒常 FAIL の baseline)。引き取り先は `TODO.md` の `IGNORED-STALE-PIN-01`。
+  `I-11` (workspace 恒常 FAIL の baseline)、`I-70` (ADR の Evidence 側)、
+  `I-71`〜`I-75` (振り分け先)。
 
 <a id="i-65"></a>
 ### I-65: selfhost runner は contract metadata の quote 契約を持たず、`:invariant` + quote を `pass` と報告する
@@ -4849,7 +4877,152 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   - `decisions-v0.3-native-cli-check-file-e2e.md` → `..._check_file` (引き取り先 `CHECK-TYPE-PIN-01`)
   - `decisions-test-gate-staleness-repair.md` → `test_e2e_bootstrap_fixed_point_stage2_stage3`
   残り 32 件は未 sweep の module にあり、完走後に確定する。
+- **sweep 完走 (2026-08-24) で失敗モードがもう 1 つ見つかった。**
+  `decisions-test-gate-staleness-repair.md` が引く `test_e2e_bootstrap_fixed_point_stage2_stage3` は
+  **2 module に同名で存在**し (`selfhost_bootstrap_acceptance/part_001.rs:151` /
+  `selfhost_typeinfer_pipeline_bootstrap.rs:280`)、**前者は赤・後者は緑**である。
+  ADR が裸の test 名を書いているため、**どちらを指すかで Evidence の真偽が反転する**。
+  これは「Evidence が陳腐化した」のではなく「Evidence が参照として成立していない」形で、
+  訂正の仕方が違う (値を直すのではなく module 名を足す)。
 - **`I-60` / `I-64` と同型だが層が違う。** あちらは test の pin が陳腐化する話、
   こちらは **ADR という判断の正本が陳腐化する**話である。ADR は後続の判断の根拠として
   引かれるので、誤った Evidence は test 1 本より遠くまで伝播する。
 - 引き取り先は `TODO.md` の `ADR-EVIDENCE-IGNORED-01`。
+
+<a id="i-71"></a>
+### I-71: stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる
+
+- **影響度**: 高 / **状態**: open
+- **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep。**本 sweep の最大収量**)
+- **内容**: selfhost compiler が出力した Wasm を wasmtime が読めない。
+  `WebAssembly translation error / Invalid input WebAssembly code at offset N:
+  type mismatch: expected i64 but nothing on stack`。**赤 72 件**。
+
+  | module | 件数 |
+  |---|---|
+  | `selfhost_bootstrap_four_layer` | 68 |
+  | `selfhost_bootstrap_acceptance` | 4 |
+
+  **distinct な offset は 3 つしかない** (メッセージは 3 つとも完全に同一)。
+
+  | offset | 出現 (延べ) |
+  |---|---|
+  | 329391 | 101 |
+  | 457947 | 76 |
+  | 310805 | 1 |
+
+- **「同一症状」であって「同一原因」ではない。** 72 件が 3 offset に収束するのは
+  強い信号だが、根本原因が 1 つだという証拠にはならない。**原因は未確定**である。
+- **発生時期は不明。** これらは全て `#[ignore]` 下にあり、`--ignored` lane を回した
+  実績が本 sweep 以前に無い。したがって **regression とも「元から赤」とも言えない**。
+  「観測されたことが無かった」ことこそが `I-64` の主題である。
+- **診断の出発点**: 同一メッセージの先行事例が 2 件あり、**どちらも function index /
+  ftable の誤解決だった**。
+  - [`workspace-expected-failures.txt:102`](docs/development/validation/workspace-expected-failures.txt)
+    -- `selfhost_standalone_io` の offset 2456。`wasi_snapshot_preview1` import の後段で
+    user call を出すと不正になる。同ファイルには
+    `test_wasm_compiler_user_call_resolves_function_index_before_arg_compilation` も並んでいる
+  - [`rust-boundary-reduction.md:3106`](docs/development/operations/rust-boundary-reduction.md)
+    -- `EC-M1-01` の offset 2929。`L.Point` が `R.Point` の constructor index へ誤解決された
+
+  **stack が空なのに i64 が要求される**という形は、呼び出す関数の signature を
+  取り違えたときに素直に出る。ftable index の解決を最初に疑うべきである。
+- **関連**: `I-64` (発見経路)、`I-72` (同じ module の別症状)。
+  引き取り先は `TODO.md` の `STAGE-WASM-TRANSLATE-01`。
+
+<a id="i-72"></a>
+### I-72: stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`)
+
+- **影響度**: 高 / **状態**: open
+- **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
+- **内容**: 生成された Wasm は**読めるが、インスタンス化できない**。
+  `インスタンス化に失敗: expected 11 imports, found 10`。**赤 8 件**、
+  全て `selfhost_bootstrap_four_layer`。**8 件とも数値は `11` / `10` で完全に一致**する。
+- **`I-71` とは層が違う。** `I-71` は translation (バイナリが不正)、本件は
+  instantiation (バイナリは正しいが host が渡す import 集合と食い違う)。
+  同じ module に同居しているので混ぜやすいが、疑う場所が違う。
+  `I-71` は codegen、本件は **host 側の import 表と compiler 側の import 宣言の同期**である。
+- **数が 1 つだけずれている**ので、import を 1 本足した / 落とした変更が
+  片側にしか入っていない形が疑わしい。**ただし未診断**。
+- **関連**: `I-64` (発見経路)、`I-71`。引き取り先は `TODO.md` の `STAGE-WASM-IMPORT-COUNT-01`。
+
+<a id="i-73"></a>
+### I-73: native differential の exact-byte pin 33 件が一律にずれている
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
+- **内容**: `selfhost_native_differential` の赤 **33 件**。x86-64 / aarch64 の生成バイト列を
+  literal で pin している test 群で、**ずれ方に規則性がある**。観測された形は 3 つ。
+
+  1. **frame displacement が一律 8 少ない。** 実測が `240,255,255,255` (= -16) を出す位置で
+     pin は `248,255,255,255` (= -8) を期待する。以降も 8 ずつずれたまま最後まで並走する
+     (`part_010.rs:314` / `part_011.rs:178` で確認)
+  2. **epilogue 最終 byte が `92` (0x5C) vs `93` (0x5D)。** pop 対象 register が違う
+  3. **長さ assertion では実測が payload 長ではなく桁違いに大きい値を返す。**
+     `left "2563" / right "63"` (`part_003.rs:300`)、`left "3488" / right "28"` (`:217`)、
+     `left "3070" / right "584"` (`part_007.rs:184`)、`left "2539" / right "25"` (`:165`)。
+     payload の切り出しに失敗して bundle 全体を測っている可能性がある
+
+  **1 と 2 は「一律のずれ」であって、値がランダムに壊れているのではない。**
+  frame layout を 8 byte 動かす変更が入り、pin が追随していない形と整合する。
+  **ただし ADR に裏付けられた意図的な変更なのか regression なのかは未確定**であり、
+  それを決めることが引き取り先の仕事である。
+- **33 件の内訳には assertion 以外も 2 件ある**。
+  `..._nine_arg_bundle_bytes` は `Os { code: 2, kind: NotFound }`、
+  `..._fifty_nine_arg_bundle_bytes` は `support.rs:1685` で panic。**どちらも未診断**。
+- **`NATIVE-I32SUB-01` とは別**。あちらは i32 減算の値そのものの誤りで、
+  本件は byte 列の配置のずれである。
+- **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `NATIVE-DIFF-PIN-01`。
+
+<a id="i-74"></a>
+### I-74: root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
+- **内容**: `selfhost_cli_core` の赤 **9 件**が
+  `RootLifetime { error: ImbalancedExit { function: ..., depth: 1 } }` で落ちる。
+  対象関数は fixture 内の helper 2 本のみ。
+
+  | 関数 | 件数 |
+  |---|---|
+  | `compile-file-state` | 6 |
+  | `compile-pair-state` | 3 |
+
+- **`I-14` の案 E では覆えない。** [`decisions-root-lifetime-main-exit-exemption.md`](docs/adr/decisions-root-lifetime-main-exit-exemption.md)
+  が免除するのは `function.is_export && function.name == "main"` だけである。
+  本件の 2 本は export でも `main` でもない。**案 E の射程外に同じ形の赤が残っていた**。
+- **fixture 自身には明示的な `root_push` が無い** (`selfhost_cli_core.rs:256-265`)。
+  helper が呼ぶ `push-object-vector` ([`App/CompilerMode.ls:83`](selfhost/src/App/CompilerMode.ls))
+  は `root_push` 2 / `root_pop` 2 で均衡しており、verifier は intra-procedural なので
+  そもそも算入しない。**したがって `depth: 1` は lowering が挿入した root に由来する疑いが濃い**。
+  もしそうなら本件は「verifier が厳しすぎる」ではなく「lowering が root を漏らしている」、
+  すなわち **verifier が本物の欠陥を捕まえている**側になる。`I-14` とは向きが逆になり得る。
+  **どちらかは未確定であり、判別測定 (`I-14` が使った verifier 無効化対照) が要る。**
+- **関連**: `I-14` (同じ verifier、別の射程)、`I-64` (発見経路)、`LEGACY-ROOT-01`。
+  引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
+
+<a id="i-75"></a>
+### I-75: sweep で露出した未分類の赤 19 件
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
+- **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
+  `CHECK-TYPE-PIN-01` / `REPL-TYPE-TAG-01` のいずれにも収まらない **19 件**。
+  症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
+  内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
+  の `引き取り先: I-75` 行が正本。
+
+  | module | 件数 | 主な形 |
+  |---|---|---|
+  | `selfhost_cli_core` | 11 | `InvalidData: stream did not contain valid UTF-8` 2 / `exit code 1` 3 / LSP transport frame 2 / その他 4 |
+  | `selfhost_bootstrap_acceptance` | 3 | stage chain compare の失敗リスト |
+  | `selfhost_native_stage_chain` | 2 | |
+  | `selfhost_bootstrap_four_layer` | 1 | |
+  | `selfhost_lsp_docs_ops` | 1 | formatter の module body canonical text |
+
+- **`exit code 1` 3 件と `NotFound` 系は stderr が台帳に残っていない。**
+  `support.rs:188` が exit code だけを文字列化して捨てている。
+  **再現時に stderr を拾えるようにすることが診断の前提**になる。
+- **本 issue は保持であって診断ではない。** 19 件それぞれの原因が付いた時点で
+  該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
+- **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
