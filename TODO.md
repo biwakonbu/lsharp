@@ -2928,7 +2928,30 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   どちらが正しいかを根拠付きで決めてから直すこと。数を合わせるだけの修正はしない。
   GREEN 後、`ignored-lane-expected-failures.txt` の該当行のうち**実測で緑になったものだけ**を削除する。
   `I-71` では 72 行が緑にならず削除できなかった (下に別の層があった)。同じことが起こりうる。
-  **含めない範囲**: `I-78` の実行時 trap (層が違う)。**cargo が要る。**
+  **含めない範囲**: `I-78` の実行時 trap (層が違う)、`I-79` の握り潰し構造の是正
+  (helper の付け替えだけは本項目で行い、`Err` を無視する形は直さない)。**cargo が要る。**
+
+  **判断は済んでいる (2026-08-27)。**
+  [11-import ABI を正とする ADR](docs/adr/decisions-selfhost-eleven-import-abi-harness.md)
+  に import 名の差分・却下した 3 案・全数調査を記録した。差分は末尾 1 本 (`env.print-string`) だけで、
+  11 側は 10 側の厳密な superset。**10 側を要求する呼び出し元は 1 件も無い**ため、
+  移行ではなく `include_print_string = false` 分岐の**削除**として実装する。
+  部分再測定の対象 module は `selfhost_bootstrap_four_layer` /
+  `selfhost_bootstrap_acceptance` / `runtime_allocator_closures` の 3 つ
+  (`[d]` 3 行が動きうるので 3 つ目も必須)。台帳編集後に抜粋を取り直すこと。
+
+- [ ] `HARNESS-SWALLOWED-ERR-01` 実行失敗を握り潰す e2e test 8 件を、失敗が失敗として出るようにする — Issue `I-79`。
+  `run_wasm_with_six_imports_compiler_mode*` の `Result` を
+  `match { Err(e) => eprintln!(..), Ok(out) => { /* 全 assertion */ } }` で受けているため、
+  **実行が失敗した回は assertion が 1 つも走らないまま緑になる**。
+  8 件は `selfhost_bootstrap_four_layer` の 5 fragment に散っている
+  (`part_008` 2 / `part_011` 2 / `part_014` 1 / `part_015` 1 / `part_016` 2)。
+  受入条件: 先に RED を立てる。**`Err` 腕を潰す前に、同じ形が他に何件あるかを数えること。**
+  8 件という数は `I-72` の呼び出し元調査の副産物であって、網羅的な探索の結果ではない。
+  潰した結果として赤が増えるのは**正しい挙動**であり、増えた分は台帳へ正直に載せる
+  (「赤が増えないこと」を受入条件にしない)。
+  **含めない範囲**: `I-72` の helper 付け替え (`STAGE-WASM-IMPORT-COUNT-01` で行う)、
+  握り潰しが露出させた個々の失敗の修正。**cargo が要る。**
 
 - [ ] `CLI-SELFFEED-DIVZERO-01` stage1 compiler の `src/App/Cli.ls` self-feed trap を診断する — Issue `I-78`。
   translation でも instantiation でもなく**実行中**に `wasm trap: integer divide by zero` になる。

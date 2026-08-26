@@ -210,6 +210,7 @@
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27) |
+| [I-79](#i-79) | 10-import helper の戻り値を握り潰す test 8 件が、緑のまま何も検査していない | 中 | open | `I-72` の診断で発見 (2026-08-27)。台帳にも載らない |
 
 ### ドキュメント (DOC)
 
@@ -5021,7 +5022,8 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `I-71` → `I-72` へ付け替えた**。条件を静かに緩めたのではなく、条件そのものが
   「1 つの原因が 1 つの赤に対応する」という誤った前提に立っていた。
 - **関連**: `I-64` (発見経路)、`I-72` (**本件が隠していた真の壁**。72 行の引き取り先)、
-  `I-75` (2 行が本件と同原因。再測定で `I-72` / `I-78` へ移管)、
+  `I-75` (3 行を再測定で移管。うち 2 行は本件の症状を経て `I-72` へ。
+  残り 1 行 (`..._cli_module`) は本件の症状を一度も出しておらず `I-78` へ — 同原因ではない)、
   `I-77` (本件を隠していた検証の穴)。
 
 <a id="i-72"></a>
@@ -5239,3 +5241,51 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   同 test は `I-72` の症状も併発するので引き取り先は `I-72` に置いた。
 - **関連**: `I-75` (分離元)、`I-71` / `I-72` (同じ test 群の別の層)、`I-64` (発見経路)。
   引き取り先は `TODO.md` の `CLI-SELFFEED-DIVZERO-01`。
+
+<a id="i-79"></a>
+### I-79: 10-import helper の戻り値を握り潰す test 8 件が、緑のまま何も検査していない
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-72` の呼び出し元全数調査)
+- **内容**: `run_wasm_with_six_imports_compiler_mode*` を呼ぶ test 90 件のうち **8 件**が、
+  helper の返す `Result` を `if let Ok(..)` 等で開き、`Err` のときは**何もせずに素通りする**。
+  この 8 件は `I-72` のインスタンス化失敗を確実に踏んでいるにもかかわらず、
+  **緑のまま**であり `ignored-lane-expected-failures.txt` にも載らない。
+  実際の形 (`part_016.rs:296`):
+
+  ```rust
+  match stage3_result {
+      Err(e) => eprintln!("stage3 実行失敗: {}", e),
+      Ok(out) => { /* ここに全ての assertion がある */ }
+  }
+  ```
+
+  `Err` 腕が `eprintln!` だけなので、**実行が失敗した回は assertion が 1 つも走らない**。
+
+  ```
+  test_debug_stage3_main_again_output_chars
+  test_debug_stage3_output_chars
+  test_e2e_boot04_compiler_mode_ignores_dotted_flat_file
+  test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band
+  test_e2e_boot04_self_hosted_stage2_reports_main_again_cache_pairs_progress
+  test_e2e_boot04_self_hosted_stage2_reports_main_again_progress
+  test_e2e_boot04_self_hosted_stage2_reports_module_resolver_progress
+  test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress
+  ```
+
+- **これは `I-72` とは別の欠陥である。** `I-72` は「host が渡す import 集合が古い」。
+  本件は「**実行に失敗しても test が成功する**」。`I-72` を直せばこの 8 件は実際に走り出すが、
+  走り出した先で何を assert しているかは別問題であり、
+  **`Err` を無視する構造そのものは `I-72` の fix では消えない**。
+- **`I-64` の sweep がこれを拾えなかった理由**もここにある。sweep は落ちた test を数える。
+  落ちない test は、検査していなくても数に入らない。
+  **「緑になることと検査していることは別である」の実例**である。
+  同型は `I-77` (検証ヘルパーが関数本体を一つも見ていない) と
+  `I-70` (ADR の Evidence が `#[ignore]` 下の test を根拠にしていた) に既に 2 件ある。
+- **8 件は全て `selfhost_bootstrap_four_layer` にあるが、fragment は 5 つに散っている**
+  (`part_008` 2 件 / `part_011` 2 件 / `part_014` 1 件 / `part_015` 1 件 / `part_016` 2 件)。
+  個別の書き損じではなくこの module の書き癖と見るべきで、
+  **同じ形が他に無いかを併せて数えること。**
+- **関連**: `I-72` (発見経路。移行だけは `I-72` の slice で行う)、
+  `I-77` / `I-70` (同じ「緑だが検査していない」類型)、`I-64` (sweep が拾えなかった)。
+  引き取り先は `TODO.md` の `HARNESS-SWALLOWED-ERR-01`。
