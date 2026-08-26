@@ -2940,18 +2940,29 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   示せないなら (a) は選べない。
   **含めない範囲**: violation が消えた原因そのものの追跡。**cargo が要る。**
 
-- [ ] `PROBE-ASSERTS-NOTHING-01` assertion を 1 つも持たない probe test 13 件の扱いを裁定する — Issue `I-82`。
-  実行結果を `eprintln!` / `println!` するだけで assertion が無いため、
-  **入力が何であれ、実行が成功しようが失敗しようが常に緑になる**。
-  `I-79` (assertion が skip される) とは別で、こちらは最初から無い。
+- [ ] `PROBE-ASSERTS-NOTHING-01` 主題を検査していない probe test 13 件を裁定どおり是正する — Issue `I-82`。
+  **裁定は済んでいる** — `docs/adr/decisions-probe-subject-unchecked.md`。
+  残りは実装で、内訳は **assertion 追加 8 件 / 削除 4 件 (+ 基準外の隣接 `test_debug_stage2_save`) /
+  恒真 assert の実質化 1 件**。
   うち 3 件 (`test_i64_if_condition_validity` / `test_parse_compiler_ls` /
   `test_parse_caws_standalone`) は `#[ignore]` を持たず、通常 lane で毎回走る。
   走査は `scripts/sweep_unchecked_result.py`。**出力をそのまま件数として使わないこと**
   (既知の偽陽性 2 件が残っている)。
-  受入条件: **`panic!` へ一括置換して済ませないこと。** 各 probe について
-  「何を保証すべきか」を決め、決められないものは削除を検討する。
-  `assert!(matches!(x, A | B | C | D | E))` のような**恒真な assertion を足して緑にしない**。
-  削除を選ぶなら、その probe が担っていた診断出力の引き取り先を示すこと。
+  受入条件:
+  - **`panic!` へ一括置換して済ませないこと。** `assert!(matches!(x, A | B | C | D | E))` のような
+    **恒真な assertion を足して緑にしない**
+  - **期待値を test 名から推定しないこと。** `test_i64_if_condition_validity` は
+    fixture が仕様上不正な wasm で、正しい契約は `is_ok()` ではなく **両方が reject する**である
+  - 削除する 4 件は、**診断出力の引き取り先の同値性を実測で確かめてから**削除する
+    (ADR に候補は書いたが未検証)
+  - `test_parse_compiler_ls` / `test_parse_caws_standalone` の実測が失敗を示したら、
+    **fixture や実装を赤が消える方向に触らず**、新規 issue を切って台帳へ載せる。
+    非 ignore なので引き取り先は `workspace-expected-failures.txt` 側
+  - **13 件中 12 件が `selfhost_bootstrap_four_layer` に属する。** 実装後に同 module の
+    再計測が 1 本要る (前回実測 6748s ≈ 112 分)。計測 → 変更 → 再計測を細切れに繰り返さず、
+    **four_layer に触る裁定を 1 slice に束ねて lane 1 本で覆うこと**
+  - `..._representative_const_only_entrypoint_helper_offsets` (13 件目) は
+    `selfhost_native_stage_chain` に属するので、four_layer の slice には入れない
   **含めない範囲**: probe が露出させる個々の失敗の修正。**cargo が要る。**
 
 - [ ] `COMPILER-MODE-STACK-01` compiler-mode 生成 wasm の stack 不整合を診断する — Issue `I-83`。

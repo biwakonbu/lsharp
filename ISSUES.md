@@ -213,7 +213,7 @@
 | [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
 | [I-80](#i-80) | stage1/stage2 の target-defn parity が `ast-make-type-constrained` で分岐する | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
 | [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
-| [I-82](#i-82) | assertion を 1 つも持たない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。3 件は非 ignore |
+| [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。3 件は非 ignore。裁定は ADR 済 |
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
 
 ### ドキュメント (DOC)
@@ -5377,13 +5377,20 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `VIOLATION-PROBE-STALE-01`。
 
 <a id="i-82"></a>
-### I-82: assertion を 1 つも持たない probe test が 13 件あり、常に緑になる
+### I-82: test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-27 (`I-79` の全数調査)
-- **内容**: 実行結果を `eprintln!` / `println!` するだけで、**assertion を 1 つも持たない**
-  test が **13 件 / 16 箇所**ある。`I-79` (assertion が skip される) とは別で、
+- **内容**: 実行結果を `eprintln!` / `println!` するだけで、**test 名が主張する主題を
+  一度も検査していない** test が **13 件 / 16 箇所**ある。`I-79` (assertion が skip される) とは別で、
   こちらは**最初から無い**。したがって入力が何であれ、実行が成功しようが失敗しようが、常に緑になる。
+
+  **基準はこうである** (当初の記述を 2026-08-27 に訂正した。下記「枠組みを直した」を見よ)。
+
+  > 1. test 名またはコメントが**主題**を宣言している
+  > 2. その主題について、**結果を検査する assertion が無い** — 表示するだけ、または恒真な `assert!`
+  >
+  > 中間結果に assertion があっても、**主題が未検査なら対象**とする。
 
   | 形 | 位置 | test | ignore |
   |---|---|---|---|
@@ -5406,22 +5413,40 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   実行結果に対する assertion を 1 つも持たない。
   とくに `test_parse_compiler_ls` は「`Compiler.ls` をパースして構文エラーを検出する」と
   コメントに書きながら、**パース結果を `eprintln!` するだけ**である。
-- **件数は 2 度直している。** 最初の手作業で 9 件と数え、走査を
-  `scripts/sweep_unchecked_result.py` として書き直したときに `part_015` の 4 件が追加で出た。
+- **枠組みを直した。件数と定義を合わせて 3 度動いている。** 最初の手作業で 9 件と数え、
+  走査を `scripts/sweep_unchecked_result.py` として書き直したときに `part_015` の 4 件が追加で出た。
   **手で数えた 9 という数は、走査の網羅性ではなく目視の到達範囲を表していた。**
+  さらに 13 件の実物を全部読んだ結果、**当初の見出し「assertion を 1 つも持たない」が
+  13 件中 6 件で成り立たない**ことが分かった。それらは `.expect(...)` や `assert_valid_wasm(...)` で
+  中間結果を検査しており、検査していないのは主題の方である。
+  1・2 度目は数え漏れだが、**3 度目は数える対象の定義が間違っていた**。
+  これは件数の検算では発見できない種類の誤りである。
 - **形 (d) は「恒真な assertion」である。** `assert!(matches!(classification, A | B | C | D | E))`
   と書かれているが、`classification` はその 5 値のいずれかにしか成りえない構造で作られている。
   **assertion があることと、検査していることは別である。**
-- **直すには裁定が要る。** これらは診断 probe であり、
-  「この probe は何を保証すべきか」を決めないと assertion が書けない。
-  `I-81` が別の probe について問うているのと同じ種類の判断であり、
-  **一括で `panic!` へ置き換えて済ませてはならない。**
+- **裁定は済んでいる。実装が未着手である。**
+  [`docs/adr/decisions-probe-subject-unchecked.md`](docs/adr/decisions-probe-subject-unchecked.md) が
+  test ごとの裁定を確定した。内訳は **assertion 追加 8 件 / 削除 4 件 (+ 基準外の隣接 1 件) /
+  恒真 assert の実質化 1 件**。一括削除・一括 `panic!`・一括 `#[ignore]` の 3 案はいずれも却下した。
+- **`test_i64_if_condition_validity` は極性が逆だった。** fixture
+  `tests/fixtures/selfhost-debug/test_i64_if.wasm` は**仕様上不正な wasm** で
+  (`if` 条件が i64 / `if (result i64)` に else が無い)、正しい契約は
+  「wasmparser と wasmtime の**両方が reject する**」である。
+  名前から `is_ok()` を assert すると赤になり、赤を消そうとして fixture を壊す連鎖に入る。
+  なお 2 つ目の欠陥が出すエラー形 (`expected [i64] but got []`) は `I-83` の
+  `expected i64 but nothing on stack` と同じだが、**offset の集合は原因の集合ではない**ので
+  参照に留める。
+- **実装には four_layer の再計測が 1 本要る** (前回実測 6748s ≈ 112 分)。
+  13 件中 12 件が `selfhost_bootstrap_four_layer` に属し、test の追加・削除は
+  ignored lane の母集団を変えるため、`AGENTS.md` の partial-lane 規約 (`d29cb5a1`) が再計測を要求する。
+  **four_layer に触る裁定は 1 つの slice に束ねること。**
 - **走査は `scripts/sweep_unchecked_result.py` にある。** 現状 18 件を出力し、
   うち 2 件は既知の偽陽性である (`part_007.rs:264` は直後に `assert_valid_wasm` があり、
   `part_014.rs:651` は `summarize` クロージャの中)。
   **出力をそのまま件数として使わないこと。** 判定は必ず該当箇所を開いて行う。
-- **関連**: `I-79` (本 issue の親。形 (b) だけが解決済み)、`I-81` (同種の probe 裁定)、
-  `I-77` / `I-70` (「緑だが検査していない」類型)。
+- **関連**: `I-79` (本 issue の親。形 (b) だけが解決済み)、`I-81` (同種の probe 裁定だが対象は別 test)、
+  `I-83` (`test_i64_if.wasm` と同型の症状)、`I-77` / `I-70` (「緑だが検査していない」類型)。
+  裁定は [`docs/adr/decisions-probe-subject-unchecked.md`](docs/adr/decisions-probe-subject-unchecked.md)。
   引き取り先は `TODO.md` の `PROBE-ASSERTS-NOTHING-01`。
 
 <a id="i-83"></a>

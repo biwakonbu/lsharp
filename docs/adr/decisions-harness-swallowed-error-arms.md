@@ -3,7 +3,8 @@
 - **Status**: accepted
 - **Date**: 2026-08-27
 - **Scope**: `crates/lsharp-wasm/tests/e2e/` の test ハーネス。production コードは変更しない
-- **Related**: `I-79` (本 ADR の起点) / `I-82` (本 ADR が範囲外とした形) / `I-83` (是正で表に出た実バグ) /
+- **Related**: `I-79` (本 ADR の起点) / `I-82` (本 ADR が範囲外とした形。裁定は
+  [`decisions-probe-subject-unchecked.md`](decisions-probe-subject-unchecked.md)) / `I-83` (是正で表に出た実バグ) /
   `I-72` (発見経路) / `I-77` / `I-70` (同じ「緑だが検査していない」類型) /
   `TODO.md` の `PROBE-ASSERTS-NOTHING-01` / `COMPILER-MODE-STACK-01`
 
