@@ -192,6 +192,36 @@ test の追加・削除は ignored lane の母集団を変えるので、`AGENTS
 - **#13 は `selfhost_native_stage_chain` に属する**ので、four_layer の slice には入れない。
   再計測の対象 module が違う
 
+### #9 の削除は four_layer の外を壊す — 同一 slice で 2 箇所を同時に消す
+
+削除対象 5 件のうち **`test_validate_stage2_wasm` (#9) だけが module 外から名指しされている。**
+実測で確かめた結合先は 2 つ:
+
+| 参照元 | 位置 | 削除した場合 |
+|---|---|---|
+| `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` の厳密名リスト `heavy_tests` | `selfhost_lsp_docs_ops.rs:3784-3787` | ループ末尾の `assert!(found, "{rel_path} (fragment を含む) に {test_name} が見つからない")` が発火し **`selfhost_lsp_docs_ops` が赤くなる** |
+| phase11 の CI script | `scripts/ci/compile-phase11-inputs.sh:236` | nextest の `--exact` filter が 0 件一致になる |
+
+**この赤は four_layer の再計測では検出できない。** 落ちるのは別 module であり、上の
+「実装順序の制約」が想定している lane の外側にある。したがって削除は
+**test 本体 / `heavy_tests` の行 / script の行の 3 箇所を同一 slice で消す**こと、
+かつ `selfhost_lsp_docs_ops::test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` を
+**単体で 1 回走らせて緑を確かめる**ことを受入条件に加える。
+
+ops03c 側の `phase11_script.contains(...)` 連鎖には `test_validate_stage2_wasm` は
+**含まれていない** (同ファイル内の出現は `:3785` の 1 箇所のみ) ので、script 行を消しても
+ops03c の script 検査は壊れない。
+
+残り 4 件 (`test_debug_stage2_output_minimal` / `test_debug_stage3_output_chars` /
+`test_debug_stage3_main_again_output_chars` / `test_debug_stage2_save`) は
+`scripts/` にも `docs/` にも `selfhost_lsp_docs_ops.rs` にも参照が無い。
+four_layer の prefix ルール 4 本 (`test_e2e_boot04_` / `test_e2e_bootstrap_` /
+`test_v2_11_` / `test_v2_12_self_hosted_`) はいずれも `test_debug_` / `test_validate_` に
+一致しないので、削除で **dead prefix (`TESTGATE-01`) が生じることも無い。**
+
+> 削除した test が module 内で何も参照されていないことは、削除して安全であることを意味しない。
+> gate は「どの test が存在するべきか」を別ファイルから名指しで持っている。
+
 ## Evidence
 
 実装後に埋める。現時点で確定している実測は 1 つだけ。

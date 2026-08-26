@@ -125,8 +125,26 @@ AST の形が変わっても壊れず、かつ「stage1 と stage2 が同じも�
 `(let [v (vector-new 2)] (vector-push (vector-push v ...) ...))` は AST.ls にもう存在しない。
 「minimal な `make-type-constrained` の形」を名乗りながら、何も鏡写しにしていない。
 現在の `vector-push-pair-rooted` 形へ差し替える。
-`vector-push-pair-rooted` は selfhost 内に `defn` が無く builtin として解決されているので、
-minimal file に定義を足す必要は無い見込み (実装時に確認する)。
+**`vector-push-pair-rooted` は builtin ではない。** 本 ADR は当初「selfhost 内に `defn` が無く
+builtin として解決されている」と書いたが、これは `selfhost/src/Compiler/` だけを検索した誤りである。
+実際には `selfhost/src/Syntax/AST.ls:67` に 14 行の module-local `defn` がある
+(`IR/IR.ls:96` と `Backend/Native/NativeCodegen.ls:46` にも同名の複製がある)。
+
+```lisp
+(defn vector-push-pair-rooted [base first second]
+  (do
+    (root_push first)
+    (root_push second)
+    (let [base-slot (root_push base)
+      with-first (vector-push base first)]
+      ...
+```
+
+したがって **minimal fixture には定義を足さなければならない**。fixture は flat file を
+CompilerMode へ食わせるものなので、未定義呼び出しのままでは shape を観測する前にコンパイルが落ちる。
+足す定義は `root_push` / `root_set` / `root_pop` / `vector-push` / `vector-new` を引き込む。
+これらが builtin であることは実装時に確かめる — **同じ誤りを二度しないため、検索範囲を
+`selfhost/` 全体と `crates/` の両方に取ること。**
 
 なお、この test の唯一の assertion は `assert!(!probe_output.trim().is_empty())` で、
 **主題 (shape) を検査していない**。`I-82` の基準に照らすと境界事例だが、

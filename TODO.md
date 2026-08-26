@@ -2928,7 +2928,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - stage1 側 (`..._lengths` / `part_009.rs:411`) は shape pin として残し、
     126 を 5 (`ast-apply`) へ、127 を現在の shape での実測へ更新する。
     **何を pin しているのかをコメントで明示する**
-  - minimal fixture (`part_009.rs:456`) の旧 shape 文字列を現在の shape へ更新する
+  - minimal fixture (`part_009.rs:456`) の旧 shape 文字列を現在の shape へ更新する。
+    **`vector-push-pair-rooted` は builtin ではなく `selfhost/src/Syntax/AST.ls:67` の
+    module-local `defn` (14 行) なので、fixture に定義を足さないとコンパイルが落ちる**
+    (ADR の当初記述は誤りで、実測で訂正済み)
   - **marker 129 以降は一度も評価されていない。** 126/127 を直した後に新しい赤が出たら、
     それを黙って潰さず記録すること。**「126/127 が緑になった」を完了条件にしない**
   **含めない範囲**: probe 本体 (`CompilerMode.ls`) を shape 非依存へ作り替えること (ADR 却下案 B)。
@@ -2971,6 +2974,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - `I-75` は本項目へ 1 件を移したので **15 → 14 件**。`SWEEP-UNCLASSIFIED-01` と数を合わせる
   - 台帳行は緑になるまで残す。先に消すと `compare_ignored_lane.py` が
     「台帳に無い FAIL」として exit 1 になる
+  - **stage_chain 3 件は module 外から名指しされていないことを実測済み** —
+    `heavy_tests` 厳密名リスト 0 hit / `scripts/` 0 hit / 同 prefix の test が 89 件あるので
+    dead prefix にもならない。`selfhost_native_stage_chain` の再計測だけで覆える
   **含めない範囲**: 直書きアドレスが指していた crash そのものの診断。**cargo が要る。**
 
 - [ ] `PROBE-ASSERTS-NOTHING-01` 主題を検査していない probe test 13 件を裁定どおり是正する — Issue `I-82`。
@@ -2988,6 +2994,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     fixture が仕様上不正な wasm で、正しい契約は `is_ok()` ではなく **両方が reject する**である
   - 削除する 4 件は、**診断出力の引き取り先の同値性を実測で確かめてから**削除する
     (ADR に候補は書いたが未検証)
+  - **`test_validate_stage2_wasm` の削除は 3 箇所を同一 slice で消す** — test 本体に加えて
+    `selfhost_lsp_docs_ops.rs:3784-3787` の `heavy_tests` 行と
+    `scripts/ci/compile-phase11-inputs.sh:236` を消す。片方でも残すと
+    `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` が `assert!(found, ...)` で落ちる。
+    **この赤は four_layer の再計測では見えない**ので、ops03c を単体で 1 回走らせて緑を確かめる
+  - 残り 4 件は `scripts/` / `docs/` / gate リストのいずれからも参照が無いことを実測済み。
+    four_layer の prefix ルール 4 本とも `test_debug_` / `test_validate_` に一致しないので
+    dead prefix (`TESTGATE-01`) も生じない
   - `test_parse_compiler_ls` / `test_parse_caws_standalone` の実測が失敗を示したら、
     **fixture や実装を赤が消える方向に触らず**、新規 issue を切って台帳へ載せる。
     非 ignore なので引き取り先は `workspace-expected-failures.txt` 側

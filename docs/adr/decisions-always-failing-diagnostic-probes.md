@@ -113,6 +113,19 @@ codegen が 1 命令動けば意味を失う値であり、**契約ではない*
 これは直書きアドレスに依存しない本物の契約であり、同時にヘルパを生かし続ける。
 期待される module::name は実測で確定する。
 
+**module 外の結合は無い (実測)。** `I-82` の #9 (`test_validate_stage2_wasm`) は
+`selfhost_lsp_docs_ops.rs` の厳密名 gate リストと phase11 script に名指しされており、
+削除すると別 module が赤くなる。同じ確認を #3 / #4 / #5 に対しても行った結果:
+
+| 確認 | 結果 |
+|---|---|
+| `selfhost_lsp_docs_ops.rs` の `heavy_tests` (厳密名) | 3 件とも **0 hit** |
+| `scripts/` 全体 | 3 件とも **0 hit** |
+| prefix ルール `selfhost_native_stage_chain.rs:fn test_e2e_selfhost_main_representative_` | 同 prefix の test は **89 件**。3 件消しても `TESTGATE-01` の dead prefix にはならない |
+
+したがって #3 / #4 の削除と #5 の作り替えは `selfhost_native_stage_chain` の再計測だけで覆える。
+**確認したこと自体を記録するのは、次の slice で同じ grep を引き直さないためである。**
+
 ### 裁定 3: 台帳の扱い
 
 5 件の台帳行は**実装が済むまで残す**。`compare_ignored_lane.py` が
