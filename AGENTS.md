@@ -330,6 +330,28 @@ python3 scripts/sweep_unchecked_result.py --root <dir>
 形 (b) の RED は「走らせて赤にする」では取れない (定義上いつも緑である)。
 **入力を意図的に壊し、test が緑のまま所要時間だけ落ちることで取る。**
 
+### 構造上必ず赤くなる test の洗い出し (cargo 無し)
+
+```bash
+python3 scripts/sweep_always_failing_tests.py            # 既定は crates/lsharp-wasm/tests/e2e
+python3 scripts/sweep_always_failing_tests.py --root <dir>
+```
+
+`#[test]` の body を brace matching し、**最後の top-level 文が `panic!` /
+`unreachable!` / `todo!` / `unimplemented!`** のものを出す。
+そうした test は入力が何であれ必ず赤で、調査中の診断ダンプがそのまま
+checked in された形である。2026-08-27 の実測は **5 件** (全て `#[ignore]`、全て台帳に在)。
+
+**台帳に載る赤には 2 種類ある** — 「直せば消える赤」と「構造上消えない赤」。
+[ignored lane の台帳](docs/development/validation/ignored-lane-expected-failures.txt) は
+前者だけを持つ前提で作られているので (`compare_ignored_lane.py` は緑に転じた行の削除を要求する)、
+混ぜると**行数が進捗を表さなくなる**。実際 `I-75` は 1 件を「原因未診断の赤」と誤分類していた。
+
+**出力をそのまま件数として使わないこと。** マクロ内や `cfg` 分岐は brace matching だけでは
+判定しきれない。判定は必ず該当箇所を開き、`return` / `?;` の有無まで見て行う。
+判断の正本は [恒久的に赤い probe の ADR](docs/adr/decisions-always-failing-diagnostic-probes.md)、
+未処理分は `ISSUES.md` の `I-84`。
+
 ### Git worktree の配置と片付け
 
 - 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。

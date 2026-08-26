@@ -2928,17 +2928,42 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   marker 値の解釈ではなく実際に読んでいる defn の同定によって決めること。
   **含めない範囲**: 他の parity probe の赤 (本件は marker 126/127 の 2 件のみ)。**cargo が要る。**
 
-- [ ] `VIOLATION-PROBE-STALE-01` violation 0 件で落ちる診断足場を裁定する — Issue `I-81`。
+- [ ] `VIOLATION-PROBE-STALE-01` violation probe の極性を反転する — Issue `I-81`。
+  **裁定は済んでいる** — `docs/adr/decisions-always-failing-diagnostic-probes.md` の裁定 1。
   `test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff`
-  (`part_014.rs:205`) が `local_bound_violation_indices` の収集結果が空になり、
-  `first violation` を取り出す時点で落ちる。
-  **欠陥が悪化したのではなく、改善した結果として足場が成立しなくなった形**である。
-  受入条件: **本項目の仕事は裁定であって、`unwrap` を消すことではない。**
-  (a) violation 0 件を成功扱いにする (足場を assertion へ格下げ) か、
-  (b) violation を含む fixture を与えて足場を足場のまま保つか、を根拠付きで決める。
-  (a) を選ぶなら「violation が再発したときに何が気付かせるのか」を併せて示すこと。
-  示せないなら (a) は選べない。
+  (`part_014.rs:154`) は **body に分岐も `return` も無く最後に無条件 `panic!` する**ため、
+  一度も緑になったことがない。「足場が壊れた」のではなく最初から test として成立していない。
+  末尾の `panic!` を `if let Some(&first_bad) = bad_indices.first() { ... }` で包み、
+  violation 0 件を緑にする。**ダンプは失敗メッセージとしてそのまま残す。**
+  名前も主題に合わせて改める (`..._reports_..._body_diff` → violation が無いことを表す名前)。
+  受入条件:
+  - **反転する前に、`local_bound_violations` が本当に検出できることを確かめる。**
+    入力を意図的に壊して赤になることを見る (`I-79` 形 (b) と同じ RED の取り方)。
+    確かめずに反転すると `I-82` と同じ「常に緑で何も見ていない」test になる
+  - test 名を変えるので `AGENTS.md` の partial-lane 規約 (`d29cb5a1`) により
+    `selfhost_bootstrap_four_layer` の再計測が要る。
+    **`PROBE-ASSERTS-NOTHING-01` と同じ slice に束ね、lane 1 本で覆うこと**
+  - 緑になったら `ignored-lane-expected-failures.txt` の該当行を削除する
   **含めない範囲**: violation が消えた原因そのものの追跡。**cargo が要る。**
+
+- [ ] `ALWAYS-RED-PROBE-01` 構造上必ず赤い診断 probe 5 件を裁定どおり畳む — Issue `I-84`。
+  **裁定は済んでいる** — `docs/adr/decisions-always-failing-diagnostic-probes.md`。
+  `scripts/sweep_always_failing_tests.py` が出す 5 件のうち、
+  `VIOLATION-PROBE-STALE-01` が 1 件を持つので**本項目は残り 4 件**。
+  - `selfhost_cli_core.rs:2870` `..._full_inline_mismatch_probe` → **極性を反転**
+    (2 回コンパイルの Wasm が一致することを assert し、ダンプは失敗メッセージへ)
+  - `stage_chain.rs:26574` / `:26623` → **削除** (crash アドレス直書きで契約でない)
+  - `stage_chain.rs:26660` → **削除ではなく実契約へ作り替える**
+    (`layout.entrypoint_offset` を lookup harness に食わせて `App.Main` の main が返ることを assert)
+  受入条件:
+  - **`..._full_inline_mismatch_probe` の「現在 mismatch は無い」は未実測である。**
+    `wasm-bytes-eq` の実際の値を見てから反転すること
+  - `:26660` を作り替えるのは `run_selfhost_main_representative_aarch64_offset_lookup_harness`
+    (82 行) を生かすためである。**`#[allow(dead_code)]` で逃げないこと** — 呼ばれないヘルパは腐る
+  - `I-75` は本項目へ 1 件を移したので **15 → 14 件**。`SWEEP-UNCLASSIFIED-01` と数を合わせる
+  - 台帳行は緑になるまで残す。先に消すと `compare_ignored_lane.py` が
+    「台帳に無い FAIL」として exit 1 になる
+  **含めない範囲**: 直書きアドレスが指していた crash そのものの診断。**cargo が要る。**
 
 - [ ] `PROBE-ASSERTS-NOTHING-01` 主題を検査していない probe test 13 件を裁定どおり是正する — Issue `I-82`。
   **裁定は済んでいる** — `docs/adr/decisions-probe-subject-unchecked.md`。
@@ -3024,7 +3049,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 15 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 14 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
@@ -3032,7 +3057,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **先に `exit code 1` 3 件の stderr を拾えるようにする。** `support.rs:188` が
   exit code だけを文字列化して捨てているので、現状は診断の材料が無い。
   起票時 19 件のうち 4 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` へ移管済み。
-  受入条件: 残る 15 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
+  **さらに `..._full_inline_mismatch_probe` 1 件を `I-84` へ移管した (15 → 14)。**
+  この 1 件は「原因未診断」ではなく**構造上必ず赤くなる診断ダンプ**で、分類そのものが誤っていた。
+  受入条件: 残る 14 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**

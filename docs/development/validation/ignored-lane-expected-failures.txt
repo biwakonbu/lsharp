@@ -238,8 +238,8 @@ lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_saved_native_stage3_compi
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_before_helpers_current_global_window_diagnostic  # diagnostic current global window after import stubs and before helpers
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_before_helpers_earliest_bad_window
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_building_earlier_chunks_preserves_latest_global_window  # diagnostic build-only chunk transport probe
-lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_crash_offset_maps_to_rust_function  # diagnostic: map representative crash offset to selfhost source order
-lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_crash_x8_offset_maps_to_source_order  # diagnostic: map refreshed representative crash x8 offset to selfhost source order
+lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_crash_offset_maps_to_rust_function  # 引き取り先: I-84 -- **構造上必ず赤くなる診断ダンプ (無条件 panic! で終わる)。** 裁定は docs/adr/decisions-always-failing-diagnostic-probes.md -- crash アドレス 0x6200d0 / 0x621700 を直書きしており契約でない。削除
+lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_crash_x8_offset_maps_to_source_order  # 引き取り先: I-84 -- **構造上必ず赤くなる診断ダンプ (無条件 panic! で終わる)。** 裁定は docs/adr/decisions-always-failing-diagnostic-probes.md -- crash アドレス 0x106d24 を直書き。lookup harness を生かすため実契約へ作り替える
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_direct_aarch64_bundle_latest_global_window_is_clean
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layout  # diagnostic: representative payload helper still traps before returning offset
 # 削除 (2026-08-24): test_e2e_selfhost_main_representative_failing_chunk_text_is_plain_bytes は
@@ -267,7 +267,7 @@ lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representat
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_owner_callable_isolated_next_bad_window
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_owner_callable_isolated_remaining_bad_window
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_owner_callable_isolated_shifted_window
-lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_post_entry_call_targets_map_to_source_order  # diagnostic: map representative post-entry call targets to selfhost source order
+lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_post_entry_call_targets_map_to_source_order  # 引き取り先: I-84 -- **構造上必ず赤くなる診断ダンプ (無条件 panic! で終わる)。** 裁定は docs/adr/decisions-always-failing-diagnostic-probes.md -- crash アドレス 6 個を直書きしており契約でない。削除
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_prefix_bundle_through_owner_earliest_bad_window
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_prefix_cutoff_chunk_local_bad_window_diagnostic  # diagnostic cutoff sweep for representative owner corruption
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_prefix_through_owner_emits_length  # diagnostic probe for direct partial bundle generation
@@ -355,7 +355,7 @@ lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_
 # さらに 78 件が同日の I-72 fix で緑に転じて削除 (直上の部分再測定の記録)。
 # **原因が付いて緑になるまで行を消さない** (compare_ignored_lane.py が新規 FAIL と読む)。
 lsharp-wasm::e2e selfhost_bootstrap_four_layer::test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_constrained  # 引き取り先: I-80 -- [c] 2026-08-27 の I-72 fix 後に再測定。import 数不一致は消え、その裏から target-defn parity の乖離が出た: part_009.rs:302 で marker 127 が 0 (期待 5)
-lsharp-wasm::e2e selfhost_bootstrap_four_layer::test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff  # 引き取り先: I-81 -- [d] 2026-08-27 の I-72 fix 後に再測定。import 数不一致は消え、代わりに part_014.rs:205 で local_bound_violation_indices が 0 件になった。この test は violation が 在ることを前提に body diff を報告する診断足場なので、violation が消えると落ちる。stage3 が正常化したのか violation 検出が働いていないだけかは未診断
+lsharp-wasm::e2e selfhost_bootstrap_four_layer::test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff  # 引き取り先: I-81 / I-84 -- **構造上必ず赤くなる診断ダンプ (無条件 panic! で終わる)。** 裁定は docs/adr/decisions-always-failing-diagnostic-probes.md -- violation 0 件は良い状態であり、極性を反転して恒久的な guard にする。従来「改善した結果として足場が壊れた」と書いていたが誤りで、この test は一度も緑になったことがない
 lsharp-wasm::e2e selfhost_native_differential::test_native_codegen_emits_aarch64_direct_call_bundle_bytes  # 引き取り先: I-73 -- [c] I-73 native differential の exact-byte pin が一律ずれ (frame displacement -8 / epilogue 0x5C vs 0x5D / 長さは payload でなく bundle 全体)。裁定前
 lsharp-wasm::e2e selfhost_native_differential::test_native_codegen_emits_full_const_instruction_bytes  # 引き取り先: I-73 -- [c] I-73 native differential の exact-byte pin が一律ずれ (frame displacement -8 / epilogue 0x5C vs 0x5D / 長さは payload でなく bundle 全体)。裁定前
 lsharp-wasm::e2e selfhost_native_differential::test_native_codegen_emits_x86_direct_call_arg_bundle_bytes  # 引き取り先: I-73 -- [c] I-73 native differential の exact-byte pin が一律ずれ (frame displacement -8 / epilogue 0x5C vs 0x5D / 長さは payload でなく bundle 全体)。裁定前
@@ -404,7 +404,7 @@ lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_stage2_self_f
 lsharp-wasm::e2e selfhost_bootstrap_four_layer::test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_lengths  # 引き取り先: I-80 -- [c] 2026-08-27 再測定。旧注記は I-75 未分類。part_009.rs:411 で marker 126 が 5 (期待 7)。stage2 側 (marker 127) と同じ ast-make-type-constrained の parity 系
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_check_file_resolves_imported_definition  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_check_reports_invalid_canonical_case  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断
-lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断
+lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe  # 引き取り先: I-84 -- **構造上必ず赤くなる診断ダンプ (無条件 panic! で終わる)。** 裁定は docs/adr/decisions-always-failing-diagnostic-probes.md -- I-75 が「原因未診断」と誤分類していた。2 回コンパイルの Wasm 一致を assert する形へ反転する
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_direct_selfhost_main_compile_is_deterministic  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_lsp_transport_formatting_frame  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_lsp_transport_hover_frame  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断

@@ -215,6 +215,7 @@
 | [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
 | [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。3 件は非 ignore。裁定は ADR 済 |
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
+| [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | open | `I-81` の裁定中に走査で発見 (2026-08-27)。うち 1 件は `I-75` が誤分類 |
 
 ### ドキュメント (DOC)
 
@@ -5136,28 +5137,33 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **15 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **14 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
-  2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した)。
+  2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
+  さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
 
   | module | 件数 | 主な形 |
   |---|---|---|
-  | `selfhost_cli_core` | 12 | `InvalidData: stream did not contain valid UTF-8` 2 / `exit code 1` 3 / LSP transport frame 2 / その他 5 |
+  | `selfhost_cli_core` | 11 | `InvalidData: stream did not contain valid UTF-8` 2 / `exit code 1` 3 / LSP transport frame 2 / その他 4 |
   | `selfhost_native_stage_chain` | 2 | |
   | `selfhost_lsp_docs_ops` | 1 | formatter の module body canonical text |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
-  台帳を数え直した実測は 12 で、移管後の合計 15 と一致する。表を実測へ合わせた。
+  台帳を数え直した実測は 12 で、移管後の合計 15 と一致した (2026-08-27 前半)。
+  **同日さらに 1 件が `I-84` へ移り、`selfhost_cli_core` は 11、合計は 14 になった。**
+  移った `..._full_inline_mismatch_probe` は「原因未診断の赤」ではなく
+  **構造上必ず赤くなる診断ダンプ**で、分類そのものが誤っていた。
 
 - **`exit code 1` 3 件と `NotFound` 系は stderr が台帳に残っていない。**
   `support.rs:188` が exit code だけを文字列化して捨てている。
   **再現時に stderr を拾えるようにすることが診断の前提**になる。
 - **本 issue は保持であって診断ではない。** 残り 15 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
-- **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
+- **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)。
+  引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
 
@@ -5364,16 +5370,25 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   (`part_014.rs:205:10`) は stage3 の Wasm から `local_bound_violation_indices` を集め、
   **最初の violation の body diff を出す**診断足場である。
   収集結果が空になり、`first violation` を取り出す時点で落ちる。
-- **これは「violation が無くなった」ことによる失敗**である。
-  対象の欠陥が悪化したのではなく、**改善した結果として足場が成立しなくなった**形なので、
-  直し方は 2 通りあり、どちらを選ぶかは判断が要る。
-  (a) violation 0 件を成功扱いにする (診断足場を assertion へ格下げする)、
-  (b) violation を意図的に含む fixture を与えて足場を足場のまま保つ。
-  **(a) を選ぶと violation が再発したときに気付けなくなる**ので、安易に選ばない。
+- **前提が違っていた (2026-08-27 訂正)。この test は一度も緑になったことがない。**
+  当初「改善した結果として足場が成立しなくなった」と書いたが、実物を読むと
+  **body に分岐も `return` も無く、最後に無条件 `panic!` する**。
+  つまり violation が在っても無くても赤で、違いは「どこで落ちるか」だけである。
+  是正前は末尾の `panic!` で詳細ダンプを出し、今は手前の `.expect` で落ちる。
+  `local_bound_violation_indices` が 0 件になったのは**良い状態**であり、
+  「足場が壊れた」のではなく**足場が最初から test として成立していなかった**。
+- **裁定は「極性を反転して恒久的な regression guard にする」**。
+  violation 0 件を緑とし、再発したときに従来の full dump を assertion の失敗メッセージとして出す。
+  当初案 (b) (violation を含む fixture を与えて足場のまま保つ) は却下した —
+  恒久的に赤い test は台帳に永久の 1 件を積むだけで、情報を運ばない。
+  当初案 (a) への懸念「violation 再発に気付けなくなる」は、
+  **極性を反転すれば消える** (0 件が正常、再発が赤)。
+  詳細は [`docs/adr/decisions-always-failing-diagnostic-probes.md`](docs/adr/decisions-always-failing-diagnostic-probes.md)。
 - **`I-72` の下から出てきた層である。** 解決前はインスタンス化で止まっており、
   この収集まで到達していなかった。
 - **関連**: `I-72` (これを隠していた)、`I-79` (「緑だが検査していない」の裏返しで、
-  こちらは「赤だが欠陥は無いかもしれない」)、`I-64` (発見経路)。
+  こちらは「赤だが欠陥は無いかもしれない」)、`I-64` (発見経路)、
+  `I-84` (本 issue の裁定中に見つかった同型 4 件)。
   引き取り先は `TODO.md` の `VIOLATION-PROBE-STALE-01`。
 
 <a id="i-82"></a>
@@ -5480,3 +5495,47 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **関連**: `I-79` (発見経路)、`I-78` (compiler-mode self-feed の別の赤)、
   `I-77` (wasm body validation)。
   引き取り先は `TODO.md` の `COMPILER-MODE-STACK-01`。
+
+<a id="i-84"></a>
+### I-84: 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-81` の裁定中に `scripts/sweep_always_failing_tests.py` を書いて走査)
+- **内容**: body に分岐も `return` も無く、**最後に無条件 `panic!` する** `#[test]` が **5 件**ある。
+  入力が何であれ必ず赤になる。調査中に書いた診断ダンプがそのまま checked in された形である。
+
+  | 位置 | test | 台帳の現状 |
+  |---|---|---|
+  | `four_layer/part_014.rs:154` | `..._reports_compiler_mode_first_violation_body_diff` | 引き取り先 `I-81` |
+  | `selfhost_cli_core.rs:2870` | `..._direct_module_resolver_full_inline_mismatch_probe` | 引き取り先 `I-75` (**誤分類**) |
+  | `stage_chain.rs:26574` | `..._representative_crash_offset_maps_to_rust_function` | `# diagnostic:` 注記 |
+  | `stage_chain.rs:26623` | `..._representative_post_entry_call_targets_map_to_source_order` | `# diagnostic:` 注記 |
+  | `stage_chain.rs:26660` | `..._representative_crash_x8_offset_maps_to_source_order` | `# diagnostic:` 注記 |
+
+  5 件とも `#[ignore]` を持ち、5 件とも
+  [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt) に載っている。
+- **台帳の契約と噛み合っていない。** `scripts/compare_ignored_lane.py` は
+  「緑に転じた台帳行は削除する」ことを前提に作られているが、**この 5 件は緑に転じ得ない**。
+  結果として恒久的に 5 行を占め、未解決の欠陥と同じ見え方をする。
+- **`I-75` は 1 件を誤分類していた。** `..._full_inline_mismatch_probe` は
+  「原因未診断の赤」として `I-75` が保持していたが、実際には原因も何も
+  **成功経路が存在しない**。`I-75` は 15 → 14 件になる。
+- **3 件は crash アドレスを直書きしている。** `0x6200d0` / `0x621700` /
+  `0x1674bc` 他 / `0x106d24` は特定の native crash 調査で得た生アドレスで、
+  codegen が動けば意味を失う。**契約ではない。**
+- **2 件は極性を反転できる。** `..._first_violation_body_diff` と
+  `..._full_inline_mismatch_probe` はどちらも「無いことが正常」な性質
+  (local bound violation / 2 回コンパイルの Wasm mismatch) を probe しており、
+  現在の実測は「無い」。ダンプを assertion の失敗メッセージへ移せば、
+  **情報を 1 bit も失わずに恒久的な guard になる。**
+- **反転する前に、検出器が本当に検出できることを確かめる必要がある。**
+  確かめずに反転すると `I-82` と同じ「常に緑で何も見ていない」test になる。
+  RED の取り方は `I-79` 形 (b) と同じで、**入力を意図的に壊して赤になることを見る**。
+- **走査は `scripts/sweep_always_failing_tests.py` にある。**
+  `#[test]` の body を brace matching し、最後の top-level 文が
+  `panic!` / `unreachable!` / `todo!` / `unimplemented!` のものを出す。
+  **出力をそのまま件数として使わないこと。** マクロ内や `cfg` 分岐は判定しきれない。
+- **関連**: `I-81` (発見経路。5 件のうち 1 件)、`I-75` (誤分類していた 1 件)、
+  `I-82` (「緑だが検査していない」の裏返し)。
+  裁定は [`docs/adr/decisions-always-failing-diagnostic-probes.md`](docs/adr/decisions-always-failing-diagnostic-probes.md)。
+  引き取り先は `TODO.md` の `ALWAYS-RED-PROBE-01`。
