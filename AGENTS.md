@@ -263,6 +263,21 @@ module 分割で回したときは**全 module のログをまとめて渡す**�
 ログ間で同じ `module::test` が出たらエラーになる。渡し忘れた module の台帳エントリは
 「未出現」で非 0 になるので、**ログが揃っていることは検査であって運用の約束ではない**。
 
+**一部 module だけを回したときは、台帳も同じ範囲へ抜粋してから突合する。**
+全量台帳のまま比べると、回していない module の行が全部「未出現」で非 0 になり、
+本当の差分が埋もれる。抜粋は module 名で切り出す。
+
+```bash
+grep -E "^lsharp-wasm::e2e (mod1|mod2|mod3)::" \
+  docs/development/validation/ignored-lane-expected-failures.txt > /tmp/subset.txt
+python3 scripts/compare_ignored_lane.py --ledger /tmp/subset.txt lane/mod-*.log
+```
+
+台帳を編集したら**抜粋を取り直す**。古い抜粋のままだと、付け替えた行が差分として出る。
+実測手順と落とし穴は
+[ignored lane sweep の運用記録](docs/development/operations/ignored-lane-sweep-2026-08-23.md)
+の「部分再測定」節が正本。
+
 lane 自体は全量で 12 時間規模なので、**必ず切り離して回す** (`nohup` + `os.setsid()`。
 ハーネス配下だと途中で止められる)。走らせている間は同じマシンで `cargo` を回さない
 (binary が差し替わると revision が混ざり、所要も CPU 競合で歪む)。
