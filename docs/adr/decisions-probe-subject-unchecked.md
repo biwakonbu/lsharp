@@ -41,6 +41,16 @@
 「**そもそも test ではなく debug script だから**」である (裁定 1 を見よ)。
 基準に当たらないものを同じ slice で処理する以上、その理由は別に書く。
 
+`part_007.rs:264` にも #9 と同型の shape がある — `validate_wasm_detailed(stage2_self_compiler)` の
+戻りを `match` で `eprintln!` へ捨て、その直後に弱い `assert_valid_wasm(...)` だけを assert する。
+**強い検査を捨てて弱い検査を残す**という点で #9 と同じ間違いだが、**この test の主題は
+4 層 bootstrap そのもの**で、主題を検査する assertion は別に持っている。**基準には当たらない。**
+
+したがって **`I-82` の件数は動かさない。** 新規 issue も切らない。裁定 5 で #9 が
+「stage2 wasm の妥当性」を主題として検査するようになれば、`part_007.rs:264` の側は
+無害な診断出力へ格下げされ、独立に直す動機が消える。**「同じ形が何件あるか」を数える前に、
+その形の定義を実物で確かめること** — 形が同じでも基準が同じとは限らない。
+
 ## 裁定
 
 | # | test | 位置 | ignore | 裁定 |
@@ -53,14 +63,14 @@
 | 6 | `test_parse_compiler_ls` | `part_015.rs:620` | **no** | assertion 追加 (期待値は実測) |
 | 7 | `test_parse_caws_standalone` | `part_015.rs:633` | **no** | assertion 追加 (期待値は実測) |
 | 8 | `test_debug_stage2_output_minimal` | `part_015.rs:674` | yes | **削除** |
-| 9 | `test_validate_stage2_wasm` | `part_015.rs:707` | yes | **削除** |
+| 9 | `test_validate_stage2_wasm` | `part_015.rs:707` | yes | **assertion 追加** (裁定 1 を訂正。裁定 5 を見よ) |
 | 10 | `test_debug_stage3_output_chars` | `part_016.rs:296` | yes | **削除** |
 | 11 | `test_debug_stage3_main_again_output_chars` | `part_016.rs:382` | yes | **削除** |
 | 12 | `..._stage2_classifies_chunked_lexer_failure_band` | `part_014.rs:596` | yes | 恒真 assert を実質化 |
 | 13 | `..._representative_const_only_entrypoint_helper_offsets` | `stage_chain.rs:54963` | yes | assertion 追加 (**別 lane module**) |
 | - | `test_debug_stage2_save` | `part_015.rs` | yes | **削除** (基準外・別理由) |
 
-### 裁定 1: 削除 (#8 / #9 / #10 / #11 + `test_debug_stage2_save`)
+### 裁定 1: 削除 (#8 / #10 / #11 + `test_debug_stage2_save`)
 
 いずれも名前が `test_debug_*` / `test_validate_*` で、**契約ではなく調査**を表明している。
 #8 と `test_debug_stage2_save` は `stage2_debug.wasm` / `stage2_debug2.wasm` / `stage3_minimal.wasm` を
@@ -70,7 +80,6 @@
 
 | 削除する probe | 引き取り先 |
 |---|---|
-| #9 `test_validate_stage2_wasm` | **既にある。** 主題「stage2 wasm が valid か」は同 module の他 test が `assert_valid_wasm(stage2_self_compiler)` として持つ。#9 は同じ検査を `eprintln!` へ落とした弱い写しであり、削除しても検査は 1 つも失われない |
 | #8 / #10 / #11 / `test_debug_stage2_save` | **`.wasm` の書き出しと生出力の目視。** 同じ chain を組む非 debug test が同 module に残るので、`cargo test -p lsharp-wasm --test e2e -- --ignored <name> --nocapture` で同じ生出力が読める。**この同値性は実装時に実測で確かめる** — 確かめずに削除しない |
 
 ### 裁定 2: assertion 追加 — 極性は実物から導く (#5)
@@ -147,6 +156,51 @@ assert!(matches!(
 動いてよいなら、そもそも test である必要がない — 分類が変わったことに気付くのがこの probe の目的だからである。
 どの band かは実測で確定する。
 
+### 裁定 5: assertion 追加 — 引き取り先が実在しなかったので削除を撤回する (#9)
+
+**本 ADR は当初 #9 を削除と裁定したが、その根拠が偽だった。** 「主題は同 module の
+`assert_valid_wasm(stage2_self_compiler)` が既に持つ」と書いたが、実物は逆で、
+**捨てられている方が強い**。
+
+| helper | 位置 | 実際に見るもの |
+|---|---|---|
+| `assert_valid_wasm` | `e2e/support.rs:693` | `wasm.len() > 8` と先頭 4 byte の `\0asm` **だけ** |
+| `validate_wasm_detailed` | `four_layer/part_000.rs:139` | `wasmparser::Validator` を payload に流す。ただし `ValidPayload::Func` を捨てるので**関数本体は 1 つも検証しない** |
+| `validate_wasm_function_bodies` | `e2e/support.rs:702` 付近 | 各関数本体を個別に検証する。**唯一の本物** |
+
+`support.rs:698` の doc コメントはこの罠を逐語で記録しており、`part_017.rs` の I-71
+回帰 test 群のヘッダコメントも同じ警告を繰り返している。**リポジトリは既にこれを知っていた。**
+本 ADR の裁定 1 は、その記録を読まずに helper 名の見た目で同値と決めた。
+
+**基準は変えない。基準に正しい事実を入れ直すと #9 は自然に assertion 追加へ落ちる** —
+主題「stage2 wasm が valid か」を検査する assertion は、削除しても引き取る先が無いからである
+(`validate_wasm_function_bodies` を実 selfhost stage2 に流す test は 1 つも無い。
+`part_017.rs:86` の 2 箇所はどちらも temp dir の合成 Main.ls が主題である)。裁定の反転ではなく再導出である。
+
+**設計判断 3 つ。**
+
+1. **rename しない。** `test_validate_stage2_wasm` という名前は主題を既に正しく言っている。
+   body が名前に追いつくだけである。これで下記の gate 行と script 行が無傷で済み、
+   `AGENTS.md` の rename 再計測規約 (`d29cb5a1`) も発火しない
+2. **`validate_wasm_function_bodies` を使う。`validate_wasm_detailed` ではない。**
+   「detailed だと赤くなるかもしれないから弱い方を assert する」は、このリポジトリが
+   数週間かけて文書化した anti-pattern そのものである (「緑になることと検査していることは別である」)
+3. **実測が先。** 実装時に #9 を targeted で 1 回走らせ、両 validator の実際の戻りを見てから pin する。
+   FAIL だった場合は **check を緩めない** — `ISSUES.md` に新規 issue (次番 `I-85`) を切り、
+   ignored lane 台帳へ行を足す
+
+**新規カバレッジという主張は過大なので、正直な効能を書いておく。** BOOT-04 の chain test 群は
+stage2 を wasmtime で load して走らせており、wasmtime は load 時に関数本体まで検証する。
+つまり chain が動いている限り実 stage2 は妥当なはずで、**実測は `Ok` の公算が高く、恒久赤の risk は低い**。
+それでも #9 を残す理由は 3 つある。(a) 主題が validation そのものである唯一の test になる、
+(b) chain test が別理由で赤いときにも生き残る、(c) load 失敗ではなく wasmparser の offset 付きで
+局在化する。**`I-83` は「load 失敗に埋もれた validation error を偶然拾った」実例**なので、
+(c) の価値には生きた証拠がある。
+
+**内訳の移動。** 13 件は 13 件のまま。削除 4 → **3** (`test_debug_stage2_save` は基準外のまま別枠) /
+assertion 追加 8 → **9**。件数の定義はこれまでに 3 度動いており、これ以上動かさないと決めた。
+**動いたのは内訳であって母数ではない。**
+
 ## 却下した案
 
 ### 案 A: 13 件を一括削除
@@ -192,9 +246,16 @@ test の追加・削除は ignored lane の母集団を変えるので、`AGENTS
 - **#13 は `selfhost_native_stage_chain` に属する**ので、four_layer の slice には入れない。
   再計測の対象 module が違う
 
-### #9 の削除は four_layer の外を壊す — 同一 slice で 2 箇所を同時に消す
+### #9 は module 外から名指しされている — 削除が高くつく理由であり、変換裁定の根拠でもある
 
-削除対象 5 件のうち **`test_validate_stage2_wasm` (#9) だけが module 外から名指しされている。**
+**この節の前提は裁定 5 で反転した。** 当初は削除対象 5 件のうち
+**`test_validate_stage2_wasm` (#9) だけが module 外から名指しされている**という事実から
+「3 箇所を同一 slice で消す」という実行手順を導いていた。裁定 5 で #9 が変換になった以上、
+**この実行手順は失効する** — 変換なら test 本体・`heavy_tests` の行・script の行の 3 箇所とも
+byte 単位でそのまま残り、`selfhost_lsp_docs_ops` の単体確認も要らない。
+**実測した結合の事実そのものは正しく、消さない。** 削除がなぜ高くついたかの証拠として、
+変換裁定の根拠側へ読み替える。
+
 実測で確かめた結合先は 2 つ:
 
 | 参照元 | 位置 | 削除した場合 |
@@ -202,17 +263,16 @@ test の追加・削除は ignored lane の母集団を変えるので、`AGENTS
 | `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` の厳密名リスト `heavy_tests` | `selfhost_lsp_docs_ops.rs:3784-3787` | ループ末尾の `assert!(found, "{rel_path} (fragment を含む) に {test_name} が見つからない")` が発火し **`selfhost_lsp_docs_ops` が赤くなる** |
 | phase11 の CI script | `scripts/ci/compile-phase11-inputs.sh:236` | nextest の `--exact` filter が 0 件一致になる |
 
-**この赤は four_layer の再計測では検出できない。** 落ちるのは別 module であり、上の
-「実装順序の制約」が想定している lane の外側にある。したがって削除は
-**test 本体 / `heavy_tests` の行 / script の行の 3 箇所を同一 slice で消す**こと、
-かつ `selfhost_lsp_docs_ops::test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` を
-**単体で 1 回走らせて緑を確かめる**ことを受入条件に加える。
+**この赤は four_layer の再計測では検出できなかったはずである。** 落ちるのは別 module であり、上の
+「実装順序の制約」が想定している lane の外側にある。**変換裁定ではこの赤は発生しない**が、
+「lane の外に名指し参照がある」という構造は残るので、将来 #9 を rename / 削除するときは
+同じ 3 箇所を同時に動かす必要がある。
 
 ops03c 側の `phase11_script.contains(...)` 連鎖には `test_validate_stage2_wasm` は
-**含まれていない** (同ファイル内の出現は `:3785` の 1 箇所のみ) ので、script 行を消しても
-ops03c の script 検査は壊れない。
+**含まれていない** (同ファイル内の出現は `:3785` の 1 箇所のみ)。将来 script 行を消しても
+ops03c の script 検査は壊れない、という予備知識として残す。
 
-残り 4 件 (`test_debug_stage2_output_minimal` / `test_debug_stage3_output_chars` /
+実際に削除する 4 件 (`test_debug_stage2_output_minimal` / `test_debug_stage3_output_chars` /
 `test_debug_stage3_main_again_output_chars` / `test_debug_stage2_save`) は
 `scripts/` にも `docs/` にも `selfhost_lsp_docs_ops.rs` にも参照が無い。
 four_layer の prefix ルール 4 本 (`test_e2e_boot04_` / `test_e2e_bootstrap_` /

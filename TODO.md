@@ -2981,8 +2981,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 
 - [ ] `PROBE-ASSERTS-NOTHING-01` 主題を検査していない probe test 13 件を裁定どおり是正する — Issue `I-82`。
   **裁定は済んでいる** — `docs/adr/decisions-probe-subject-unchecked.md`。
-  残りは実装で、内訳は **assertion 追加 8 件 / 削除 4 件 (+ 基準外の隣接 `test_debug_stage2_save`) /
+  残りは実装で、内訳は **assertion 追加 9 件 / 削除 3 件 (+ 基準外の隣接 `test_debug_stage2_save`) /
   恒真 assert の実質化 1 件**。
+  **母数 13 は動かさない。裁定 5 で #9 が削除から assertion 追加へ移った分だけ内訳が動いている。**
   うち 3 件 (`test_i64_if_condition_validity` / `test_parse_compiler_ls` /
   `test_parse_caws_standalone`) は `#[ignore]` を持たず、通常 lane で毎回走る。
   走査は `scripts/sweep_unchecked_result.py`。**出力をそのまま件数として使わないこと**
@@ -2992,14 +2993,19 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     **恒真な assertion を足して緑にしない**
   - **期待値を test 名から推定しないこと。** `test_i64_if_condition_validity` は
     fixture が仕様上不正な wasm で、正しい契約は `is_ok()` ではなく **両方が reject する**である
-  - 削除する 4 件は、**診断出力の引き取り先の同値性を実測で確かめてから**削除する
+  - 削除する 3 件 + 基準外 1 件は、**診断出力の引き取り先の同値性を実測で確かめてから**削除する
     (ADR に候補は書いたが未検証)
-  - **`test_validate_stage2_wasm` の削除は 3 箇所を同一 slice で消す** — test 本体に加えて
-    `selfhost_lsp_docs_ops.rs:3784-3787` の `heavy_tests` 行と
-    `scripts/ci/compile-phase11-inputs.sh:236` を消す。片方でも残すと
-    `test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted` が `assert!(found, ...)` で落ちる。
-    **この赤は four_layer の再計測では見えない**ので、ops03c を単体で 1 回走らせて緑を確かめる
-  - 残り 4 件は `scripts/` / `docs/` / gate リストのいずれからも参照が無いことを実測済み。
+  - **`test_validate_stage2_wasm` は削除しない。実質化する** (ADR 裁定 5)。当初の削除裁定は
+    「主題は `assert_valid_wasm` が既に持つ」という**偽の前提**の上にあった。実物は逆で、
+    `assert_valid_wasm` は長さとマジックバイトしか見ない。**rename しないこと** —
+    名前は主題を既に正しく言っており、rename すると `selfhost_lsp_docs_ops.rs:3784-3787` の
+    `heavy_tests` 行と `scripts/ci/compile-phase11-inputs.sh:236` を同時に動かす必要が出る
+    (`AGENTS.md` の rename 再計測規約も発火する)。**変換ならこの 3 箇所は無傷で済む**
+  - **#9 は `validate_wasm_function_bodies` で assert する。`validate_wasm_detailed` ではない。**
+    後者は `ValidPayload::Func` を捨てるので関数本体を 1 つも検証しない。
+    **実測が先** — targeted で 1 回走らせて両者の戻りを見てから pin する。FAIL なら
+    **check を緩めず**新規 issue (次番 `I-85`) を切り、ignored lane 台帳へ行を足す
+  - 削除する 4 件は `scripts/` / `docs/` / gate リストのいずれからも参照が無いことを実測済み。
     four_layer の prefix ルール 4 本とも `test_debug_` / `test_validate_` に一致しないので
     dead prefix (`TESTGATE-01`) も生じない
   - `test_parse_compiler_ls` / `test_parse_caws_standalone` の実測が失敗を示したら、
