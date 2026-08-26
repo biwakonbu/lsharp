@@ -202,12 +202,14 @@
 | [I-68](#i-68) | `:invariant` / property の `cases` はサンプル数を載せており、rust oracle の contract 数と食い違う | 低 | open | -- |
 | [I-69](#i-69) | `repl-session-last-type-name` が型タグを見ずにスロット 1 を読み、`lsharp repl` が壊れた型名を出す | 中 | open | -- |
 | [I-70](#i-70) | ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない | 中 | resolved | 2026-08-24 |
-| [I-71](#i-71) | stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる | 高 | open | -- |
-| [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | open | -- |
+| [I-71](#i-71) | stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる | 高 | resolved | 空 do が値を積まないため。3 経路に `i64.const 0` を emit。**症状は消えたが赤は減らず、72 行は `I-72` へ付け替え** |
+| [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | open | `I-71` の fix で表面化し、赤 8 件 → **82 件** |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 19 件 | 中 | open | -- |
+| [I-75](#i-75) | sweep で露出した未分類の赤 16 件 | 中 | open | 3 件は 2026-08-27 の再測定で `I-72` / `I-78` へ移管 |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
+| [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
+| [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27) |
 
 ### ドキュメント (DOC)
 
@@ -4962,7 +4964,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 <a id="i-71"></a>
 ### I-71: stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる
 
-- **影響度**: 高 / **状態**: open
+- **影響度**: 高 / **状態**: resolved (2026-08-27)
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep。**本 sweep の最大収量**)
 - **内容**: selfhost compiler が出力した Wasm を wasmtime が読めない。
   `WebAssembly translation error / Invalid input WebAssembly code at offset N:
@@ -4981,24 +4983,46 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   | 457947 | 76 |
   | 310805 | 1 |
 
-- **「同一症状」であって「同一原因」ではない。** 72 件が 3 offset に収束するのは
-  強い信号だが、根本原因が 1 つだという証拠にはならない。**原因は未確定**である。
-- **発生時期は不明。** これらは全て `#[ignore]` 下にあり、`--ignored` lane を回した
-  実績が本 sweep 以前に無い。したがって **regression とも「元から赤」とも言えない**。
-  「観測されたことが無かった」ことこそが `I-64` の主題である。
-- **診断の出発点**: 同一メッセージの先行事例が 2 件あり、**どちらも function index /
-  ftable の誤解決だった**。
-  - [`workspace-expected-failures.txt:102`](docs/development/validation/workspace-expected-failures.txt)
-    -- `selfhost_standalone_io` の offset 2456。`wasi_snapshot_preview1` import の後段で
-    user call を出すと不正になる。同ファイルには
-    `test_wasm_compiler_user_call_resolves_function_index_before_arg_compilation` も並んでいる
-  - [`rust-boundary-reduction.md:3106`](docs/development/operations/rust-boundary-reduction.md)
-    -- `EC-M1-01` の offset 2929。`L.Point` が `R.Point` の constructor index へ誤解決された
-
-  **stack が空なのに i64 が要求される**という形は、呼び出す関数の signature を
-  取り違えたときに素直に出る。ftable index の解決を最初に疑うべきである。
-- **関連**: `I-64` (発見経路)、`I-72` (同じ module の別症状)。
-  引き取り先は `TODO.md` の `STAGE-WASM-TRANSLATE-01`。
+- **原因**: selfhost compiler が空 do (`(do)`、expr-count = 0) に対して
+  **何も emit しない**。`(if cond (do ...) (do))` は blockty = i64 の `if` を作るので、
+  else 腕が空だと `end` の時点で値が積まれておらず型検査に落ちる。
+  Rust host (`crates/lsharp-ir/src/lower/expr/do_expr.rs`) は同じ入力に対して
+  `I64Const(0)` を unit として積んでおり、**selfhost 側だけが host の契約から外れていた**。
+- **起票時の見立ては誤りだった。** 当初は「ftable / function index の誤解決」を疑っていた。
+  同一メッセージの先行事例が 2 件あり、どちらも index の誤解決だったためである
+  (`workspace-expected-failures.txt:102` の `selfhost_standalone_io` offset 2456、
+  `rust-boundary-reduction.md:3106` の `EC-M1-01` offset 2929)。
+  **この推論は棄却された。** 症状のメッセージが同じでも原因は同じではない。
+  訂正を消すと同じ見立てが再発するので、誤りだった事実をここに残す。
+- **3 offset は 3 事象ではなかった。** 実測すると 329391 / 457947 は `src/App/Main.ls` stage2 の
+  `func[1231]` / `func[1623]`、310805 は `src/App/CompilerMode.ls` stage2 の `func[1231]` である。
+  **同じ 2 関数が、大きさの違う 2 モジュールの別の絶対位置に現れていただけ**だった。
+  さらに sweep が一度も挙げなかった 4 つ目 (439361 = `CompilerMode.ls` の `func[1623]`) が存在する。
+  **offset の集合は原因の集合ではない**という反証がここにある。
+- **これが 3 日見つからなかった理由は `I-77`。** e2e の Wasm 検証 helper が
+  関数本体を一つも検証しないため、sweep log は wasmtime が同じモジュールを蹴る 1 行手前で
+  `BOOT-04 stage2: wasmparser validation PASSED` を出していた。
+- **修正**: `selfhost/src/Backend/Wasm/Compiler.ls` の do 三経路
+  (tag 9 dispatch `:1249` / `compile-do-with-source` `:1353` /
+  `compile-do-with-source-normal-setup-diagnostic` `:1436`) で `(emit-to instrs 1 0)` を emit する。
+  判断と却下した選択肢は
+  [`docs/adr/decisions-selfhost-empty-do-unit-value.md`](docs/adr/decisions-selfhost-empty-do-unit-value.md)。
+  実測 (壊れている関数 2 → 0、`wasm-tools validate` OK、新規 test 2 件 RED → GREEN) も同 ADR の Evidence 節。
+- **fix 後の再測定 (2026-08-27): 症状は消えたが、赤は 1 件も減らなかった。**
+  `runtime_allocator_closures` / `selfhost_bootstrap_acceptance` / `selfhost_bootstrap_four_layer`
+  の 3 module を同条件で測り直した (180 test / 3 module とも完走 / 赤 88 件)。
+  `expected i64 but nothing on stack` の出現は **3 module で 0 件**になり、本件の症状は消滅した。
+  一方で **赤の集合は 88 件のまま 1 件も動かなかった**。本件の症状を出していた 75 test は、
+  そのまま `expected 11 imports, found 10` (`I-72`) で落ちるようになっただけである。
+  **`I-71` は `I-72` を隠していた。** 72 件は `I-71` の帰結ではなく、`I-71` が先に当たる壁だっただけだった。
+- **受入条件「GREEN 後、台帳の該当 72 行を削除する」は満たせない。**
+  削除すると `scripts/compare_ignored_lane.py` が新規 FAIL 72 件を報告して非 0 になる。
+  実測が赤である行を台帳から消すのは台帳を壊す操作なので、**削除せず引き取り先を
+  `I-71` → `I-72` へ付け替えた**。条件を静かに緩めたのではなく、条件そのものが
+  「1 つの原因が 1 つの赤に対応する」という誤った前提に立っていた。
+- **関連**: `I-64` (発見経路)、`I-72` (**本件が隠していた真の壁**。72 行の引き取り先)、
+  `I-75` (2 行が本件と同原因。再測定で `I-72` / `I-78` へ移管)、
+  `I-77` (本件を隠していた検証の穴)。
 
 <a id="i-72"></a>
 ### I-72: stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`)
@@ -5006,15 +5030,25 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **影響度**: 高 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 生成された Wasm は**読めるが、インスタンス化できない**。
-  `インスタンス化に失敗: expected 11 imports, found 10`。**赤 8 件**、
-  全て `selfhost_bootstrap_four_layer`。**8 件とも数値は `11` / `10` で完全に一致**する。
+  `インスタンス化に失敗: expected 11 imports, found 10`。**数値は全件 `11` / `10` で完全に一致**する。
+- **`I-71` の fix で赤 8 件 → 82 件になった (2026-08-27)。**
+  起票時に見えていた 8 件は「`I-71` に当たらずここまで到達できた」ものだけだった。
+  `I-71` (translation) を直すと、そこで止まっていた 74 件がこの壁まで進み、同じ症状で落ちる。
+  **本件は `I-71` の後ろに隠れていた真の壁である。** 台帳 82 行が正本。
+
+  | module | 件数 |
+  |---|---|
+  | `selfhost_bootstrap_four_layer` | 76 |
+  | `selfhost_bootstrap_acceptance` | 6 |
+
 - **`I-71` とは層が違う。** `I-71` は translation (バイナリが不正)、本件は
   instantiation (バイナリは正しいが host が渡す import 集合と食い違う)。
   同じ module に同居しているので混ぜやすいが、疑う場所が違う。
   `I-71` は codegen、本件は **host 側の import 表と compiler 側の import 宣言の同期**である。
 - **数が 1 つだけずれている**ので、import を 1 本足した / 落とした変更が
   片側にしか入っていない形が疑わしい。**ただし未診断**。
-- **関連**: `I-64` (発見経路)、`I-71`。引き取り先は `TODO.md` の `STAGE-WASM-IMPORT-COUNT-01`。
+- **関連**: `I-64` (発見経路)、`I-71` (**本件を隠していた**。72 行の移管元)、
+  `I-75` (2 行を移管)。引き取り先は `TODO.md` の `STAGE-WASM-IMPORT-COUNT-01`。
 
 <a id="i-73"></a>
 ### I-73: native differential の exact-byte pin 33 件が一律にずれている
@@ -5072,23 +5106,27 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 19 件
+### I-75: sweep で露出した未分類の赤 16 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **19 件**。
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **16 件**
+  (起票時 19 件。2026-08-27 の再測定で `selfhost_bootstrap_acceptance` の 3 件に原因が付き、
+  2 件を `I-72`、1 件を `I-78` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
 
   | module | 件数 | 主な形 |
   |---|---|---|
-  | `selfhost_cli_core` | 11 | `InvalidData: stream did not contain valid UTF-8` 2 / `exit code 1` 3 / LSP transport frame 2 / その他 4 |
-  | `selfhost_bootstrap_acceptance` | 3 | stage chain compare の失敗リスト |
+  | `selfhost_cli_core` | 12 | `InvalidData: stream did not contain valid UTF-8` 2 / `exit code 1` 3 / LSP transport frame 2 / その他 5 |
   | `selfhost_native_stage_chain` | 2 | |
   | `selfhost_bootstrap_four_layer` | 1 | |
   | `selfhost_lsp_docs_ops` | 1 | formatter の module body canonical text |
+
+  **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
+  台帳を数え直した実測は 12 で、移管後の合計 16 と一致する。表を実測へ合わせた。
 
 - **`exit code 1` 3 件と `NotFound` 系は stderr が台帳に残っていない。**
   `support.rs:188` が exit code だけを文字列化して捨てている。
@@ -5127,3 +5165,77 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   **どちらへ寄せるかは本 issue では決めない。**
 - **関連**: `I-45` (原因となった契約変更)、`I-69` (同じ `914bd9f1` の別の取り残し)。
   引き取り先は `TODO.md` の `CHECK-BUILTIN-RET-COV-01`。
+
+<a id="i-77"></a>
+### I-77: e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない
+
+- **影響度**: 高 / **状態**: open
+- **発見**: 2026-08-27 (`I-71` の原因追及中。sweep log の読み違いから)
+- **内容**: `crates/lsharp-wasm/tests/e2e` には Wasm を「検証する」名前のヘルパーが 2 つあるが、
+  **どちらも関数本体の型検査をしていない**。
+
+  | ヘルパー | 実体 | 実際に見ているもの |
+  |---|---|---|
+  | `assert_valid_wasm` (`support.rs:692`) | `len > 8` と先頭 4 バイトの `\0asm` | マジックバイトのみ |
+  | `validate_wasm_detailed` (`selfhost_bootstrap_four_layer/part_000.rs:139`) | `Validator::payload()` の戻り値を捨てる | section 構造のみ |
+
+  後者が問題である。wasmparser 0.221 の `Validator::payload()` は
+  `ValidPayload::Func(FuncToValidate, FunctionBody)` を返し、
+  **呼び出し側が `f.into_validator(allocs).validate(&body)` を回して初めて本体が検証される**。
+  `validate_wasm_detailed` は `ValidPayload` を `_` で捨てているので、
+  code section entry を 1 つも型検査しない。
+
+- **これが `I-71` の発見を 3 日遅らせた。** sweep log には
+
+  ```
+  BOOT-04 stage2: wasmparser validation PASSED
+  ```
+
+  が、**同じ module を wasmtime が `expected i64 but nothing on stack` で蹴る直前の行**に出る。
+  「wasmparser は通るのに wasmtime だけ落ちる」= ランタイム側の差異、と読めてしまう。
+  実際には wasmparser が何も見ていなかっただけである。
+- **`I-76` と同じ失敗様式である。** 緑になることと検査していることは別である。
+  ヘルパー名 (`validate_wasm_detailed` の `detailed`) が検査範囲を偽って伝える分、
+  こちらの方が誤読を招きやすい。
+- **既存呼び出し箇所の付け替えは本 issue では決めない。** `validate_wasm_detailed` は
+  `#[ignore]` 下の多数の test から呼ばれており、本体検証を有効化すると
+  それらの verdict が一斉に変わる。`I-71` の slice では
+  **新規 test 用に `support.rs` へ `validate_wasm_function_bodies` を足すに留めた**。
+  どの呼び出し箇所をいつ付け替えるかは `I-71` の GREEN 後に別途決める。
+- **関連**: `I-71` (発見経路。本件が隠していた不具合)、`I-76` (同じ失敗様式)、
+  `I-70` (`#[ignore]` 下の根拠が腐る話)。
+  引き取り先は `TODO.md` の `WASM-BODY-VALIDATION-01`。
+
+<a id="i-78"></a>
+### I-78: stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-24 の `#[ignore]` 全量 sweep (当時は `I-75` の未分類バケツに入っていた)。
+  2026-08-27 の `I-71` fix 後の再測定で症状を読み出し、独立の issue として分離した。
+- **内容**: stage1 compiler (wasm) に `src/App/Cli.ls` を食わせると、
+  translation でも instantiation でもなく **実行中に trap する**。
+
+  ```
+  stage1 compiler run failed: 実行に失敗: error while executing at wasm backtrace:
+    ...
+    24: 0x49dd1 - <wasm function 1144>
+    25..32: 0x49e61 - <wasm function 1144>   (同一 offset の自己再帰 8 段)
+    33: 0x4bb2c - <wasm function 1161>
+    34: 0x9087d - <wasm function 1951>
+    35: 0x91240 - <wasm function 1954>
+    36: 0x184b25 - <wasm function 4172>
+    37: 0x184b55 - <wasm function 4174>: wasm trap: integer divide by zero
+  ```
+
+- **`I-71` の fix とは無関係**。2026-08-24 の sweep log にも同じ trap が 2 件出ており、
+  fix 前後で出現数は 2 のまま変わらない。fix が持ち込んだ regression ではない。
+- **`I-71` / `I-72` とは層が違う。** `I-71` は translation、`I-72` は instantiation、
+  本件は**実行**。同じ test 群に 3 層が積み重なっているので、
+  上の層を直すたびに下の層が新しく見えるだけで、赤の数は減らない。
+- **未診断**。除数がどこで 0 になるかは特定していない。`func[1144]` の自己再帰 8 段は
+  compiler 内のリスト走査に見えるが、逆アセンブルで確認していない。
+- **赤 1 件** (`selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module`)。
+  加えて `..._stage_chain_match` が失敗リストの中で `src/App/Cli.ls` として同じ trap を含むが、
+  同 test は `I-72` の症状も併発するので引き取り先は `I-72` に置いた。
+- **関連**: `I-75` (分離元)、`I-71` / `I-72` (同じ test 群の別の層)、`I-64` (発見経路)。
+  引き取り先は `TODO.md` の `CLI-SELFFEED-DIVZERO-01`。

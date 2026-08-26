@@ -1246,7 +1246,9 @@
   (if (= tag 8)
     (compile-lambda-with-ftable node env ftable instrs)
       (if (= tag 9)
-        (compile-do-exprs node env ftable 0 (vector-get node 1) instrs)
+        (if (= (vector-get node 1) 0)
+          (emit-to instrs 1 0)
+          (compile-do-exprs node env ftable 0 (vector-get node 1) instrs))
       (if (= tag 10)
         (compile-match-with-ftable node env ftable instrs)
         (if (= tag 12)
@@ -1351,7 +1353,7 @@
 (defn compile-do-with-source [node source env ftable instrs data-ref]
   (let [expr-count (vector-get node 1)]
     (if (= expr-count 0)
-      instrs
+      (emit-to instrs 1 0)
       (compile-do-exprs-with-source node source env ftable 0 expr-count instrs data-ref))))
 (defn compile-do-exprs-step-with-source-normal-setup-diagnostic [node source env ftable idx expr-count instrs data-ref]
   (if (>= idx expr-count)
@@ -1434,7 +1436,7 @@
       (print (vector-length instrs))
       (print (vector-length (ref-get data-ref)))
       (if (= expr-count 0)
-        instrs
+        (emit-to instrs 1 0)
         (let [result (compile-do-exprs-with-source-normal-setup-diagnostic node source env ftable 0 expr-count instrs data-ref)]
           (do
             (root_push result)

@@ -2901,32 +2901,42 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   (あちらは coverage を失っていない -- `check` パイプラインが通ることの検査であって、
   特定の式の型の検査ではない)。**cargo が要る。**
 
-- [ ] `STAGE-WASM-TRANSLATE-01` stage-N 生成 Wasm の `expected i64 but nothing on stack` を潰す — Issue `I-71`。
-  `--ignored` 全量 sweep (2026-08-24) の最大収量。**赤 72 件**が
-  `Invalid input WebAssembly code at offset N: type mismatch: expected i64 but nothing on stack`
-  で落ちる。distinct な offset は **329391 / 457947 / 310805 の 3 つだけ**。
-  内訳は `selfhost_bootstrap_four_layer` 68 / `selfhost_bootstrap_acceptance` 4。
-  **まず ftable / function index の解決を疑う。** 同一メッセージの先行事例が 2 件あり、
-  どちらも index の誤解決だった (`workspace-expected-failures.txt:102` の
-  `selfhost_standalone_io` offset 2456、`rust-boundary-reduction.md:3106` の
-  `EC-M1-01` offset 2929)。stack が空なのに i64 が要求される形は signature 取り違えで素直に出る。
-  受入条件: 先に RED を立てる。3 offset それぞれについて、**どの命令列が
-  どの関数を呼ぼうとして stack を空にしているか**を特定し、原因ごとに fix を分けること。
-  72 件が 3 offset に収束することは**同一原因の証拠ではない**ので、
-  「1 つ直したら全部緑になった」を期待して 1 本だけ検証して閉じないこと。
-  GREEN 後、`ignored-lane-expected-failures.txt` の該当 72 行を削除する。
-  **含めない範囲**: `I-72` の import 数不一致 (層が違う。あちらは instantiation)、
-  `#[ignore]` を外すかどうかの判断 (原因が付いてから別途決める)。**cargo が要る。**
+- [ ] `WASM-BODY-VALIDATION-01` e2e の Wasm 検証ヘルパーに関数本体の型検査を通す — Issue `I-77`。
+  `validate_wasm_detailed` (`selfhost_bootstrap_four_layer/part_000.rs:139`) は
+  wasmparser の `ValidPayload::Func` を捨てており、**code section entry を 1 つも型検査しない**。
+  `assert_valid_wasm` (`support.rs:692`) はマジックバイトと長さしか見ない。
+  結果、sweep log では `BOOT-04 stage2: wasmparser validation PASSED` が
+  wasmtime の translation error の直前の行に出る。
+  `I-71` の slice で `support.rs` に `validate_wasm_function_bodies` を足したが、
+  **既存の呼び出し箇所は付け替えていない**。
+  受入条件: 先に RED を立てる。`validate_wasm_detailed` の全呼び出し箇所を列挙し、
+  本体検証を有効化したときに verdict が変わる test を**先に数えてから**付け替えること。
+  「付け替えたら緑のままだった」を成果としないこと -- 変わらないなら
+  その test は元から本体を見る必要が無かったという別の結論になる。
+  **含めない範囲**: `I-71` の compiler 側 fix (別 slice で完了済み)、
+  `#[ignore]` を外すかどうかの判断。**cargo が要る。**
 
 - [ ] `STAGE-WASM-IMPORT-COUNT-01` stage-N 生成 Wasm の import 数不一致を直す — Issue `I-72`。
-  `インスタンス化に失敗: expected 11 imports, found 10`。**赤 8 件**、全て
-  `selfhost_bootstrap_four_layer`。**8 件とも数値が `11` / `10` で完全に一致**する。
+  `インスタンス化に失敗: expected 11 imports, found 10`。**赤 82 件**
+  (`selfhost_bootstrap_four_layer` 76 / `selfhost_bootstrap_acceptance` 6)。
+  **全件とも数値が `11` / `10` で完全に一致**する。
+  起票時は 8 件だったが、`I-71` (translation) の fix でそこに止まっていた 74 件が
+  この壁まで進み、**2026-08-27 の再測定で 82 件になった**。本件が真の壁である。
   生成バイナリ自体は正しく、host が渡す import 集合と compiler 側の import 宣言が
   1 本ずれている。import を足した / 落とした変更が片側にしか入っていない形を疑う。
   受入条件: 先に RED を立てる。**`11` 側と `10` 側それぞれの import 名を列挙して差分を取り**、
   どちらが正しいかを根拠付きで決めてから直すこと。数を合わせるだけの修正はしない。
-  GREEN 後、`ignored-lane-expected-failures.txt` の該当 8 行を削除する。
-  **含めない範囲**: `I-71` の translation error。**cargo が要る。**
+  GREEN 後、`ignored-lane-expected-failures.txt` の該当行のうち**実測で緑になったものだけ**を削除する。
+  `I-71` では 72 行が緑にならず削除できなかった (下に別の層があった)。同じことが起こりうる。
+  **含めない範囲**: `I-78` の実行時 trap (層が違う)。**cargo が要る。**
+
+- [ ] `CLI-SELFFEED-DIVZERO-01` stage1 compiler の `src/App/Cli.ls` self-feed trap を診断する — Issue `I-78`。
+  translation でも instantiation でもなく**実行中**に `wasm trap: integer divide by zero` になる。
+  backtrace は `func[1144]` の自己再帰 8 段 → `1161` → `1951` → `1954` → `4172` → `4174`。
+  受入条件: 先に RED を立てる。**除数が 0 になる箇所を逆アセンブルで特定してから直すこと。**
+  backtrace の function index は「そこを通った」証拠であって「そこが原因」の証拠ではない
+  (`I-71` で offset の集合を原因の集合と読み違えた前例がある)。
+  **含めない範囲**: `I-72` の import 数不一致 (同じ test が併発するが層が違う)。**cargo が要る。**
 
 - [ ] `NATIVE-DIFF-PIN-01` native differential の exact-byte pin 33 件のずれを裁定する — Issue `I-73`。
   `selfhost_native_differential` の赤 33 件。ずれ方に規則性がある (`I-73` に実測)。
@@ -2962,7 +2972,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 19 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 16 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。

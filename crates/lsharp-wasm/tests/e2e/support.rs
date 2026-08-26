@@ -699,6 +699,62 @@ pub(crate) fn assert_valid_wasm(wasm: &[u8]) {
     assert_eq!(&wasm[0..4], b"\0asm", "Wasm マジックバイトが不正");
 }
 
+/// code section の **全関数本体** を個別に検証し、壊れている関数を列挙する。
+///
+/// `assert_valid_wasm` はマジックバイトと長さしか見ない。`validate_wasm_detailed`
+/// (`selfhost_bootstrap_four_layer/part_000.rs`) は `ValidPayload::Func` を捨てるため
+/// 関数本体を一つも検証しない。どちらも「緑になること」と「検査していること」が
+/// 一致しないので、本体の型検査が要る箇所ではこちらを使う。
+pub(crate) fn validate_wasm_function_bodies(wasm: &[u8]) -> Result<(), String> {
+    use wasmparser::{Parser, Payload, ValidPayload, Validator, WasmFeatures};
+
+    let mut validator = Validator::new_with_features(WasmFeatures::default());
+    let mut pending = Vec::new();
+    for payload in Parser::new(0).parse_all(wasm) {
+        let payload = payload.map_err(|error| format!("parse error: {error}"))?;
+        // body の位置をエラーメッセージへ載せるため、code section entry だけ範囲を控える
+        let range = match &payload {
+            Payload::CodeSectionEntry(body) => Some(body.range()),
+            _ => None,
+        };
+        let valid = validator
+            .payload(&payload)
+            .map_err(|error| format!("validate error at offset {}: {}", error.offset(), error.message()))?;
+        if let ValidPayload::Func(to_validate, body) = valid {
+            pending.push((range, to_validate, body));
+        }
+    }
+
+    let mut allocations = wasmparser::FuncValidatorAllocations::default();
+    let mut broken = Vec::new();
+    for (range, to_validate, body) in pending {
+        let index = to_validate.index;
+        let mut func_validator = to_validate.into_validator(allocations);
+        if let Err(error) = func_validator.validate(&body) {
+            let where_ = range
+                .map(|r| format!(" body=[{}..{}]", r.start, r.end))
+                .unwrap_or_default();
+            broken.push(format!(
+                "func[{index}]{where_} err@{} (0x{:x}): {}",
+                error.offset(),
+                error.offset(),
+                error.message()
+            ));
+        }
+        allocations = func_validator.into_allocations();
+    }
+
+    if broken.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "関数本体の検証に失敗: {} 件\n{}",
+            broken.len(),
+            broken.join("\n")
+        ))
+    }
+}
+
 /// examples ディレクトリのファイルパスを構築
 pub(crate) fn example_path(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

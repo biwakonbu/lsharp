@@ -238,3 +238,64 @@ cargo を使わない後処理なので、sweep のログだけで実施でき�
 **この後処理は sweep のたびに繰り返す価値がある。** ただし
 **verdict の色で一括判定してはならない** — 上の 10 件を機械的に訂正していれば、
 正しい Evidence を壊していた。判定は ADR の主張文を読んで行う。
+
+## 部分再測定: `I-71` fix 後の 3 module (2026-08-27)
+
+`I-71` (空 do が unit を積まない) の fix が台帳へ与える影響を測るため、
+該当行を持つ 3 module だけを同条件で回した。判断の正本は
+[decisions-selfhost-empty-do-unit-value.md](../../adr/decisions-selfhost-empty-do-unit-value.md)。
+
+### 取得条件
+
+| 項目 | 値 |
+|---|---|
+| 対象 | `runtime_allocator_closures` / `selfhost_bootstrap_acceptance` / `selfhost_bootstrap_four_layer` |
+| test binary | `target/debug/deps/e2e-aa343ded249bec81` (`Compiler.ls` の fix 込み。lane 中は再ビルドしない) |
+| 起動 | `python3 /Users/biwakonbu/github/tmp/i71/run_lane_i71.py` を `os.setsid()` で切り離し |
+| filter | module ごとに `<bin> --ignored 'e2e::<module>::'` |
+| 並列度 | libtest 既定 |
+| 機種 | Mac17,2 / 10 core / macOS 26.5.1 |
+| 併走 | **無し。** lane 中は `cargo` を一切起動しない |
+| ログ | `/Users/biwakonbu/github/tmp/i71/lane/mod-<module>.log` (末尾に `MODEXIT=` / `ELAPSED=`) |
+| 完走マーカ | 同ディレクトリ `progress.txt` の `LANE-COMPLETE` 行 (`LANE-DONE` ではない) |
+
+### 結果
+
+| module | 宣言 | 結果行 | 完走 | 赤 | 所要 |
+|---|---:|---:|---|---:|---:|
+| `runtime_allocator_closures` | 4 | 4 | OK | 4 | 233.41s |
+| `selfhost_bootstrap_acceptance` | 28 | 28 | OK | 7 | 1,818.75s |
+| `selfhost_bootstrap_four_layer` | 148 | 148 | OK | 77 | 5,582.32s |
+| **計** | **180** | **180** | OK | **88** | **7,634s (2.1 h)** |
+
+`compare_ignored_lane.py` は **新規 FAIL 0 / 解消 0 / 未出現 0 / exit 0**。
+**赤の集合は fix 前 (2026-08-24) と 1 件も違わない。**
+
+### 部分 lane の比較は抜粋台帳に対して行う
+
+```bash
+# 測った module だけを台帳から抜き出す
+grep -E "^lsharp-wasm::e2e (runtime_allocator_closures|selfhost_bootstrap_acceptance|selfhost_bootstrap_four_layer)::" \
+  docs/development/validation/ignored-lane-expected-failures.txt > /tmp/subset.txt
+python3 scripts/compare_ignored_lane.py /path/to/lane/mod-*.log --ledger /tmp/subset.txt
+```
+
+**全量台帳に対して回してはならない。** 同 script は「台帳エントリがあるのに、その module を
+覆うログが無い」行を「未出現」として非 0 にするので、測っていない 7 module の行が
+全て未出現になる。台帳を編集したあとに検証し直すときは、**編集後の台帳から抜粋を作り直す**
+(編集前の抜粋を使い回すと、付け替えた行が差分として出る)。
+
+### この再測定が示したこと
+
+fix 前後で症状を test 単位に突き合わせると、`expected i64 but nothing on stack` の
+出現は 3 module で **0 件**になった一方、**赤は 1 件も減らなかった**。
+74 test が `expected 11 imports, found 10` (`I-72`) へ移っただけである。
+
+**「何件の赤が消えたか」は fix の効果の指標にならない。** 同じ test に複数の層
+(translation / instantiation / 実行時 trap) が積み重なっている場合、上の層を直しても
+下の層で落ちるので、赤の数は動かない。効果は**その症状の出現数が 0 になったか**で測る。
+台帳は**実測の赤と一致するか**で保つ。2 つを混ぜると、直っているのに直っていないように
+見えるか、実測が赤の行を削除して台帳を壊すかのどちらかになる。
+
+なお `integer divide by zero` (`I-78`) は fix 前後とも 2 件で変化しない。
+本 fix が持ち込んだ regression ではないことの確認としてここに記録する。
