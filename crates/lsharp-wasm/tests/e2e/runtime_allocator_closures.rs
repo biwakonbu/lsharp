@@ -2858,7 +2858,7 @@ fn test_e2e_int_to_string_large() {
 /// これは stage3 truncation の根本原因を特定するためのデバッグテスト。
 #[test]
 #[ignore]
-fn test_v2_12_stage2_six_import_debug_probe() {
+fn test_v2_12_stage2_eleven_import_debug_probe() {
     let main_path = super::support::selfhost_main_path();
     let selfhost_root = main_path
         .parent()

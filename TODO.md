@@ -2916,32 +2916,32 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `I-71` の compiler 側 fix (別 slice で完了済み)、
   `#[ignore]` を外すかどうかの判断。**cargo が要る。**
 
-- [ ] `STAGE-WASM-IMPORT-COUNT-01` stage-N 生成 Wasm の import 数不一致を直す — Issue `I-72`。
-  `インスタンス化に失敗: expected 11 imports, found 10`。**赤 82 件**
-  (`selfhost_bootstrap_four_layer` 76 / `selfhost_bootstrap_acceptance` 6)。
-  **全件とも数値が `11` / `10` で完全に一致**する。
-  起票時は 8 件だったが、`I-71` (translation) の fix でそこに止まっていた 74 件が
-  この壁まで進み、**2026-08-27 の再測定で 82 件になった**。本件が真の壁である。
-  生成バイナリ自体は正しく、host が渡す import 集合と compiler 側の import 宣言が
-  1 本ずれている。import を足した / 落とした変更が片側にしか入っていない形を疑う。
-  受入条件: 先に RED を立てる。**`11` 側と `10` 側それぞれの import 名を列挙して差分を取り**、
-  どちらが正しいかを根拠付きで決めてから直すこと。数を合わせるだけの修正はしない。
-  GREEN 後、`ignored-lane-expected-failures.txt` の該当行のうち**実測で緑になったものだけ**を削除する。
-  `I-71` では 72 行が緑にならず削除できなかった (下に別の層があった)。同じことが起こりうる。
-  **含めない範囲**: `I-78` の実行時 trap (層が違う)、`I-79` の握り潰し構造の是正
-  (helper の付け替えだけは本項目で行い、`Err` を無視する形は直さない)。**cargo が要る。**
+- [ ] `TARGET-DEFN-PARITY-01` target-defn parity が `ast-make-type-constrained` で分岐する原因を付ける — Issue `I-80`。
+  `selfhost_bootstrap_four_layer` の parity probe 2 件が marker の期待値に届かない。
+  stage1 側 marker 126 が 5 (期待 7 / `part_009.rs:411`)、
+  stage2 側 marker 127 が 0 (期待 5 / `part_009.rs:302`)。
+  どちらも対象 defn は `ast-make-type-constrained`。
+  `I-72` の解決でインスタンス化が通るようになり、初めてこの assertion まで到達して露出した。
+  受入条件: 先に RED を立てる。**stage1 側と stage2 側を 1 つの原因にまとめないこと。**
+  marker が別である以上、同じ原因である保証が無い。
+  「対象 defn が短く切れている」のか「別の defn を見ている」のかを、
+  marker 値の解釈ではなく実際に読んでいる defn の同定によって決めること。
+  **含めない範囲**: 他の parity probe の赤 (本件は marker 126/127 の 2 件のみ)。**cargo が要る。**
 
-  **判断は済んでいる (2026-08-27)。**
-  [11-import ABI を正とする ADR](docs/adr/decisions-selfhost-eleven-import-abi-harness.md)
-  に import 名の差分・却下した 3 案・全数調査を記録した。差分は末尾 1 本 (`env.print-string`) だけで、
-  11 側は 10 側の厳密な superset。**10 側を要求する呼び出し元は 1 件も無い**ため、
-  移行ではなく `include_print_string = false` 分岐の**削除**として実装する。
-  部分再測定の対象 module は `selfhost_bootstrap_four_layer` /
-  `selfhost_bootstrap_acceptance` / `runtime_allocator_closures` の 3 つ
-  (`[d]` 3 行が動きうるので 3 つ目も必須)。台帳編集後に抜粋を取り直すこと。
+- [ ] `VIOLATION-PROBE-STALE-01` violation 0 件で落ちる診断足場を裁定する — Issue `I-81`。
+  `test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff`
+  (`part_014.rs:205`) が `local_bound_violation_indices` の収集結果が空になり、
+  `first violation` を取り出す時点で落ちる。
+  **欠陥が悪化したのではなく、改善した結果として足場が成立しなくなった形**である。
+  受入条件: **本項目の仕事は裁定であって、`unwrap` を消すことではない。**
+  (a) violation 0 件を成功扱いにする (足場を assertion へ格下げ) か、
+  (b) violation を含む fixture を与えて足場を足場のまま保つか、を根拠付きで決める。
+  (a) を選ぶなら「violation が再発したときに何が気付かせるのか」を併せて示すこと。
+  示せないなら (a) は選べない。
+  **含めない範囲**: violation が消えた原因そのものの追跡。**cargo が要る。**
 
 - [ ] `HARNESS-SWALLOWED-ERR-01` 実行失敗を握り潰す e2e test 8 件を、失敗が失敗として出るようにする — Issue `I-79`。
-  `run_wasm_with_six_imports_compiler_mode*` の `Result` を
+  `run_wasm_with_eleven_imports_compiler_mode*` の `Result` を
   `match { Err(e) => eprintln!(..), Ok(out) => { /* 全 assertion */ } }` で受けているため、
   **実行が失敗した回は assertion が 1 つも走らないまま緑になる**。
   8 件は `selfhost_bootstrap_four_layer` の 5 fragment に散っている
@@ -2950,8 +2950,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   8 件という数は `I-72` の呼び出し元調査の副産物であって、網羅的な探索の結果ではない。
   潰した結果として赤が増えるのは**正しい挙動**であり、増えた分は台帳へ正直に載せる
   (「赤が増えないこと」を受入条件にしない)。
-  **含めない範囲**: `I-72` の helper 付け替え (`STAGE-WASM-IMPORT-COUNT-01` で行う)、
+  **含めない範囲**: `I-72` の helper 付け替え (2026-08-27 に完了済み。commit `12c41d58`)、
   握り潰しが露出させた個々の失敗の修正。**cargo が要る。**
+
+  **`I-72` の部分再測定では台帳外の新規 FAIL が 0 件だった (2026-08-27)。**
+  8 件は helper が 11-import になって実際に走り出したうえで、なお緑である。
+  つまり `Ok` 腕の assertion 自体は通っている。**これは「握り潰しても実害が無い」ことの
+  証拠ではない** — 次に実行が失敗したときに再び黙るという性質は何も変わっていない。
 
 - [ ] `CLI-SELFFEED-DIVZERO-01` stage1 compiler の `src/App/Cli.ls` self-feed trap を診断する — Issue `I-78`。
   translation でも instantiation でもなく**実行中**に `wasm trap: integer divide by zero` になる。
@@ -2959,7 +2964,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件: 先に RED を立てる。**除数が 0 になる箇所を逆アセンブルで特定してから直すこと。**
   backtrace の function index は「そこを通った」証拠であって「そこが原因」の証拠ではない
   (`I-71` で offset の集合を原因の集合と読み違えた前例がある)。
-  **含めない範囲**: `I-72` の import 数不一致 (同じ test が併発するが層が違う)。**cargo が要る。**
+  **`I-72` の解決後の実測は赤 3 件** (2026-08-27)。起票時の 1 件に加え、
+  `..._stage_chain_match` (`I-72` との複合だった) と
+  `..._stage2_self_feed_fixed_input_set` (stage2 側) が本件へ移った。
+  ただし stage2 側は harness が `{e}` で整形するため trap kind が落ちており、
+  **同一原因とは断定していない**。3 件目を数に入れる前に `{e:?}` で trap kind を確認すること。
+  **含めない範囲**: `I-72` の import 数不一致 (2026-08-27 に解決済み)。**cargo が要る。**
 
 - [ ] `NATIVE-DIFF-PIN-01` native differential の exact-byte pin 33 件のずれを裁定する — Issue `I-73`。
   `selfhost_native_differential` の赤 33 件。ずれ方に規則性がある (`I-73` に実測)。
@@ -2995,14 +3005,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 16 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 15 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
   内訳は `ignored-lane-expected-failures.txt` の `引き取り先: I-75` 行が正本。
   **先に `exit code 1` 3 件の stderr を拾えるようにする。** `support.rs:188` が
   exit code だけを文字列化して捨てているので、現状は診断の材料が無い。
-  受入条件: 19 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
+  起票時 19 件のうち 4 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` へ移管済み。
+  受入条件: 残る 15 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**

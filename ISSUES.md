@@ -203,14 +203,16 @@
 | [I-69](#i-69) | `repl-session-last-type-name` が型タグを見ずにスロット 1 を読み、`lsharp repl` が壊れた型名を出す | 中 | open | -- |
 | [I-70](#i-70) | ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない | 中 | resolved | 2026-08-24 |
 | [I-71](#i-71) | stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる | 高 | resolved | 空 do が値を積まないため。3 経路に `i64.const 0` を emit。**症状は消えたが赤は減らず、72 行は `I-72` へ付け替え** |
-| [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | open | `I-71` の fix で表面化し、赤 8 件 → **82 件** |
+| [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 16 件 | 中 | open | 3 件は 2026-08-27 の再測定で `I-72` / `I-78` へ移管 |
+| [I-75](#i-75) | sweep で露出した未分類の赤 15 件 | 中 | open | 4 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` へ移管 |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
-| [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27) |
+| [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
 | [I-79](#i-79) | 10-import helper の戻り値を握り潰す test 8 件が、緑のまま何も検査していない | 中 | open | `I-72` の診断で発見 (2026-08-27)。台帳にも載らない |
+| [I-80](#i-80) | stage1/stage2 の target-defn parity が `ast-make-type-constrained` で分岐する | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
+| [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
 
 ### ドキュメント (DOC)
 
@@ -5029,14 +5031,14 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 <a id="i-72"></a>
 ### I-72: stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`)
 
-- **影響度**: 高 / **状態**: open
+- **影響度**: 高 / **状態**: resolved (2026-08-27)
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 生成された Wasm は**読めるが、インスタンス化できない**。
   `インスタンス化に失敗: expected 11 imports, found 10`。**数値は全件 `11` / `10` で完全に一致**する。
 - **`I-71` の fix で赤 8 件 → 82 件になった (2026-08-27)。**
   起票時に見えていた 8 件は「`I-71` に当たらずここまで到達できた」ものだけだった。
   `I-71` (translation) を直すと、そこで止まっていた 74 件がこの壁まで進み、同じ症状で落ちる。
-  **本件は `I-71` の後ろに隠れていた真の壁である。** 台帳 82 行が正本。
+  **本件は `I-71` の後ろに隠れていた真の壁である。** 台帳 82 行が正本だった。
 
   | module | 件数 |
   |---|---|
@@ -5047,10 +5049,29 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   instantiation (バイナリは正しいが host が渡す import 集合と食い違う)。
   同じ module に同居しているので混ぜやすいが、疑う場所が違う。
   `I-71` は codegen、本件は **host 側の import 表と compiler 側の import 宣言の同期**である。
-- **数が 1 つだけずれている**ので、import を 1 本足した / 落とした変更が
-  片側にしか入っていない形が疑わしい。**ただし未診断**。
+- **原因 (2026-08-27 診断)**: compiler 側 (`selfhost/src/App/CompilerMode.ls:6093,6140`) は
+  11 import を宣言する `emit-import-section-alloc-print-read-arg-concat-sub-print-string`
+  だけを呼ぶのに対し、e2e harness の共通ヘルパーは 10 import しか渡していなかった。
+  **ずれていたのは compiler 側ではなく host 側**である。10-import 版の emitter
+  (`WasmEmit.ls:2004`) は production から到達不能で、test 埋め込みの L# ソースにだけ残っていた。
+- **解決 (2026-08-27)**: harness の共通ヘルパーを 11 import へ統一した
+  (`run_wasm_with_six_imports_compiler_mode*` → `run_wasm_with_eleven_imports_compiler_mode*`)。
+  採用案と却下案は
+  [`decisions-selfhost-eleven-import-abi-harness.md`](docs/adr/decisions-selfhost-eleven-import-abi-harness.md)
+  が正本。fix commit は `12c41d58`。
+- **実測 (3 module の部分再測定 / 2026-08-27)**: 3 module とも宣言数 == 結果行ユニーク数で完走判定 OK。
+  `expected 11 imports, found 10` は **3 ログとも 0 件**。逆向きの
+  `expected 10 imports, found 11` も 0 件。台帳外の新規 FAIL も 0 件。
+  台帳 88 行のうち **80 行が緑に転じたので削除**し、8 行が別原因で残った
+  (`I-78` 3 件 / `I-80` 2 件 / `I-81` 1 件 / `REPL-TYPE-TAG-01` 1 件 / `[d]` 1 件)。
+  取得条件は [`ignored-lane-sweep-2026-08-23.md`](docs/development/operations/ignored-lane-sweep-2026-08-23.md)。
+- **判定に使ったのは行数ではなく症状数である。** 行が残っていても、残った理由が
+  import 数不一致でなければ本件は解決している。`I-71` で「症状が消えたのに赤が減らなかった」
+  前例がある以上、赤の増減は fix の効果の指標にならない。
+  本件では赤が 80 行減ったが、**それも判定の根拠にはしていない**。
 - **関連**: `I-64` (発見経路)、`I-71` (**本件を隠していた**。72 行の移管元)、
-  `I-75` (2 行を移管)。引き取り先は `TODO.md` の `STAGE-WASM-IMPORT-COUNT-01`。
+  `I-75` (2 行を移管)、`I-79` (本件の呼び出し元全数調査で発見)、
+  `I-80` / `I-81` (本件の解決で下から出てきた層)。
 
 <a id="i-73"></a>
 ### I-73: native differential の exact-byte pin 33 件が一律にずれている
@@ -5108,14 +5129,14 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 16 件
+### I-75: sweep で露出した未分類の赤 15 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **16 件**
-  (起票時 19 件。2026-08-27 の再測定で `selfhost_bootstrap_acceptance` の 3 件に原因が付き、
-  2 件を `I-72`、1 件を `I-78` へ移管した)。
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **15 件**
+  (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
+  2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
@@ -5124,16 +5145,15 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   |---|---|---|
   | `selfhost_cli_core` | 12 | `InvalidData: stream did not contain valid UTF-8` 2 / `exit code 1` 3 / LSP transport frame 2 / その他 5 |
   | `selfhost_native_stage_chain` | 2 | |
-  | `selfhost_bootstrap_four_layer` | 1 | |
   | `selfhost_lsp_docs_ops` | 1 | formatter の module body canonical text |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
-  台帳を数え直した実測は 12 で、移管後の合計 16 と一致する。表を実測へ合わせた。
+  台帳を数え直した実測は 12 で、移管後の合計 15 と一致する。表を実測へ合わせた。
 
 - **`exit code 1` 3 件と `NotFound` 系は stderr が台帳に残っていない。**
   `support.rs:188` が exit code だけを文字列化して捨てている。
   **再現時に stderr を拾えるようにすることが診断の前提**になる。
-- **本 issue は保持であって診断ではない。** 19 件それぞれの原因が付いた時点で
+- **本 issue は保持であって診断ではない。** 残り 15 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
@@ -5236,9 +5256,20 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   上の層を直すたびに下の層が新しく見えるだけで、赤の数は減らない。
 - **未診断**。除数がどこで 0 になるかは特定していない。`func[1144]` の自己再帰 8 段は
   compiler 内のリスト走査に見えるが、逆アセンブルで確認していない。
-- **赤 1 件** (`selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module`)。
-  加えて `..._stage_chain_match` が失敗リストの中で `src/App/Cli.ls` として同じ trap を含むが、
-  同 test は `I-72` の症状も併発するので引き取り先は `I-72` に置いた。
+- **赤 3 件** (`I-72` 解決後の 2026-08-27 実測)。3 件とも `selfhost_bootstrap_acceptance` で、
+  いずれも `src/App/Cli.ls` を食わせた時点で落ちる。
+
+  | test | 位置 | 備考 |
+  |---|---|---|
+  | `test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module` | `part_002.rs:318:18` | 起票時から赤。`wasm trap: integer divide by zero` |
+  | `test_e2e_bootstrap_fixed_input_set_stage_chain_match` | `part_002.rs:515:9` | `I-72` との複合だったが、`I-72` 解決後は本件単独 |
+  | `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` | `part_002.rs:295:9` | stage2 側。**同一原因とは断定していない** (下記) |
+
+- **3 件目の trap 種別は不明のままである。** harness が `{e}` で整形するのでエラー文字列が
+  `<wasm function 4157>; printed=""` で終わり、trap kind が落ちる。
+  trace 形状と対象 path は 1・2 件目と一致するが、それは「同じ場所を通った」証拠であって
+  「同じ原因である」証拠ではない。`{e:?}` へ変えれば拾える
+  (`I-79` と同じ「harness が情報を握り潰す」類型)。
 - **関連**: `I-75` (分離元)、`I-71` / `I-72` (同じ test 群の別の層)、`I-64` (発見経路)。
   引き取り先は `TODO.md` の `CLI-SELFFEED-DIVZERO-01`。
 
@@ -5247,7 +5278,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-27 (`I-72` の呼び出し元全数調査)
-- **内容**: `run_wasm_with_six_imports_compiler_mode*` を呼ぶ test 90 件のうち **8 件**が、
+- **内容**: `run_wasm_with_eleven_imports_compiler_mode*` を呼ぶ test 90 件のうち **8 件**が、
   helper の返す `Result` を `if let Ok(..)` 等で開き、`Err` のときは**何もせずに素通りする**。
   この 8 件は `I-72` のインスタンス化失敗を確実に踏んでいるにもかかわらず、
   **緑のまま**であり `ignored-lane-expected-failures.txt` にも載らない。
@@ -5289,3 +5320,49 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **関連**: `I-72` (発見経路。移行だけは `I-72` の slice で行う)、
   `I-77` / `I-70` (同じ「緑だが検査していない」類型)、`I-64` (sweep が拾えなかった)。
   引き取り先は `TODO.md` の `HARNESS-SWALLOWED-ERR-01`。
+
+<a id="i-80"></a>
+### I-80: stage1/stage2 の target-defn parity が `ast-make-type-constrained` で分岐する
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-72` の fix 後の部分再測定で露出)
+- **内容**: `selfhost_bootstrap_four_layer` の target-defn parity probe 2 件が、
+  marker の値が期待値に届かずに落ちる。どちらも対象 defn は `ast-make-type-constrained`。
+
+  | test | marker | 実測 | 期待 | 位置 |
+  |---|---|---|---|---|
+  | `test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_lengths` | 126 | 5 | 7 | `part_009.rs:411:5` |
+  | `test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_constrained` | 127 | 0 | 5 | `part_009.rs:302:5` |
+
+- **`I-72` の下から出てきた層である。** どちらの test も `I-72` の解決前は
+  インスタンス化で止まっており、この assertion まで到達していなかった。
+  したがって **`I-72` の fix が持ち込んだ regression ではない**。
+  ただし「fix 前は緑だった」ことの実証でもない — fix 前は assertion が走っていないので
+  比較できる過去の値が存在しない。
+- **未診断**。marker 126 が 5 / marker 127 が 0 という値が
+  「対象 defn が短く切れている」のか「そもそも別の defn を見ている」のかは特定していない。
+- **stage1 側と stage2 側で marker が別**なので、原因が同じとは限らない。
+  1 つの結論にまとめないこと。
+- **関連**: `I-72` (これを隠していた)、`I-75` (`..._lengths` の移管元)、`I-64` (発見経路)。
+  引き取り先は `TODO.md` の `TARGET-DEFN-PARITY-01`。
+
+<a id="i-81"></a>
+### I-81: `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-72` の fix 後の部分再測定で露出)
+- **内容**: `test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff`
+  (`part_014.rs:205:10`) は stage3 の Wasm から `local_bound_violation_indices` を集め、
+  **最初の violation の body diff を出す**診断足場である。
+  収集結果が空になり、`first violation` を取り出す時点で落ちる。
+- **これは「violation が無くなった」ことによる失敗**である。
+  対象の欠陥が悪化したのではなく、**改善した結果として足場が成立しなくなった**形なので、
+  直し方は 2 通りあり、どちらを選ぶかは判断が要る。
+  (a) violation 0 件を成功扱いにする (診断足場を assertion へ格下げする)、
+  (b) violation を意図的に含む fixture を与えて足場を足場のまま保つ。
+  **(a) を選ぶと violation が再発したときに気付けなくなる**ので、安易に選ばない。
+- **`I-72` の下から出てきた層である。** 解決前はインスタンス化で止まっており、
+  この収集まで到達していなかった。
+- **関連**: `I-72` (これを隠していた)、`I-79` (「緑だが検査していない」の裏返しで、
+  こちらは「赤だが欠陥は無いかもしれない」)、`I-64` (発見経路)。
+  引き取り先は `TODO.md` の `VIOLATION-PROBE-STALE-01`。

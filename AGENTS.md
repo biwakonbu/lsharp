@@ -274,6 +274,12 @@ python3 scripts/compare_ignored_lane.py --ledger /tmp/subset.txt lane/mod-*.log
 ```
 
 台帳を編集したら**抜粋を取り直す**。古い抜粋のままだと、付け替えた行が差分として出る。
+
+**lane のあとで test を rename したら、その module は測り直す。** 台帳は tree に存在する
+名前を持たねばならず、旧名のログと突合させて手で「同じものだ」と読むと、新しい名前が
+実際に赤いことを一度も測っていない状態が残る。1 module なら数分で済む。
+旧ログは `pre-rename-mod-<module>.log.bak` として残す。
+
 実測手順と落とし穴は
 [ignored lane sweep の運用記録](docs/development/operations/ignored-lane-sweep-2026-08-23.md)
 の「部分再測定」節が正本。

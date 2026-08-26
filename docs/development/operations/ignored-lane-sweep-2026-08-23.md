@@ -299,3 +299,82 @@ fix 前後で症状を test 単位に突き合わせると、`expected i64 but n
 
 なお `integer divide by zero` (`I-78`) は fix 前後とも 2 件で変化しない。
 本 fix が持ち込んだ regression ではないことの確認としてここに記録する。
+
+## 部分再測定: `I-72` fix 後の 3 module (2026-08-27)
+
+`I-72` (harness の import 集合が 10 本で古い) の fix が台帳へ与える影響を測るため、
+`I-71` のときと同じ 3 module を同条件で回した。判断の正本は
+[decisions-selfhost-eleven-import-abi-harness.md](../../adr/decisions-selfhost-eleven-import-abi-harness.md)。
+
+### 取得条件
+
+| 項目 | 値 |
+|---|---|
+| 対象 | `runtime_allocator_closures` / `selfhost_bootstrap_acceptance` / `selfhost_bootstrap_four_layer` |
+| test binary | `target/debug/deps/e2e-aa343ded249bec81` (main `12c41d58` で `cargo build -p lsharp-wasm --tests`。lane 中は再ビルドしない) |
+| 起動 | `python3 /Users/biwakonbu/github/tmp/i72/run_lane_i72.py` を `os.setsid()` で切り離し |
+| filter | module ごとに `<bin> --ignored 'e2e::<module>::'` |
+| 並列度 | libtest 既定 |
+| 機種 | Mac17,2 / 10 core / macOS 26.5.1 |
+| 環境 | Lima VM `lsharp-linux-x86` は Stopped、`LSHARP_NATIVE_*` は全て未設定 |
+| 併走 | **無し。** lane 中は `cargo` を一切起動しない |
+| ログ | `/Users/biwakonbu/github/tmp/i72/lane/mod-<module>.log` (末尾に `MODEXIT=` / `ELAPSED=`) |
+| 完走マーカ | 同ディレクトリ `progress.txt` の `LANE-COMPLETE` 行 |
+
+### 結果
+
+| module | 宣言 | 結果行 | 完走 | 赤 | 所要 |
+|---|---:|---:|---|---:|---:|
+| `runtime_allocator_closures` | 4 | 4 | OK | 2 | 488.67s |
+| `selfhost_bootstrap_acceptance` | 28 | 28 | OK | 3 | 3,206.23s |
+| `selfhost_bootstrap_four_layer` | 148 | 148 | OK | 3 | 6,748.02s |
+| **計** | **180** | **180** | OK | **8** | **10,443s (2.9 h)** |
+
+- `expected 11 imports, found 10` — **3 ログとも 0 件** (`I-71` fix 後は 74 件だった)
+- 逆向きの `expected 10 imports, found 11` — **3 ログとも 0 件**
+- 台帳外の新規 FAIL — **0 件**
+
+台帳 88 行のうち 80 行が緑に転じたので削除し、8 行が残った。
+
+### test を rename したら、その module は測り直す
+
+`runtime_allocator_closures` の値は再測定である。初回 lane のあとで
+`test_v2_12_stage2_six_import_debug_probe` を `..._eleven_import_debug_probe` へ rename したため、
+初回ログの test 名が編集後の台帳と一致しなくなった。`compare_ignored_lane.py` は
+これを **新規 FAIL 1 件 + 未出現 1 件**として非 0 で報告する (実際にそうなった)。
+
+ここで台帳を旧名へ戻すのは誤りである。**台帳は tree に存在する名前を持たねばならない。**
+かといって旧名のログを新名の台帳と突合させて手で「同じものだ」と読むのも誤りで、
+それは新名が実際に赤いことを一度も測っていない状態を放置することになる。
+正しいのは**その module だけ測り直す**ことで、実際 8 分で済んだ (488.67s / 赤 2 件で初回と同一)。
+初回ログは `pre-rename-mod-<module>.log.bak` として残す。
+
+### 所要は fix の前後で 37% 伸びた
+
+同じ 3 module で 7,634s → 10,450s。原因は単純で、**instantiation で早期に落ちていた 80 件が
+実際に走り切るようになった**ためである。赤が減ると lane は速くなる、という直感は逆である。
+次に同じ 3 module を回す人は 3 時間を見込むこと。
+
+### 判定に使ったのは症状数であって行数ではない
+
+`I-71` の記録が示したとおり「何件の赤が消えたか」は fix の効果の指標にならない。
+本件では逆に 80 行が消えたが、**それも判定の根拠にしていない**。
+根拠は `expected 11 imports, found 10` の出現が 0 になったことの一点である。
+
+新しく足したのは**逆向きの症状も数えること**である。tree 全体を 11-import へ寄せる変更なので、
+「10-import の stage2 を生成して自分で instantiate する側」を壊しうる。
+`expected 10 imports, found 11` を併せて grep して 0 件を確認した。
+**片方向だけ数えると、直したつもりで別の場所を壊した状態を緑と読む。**
+
+### 残った 8 行の引き取り先
+
+| test | 引き取り先 |
+|---|---|
+| `runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload` | `REPL-TYPE-TAG-01` |
+| `runtime_allocator_closures::test_v2_12_stage2_eleven_import_debug_probe` | `[d]` (診断足場) |
+| `acceptance::..._stage_chain_match_cli_module` | `I-78` |
+| `acceptance::..._stage_chain_match` | `I-78` (`I-72` から移管) |
+| `acceptance::..._stage2_self_feed_fixed_input_set` | `I-78` (`I-72` から移管) |
+| `four_layer::..._stage2_target_defn_parity_reaches_ast_make_type_constrained` | `I-80` |
+| `four_layer::..._stage1_target_defn_parity_reports_ast_make_type_constrained_lengths` | `I-80` (`I-75` から移管) |
+| `four_layer::..._reports_compiler_mode_first_violation_body_diff` | `I-81` |
