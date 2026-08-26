@@ -32,6 +32,24 @@ failure boundary を曖昧にし、後続の manifest/validation へ誤った ev
 - `cargo test -p lsharp-wasm --test e2e selfhost_evidence_parser_contract -- --nocapture` — pass。
 - `cargo test -p lsharp-wasm --test e2e selfhost_evidence_registry -- --nocapture` — 16 passed。
 - `test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence` — pass（293.49s）。
+
+### 訂正 (2026-08-24、`--ignored` lane 全量 sweep)
+
+直上の `test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence` —
+「pass（293.49s）」は**現在の実測と食い違う**。当時の観測なので原文は残す。
+
+2026-08-24 の実測は FAILED (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:15673`)。
+落ちているのは `value["independent_reviews"]` の比較で `left: Number(0)` / `right: 1`。
+**手前の 3 つ (exit code `1` / `status=fail` / `trace_gaps` 0 件) は通っており、
+`contradicting_observations` は assert 到達前なので未検証**である。
+
+すなわち「evidence report が出ない」のではなく、**`independent-review` record が
+1 件も数えられていない**という限定的な食い違いである。本 ADR の Decision
+(duplicate `:subject` の fail-closed 化) が覆ったことを意味しない。
+
+**原因は未診断。** `ISSUES.md` の `I-75` と `TODO.md` の `SWEEP-UNCLASSIFIED-01` が
+引き取っている。診断が付くまで、この Evidence 行を「正しい値」へ書き換えることはできない。
+書き換えれば、まだ分かっていないことを分かったことにしてしまう。
 - `test_e2e_selfhost_parser_preserves_source_intent_metadata_forms` — pass。
 - e2e 全体 clippy は今回触れていない `selfhost_native_stage_chain.rs` の 2件と
   `support.rs` の 1件で失敗したため、別作業の lint として修正しない。

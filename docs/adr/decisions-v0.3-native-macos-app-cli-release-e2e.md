@@ -25,6 +25,24 @@ large temporary Cargo target or native artifact in the repository.
 
 - `test_e2e_native_macos_aarch64_actual_app_cli_release_program` passed with `1 passed` in
   `945.94s`.
+
+### 補足 (2026-08-24、`--ignored` lane 全量 sweep)
+
+直上の Evidence は `LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR` を設定した状態での
+実測である。
+
+`--ignored` lane 全量 sweep (2026-08-24) ではこの test は FAILED になったが、
+**これは上の Evidence の反証ではない**。落ちているのは assertion ではなく
+`std::env::var_os(`"LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR"`).expect(..)` で、**前提の欠落による panic** である
+(`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs`)。sweep は
+artifact dir を用意すると Cargo target と native artifact が数 GiB 残る ため、前提を揃えていない。
+
+分類の根拠は [`decisions-native-root-pop-empty-guard.md`](decisions-native-root-pop-empty-guard.md)
+の「分類規則」節にある。同節は本 test を (b) `LSHARP_NATIVE_*` env 依存に分類しており、
+「回帰の候補になり得るのは (c) だけである」と述べている。
+
+**したがって本 ADR の Evidence を再取得するには env と VM の前提を揃える必要がある。**
+sweep のログだけでは真偽を判定できない。この点は `ISSUES.md` の `I-70` に記録した。
 - Manifest: `target=aarch64-apple-darwin`, `source_commit=0dc6d67348195ad23575913841459cdf2e6a36b2`,
   `selfhost_fixed_point=true`, `program_sha256=a1dac9ff7146fbfd012c6e299df786c3c6c00680e3849cfb98abdeb1efcd76de`.
 - The generated Mach-O arm64 program was 4,327,168 bytes; `--version` returned `lsharp 0.1.0`

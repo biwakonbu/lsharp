@@ -201,7 +201,7 @@
 | [I-67](#i-67) | selfhost runner の `cases` / `coverage.executed` は pass 数を数えており、失敗時に rust runner と食い違う | 低 | resolved | 2026-08-23 |
 | [I-68](#i-68) | `:invariant` / property の `cases` はサンプル数を載せており、rust oracle の contract 数と食い違う | 低 | open | -- |
 | [I-69](#i-69) | `repl-session-last-type-name` が型タグを見ずにスロット 1 を読み、`lsharp repl` が壊れた型名を出す | 中 | open | -- |
-| [I-70](#i-70) | ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない | 中 | open | -- |
+| [I-70](#i-70) | ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない | 中 | resolved | 2026-08-24 |
 | [I-71](#i-71) | stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる | 高 | open | -- |
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | open | -- |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
@@ -4857,7 +4857,7 @@
 <a id="i-70"></a>
 ### I-70: ADR の Evidence 節が `#[ignore]` 下の test を根拠にしており、赤に転じても訂正されない
 
-- **状態**: open
+- **状態**: resolved (2026-08-24)
 - **発見**: 2026-08-23 (`I-64` の `#[ignore]` 全量 sweep の副産物)
 
 `docs/adr/decisions-v0.3-native-cli-check-file-e2e.md` の Evidence 節は
@@ -4873,21 +4873,78 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **「引いている」だけでは欠陥ではない。** heavy CI gate は意図的に `#[ignore]` を付けて
   `scripts/ci/*` から回す運用 (`ops03c`) があり、その場合は別経路で検証されている。
   **問題なのは「どの script も回しておらず、かつ赤」の組み合わせ**である。
-- **sweep 済み 11 module の範囲で確定した赤は 2 件**:
-  - `decisions-v0.3-native-cli-check-file-e2e.md` → `..._check_file` (引き取り先 `CHECK-TYPE-PIN-01`)
-  - `decisions-test-gate-staleness-repair.md` → `test_e2e_bootstrap_fixed_point_stage2_stage3`
-  残り 32 件は未 sweep の module にあり、完走後に確定する。
-- **sweep 完走 (2026-08-24) で失敗モードがもう 1 つ見つかった。**
-  `decisions-test-gate-staleness-repair.md` が引く `test_e2e_bootstrap_fixed_point_stage2_stage3` は
-  **2 module に同名で存在**し (`selfhost_bootstrap_acceptance/part_001.rs:151` /
-  `selfhost_typeinfer_pipeline_bootstrap.rs:280`)、**前者は赤・後者は緑**である。
-  ADR が裸の test 名を書いているため、**どちらを指すかで Evidence の真偽が反転する**。
-  これは「Evidence が陳腐化した」のではなく「Evidence が参照として成立していない」形で、
-  訂正の仕方が違う (値を直すのではなく module 名を足す)。
+- **母数を測り直した (2026-08-24)。36 件 / 14 ADR ではなく 43 件 / 15 ADR だった。**
+  2026-08-23 の grep は `#[ignore]` の直後に別の属性が続く形 (`#[ignore]` → `#[cfg(..)]` → `fn`) を
+  取りこぼしていた。**古い数字を静かに置き換えず、なぜ増えたかをここに残す。**
+  なお `#[cfg_attr(.., ignore)]` 形は実測 0 件なので、43 が全量である。
 - **`I-60` / `I-64` と同型だが層が違う。** あちらは test の pin が陳腐化する話、
   こちらは **ADR という判断の正本が陳腐化する**話である。ADR は後続の判断の根拠として
   引かれるので、誤った Evidence は test 1 本より遠くまで伝播する。
-- 引き取り先は `TODO.md` の `ADR-EVIDENCE-IGNORED-01`。
+- 引き取り先は `TODO.md` の `ADR-EVIDENCE-IGNORED-01` だった (解決に伴い削除済み)。
+
+**解決** (2026-08-24): 43 件を実測 verdict と突き合わせ、赤・曖昧な 17 件 (11 ADR) を
+3 つに分類して、矛盾するものだけを訂正した。
+
+| 分類 | 件数 | 扱い |
+|---|---|---|
+| 緑 (Evidence どおり) | 26 | 訂正不要 |
+| **一致** — ADR 自身が「赤である」と主張している | 10 | 訂正不要。裏付けとして記録 |
+| **環境ゲート** — 前提 (env / Lima VM) が sweep で未充足 | 3 | 前提を明記する補足節を追加 |
+| **矛盾** — ADR が pass と書き、実測が FAILED | 4 (3 test) | 訂正節を追加 |
+
+**最大の発見は「赤は陳腐化の証拠にならない」ことだった。**
+`decisions-native-root-pop-empty-guard.md` の 9 件はすべて赤だが、同 ADR の当該節は
+**失敗分類表**であり「どれが赤で、なぜ赤か」を書いている。赤で色分けして一括訂正していれば、
+正しい Evidence を 9 件壊すところだった。**verdict の色ではなく ADR の主張文で判定する**のが
+正しい手順である。
+
+**当初「曖昧」と記録した 1 件は誤りだったので取り消す。**
+`decisions-test-gate-staleness-repair.md` が引く `test_e2e_bootstrap_fixed_point_stage2_stage3` は
+確かに 2 module に同名で存在するが、ADR は**裸の test 名ではなく panic メッセージを引用**しており、
+その本文が `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs` とファイル名を含んでいる。
+参照は一意に解決するので訂正不要である。「Evidence が参照として成立していない」という
+新しい失敗モードは、**この sweep では 1 件も観測されなかった**。
+
+受入条件が求めた **(1) どの script も回していない / (2) script が回している の分割は、
+実測してみると判別軸として機能しなかった**。43 citation を一意化した 39 test のうち、
+
+| 分類 | 件数 |
+|---|---|
+| (2) `scripts/**` が test 名を直接書いている | 3 |
+| (2') `scripts/**` が prefix で拾う (`--ignored` lane の prefix filter) | 35 |
+| (1) どの script も回していない | **1** |
+
+その 1 件は `test_e2e_selfhost_x86_int_to_string_import_sets_rdi` で、
+`decisions-native-root-pop-empty-guard.md` が「赤である」と名指ししている分類表の一員、
+すなわち上の**一致**にあたる。**つまり (1) から欠陥は 1 件も出なかった。**
+
+**軸を「script が回しているか」から「ADR が何を主張しているか」へ変えたのはこのためである。**
+前者で切ると 38/39 が (2) に落ちて何も分からない。受入条件の文言どおりの分割は行ったが、
+判定はそれでは付かなかった、という事実をここに残す。
+
+なお (2') の prefix 一致は **「script が prefix を名指ししている」以上のことは言わない**。
+その script が当該 test を実際に走らせ、緑を要求しているかまでは確かめていない。
+
+矛盾 4 件の内訳と、訂正の限界:
+
+| ADR | test | 主張 | 実測 |
+|---|---|---|---|
+| `decisions-v0.3-native-cli-check-file-e2e.md` | `..._main_with_args_check_file` | `Int` / `diagnostics:0` | `Fn` / `diagnostics:0` |
+| `decisions-v0.2-selfhost-evidence-parser-duplicate.md` | `..._validate_source_json_reports_contradicting_evidence` | pass (293.49s) | FAILED |
+| `decisions-v0.2-selfhost-source-validation-cli.md` | 同上 | `independent_reviews=1` | `0` |
+
+1 件目は**本 ADR の観測ミスではなく、後続の契約変更を反映しなかった**もので、
+`914bd9f1` (`I-45`) が 0-arity `defn` を `Unit -> body` にした結果である。訂正は
+`docs/adr/decisions-selfhost-zero-arity-defn-type.md` を指すだけで足りる。
+**ADR の陳腐化は「古くなる」より「後続の判断に追い越される」形で起きる。**
+
+2・3 件目は `independent_reviews` が `1` ではなく `0` になっている点まで特定したが、
+**原因は未診断なので「正しい値」へは書き換えていない**。`I-75` が診断を引き取る。
+分からないことを分かったことにして書き換えれば、それは訂正ではなく捏造になる。
+
+**残した宿題** (本 issue では答えない): 環境ゲート 3 件のうち 2 件は `scripts/ci/*` が
+回している。その script が現在の CI 環境で通っているかは確認していない。CI の確認は
+本作業のスコープ外である。
 
 <a id="i-71"></a>
 ### I-71: stage-N 生成 Wasm が 3 つの固定 offset で `expected i64 but nothing on stack` になる

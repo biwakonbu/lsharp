@@ -179,7 +179,7 @@ lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_linux_x86_actual_stage2_e
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_linux_x86_actual_stage2_entrypoint_map_new_ref_new_prefix_regression  # regression: V2-13a-5 Linux x86 stage2 entrypoint map-new/ref-new prefix
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_linux_x86_actual_stage2_transport_segment_table_diagnostic  # diagnostic: V2-13a-5 Linux x86 actual stage2 transport segment table
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_host_binary_bundle_if_result_preserves_outer_for_add
-lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact
+lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact  # [b] env 依存 (LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR)。assertion ではなく前提欠落。decisions-v0.3-native-linux-stage1-metadata-e2e.md の補足節を参照
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_actual_stage1_diagnostic_bundle_artifact
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_argv_string_char_at_elf_object_artifact
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_argv_string_length_elf_object_artifact
@@ -229,7 +229,7 @@ lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_macos_aarch64_fixe
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_linux_x86_actual_seed_entry_call_offsets_diagnostic
 
 # ---- [b] LSHARP_NATIVE_* env 依存 (env 未設定) : 4 件 ----
-lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_macos_aarch64_actual_app_cli_release_program
+lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_native_macos_aarch64_actual_app_cli_release_program  # [b] env 依存 (LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR)。assertion ではなく前提欠落。decisions-v0.3-native-macos-app-cli-release-e2e.md の補足節を参照
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_saved_native_stage3_compiler_app_cli_failing_invariant_command  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_saved_native_stage3_compiler_app_cli_metadata_command  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_saved_native_stage3_compiler_test_runner_metadata_probe  # LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する
@@ -317,7 +317,7 @@ lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_check_source_builtin_a
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_check_source_core  # 引き取り先: CHECK-TYPE-PIN-01 -- [a] 陳腐化 pin の疑い。I-45 (Unit -> body) の更新漏れ。ただし判別前 -- CHECK-TYPE-PIN-01 の表を参照
 lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う
 lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う
-lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_point_stage2_stage3  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う / I-70: decisions-test-gate-staleness-repair.md が Evidence として引く名前だが、同名 test が selfhost_typeinfer_pipeline_bootstrap にも在り**そちらは緑**。ADR の裸の test 名は 2 module に解決し、判定が正反対になる
+lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_point_stage2_stage3  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う / I-70 で突き合わせ済 (2026-08-24): decisions-test-gate-staleness-repair.md が本名を引くが、引用は panic メッセージであり本文が selfhost_bootstrap_acceptance.rs を含むので参照は一意。同名 test が selfhost_typeinfer_pipeline_bootstrap にも在り緑だが、ADR はそちらを指していない。ADR 側の訂正は不要
 lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う
 lsharp-wasm::e2e selfhost_bootstrap_four_layer::test_debug_boot04_stage2_ast_chunked_step_progress_on_ast_file  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う
 lsharp-wasm::e2e selfhost_bootstrap_four_layer::test_debug_boot04_stage2_build_compile_progress_on_minimal_path_parent_shape  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う

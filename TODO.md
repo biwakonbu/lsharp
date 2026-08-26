@@ -2878,33 +2878,6 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `EmbeddedCli.ls:113-114` の同型コード (`repl` 経路を持たないなら触らない)、
   `check` の型名 pin (`CHECK-TYPE-PIN-01`)。
 
-- [ ] `ADR-EVIDENCE-IGNORED-01` ADR の Evidence が `#[ignore]` 下 test に依存している箇所を洗う — Issue `I-70`。
-  **前提だった sweep は完走した (2026-08-24)。全 36 件が実測で判定可能になった。**
-  未 sweep を理由に保留していた 32 件はもう保留できない。
-  **sweep が新しい失敗モードを 1 つ足した。** `decisions-test-gate-staleness-repair.md` が
-  引く `test_e2e_bootstrap_fixed_point_stage2_stage3` は **2 module に同名で存在**し
-  (`selfhost_bootstrap_acceptance/part_001.rs:151` と
-  `selfhost_typeinfer_pipeline_bootstrap.rs:280`)、**前者は赤・後者は緑**である。
-  ADR が裸の test 名を書いているため、**どちらを指すかで Evidence の真偽が反転する**。
-  他の 35 件についても、突き合わせる前に**名前が一意かを先に確かめること**。
-  一意でない Evidence は「陳腐化」ではなく「そもそも参照になっていない」ので、
-  訂正の仕方 (module 名を足す) が違う。
-  `docs/adr/*.md` の `## Evidence` 節から `test_*` を拾い `#[ignore]` 付き test 名と突き合わせると
-  **14 ADR / 36 件**が該当する (2026-08-23、cargo 非依存の grep で確定)。
-  ただし heavy CI gate は意図的に `#[ignore]` を付けて `scripts/ci/*` から回す運用があるので、
-  該当するだけでは欠陥ではない。
-  受入条件: 36 件を (1) どの script も回していない / (2) script が回している の 2 つへ分け、
-  (1) のうち 2026-08-24 の full sweep (`I-64`) で赤だったものを列挙し、
-  **当該 ADR の Evidence 節を実測値へ訂正する** (訂正であって削除ではない。
-  「何を根拠に書いたつもりだったか」を残す)。
-  **含めない範囲**: 赤そのものの修正 (`I-71`〜`I-75` の各引き取り先へ)、
-  `#[ignore]` を外すかどうかの判断 (実行時間の問題であり本項目では決めない)、
-  ADR の Decision / 却下節の再検討。
-  **前提は満たされた。** sweep は 2026-08-24 に完走し、実測は
-  [`ignored-lane-sweep-2026-08-23.md`](docs/development/operations/ignored-lane-sweep-2026-08-23.md)
-  と [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
-  (274 行) にある。
-
 - [ ] `CHECK-TYPE-PIN-01` `I-45` が更新し漏らした `check` の型名 pin を追随させる — Issue `I-69` / `I-64`。
   `914bd9f1` (2026-08-22、`decisions-selfhost-zero-arity-defn-type.md`) が 0 引数 `defn` を
   `Unit -> body` へ変えた際、同一ファイルの型名 pin を全部取り残した。翌日の陳腐化 pin 修復パス

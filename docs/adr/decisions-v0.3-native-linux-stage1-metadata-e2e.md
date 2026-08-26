@@ -24,6 +24,24 @@ artifacts after evidence collection.
 
 - `test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact` passed in
   `333.21s` for source commit `02201e1172ebb6dad8624186658f171fc9a88a3d`.
+
+### 補足 (2026-08-24、`--ignored` lane 全量 sweep)
+
+直上の Evidence は `LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR` を設定し、
+Lima VM `lsharp-linux-x86` を起動した状態での実測である。
+
+`--ignored` lane 全量 sweep (2026-08-24) ではこの test は FAILED になったが、
+**これは上の Evidence の反証ではない**。落ちているのは assertion ではなく
+`std::env::var_os(`"LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR"`).expect(..)` で、**前提の欠落による panic** である
+(`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs`)。sweep は
+VM を起動すると 4 CPU を奪って計測を歪める ため、前提を揃えていない。
+
+分類の根拠は [`decisions-native-root-pop-empty-guard.md`](decisions-native-root-pop-empty-guard.md)
+の「分類規則」節にある。同節は本 test を (b) `LSHARP_NATIVE_*` env 依存に分類しており、
+「回帰の候補になり得るのは (c) だけである」と述べている。
+
+**したがって本 ADR の Evidence を再取得するには env と VM の前提を揃える必要がある。**
+sweep のログだけでは真偽を判定できない。この点は `ISSUES.md` の `I-70` に記録した。
 - Stage1 manifest: target `x86_64-unknown-linux-gnu`, code `4,393,425` bytes, data `2,757` bytes,
   entrypoint `4,390,965`, function-start length `3,409`, main function index `3,418`.
   Code SHA-256 was `625ec6a33f9f5722832eee6b9062994d680b48f6d1b6feba8e2db334629cbc9a`.

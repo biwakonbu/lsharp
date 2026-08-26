@@ -53,7 +53,24 @@ stage0、durable atomic write、CLIの全 fail-closed diagnostic、release prove
 `test_e2e_selfhost_cli_validate_source_emits_manifest` は同じ source fixtureで `--emit-manifest` の
 相対 output path、report stdoutとの分離、version 1 manifestの node/evidence/edge wire shape、sampling
 と provenance、unknown exit `2` を確認した。`test_e2e_selfhost_evidence_manifest_serializer_matches_version_one_shape`
-は軽量 selfhost bundleで serializer 単体を確認した。これらは Rust-host actual Wasm の verified sliceで
+は軽量 selfhost bundleで serializer 単体を確認した。
+
+### 訂正 (2026-08-24、`--ignored` lane 全量 sweep)
+
+上の `test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence` が
+`1 passed`（280.40s）で `independent_reviews=1` / `contradicting_observations=1` を
+投影した、という記述は**現在の実測と食い違う**。当時の観測なので原文は残す。
+
+2026-08-24 の実測は FAILED。`independent_reviews` は `1` ではなく `0` で、
+`contradicting_observations` は assert 到達前なので未検証。`status=fail` と exit `1` は
+現在も成り立つ。詳細と引き取り先 (`I-75` / `SWEEP-UNCLASSIFIED-01`) は
+[`decisions-v0.2-selfhost-evidence-parser-duplicate.md`](decisions-v0.2-selfhost-evidence-parser-duplicate.md)
+の同名の訂正節に書いた。
+
+**食い違うのは上記 1 本だけ**である。`test_e2e_selfhost_cli_validate_source_emits_manifest` は
+本 sweep で緑だった。`test_e2e_selfhost_evidence_manifest_serializer_matches_version_one_shape`
+(`selfhost_evidence_registry/runtime.rs:409`) は `#[ignore]` ではないので
+`--ignored` lane の対象外であり、本 sweep は真偽を言えない。これらは Rust-host actual Wasm の verified sliceで
 あり、`test_e2e_selfhost_cli_validate_source_does_not_emit_manifest_for_graph_error` は未登録 evidence
 edgeで exit `1` と manifest未生成を確認した。native stage0/current-source target parityの証拠には
 拡大解釈しない。

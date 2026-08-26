@@ -206,3 +206,32 @@ bash scripts/ci/test-compare-ignored-lane.sh                # 上記の契約テ
 ```
 
 lane 自体の回し方は `AGENTS.md` の「`--ignored` lane の実測と台帳突合」節を見よ。
+
+## 副次成果: ADR Evidence の突き合わせ (2026-08-24)
+
+sweep の verdict を `docs/adr/*.md` の `## Evidence` 節と突き合わせた (`I-70`)。
+cargo を使わない後処理なので、sweep のログだけで実施できる。
+
+取得手順:
+
+1. `docs/adr/*.md` の `## Evidence` 節から `test_e2e_\w+` を抽出 → **427 件の citation**
+2. `crates/**/*.rs` の `#[ignore]` 直後 (属性が続く形も追う) の `fn` 名を集める
+3. 交差を取る → **43 件 / 15 ADR**。`#[cfg_attr(.., ignore)]` 形は 0 件なのでこれが全量
+4. `mod-*.log` の `test <module>::<name> ... (ok|FAILED)` と突き合わせる
+
+結果:
+
+| verdict | 件数 |
+|---|---|
+| ok | 26 |
+| FAILED | 16 |
+| 同名 2 module で ok / FAILED が割れる | 1 |
+| **計** | **43** |
+
+**FAILED 17 件のうち訂正を要したのは 4 件 (3 test) だけだった。** 内訳は
+`I-70` の解決節にある。10 件は ADR 自身が「赤である」と主張する分類表の一部で、
+3 件は env / Lima VM の前提が sweep で未充足だったものである。
+
+**この後処理は sweep のたびに繰り返す価値がある。** ただし
+**verdict の色で一括判定してはならない** — 上の 10 件を機械的に訂正していれば、
+正しい Evidence を壊していた。判定は ADR の主張文を読んで行う。
