@@ -123,9 +123,9 @@ fn test_e2e_boot04_read_file_compiler_mode() {
     let stage2_wasm = &modules[0];
     assert_valid_wasm(stage2_wasm);
 
-    // stage2 が 6-import モデルで実行可能であること (_start: () -> () ラッパー付き)
+    // stage2 が 11-import モデルで実行可能であること (_start: () -> () ラッパー付き)
     // minimal.ls = (defn main [] 42) → main は何も print しない
-    let run_result = run_wasm_with_six_imports_compiler_mode(stage2_wasm, "", &[]);
+    let run_result = run_wasm_with_eleven_imports_compiler_mode(stage2_wasm, "", &[]);
     assert!(
         run_result.is_ok(),
         "BOOT-04 compiler-mode: stage2 の WASI 実行に失敗: {:?}",
@@ -174,8 +174,8 @@ fn test_e2e_boot04_stage2_compiler_to_stage3_minimal() {
     let stage3_wasm = &modules[0];
     assert_valid_wasm(stage3_wasm);
 
-    // stage3 が 6-import モデルで実行できること
-    let stage3_result = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[]);
+    // stage3 が 11-import モデルで実行できること
+    let stage3_result = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &[]);
     assert!(
         stage3_result.is_ok(),
         "BOOT-04 stage2→stage3: stage3 の WASI 実行に失敗: {:?}",
@@ -269,7 +269,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_minimal() {
 
     let minimal_ls_content = std::fs::read_to_string(fixture_dir.join("minimal.ls"))
         .unwrap_or_else(|_| "(defn main [] 42)".to_string());
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         &minimal_ls_content,
         &["compiler", "minimal.ls"],
@@ -285,7 +285,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_minimal() {
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
 
-    let run_result = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[]);
+    let run_result = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &[]);
     assert!(
         run_result.is_ok(),
         "stage2_self_compiler → stage3 実行失敗: {:?}",
@@ -394,7 +394,7 @@ fn test_e2e_boot04_self_hosted_stage2_preserves_batched_step_progress() {
       0)))
 "#;
 
-    let stage3_result = run_wasm_with_six_imports_compiler_mode(
+    let stage3_result = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         probe_source,
         &["compiler", "batching-probe.ls"],
@@ -406,7 +406,7 @@ fn test_e2e_boot04_self_hosted_stage2_preserves_batched_step_progress() {
             let stage3_wasm = &stage3_modules[0];
             assert_valid_wasm(stage3_wasm);
 
-            let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+            let run_output = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &[])
                 .expect("BOOT-04 batching probe: stage3 probe module の実行に失敗した");
             let lines: Vec<&str> = run_output
                 .lines()
@@ -486,7 +486,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_large_single_file() {
         .collect::<Vec<_>>()
         .join("\n");
     let large_source = format!("{repeated_helpers}\n(defn main [] 42)\n");
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         &large_source,
         &["compiler", "large-token-file.ls"],
@@ -524,7 +524,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_bare_module_file() {
     assert_valid_wasm(stage2_self_compiler);
 
     let bare_module_source = "(module App.Main)\n(defn main [] 0)\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         bare_module_source,
         &["compiler", "src/App/Main.ls"],
@@ -581,7 +581,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_bare_zero_fs_package() {
     )
     .expect("bare-fs Main.ls を書けない");
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &temp_root,
         &["compiler", "src/App/Main.ls"],
@@ -643,7 +643,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_probe_parses_bare_module_once() {
     )
     .expect("cache-probe Main.ls を書けない");
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &temp_root,
         &[

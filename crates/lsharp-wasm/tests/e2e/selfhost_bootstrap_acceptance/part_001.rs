@@ -202,13 +202,13 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
         );
 
         // --- Phase B: stage2 が Main.ls から stage3 self compiler を決定論的に出力すること ---
-        let stage3_output_run1 = run_wasm_with_six_imports_compiler_mode_fs(
+        let stage3_output_run1 = run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage2_self_compiler,
             &selfhost_root,
             &["compiler", "src/App/Main.ls"],
         )
         .expect("fixed-point Phase B: stage2 run_1 が Main.ls の再コンパイルに失敗");
-        let stage3_output_run2 = run_wasm_with_six_imports_compiler_mode_fs(
+        let stage3_output_run2 = run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage2_self_compiler,
             &selfhost_root,
             &["compiler", "src/App/Main.ls"],
@@ -231,7 +231,7 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
         let stage3_self_compiler = stage3_modules_run1[0].clone();
 
         // stage3 も実際に自己ホストコンパイラとして minimal.ls をコンパイルできることを確認する。
-        let stage4_output = run_wasm_with_six_imports_compiler_mode_fs(
+        let stage4_output = run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage3_self_compiler,
             &fixture_dir,
             &["compiler", "minimal.ls"],
@@ -240,7 +240,7 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
         let stage4_modules = parse_emitted_wasm_modules(&stage4_output, 1);
         let stage4_wasm = &stage4_modules[0];
         assert_valid_wasm(stage4_wasm);
-        let stage4_run = run_wasm_with_six_imports_compiler_mode(stage4_wasm, "", &[]);
+        let stage4_run = run_wasm_with_eleven_imports_compiler_mode(stage4_wasm, "", &[]);
         assert!(
             stage4_run.is_ok(),
             "fixed-point Phase B: stage4 minimal 実行失敗: {:?}",
@@ -381,7 +381,7 @@ fn test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3()
         let stage2_self_compiler = stage2_modules[0].clone();
         assert_valid_wasm(&stage2_self_compiler);
 
-        let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+        let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage2_self_compiler,
             &selfhost_root,
             &["compiler", "src/App/Main.ls"],
@@ -391,13 +391,13 @@ fn test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3()
         let stage3_self_compiler = stage3_modules[0].clone();
         assert_valid_wasm(&stage3_self_compiler);
 
-        let stage2_progress = run_wasm_with_six_imports_compiler_mode_fs(
+        let stage2_progress = run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage2_self_compiler,
             &fixture_dir,
             &["compiler", "minimal.ls", "", "", "", "build-progress"],
         )
         .expect("minimal-build-progress: stage2 compiler が minimal.ls build-progress 実行に失敗");
-        let stage3_progress = run_wasm_with_six_imports_compiler_mode_fs(
+        let stage3_progress = run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage3_self_compiler,
             &fixture_dir,
             &["compiler", "minimal.ls", "", "", "", "build-progress"],
@@ -473,12 +473,12 @@ fn test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic() {
             "src/Backend/Wasm/WasmEmit.ls",
         ] {
             let out_a =
-                run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
+                run_wasm_with_eleven_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
                     .unwrap_or_else(|e| {
                         panic!("CP-01: stage2 が {rel} を 1 回目コンパイルできない: {e}")
                     });
             let out_b =
-                run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
+                run_wasm_with_eleven_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
                     .unwrap_or_else(|e| {
                         panic!("CP-01: stage2 が {rel} を 2 回目コンパイルできない: {e}")
                     });
@@ -703,7 +703,7 @@ fn compile_fixed_input_target_with_stage2(
     target: &FixedInputSetTarget,
 ) -> Result<Vec<u8>, String> {
     let root_dir = fixed_input_set_target_root(selfhost_root, repo_root, target);
-    let output = run_wasm_with_six_imports_compiler_mode_fs(
+    let output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         root_dir,
         &["compiler", target.path.as_str()],

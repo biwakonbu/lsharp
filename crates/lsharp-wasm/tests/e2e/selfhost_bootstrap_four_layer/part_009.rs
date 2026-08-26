@@ -25,7 +25,7 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_compile_progress_
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -130,7 +130,7 @@ fn test_e2e_boot04_self_hosted_stage2_warm_target_defn_parity_reaches_ast_make_t
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let parity_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let parity_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -247,7 +247,7 @@ fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_c
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let parity_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let parity_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -497,7 +497,7 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let probe_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let probe_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &source_step_args,
@@ -544,7 +544,7 @@ fn test_debug_boot04_stage2_first_defn_ir_parity_on_minimal_demo_main_shape() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source_path_str = source_path.to_str().expect("utf-8 path");
-    let probe_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let probe_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -622,7 +622,7 @@ fn test_debug_boot04_stage2_first_defn_source_probe_on_minimal_text_eq_loop_shap
     }
     probe_args.push("first-defn-source");
 
-    let probe_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let probe_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &probe_args,
@@ -683,7 +683,7 @@ fn test_debug_boot04_stage2_first_defn_source_step_probe_on_minimal_path_parent_
     }
     probe_args.push("first-defn-source-step");
 
-    let probe_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let probe_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &probe_args,

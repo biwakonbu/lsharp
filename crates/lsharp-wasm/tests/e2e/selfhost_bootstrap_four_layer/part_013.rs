@@ -26,7 +26,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_literal_repro_source() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.ModuleResolver)\n(defn main [] (do (print (string-length \".ls\")) (print (string-char-at \".ls\" 0)) (print (string-char-at \".ls\" 1)) (print (string-char-at \".ls\" 2)) 0))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
@@ -41,7 +41,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_literal_repro_source() {
         panic!("BOOT-04 string-literal-repro: stage3 wasm validation failed: {e}")
     });
 
-    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog"])
+    let run_output = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &["prog"])
         .unwrap_or_else(|e| panic!("BOOT-04 string-literal-repro: 実行失敗: {e}"));
     let values: Vec<i64> = run_output
         .lines()
@@ -82,7 +82,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_module_relative_join_repro_source() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.ModuleResolver)\n(defn text-eq-loop [left right idx len] (if (>= idx len) true (if (= (string-char-at left idx) (string-char-at right idx)) (text-eq-loop left right (+ idx 1) len) false)))\n(defn text-eq [left right] (let [len (string-length left)] (if (= len (string-length right)) (text-eq-loop left right 0 len) false)))\n(defn path-char [path idx] (string-char-at path idx))\n(defn path-join [base child] (if (= (string-length base) 0) child (let [len (string-length base)] (if (= (string-char-at base (- len 1)) 47) (string-concat base child) (if (= (string-char-at base (- len 1)) 92) (string-concat base child) (string-concat (string-concat base \"/\") child))))))\n(defn module-name-to-relative-loop [name idx len out] (if (>= idx len) (string-concat out \".ls\") (let [piece (if (= (path-char name idx) 46) \"/\" (substring name idx (+ idx 1)))] (module-name-to-relative-loop name (+ idx 1) len (string-concat out piece)))))\n(defn module-name-to-relative [name] (module-name-to-relative-loop name 0 (string-length name) \"\"))\n(defn main [] (print (if (text-eq (path-join \"src\" (module-name-to-relative (command-line-arg 1))) \"src/App/ModuleResolver.ls\") 1 0)))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
@@ -96,7 +96,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_module_relative_join_repro_source() {
     });
 
     let run_output =
-        run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "App.ModuleResolver"])
+        run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &["prog", "App.ModuleResolver"])
             .unwrap_or_else(|e| panic!("BOOT-04 module-relative-join-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "1");
 }
@@ -128,7 +128,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_user_call_four_args_repro_source(
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.ModuleResolver)\n(defn helper [left right idx len] 1)\n(defn text-eq [left right] (helper left right 0 0))\n(defn main [] (text-eq (command-line-arg 0) (command-line-arg 1)))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
@@ -176,7 +176,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_command_line_arg_repro_source() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.Main)\n(defn main [] (print (string-length (command-line-arg 1))))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/Main.ls"],
@@ -191,7 +191,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_command_line_arg_repro_source() {
         panic!("BOOT-04 command-line-arg-repro: stage3 wasm validation failed: {e}")
     });
 
-    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "abc"])
+    let run_output = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &["prog", "abc"])
         .unwrap_or_else(|e| panic!("BOOT-04 command-line-arg-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "3");
 }
@@ -223,7 +223,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_print_repro_source() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.Main)\n(defn main [] (print 7))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/Main.ls"],
@@ -244,7 +244,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_print_repro_source() {
         function_operator_debug(stage3_wasm, start_idx - 1, 16)
     );
 
-    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+    let run_output = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &[])
         .unwrap_or_else(|e| panic!("BOOT-04 print-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "7");
 }
@@ -276,7 +276,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_ir() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.Main)\n(defn main [] (print 7))\n";
-    let ir_output = run_wasm_with_six_imports_compiler_mode(
+    let ir_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/Main.ls", "", "", "", "", "ir"],
@@ -321,7 +321,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_tokens() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.Main)\n(defn main [] (print 7))\n";
-    let token_output = run_wasm_with_six_imports_compiler_mode(
+    let token_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/Main.ls", "", "", "", "", "", "tokens"],
@@ -366,7 +366,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_two_imports_zero_source() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] 0)\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/Main.ls"],
@@ -429,7 +429,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_one_import_zero_fs_package() {
     )
     .expect("one-import-fs CompilerMode.ls を書けない");
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &temp_root,
         &["compiler", "src/App/Main.ls"],
@@ -499,7 +499,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_two_imports_zero_fs_package() {
     )
     .expect("two-imports-fs PipelineSmoke.ls を書けない");
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &temp_root,
         &["compiler", "src/App/Main.ls"],
@@ -552,7 +552,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_if_builtin_source() {
 
     let source =
         "(module App.Main)\n(defn main [] (if (> (string-length (command-line-arg 1)) 0) 1 0))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "src/App/Main.ls"],
@@ -596,7 +596,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", "src/App/Main.ls"],
@@ -623,7 +623,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
         )
     });
 
-    let stage4_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage4_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage3_self_compiler,
         &fixture_dir,
         &["compiler", "minimal.ls"],
@@ -633,7 +633,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
     let stage4_wasm = &stage4_modules[0];
     assert_valid_wasm(stage4_wasm);
 
-    let run_result = run_wasm_with_six_imports_compiler_mode(stage4_wasm, "", &[]);
+    let run_result = run_wasm_with_eleven_imports_compiler_mode(stage4_wasm, "", &[]);
     assert!(
         run_result.is_ok(),
         "BOOT-04 self-feed: stage4 minimal 実行失敗: {:?}",
@@ -667,7 +667,7 @@ fn test_v2_12_self_hosted_stage2_reports_main_again_stage3_local_bounds() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", "src/App/Main.ls"],
@@ -737,7 +737,7 @@ fn test_v2_12_self_hosted_stage2_compiles_large_let_chain() {
         .join(" ");
     let source = format!("(module App.Main)\n(defn main []\n  (let [{bindings}]\n    v159))\n");
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         &source,
         &["compiler", "inline-large-let-chain.ls"],

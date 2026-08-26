@@ -48,7 +48,7 @@ fn test_e2e_boot04_stage2_first_defn_source_probe_emits_expected_plus_ir_on_mini
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage2_probe_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage2_probe_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &probe_args,
@@ -108,7 +108,7 @@ fn test_debug_boot04_stage2_ast_chunked_step_progress_on_ast_file() {
     args.push("ast-chunked-step");
 
     let output =
-        run_wasm_with_six_imports_compiler_mode_fs(stage2_self_compiler, &selfhost_root, &args)
+        run_wasm_with_eleven_imports_compiler_mode_fs(stage2_self_compiler, &selfhost_root, &args)
             .expect("stage2 ast-chunked-step probe should run");
     eprintln!("BOOT-04 ast-chunked-step values = {:?}", output);
     assert!(!output.trim().is_empty());
@@ -139,7 +139,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_compile_progress_counts_all_main_mod
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -247,7 +247,7 @@ fn test_e2e_boot04_self_hosted_stage2_module_resolver_first_defn_with_source_mat
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -387,7 +387,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_module_resolver_progress() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -431,7 +431,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.ModuleResolver)\n(defn text-len-eq [left right] (let [len (string-length left)] (if (= len (string-length right)) 1 0)))\n(defn main [] (text-len-eq (command-line-arg 0) (command-line-arg 1)))\n";
-    let progress_output = run_wasm_with_six_imports_compiler_mode(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &[
@@ -475,7 +475,7 @@ fn test_v2_12_self_hosted_stage2_keeps_complex_defn_decl_tag() {
     assert_valid_wasm(stage2_self_compiler);
 
     let source = "(module App.Main)\n(defn helper [x] (if (= x 0) 0 (+ x 1)))\n";
-    let debug_output = run_wasm_with_six_imports_compiler_mode(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &[
@@ -564,7 +564,7 @@ fn test_v2_12_self_hosted_stage2_emits_data_section_for_string_literals() {
     "hello"
     "world"))
 "#;
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "inline-string-data.ls"],
@@ -636,7 +636,7 @@ fn test_v2_12_self_hosted_stage2_keeps_if_and_string_expr_tags() {
     assert_valid_wasm(stage2_self_compiler);
 
     let printed =
-        run_wasm_with_six_imports_compiler_mode(stage2_self_compiler, source, &expr_tag_args)
+        run_wasm_with_eleven_imports_compiler_mode(stage2_self_compiler, source, &expr_tag_args)
             .expect("V2-12 expr-tag: stage2_self_compiler の expr-tag 実行に失敗した");
     let values: Vec<i64> = printed
         .lines()
@@ -682,7 +682,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_module_import_file() {
     assert_valid_wasm(stage2_self_compiler);
 
     let module_import_source = "(module App.Main)\n(import App.CompilerMode)\n(defn main [] 0)\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         module_import_source,
         &["compiler", "src/App/Main.ls"],

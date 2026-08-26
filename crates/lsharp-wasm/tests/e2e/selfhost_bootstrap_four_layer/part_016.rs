@@ -291,7 +291,7 @@ fn test_debug_stage3_output_chars() {
         .unwrap_or_else(|_| "(defn main [] 42)".to_string());
 
     let stage3_result =
-        run_wasm_with_six_imports_compiler_mode(stage2, &minimal_ls, &["compiler", "minimal.ls"]);
+        run_wasm_with_eleven_imports_compiler_mode(stage2, &minimal_ls, &["compiler", "minimal.ls"]);
 
     match stage3_result {
         Err(e) => eprintln!("stage3 実行失敗: {}", e),
@@ -373,7 +373,7 @@ fn test_debug_stage3_main_again_output_chars() {
     let modules = parse_emitted_wasm_modules(&stage2_output, 1);
     let stage2 = &modules[0];
 
-    let stage3_result = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_result = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2,
         &selfhost_root,
         &["compiler", "src/App/Main.ls"],

@@ -1,18 +1,17 @@
 
-fn run_wasm_with_six_imports_compiler_mode_inner(
+fn run_wasm_with_eleven_imports_compiler_mode_inner(
     wasm: &[u8],
     file_content: Option<&str>,
     file_root: Option<&std::path::Path>,
     args: &[&str],
     printed_first_on_error: bool,
-    include_print_string: bool,
 ) -> Result<String, String> {
     let engine = configured_selfhost_engine();
     let module = wasmtime::Module::new(&engine, wasm)
         .map_err(|e| format!("Wasm モジュールの読み込みに失敗: {} / {:?}", e, e))?;
     let mut store = wasmtime::Store::new(
         &engine,
-        SixImportState {
+        ElevenImportState {
             next_alloc: 65536,
             printed: String::new(),
             file_content: file_content.unwrap_or_default().to_string(),
@@ -24,25 +23,25 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     );
     let alloc = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, size: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, size: i64| -> i64 {
             let base = caller.data().next_alloc;
             let end = base
                 .checked_add(size)
-                .unwrap_or_else(|| panic!("six-import alloc: end address が overflow"));
-            ensure_memory_capacity(&mut caller, end, "six-import alloc");
+                .unwrap_or_else(|| panic!("eleven-import alloc: end address が overflow"));
+            ensure_memory_capacity(&mut caller, end, "eleven-import alloc");
             caller.data_mut().next_alloc = end;
             base
         },
     );
     let print = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, value: i64| {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, value: i64| {
             caller.data_mut().printed.push_str(&format!("{value}\n"));
         },
     );
     let read_file = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, path: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, path: i64| -> i64 {
             let content = if let Some(root_dir) = caller.data().file_root.clone() {
                 let rel_path = read_path_text_with_root(&mut caller, path, &root_dir);
                 let full_path = root_dir.join(&rel_path);
@@ -53,7 +52,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
                     )
                 });
                 eprintln!(
-                    "six-import read-file: {} len={} prefix={:?}",
+                    "eleven-import read-file: {} len={} prefix={:?}",
                     full_path.display(),
                     bytes.len(),
                     &bytes[..bytes.len().min(32)]
@@ -62,30 +61,30 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             } else {
                 let bytes = caller.data().file_content.as_bytes().to_vec();
                 eprintln!(
-                    "six-import read-file (inline): len={} prefix={:?}",
+                    "eleven-import read-file (inline): len={} prefix={:?}",
                     bytes.len(),
                     &bytes[..bytes.len().min(32)]
                 );
                 bytes
             };
-            alloc_cached_string_object(caller, content, "six-import read-file")
+            alloc_cached_string_object(caller, content, "eleven-import read-file")
         },
     );
     let command_line_arg = wasmtime::Func::wrap(
         &mut store,
-        |caller: wasmtime::Caller<'_, SixImportState>, index: i64| -> i64 {
+        |caller: wasmtime::Caller<'_, ElevenImportState>, index: i64| -> i64 {
             let content = usize::try_from(index)
                 .ok()
                 .and_then(|i| caller.data().args.get(i))
                 .map(|a| a.as_bytes().to_vec())
                 .unwrap_or_default();
-            alloc_cached_string_object(caller, content, "six-import command-line-arg")
+            alloc_cached_string_object(caller, content, "eleven-import command-line-arg")
         },
     );
     // string-concat(ptr1, ptr2): 2つの文字列オブジェクトを結合して新しい文字列を返す
     let string_concat = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, ptr1: i64, ptr2: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, ptr1: i64, ptr2: i64| -> i64 {
             let (len1, len2) = {
                 let Some(wasmtime::Extern::Memory(m)) = caller.get_export("memory") else {
                     return caller.data().next_alloc;
@@ -109,13 +108,13 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
                 combined.extend_from_slice(&c2);
                 combined
             };
-            alloc_cached_string_object(caller, combined, "six-import string-concat")
+            alloc_cached_string_object(caller, combined, "eleven-import string-concat")
         },
     );
     // substring(ptr, start, end): 文字列オブジェクトの部分文字列を返す
     let substring = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, ptr: i64, start: i64, end: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, ptr: i64, start: i64, end: i64| -> i64 {
             let slice = {
                 let Some(wasmtime::Extern::Memory(m)) = caller.get_export("memory") else {
                     return caller.data().next_alloc;
@@ -132,12 +131,12 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
                 }
                 data
             };
-            alloc_cached_string_object(caller, slice, "six-import substring")
+            alloc_cached_string_object(caller, slice, "eleven-import substring")
         },
     );
     let file_exists = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, path: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, path: i64| -> i64 {
             let exists = if let Some(root_dir) = caller.data().file_root.clone() {
                 let rel_path = read_path_text_with_root(&mut caller, path, &root_dir);
                 root_dir.join(rel_path).exists()
@@ -151,28 +150,28 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     );
     let root_push = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, value: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, value: i64| -> i64 {
             let slot = i64::try_from(caller.data().root_stack.len())
-                .expect("six-import root_push: slot overflow");
+                .expect("eleven-import root_push: slot overflow");
             caller.data_mut().root_stack.push(value);
             slot
         },
     );
     let root_pop = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>| -> i64 {
             caller.data_mut().root_stack.pop().unwrap_or(0)
         },
     );
     let root_set = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, slot: i64, value: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, slot: i64, value: i64| -> i64 {
             let idx = usize::try_from(slot)
-                .unwrap_or_else(|_| panic!("six-import root_set: slot must be non-negative"));
+                .unwrap_or_else(|_| panic!("eleven-import root_set: slot must be non-negative"));
             let len = caller.data().root_stack.len();
             assert!(
                 idx < len,
-                "six-import root_set: slot {} out of bounds {}",
+                "eleven-import root_set: slot {} out of bounds {}",
                 idx,
                 len
             );
@@ -182,7 +181,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     );
     let print_string = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, value: i64| {
+        |mut caller: wasmtime::Caller<'_, ElevenImportState>, value: i64| {
             let bytes = read_string_object_bytes(&mut caller, value);
             let text = String::from_utf8(bytes).expect("print-string の文字列が UTF-8 ではない");
             caller.data_mut().printed.push_str(&text);
@@ -200,9 +199,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
         root_pop.into(),
         root_set.into(),
     ];
-    if include_print_string {
-        imports.push(print_string.into());
-    }
+    imports.push(print_string.into());
     let instance = wasmtime::Instance::new(
         &mut store,
         &module,
@@ -224,20 +221,12 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     }
 }
 
-pub(crate) fn run_wasm_with_six_imports_compiler_mode(
-    wasm: &[u8],
-    file_content: &str,
-    args: &[&str],
-) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, Some(file_content), None, args, false, false)
-}
-
 pub(crate) fn run_wasm_with_eleven_imports_compiler_mode(
     wasm: &[u8],
     file_content: &str,
     args: &[&str],
 ) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, Some(file_content), None, args, false, true)
+    run_wasm_with_eleven_imports_compiler_mode_inner(wasm, Some(file_content), None, args, false)
 }
 
 pub(crate) fn run_wasm_with_eleven_imports_compiler_mode_fs(
@@ -245,23 +234,15 @@ pub(crate) fn run_wasm_with_eleven_imports_compiler_mode_fs(
     root_dir: &std::path::Path,
     args: &[&str],
 ) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, false, true)
+    run_wasm_with_eleven_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, false)
 }
 
-pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs(
+pub(crate) fn run_wasm_with_eleven_imports_compiler_mode_fs_printed_first(
     wasm: &[u8],
     root_dir: &std::path::Path,
     args: &[&str],
 ) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, false, false)
-}
-
-pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs_printed_first(
-    wasm: &[u8],
-    root_dir: &std::path::Path,
-    args: &[&str],
-) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, true, false)
+    run_wasm_with_eleven_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, true)
 }
 
 ///

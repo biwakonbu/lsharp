@@ -679,7 +679,7 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
 /// stage2 以降の wasm は env.string-concat, env.substring, env.file-exists? も import するため、
 /// 4-import ハーネスの代わりにこちらを使用する。
 /// さらに selfhost parity のため env.root_push/env.root_pop/env.root_set も提供する。
-struct SixImportState {
+struct ElevenImportState {
     next_alloc: i64,
     printed: String,
     file_content: String,
@@ -690,7 +690,7 @@ struct SixImportState {
 }
 
 fn alloc_cached_string_object(
-    mut caller: wasmtime::Caller<'_, SixImportState>,
+    mut caller: wasmtime::Caller<'_, ElevenImportState>,
     content: Vec<u8>,
     context: &str,
 ) -> i64 {

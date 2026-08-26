@@ -41,7 +41,7 @@ fn test_debug_boot04_stage2_build_compile_progress_on_minimal_path_parent_shape(
     assert_valid_wasm(stage2_self_compiler);
 
     let source_path_str = source_path.to_str().expect("utf-8 path");
-    let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[

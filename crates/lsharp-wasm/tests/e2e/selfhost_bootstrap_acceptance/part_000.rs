@@ -1,6 +1,6 @@
 use super::selfhost_bootstrap_four_layer::{
     BootstrapDiffArtifactFixture, bootstrap_diff_artifact_id,
-    run_wasm_with_six_imports_compiler_mode, run_wasm_with_six_imports_compiler_mode_fs,
+    run_wasm_with_eleven_imports_compiler_mode, run_wasm_with_eleven_imports_compiler_mode_fs,
     write_bootstrap_diff_artifact,
 };
 use super::support::*;

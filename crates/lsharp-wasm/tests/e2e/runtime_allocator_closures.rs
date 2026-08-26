@@ -102,7 +102,7 @@ fn collect_s15_fixed_point_proof() -> serde_json::Value {
         assert_valid_wasm(&stage2_self_compiler);
 
         let stage3_output =
-            super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+            super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
                 &stage2_self_compiler,
                 &selfhost_root,
                 &["compiler", "src/App/Main.ls"],
@@ -2899,7 +2899,7 @@ fn test_v2_12_stage2_six_import_debug_probe() {
     // probe1: compile-file-mode-cache-pairs-probe (arg9 non-empty)
     // Main.ls をロードして pair 数と decl 数を表示する
     let probe1_output =
-        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage2_bytes,
             &selfhost_root,
             &[
@@ -2952,7 +2952,7 @@ fn test_v2_12_stage2_six_import_debug_probe() {
     // probe2: compile-file-mode-build-progress-debug (arg5 non-empty)
     // compile-file-functions-with-cache を使って wasm サイズを表示する
     let probe2_output =
-        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage2_bytes,
             &selfhost_root,
             &["compiler", "src/App/Main.ls", "", "", "", "probe"],
@@ -3029,7 +3029,7 @@ fn test_v2_12_stage2_production_output_size() {
 
     // Production mode: compile-file-mode (no extra args)
     let prod_output =
-        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
             &stage2_bytes,
             &selfhost_root,
             &["compiler", "src/App/Main.ls"],

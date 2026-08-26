@@ -145,12 +145,12 @@ fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
                 FixedInputSetRoot::Selfhost => &root,
                 FixedInputSetRoot::Repo => &repo_root,
             };
-            let out_a = run_wasm_with_six_imports_compiler_mode_fs(
+            let out_a = run_wasm_with_eleven_imports_compiler_mode_fs(
                 &stage2,
                 root_dir,
                 &["compiler", target.path.as_str()],
             );
-            let out_b = run_wasm_with_six_imports_compiler_mode_fs(
+            let out_b = run_wasm_with_eleven_imports_compiler_mode_fs(
                 &stage2,
                 root_dir,
                 &["compiler", target.path.as_str()],

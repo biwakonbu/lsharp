@@ -35,7 +35,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_non_literal_string_key_map_pr
             .any(|window| window == b"fixture.txt"),
         "read-file path literal bytes は data section に配置されること"
     );
-    let printed = run_wasm_with_six_imports_compiler_mode(&modules[0], "aa", &[])
+    let printed = run_wasm_with_eleven_imports_compiler_mode(&modules[0], "aa", &[])
         .expect("non-literal string key map builtins を含む stage2 Wasm の実行に失敗");
     assert_eq!(
         printed.trim(),

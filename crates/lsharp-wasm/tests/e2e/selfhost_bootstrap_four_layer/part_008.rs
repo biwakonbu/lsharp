@@ -27,7 +27,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_probe_reads_main_again_entry() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -108,7 +108,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_bare_module() {
     )
     .expect("cache-pairs-bare Main.ls を書けない");
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &temp_root,
         &[
@@ -197,7 +197,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_one_import() {
     )
     .expect("cache-pairs-one-import Helper.ls を書けない");
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &temp_root,
         &[
@@ -265,7 +265,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_reads_main_again_graph()
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -341,7 +341,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_cache_pairs_progress() 
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let progress_output = run_wasm_with_six_imports_compiler_mode_fs_printed_first(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode_fs_printed_first(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -406,7 +406,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_one_import_path_resolution() {
     )
     .expect("one-import-path-debug Main.ls を書けない");
 
-    let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let debug_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &temp_root,
         &["compiler", "src/App/Main.ls", "debug", "paths"],
@@ -452,7 +452,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_progress() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -492,7 +492,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_build_progress() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[
@@ -591,7 +591,7 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_phase_markers() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let phase_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let phase_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &[

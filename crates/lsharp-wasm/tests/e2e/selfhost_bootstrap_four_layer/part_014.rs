@@ -33,7 +33,7 @@ fn test_v2_12_self_hosted_stage2_compiles_vector_push_program() {
           v2 (vector-push v 42)]
       (vector-get v2 0))))
 "#;
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         source,
         &["compiler", "inline-vector-push.ls"],
@@ -42,7 +42,7 @@ fn test_v2_12_self_hosted_stage2_compiles_vector_push_program() {
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
-    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+    let run_output = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &[])
         .expect("V2-12 vector-push: stage3_wasm が runtime imports で実行できること");
     assert_eq!(run_output, "42\n");
 }
@@ -73,7 +73,7 @@ fn test_v2_12_self_hosted_stage2_loads_wasm_emit_module() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", "src/Backend/Wasm/WasmEmit.ls"],
@@ -124,7 +124,7 @@ fn test_v2_12_self_hosted_stage2_loads_compiler_mode_module() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", "src/App/CompilerMode.ls"],
@@ -188,7 +188,7 @@ fn test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", "src/App/CompilerMode.ls"],
@@ -264,7 +264,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_function_index_calls() {
         .join("\n");
     let source = format!("{helpers}\n(defn main [] (helper-129))\n");
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         &source,
         &["compiler", "HighFunctionIndex.ls"],
@@ -338,7 +338,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_function_index_step64_patter
     let source =
         format!("{helpers}\n(defn wrapper [a b c d] {body})\n(defn main [] (wrapper 1 2 3 4))\n");
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         &source,
         &["compiler", "HighFunctionIndexStep64.ls"],
@@ -447,7 +447,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_index_parser_like_step64() {
          (defn main [] (step64 (make-state 0 3) 3))\n"
     );
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         &source,
         &["compiler", "HighIndexParserLikeStep64.ls"],
@@ -513,7 +513,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", "src/App/Main.ls"],
@@ -523,7 +523,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
     let stage3_self_compiler = &stage3_modules[0];
     assert_valid_wasm(stage3_self_compiler);
 
-    let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let progress_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage3_self_compiler,
         &fixture_dir,
         &["compiler", "minimal.ls", "debug", "progress", "minimal"],
@@ -631,7 +631,7 @@ fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
         Ok(wasm.len())
     };
     let try_compile_inline = |label: &str, source: &str| -> Result<usize, String> {
-        let output = run_wasm_with_six_imports_compiler_mode(
+        let output = run_wasm_with_eleven_imports_compiler_mode(
             stage2_self_compiler,
             source,
             &["compiler", label],
@@ -640,7 +640,7 @@ fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
         parse_stage3_wasm(label, &output)
     };
     let try_compile_file = |path: &str| -> Result<usize, String> {
-        let output = run_wasm_with_six_imports_compiler_mode_fs(
+        let output = run_wasm_with_eleven_imports_compiler_mode_fs(
             stage2_self_compiler,
             &selfhost_root,
             &["compiler", path],

@@ -33,7 +33,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_step512_progress_harness() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", diagnostic_rel_path],
@@ -75,7 +75,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiler_runtime_resolves_param_and_user_c
 (defn main []
   (print (helper 7)))
 "#;
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let stage3_output = run_wasm_with_eleven_imports_compiler_mode(
         stage2_self_compiler,
         stage3_source,
         &["compiler", "inline-runtime-lookup.ls"],
@@ -85,7 +85,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiler_runtime_resolves_param_and_user_c
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
 
-    let printed = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+    let printed = run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &[])
         .expect("BOOT-04 runtime-lookup: stage3 inline wasm の実行に失敗");
     assert_eq!(
         printed, "7\n",
@@ -127,7 +127,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_step512_progress() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let stage3_result = run_wasm_with_six_imports_compiler_mode_fs(
+    let stage3_result = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
         &["compiler", diagnostic_rel_path],
@@ -152,7 +152,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_step512_progress() {
                         validate_err
                     );
                 }
-                Ok(()) => match run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[]) {
+                Ok(()) => match run_wasm_with_eleven_imports_compiler_mode(stage3_wasm, "", &[]) {
                     Ok(run_output) => {
                         let values = run_output
                             .lines()
@@ -314,7 +314,7 @@ fn test_e2e_boot04_compiler_mode_lexer_compat_import_resolution() {
     let result_wasm = &modules[0];
     assert_valid_wasm(result_wasm);
 
-    let run_output = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[])
+    let run_output = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[])
         .expect("BOOT-04 lexer-compat-import: 生成 wasm の実行に失敗した");
     let values = run_output
         .lines()
@@ -386,8 +386,8 @@ fn test_e2e_boot04_compiler_mode_import_resolution() {
     assert_valid_wasm(result_wasm);
 
     // 生成 wasm が正常実行できること (helper-value を呼び出す main が動く)
-    // 6-import モデル: env.string-concat, env.substring も import される
-    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
+    // 11-import モデル: env.string-concat, env.substring も import される
+    let run_result = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[]);
     assert!(
         run_result.is_ok(),
         "BOOT-04 import-resolution: 生成 wasm の WASI 実行に失敗: {:?}",
@@ -433,7 +433,7 @@ fn test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root() {
     let result_wasm = &modules[0];
     assert_valid_wasm(result_wasm);
 
-    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
+    let run_result = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[]);
     assert!(
         run_result.is_ok(),
         "BOOT-04 dotted-import-resolution: 生成 wasm の WASI 実行に失敗: {:?}",
@@ -486,7 +486,7 @@ fn test_e2e_boot04_compiler_mode_package_index_resolution() {
     let result_wasm = &modules[0];
     assert_valid_wasm(result_wasm);
 
-    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
+    let run_result = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[]);
     let _ = std::fs::remove_dir_all(&fixture_dir);
     assert!(
         run_result.is_ok(),
@@ -523,7 +523,7 @@ fn test_e2e_boot04_compiler_mode_supports_twelve_arg_calls() {
     let result_wasm = &modules[0];
     assert_valid_wasm(result_wasm);
 
-    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
+    let run_result = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[]);
     let _ = std::fs::remove_dir_all(&fixture_dir);
     let run_output = run_result.expect("BOOT-04 many-args: 生成 wasm の WASI 実行に失敗した");
     assert_eq!(run_output, "12\n");
@@ -567,7 +567,7 @@ fn test_e2e_boot04_compiler_mode_ignores_dotted_flat_file() {
         let result_wasm = &modules[0];
         assert_valid_wasm(result_wasm);
 
-        if let Ok(run_output) = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]) {
+        if let Ok(run_output) = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[]) {
             assert_ne!(
                 run_output, "7\n",
                 "BOOT-04 dotted-flat-file: compiler-mode が src/Syntax.Token.ls を module source に採用している"
