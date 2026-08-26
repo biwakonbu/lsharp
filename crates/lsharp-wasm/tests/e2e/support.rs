@@ -717,9 +717,13 @@ pub(crate) fn validate_wasm_function_bodies(wasm: &[u8]) -> Result<(), String> {
             Payload::CodeSectionEntry(body) => Some(body.range()),
             _ => None,
         };
-        let valid = validator
-            .payload(&payload)
-            .map_err(|error| format!("validate error at offset {}: {}", error.offset(), error.message()))?;
+        let valid = validator.payload(&payload).map_err(|error| {
+            format!(
+                "validate error at offset {}: {}",
+                error.offset(),
+                error.message()
+            )
+        })?;
         if let ValidPayload::Func(to_validate, body) = valid {
             pending.push((range, to_validate, body));
         }

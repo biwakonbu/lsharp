@@ -210,9 +210,11 @@
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
-| [I-79](#i-79) | 10-import helper の戻り値を握り潰す test 8 件が、緑のまま何も検査していない | 中 | open | `I-72` の診断で発見 (2026-08-27)。台帳にも載らない |
+| [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
 | [I-80](#i-80) | stage1/stage2 の target-defn parity が `ast-make-type-constrained` で分岐する | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
 | [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
+| [I-82](#i-82) | assertion を 1 つも持たない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。3 件は非 ignore |
+| [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
 
 ### ドキュメント (DOC)
 
@@ -5274,52 +5276,59 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `CLI-SELFFEED-DIVZERO-01`。
 
 <a id="i-79"></a>
-### I-79: 10-import helper の戻り値を握り潰す test 8 件が、緑のまま何も検査していない
+### I-79: 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: **resolved (2026-08-27)**
 - **発見**: 2026-08-27 (`I-72` の呼び出し元全数調査)
-- **内容**: `run_wasm_with_eleven_imports_compiler_mode*` を呼ぶ test 90 件のうち **8 件**が、
-  helper の返す `Result` を `if let Ok(..)` 等で開き、`Err` のときは**何もせずに素通りする**。
-  この 8 件は `I-72` のインスタンス化失敗を確実に踏んでいるにもかかわらず、
-  **緑のまま**であり `ignored-lane-expected-failures.txt` にも載らない。
-  実際の形 (`part_016.rs:296`):
+- **内容**: 実行が `Err` を返したときに `if let Ok(..)` / `match` の `Ok` 側だけに書かれた
+  assertion が丸ごと skip され、test は緑のまま何も検査しない。
 
   ```rust
-  match stage3_result {
-      Err(e) => eprintln!("stage3 実行失敗: {}", e),
-      Ok(out) => { /* ここに全ての assertion がある */ }
+  if let Ok(output) = result {          // Err なら以降が丸ごと消える
+      assert_valid_wasm(&modules[0]);
+      assert_ne!(run_output, "7\n", "...");
   }
   ```
 
-  `Err` 腕が `eprintln!` だけなので、**実行が失敗した回は assertion が 1 つも走らない**。
+- **起票時に書いた「8 件」は分類が誤っていた。** 全 `*.rs` を brace matching で走査した結果、
+  1 つの形として書いていたものは 4 つの異なる形の混合だった。
 
-  ```
-  test_debug_stage3_main_again_output_chars
-  test_debug_stage3_output_chars
-  test_e2e_boot04_compiler_mode_ignores_dotted_flat_file
-  test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band
-  test_e2e_boot04_self_hosted_stage2_reports_main_again_cache_pairs_progress
-  test_e2e_boot04_self_hosted_stage2_reports_main_again_progress
-  test_e2e_boot04_self_hosted_stage2_reports_module_resolver_progress
-  test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress
-  ```
+  | 形 | 定義 | 実測 | 起票時に挙げた 8 件のうち |
+  |---|---|---|---|
+  | (b) | Ok 側に assertion があり、`Err` で skip される | 5 箇所 / 3 test | **1 件だけ** |
+  | (c) | `Result` を束縛して `{:?}` 表示のみ。assertion が最初から無い | 9 箇所 / 6 test | 4 件 |
+  | (a') | `Err` 腕が `eprintln!`、かつ `Ok` 腕にも assertion が無い | 2 箇所 / 2 test | 2 件 |
+  | (d) | `assert!` はあるが構造上恒真 | 1 箇所 / 1 test | 1 件 |
 
-- **これは `I-72` とは別の欠陥である。** `I-72` は「host が渡す import 集合が古い」。
-  本件は「**実行に失敗しても test が成功する**」。`I-72` を直せばこの 8 件は実際に走り出すが、
-  走り出した先で何を assert しているかは別問題であり、
-  **`Err` を無視する構造そのものは `I-72` の fix では消えない**。
+  **本 issue が扱うのは形 (b) だけである。** 形 (b) は「書かれた assertion が実行されない」ので
+  直し方に判断の余地が無い。形 (c)/(a')/(d) は assertion がそもそも無く、直すには
+  「この probe は何を保証すべきか」を新たに決める必要がある。`I-82` へ移した。
+- **「8 件は全て `selfhost_bootstrap_four_layer` にある」も誤りだった。** 形 (b) の 3 test は
+  3 つの別 module に散っている。
+
+  | test | module | 是正後 |
+  |---|---|---|
+  | `test_e2e_boot04_compiler_mode_ignores_dotted_flat_file` | `selfhost_bootstrap_four_layer` (`part_015`) | **FAILED** → `I-83` |
+  | `test_native_codegen_real_execution` | `selfhost_native_differential` (`part_001`) | ok (挙動不変) |
+  | `test_e2e_selfhost_type_error_parity` | `selfhost_type_parser_parity` | FAILED → fixture 修正で ok |
+
+- **RED は「走らせて赤くなること」では取れなかった。** `I-72` の fix 後、3 件はいずれも
+  実際に走って緑である。**入力を意図的に壊しても緑のままであること**を RED の証拠とした。
+  `test_native_codegen_real_execution` に壊れた S 式を注入すると、結果は `ok` のまま、
+  所要は **19.68s → 0.06s** に落ちた。**所要時間の落差が、何もしていないことの証拠である。**
 - **`I-64` の sweep がこれを拾えなかった理由**もここにある。sweep は落ちた test を数える。
   落ちない test は、検査していなくても数に入らない。
   **「緑になることと検査していることは別である」の実例**である。
   同型は `I-77` (検証ヘルパーが関数本体を一つも見ていない) と
-  `I-70` (ADR の Evidence が `#[ignore]` 下の test を根拠にしていた) に既に 2 件ある。
-- **8 件は全て `selfhost_bootstrap_four_layer` にあるが、fragment は 5 つに散っている**
-  (`part_008` 2 件 / `part_011` 2 件 / `part_014` 1 件 / `part_015` 1 件 / `part_016` 2 件)。
-  個別の書き損じではなくこの module の書き癖と見るべきで、
-  **同じ形が他に無いかを併せて数えること。**
-- **関連**: `I-72` (発見経路。移行だけは `I-72` の slice で行う)、
+  `I-70` (ADR の Evidence が `#[ignore]` 下の test を根拠にしていた) に既にある。
+- **解決** (2026-08-27): 3 件の `Err` 腕を `panic!` へ置き換えた。skip カウンタは導入していない
+  (「n 件までは skip してよい」という閾値は、閾値以下の恒常 skip を正常として固定するため)。
+  判断と却下理由は [`decisions-harness-swallowed-error-arms.md`](docs/adr/decisions-harness-swallowed-error-arms.md)。
+- **方法論**: **「同じ形が何件あるか」を数える前に、その形の定義を実物で確かめること。**
+  定義を確かめずに数えると、数は合っているのに中身が違うという誤りが台帳に残る。
+  これは件数の検算では発見できない種類の誤りである。
+- **関連**: `I-72` (発見経路)、`I-82` (本 issue が範囲外とした形)、`I-83` (是正で表に出た実バグ)、
   `I-77` / `I-70` (同じ「緑だが検査していない」類型)、`I-64` (sweep が拾えなかった)。
-  引き取り先は `TODO.md` の `HARNESS-SWALLOWED-ERR-01`。
 
 <a id="i-80"></a>
 ### I-80: stage1/stage2 の target-defn parity が `ast-make-type-constrained` で分岐する
@@ -5366,3 +5375,83 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **関連**: `I-72` (これを隠していた)、`I-79` (「緑だが検査していない」の裏返しで、
   こちらは「赤だが欠陥は無いかもしれない」)、`I-64` (発見経路)。
   引き取り先は `TODO.md` の `VIOLATION-PROBE-STALE-01`。
+
+<a id="i-82"></a>
+### I-82: assertion を 1 つも持たない probe test が 13 件あり、常に緑になる
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-79` の全数調査)
+- **内容**: 実行結果を `eprintln!` / `println!` するだけで、**assertion を 1 つも持たない**
+  test が **13 件 / 16 箇所**ある。`I-79` (assertion が skip される) とは別で、
+  こちらは**最初から無い**。したがって入力が何であれ、実行が成功しようが失敗しようが、常に緑になる。
+
+  | 形 | 位置 | test | ignore |
+  |---|---|---|---|
+  | (c) | `four_layer/part_008.rs:344` | `..._stage2_reports_main_again_cache_pairs_progress` | yes |
+  | (c) | `four_layer/part_008.rs:455` | `..._stage2_reports_main_again_progress` | yes |
+  | (c) | `four_layer/part_011.rs:390` | `..._stage2_reports_module_resolver_progress` | yes |
+  | (c) | `four_layer/part_011.rs:434` | `..._stage2_reports_string_length_if_progress` | yes |
+  | (c) | `four_layer/part_015.rs:587` | `test_i64_if_condition_validity` | **no** |
+  | (c) | `stage_chain.rs:54969-54984` (4 箇所) | `..._representative_const_only_entrypoint_helper_offsets` | yes |
+  | (a') | `four_layer/part_015.rs:620` | `test_parse_compiler_ls` | **no** |
+  | (a') | `four_layer/part_015.rs:633` | `test_parse_caws_standalone` | **no** |
+  | (a') | `four_layer/part_015.rs:674` | `test_debug_stage2_output_minimal` | yes |
+  | (a') | `four_layer/part_015.rs:707` | `test_validate_stage2_wasm` | yes |
+  | (a') | `four_layer/part_016.rs:296` | `test_debug_stage3_output_chars` | yes |
+  | (a') | `four_layer/part_016.rs:382` | `test_debug_stage3_main_again_output_chars` | yes |
+  | (d) | `four_layer/part_014.rs:596` | `..._stage2_classifies_chunked_lexer_failure_band` | yes |
+
+- **3 件は `#[ignore]` を持たない。** `test_i64_if_condition_validity` /
+  `test_parse_compiler_ls` / `test_parse_caws_standalone` は通常 lane で毎回走りながら、
+  実行結果に対する assertion を 1 つも持たない。
+  とくに `test_parse_compiler_ls` は「`Compiler.ls` をパースして構文エラーを検出する」と
+  コメントに書きながら、**パース結果を `eprintln!` するだけ**である。
+- **件数は 2 度直している。** 最初の手作業で 9 件と数え、走査を
+  `scripts/sweep_unchecked_result.py` として書き直したときに `part_015` の 4 件が追加で出た。
+  **手で数えた 9 という数は、走査の網羅性ではなく目視の到達範囲を表していた。**
+- **形 (d) は「恒真な assertion」である。** `assert!(matches!(classification, A | B | C | D | E))`
+  と書かれているが、`classification` はその 5 値のいずれかにしか成りえない構造で作られている。
+  **assertion があることと、検査していることは別である。**
+- **直すには裁定が要る。** これらは診断 probe であり、
+  「この probe は何を保証すべきか」を決めないと assertion が書けない。
+  `I-81` が別の probe について問うているのと同じ種類の判断であり、
+  **一括で `panic!` へ置き換えて済ませてはならない。**
+- **走査は `scripts/sweep_unchecked_result.py` にある。** 現状 18 件を出力し、
+  うち 2 件は既知の偽陽性である (`part_007.rs:264` は直後に `assert_valid_wasm` があり、
+  `part_014.rs:651` は `summarize` クロージャの中)。
+  **出力をそのまま件数として使わないこと。** 判定は必ず該当箇所を開いて行う。
+- **関連**: `I-79` (本 issue の親。形 (b) だけが解決済み)、`I-81` (同種の probe 裁定)、
+  `I-77` / `I-70` (「緑だが検査していない」類型)。
+  引き取り先は `TODO.md` の `PROBE-ASSERTS-NOTHING-01`。
+
+<a id="i-83"></a>
+### I-83: compiler-mode が生成した wasm が stack 不整合で load できない
+
+- **影響度**: 高 / **状態**: open
+- **発見**: 2026-08-27 (`I-79` の是正で初めて実測)
+- **内容**: `test_e2e_boot04_compiler_mode_ignores_dotted_flat_file` は、
+  `src/App/Main.ls` と `src/Syntax.Token.ls` (dotted 名の flat file) を置いた fixture を
+  stage1 の compiler-mode に食わせ、**生成 wasm を実行して** 出力が `"7\n"` でないこと
+  (= dotted flat file を module source に採っていないこと) を確かめる test である。
+  生成された wasm が wasmtime で load できない。
+
+  ```
+  Wasm モジュールの読み込みに失敗: WebAssembly translation error
+  Caused by:
+      Invalid input WebAssembly code at offset 270: type mismatch: expected i64 but nothing on stack
+  ```
+
+- **これは `I-79` の是正で新たに壊れたのではない。** 是正前は実行失敗が
+  `if let Ok(..)` に握り潰され、**この test が検証しようとしていた契約は一度も測られていなかった**。
+  したがって「いつから壊れているか」は不明であり、**回帰ではなく初回計測**として扱う。
+- **`assert_ne!` はまだ一度も実行されていない。** load 段階で落ちるため、
+  「compiler-mode が dotted flat file を module source に採るか」という**本来の問いは未解決**である。
+  `I-83` を直しても、その先に別の赤がある可能性がある。
+- **`I-72` の 11-import 統一とは無関係である。** import 数の不一致ではなく、
+  生成コードの stack balance の問題であり、offset 270 は code section 内を指す。
+  ただし同型の症状 (`values remaining on stack at end of block`) は
+  `part_015` の step512 診断が別経路で固定しており、**同じ根が疑われる**。
+  ただし **offset の集合は原因の集合ではない**ので、同一と決めつけないこと。
+- **関連**: `I-79` (発見経路)、`I-78` (compiler-mode self-feed の別の赤)、
+  `I-77` (wasm body validation)。
+  引き取り先は `TODO.md` の `COMPILER-MODE-STACK-01`。

@@ -418,3 +418,10 @@ lsharp-wasm::e2e selfhost_lsp_docs_ops::test_e2e_selfhost_formatter_format_progr
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost  # 引き取り先: I-75 -- [c] I-75 未分類。原因未診断
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_repl_core  # 引き取り先: REPL-TYPE-TAG-01 -- [c] I-69 L2 (アドレス印字)。実測 type:type--9223372036853734496
+
+# ---- 2026-08-27 I-79 (握り潰し是正) で新たに表に出た 1 件 ----
+#   `if let Ok(..)` で実行失敗を握り潰していた test の Err 腕を panic! へ置き換えた結果、
+#   それまで一度も測られていなかった契約が初めて赤として出た。
+#   **回帰ではなく初回計測である。** いつから壊れていたかは不明。
+#   判断の正本: docs/adr/decisions-harness-swallowed-error-arms.md
+lsharp-wasm::e2e selfhost_bootstrap_four_layer::test_e2e_boot04_compiler_mode_ignores_dotted_flat_file  # 引き取り先: I-83 -- [c] 2026-08-27 の I-79 是正で初めて実測。stage1 compiler-mode が生成した wasm が Invalid input WebAssembly code at offset 270: type mismatch: expected i64 but nothing on stack で load できない。本来の判定 assert_ne!(run_output, "7\n") はまだ一度も実行されていない

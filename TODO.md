@@ -2940,23 +2940,31 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   示せないなら (a) は選べない。
   **含めない範囲**: violation が消えた原因そのものの追跡。**cargo が要る。**
 
-- [ ] `HARNESS-SWALLOWED-ERR-01` 実行失敗を握り潰す e2e test 8 件を、失敗が失敗として出るようにする — Issue `I-79`。
-  `run_wasm_with_eleven_imports_compiler_mode*` の `Result` を
-  `match { Err(e) => eprintln!(..), Ok(out) => { /* 全 assertion */ } }` で受けているため、
-  **実行が失敗した回は assertion が 1 つも走らないまま緑になる**。
-  8 件は `selfhost_bootstrap_four_layer` の 5 fragment に散っている
-  (`part_008` 2 / `part_011` 2 / `part_014` 1 / `part_015` 1 / `part_016` 2)。
-  受入条件: 先に RED を立てる。**`Err` 腕を潰す前に、同じ形が他に何件あるかを数えること。**
-  8 件という数は `I-72` の呼び出し元調査の副産物であって、網羅的な探索の結果ではない。
-  潰した結果として赤が増えるのは**正しい挙動**であり、増えた分は台帳へ正直に載せる
-  (「赤が増えないこと」を受入条件にしない)。
-  **含めない範囲**: `I-72` の helper 付け替え (2026-08-27 に完了済み。commit `12c41d58`)、
-  握り潰しが露出させた個々の失敗の修正。**cargo が要る。**
+- [ ] `PROBE-ASSERTS-NOTHING-01` assertion を 1 つも持たない probe test 13 件の扱いを裁定する — Issue `I-82`。
+  実行結果を `eprintln!` / `println!` するだけで assertion が無いため、
+  **入力が何であれ、実行が成功しようが失敗しようが常に緑になる**。
+  `I-79` (assertion が skip される) とは別で、こちらは最初から無い。
+  うち 3 件 (`test_i64_if_condition_validity` / `test_parse_compiler_ls` /
+  `test_parse_caws_standalone`) は `#[ignore]` を持たず、通常 lane で毎回走る。
+  走査は `scripts/sweep_unchecked_result.py`。**出力をそのまま件数として使わないこと**
+  (既知の偽陽性 2 件が残っている)。
+  受入条件: **`panic!` へ一括置換して済ませないこと。** 各 probe について
+  「何を保証すべきか」を決め、決められないものは削除を検討する。
+  `assert!(matches!(x, A | B | C | D | E))` のような**恒真な assertion を足して緑にしない**。
+  削除を選ぶなら、その probe が担っていた診断出力の引き取り先を示すこと。
+  **含めない範囲**: probe が露出させる個々の失敗の修正。**cargo が要る。**
 
-  **`I-72` の部分再測定では台帳外の新規 FAIL が 0 件だった (2026-08-27)。**
-  8 件は helper が 11-import になって実際に走り出したうえで、なお緑である。
-  つまり `Ok` 腕の assertion 自体は通っている。**これは「握り潰しても実害が無い」ことの
-  証拠ではない** — 次に実行が失敗したときに再び黙るという性質は何も変わっていない。
+- [ ] `COMPILER-MODE-STACK-01` compiler-mode 生成 wasm の stack 不整合を診断する — Issue `I-83`。
+  `test_e2e_boot04_compiler_mode_ignores_dotted_flat_file` が生成した wasm が
+  `Invalid input WebAssembly code at offset 270: type mismatch: expected i64 but nothing on stack`
+  で load できない。`I-79` の是正で**初めて実測された**もので、回帰ではない。
+  受入条件: 先に RED を立てる。**offset 270 が指す関数を特定してから直すこと。**
+  同型の症状 (`values remaining on stack at end of block`) が `part_015` の step512 診断にもあるが、
+  **offset の集合は原因の集合ではない** (`I-71` の前例)。同一と決めつけない。
+  直した先に `assert_ne!(run_output, "7\n")` の判定が残っている。
+  **「load できるようになった」で完了にしない** — 本来の問い
+  (compiler-mode が dotted flat file を module source に採るか) はまだ一度も測れていない。
+  **含めない範囲**: `I-78` の divide-by-zero。**cargo が要る。**
 
 - [ ] `CLI-SELFFEED-DIVZERO-01` stage1 compiler の `src/App/Cli.ls` self-feed trap を診断する — Issue `I-78`。
   translation でも instantiation でもなく**実行中**に `wasm trap: integer divide by zero` になる。

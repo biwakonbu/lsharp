@@ -191,24 +191,23 @@ fn test_native_codegen_real_execution() {
 
     // NativeCodegen.main() はネイティブコードのバイト数を print する
     // i64.const 42 をパイプラインで処理したバイト数が出力されるはず (10バイト以上)
-    match result {
-        Ok(output) => {
-            eprintln!("✓ NativeCodegen.ls executed successfully");
-            eprintln!("  Native code size: {} bytes", output.trim());
+    // I-79: 実行失敗を eprintln で握り潰さない。握り潰すと assertion ごと skip され、
+    // 入力が完全に壊れていても test は緑のままになる。
+    let output = result.unwrap_or_else(|e| {
+        panic!("NATIVE-REAL-06: NativeCodegen.ls の実行に失敗した: {e:?}")
+    });
+    eprintln!("✓ NativeCodegen.ls executed successfully");
+    eprintln!("  Native code size: {} bytes", output.trim());
 
-            // バイト数をパースして妥当性チェック
-            if let Ok(size) = output.trim().parse::<usize>() {
-                assert!(size > 0, "ネイティブコード生成がバイト数 0 を出力");
-                eprintln!("✓ Native bytecode generation produced {} bytes", size);
-            }
-        }
-        Err(e) => {
-            // NativeTarget.ls の import 解決に失敗する可能性があるが、
-            // コンパイルまで進んだことが重要
-            eprintln!("⚠ NativeCodegen execution result: {:?}", e);
-            eprintln!("  (This is expected - full integration testing in Phase 2)");
-        }
-    }
+    // バイト数をパースして妥当性チェック
+    let size = output.trim().parse::<usize>().unwrap_or_else(|e| {
+        panic!(
+            "NATIVE-REAL-06: NativeCodegen.main() の出力がバイト数でない: {:?} / {e}",
+            output.trim()
+        )
+    });
+    assert!(size > 0, "ネイティブコード生成がバイト数 0 を出力");
+    eprintln!("✓ Native bytecode generation produced {} bytes", size);
 }
 
 /// NATIVE-REAL-07: i64.const を full-width native bytes として出力できること (AArch64)

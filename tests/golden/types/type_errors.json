@@ -30,7 +30,7 @@
     },
     {
       "description": "関数適用の引数型不一致",
-      "source": "(defn f [x : Int] (+ x 1)) (defn main [] (f true))",
+      "source": "(defn f [(: x Int)] (+ x 1)) (defn main [] (f true))",
       "expected": {
         "error_code": "E0004",
         "message_contains": "expected",

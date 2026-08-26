@@ -2019,8 +2019,9 @@ fn test_e2e_selfhost_embedded_cli_test_format_json_contract_quote_preflight() {
             1,
             "{lane} の既定 lane は report 1 行だけを返すべき: {lines:?}"
         );
-        let report: Value = serde_json::from_str(&lines[0])
-            .unwrap_or_else(|e| panic!("{lane} の既定 lane の report は valid JSON であるべき: {e}"));
+        let report: Value = serde_json::from_str(&lines[0]).unwrap_or_else(|e| {
+            panic!("{lane} の既定 lane の report は valid JSON であるべき: {e}")
+        });
         let conformance = &report["implementation_conformance"];
         assert_eq!(
             conformance["status"], "fail",

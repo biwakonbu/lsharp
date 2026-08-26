@@ -306,6 +306,30 @@ selfhost の AST ノードは vector で、**長さそのものを判別子に�
 print だけが 2 件という結果を記録済み。別 kind へ広げるときは
 スクリプト内の分岐パターン (`BRANCH`) を書き換える。
 
+### 検査していない test の洗い出し (cargo 無し)
+
+```bash
+python3 scripts/sweep_unchecked_result.py            # 既定は crates/lsharp-wasm/tests/e2e
+python3 scripts/sweep_unchecked_result.py --root <dir>
+```
+
+`Result` を受けたのに検査していない箇所を 4 つの形に分けて出す。
+
+| 形 | 何が起きるか |
+|---|---|
+| (b) `Err` 腕が `eprintln!` だけで `Ok` 腕に assertion がある | 入力が壊れると **assertion ごと skip** され緑のまま |
+| (c) `Result` を束縛して `{:?}` 表示だけ | assertion が最初から無い |
+| (a') `match` の両腕とも assertion 無し | 同上 |
+| (d) 恒真な `assert!(matches!(x, A \| B \| C))` | 常に真 |
+
+**出力をそのまま件数として使わないこと。** タプル match / helper へ委譲した assertion /
+`?` 伝播は偽陽性になりうる。判定は必ず該当箇所を開いて行う。
+判断の正本は [握り潰し腕の ADR](docs/adr/decisions-harness-swallowed-error-arms.md)、
+未処理分は `ISSUES.md` の `I-82`。
+
+形 (b) の RED は「走らせて赤にする」では取れない (定義上いつも緑である)。
+**入力を意図的に壊し、test が緑のまま所要時間だけ落ちることで取る。**
+
 ### Git worktree の配置と片付け
 
 - 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。

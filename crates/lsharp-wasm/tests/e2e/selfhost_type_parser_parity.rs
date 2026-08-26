@@ -47,8 +47,12 @@ fn test_e2e_selfhost_type_error_parity() {
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("テストケース {} に error_code がない", i));
 
-        let program = lsharp_syntax::parse(source);
-        if let Ok(prog) = program {
+        // I-79: パース失敗を黙って skip しない。skip すると case が 1 件も検証されなくても
+        // test は緑のままになる。type_errors.json の 5 件はいずれも構文上は正しい。
+        let prog = lsharp_syntax::parse(source).unwrap_or_else(|e| {
+            panic!("テストケース {i}: '{source}' のパースに失敗した (型エラーの fixture は構文上正しいはず): {e}")
+        });
+        {
             let mut infer = Infer::new();
             let result = infer.infer_program(&prog);
 
@@ -73,7 +77,6 @@ fn test_e2e_selfhost_type_error_parity() {
                 err_msg
             );
         }
-        // パースエラーの場合もテストケースとして記録されている可能性がある
     }
 }
 

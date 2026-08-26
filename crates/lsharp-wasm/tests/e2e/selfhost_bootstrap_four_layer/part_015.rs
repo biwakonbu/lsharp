@@ -562,18 +562,23 @@ fn test_e2e_boot04_compiler_mode_ignores_dotted_flat_file() {
     );
 
     let _ = std::fs::remove_dir_all(&fixture_dir);
-    if let Ok(output) = result {
-        let modules = parse_emitted_wasm_modules(&output, 1);
-        let result_wasm = &modules[0];
-        assert_valid_wasm(result_wasm);
+    // I-79: 実行失敗を黙って skip しない。skip すると assert_ne! ごと消え、
+    // compiler-mode が何を module source に採ったかを一度も見ないまま緑になる。
+    let output = result.unwrap_or_else(|e| {
+        panic!("BOOT-04 dotted-flat-file: stage1 の compiler-mode 実行に失敗した: {e}")
+    });
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    let result_wasm = &modules[0];
+    assert_valid_wasm(result_wasm);
 
-        if let Ok(run_output) = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[]) {
-            assert_ne!(
-                run_output, "7\n",
-                "BOOT-04 dotted-flat-file: compiler-mode が src/Syntax.Token.ls を module source に採用している"
-            );
-        }
-    }
+    let run_output = run_wasm_with_eleven_imports_compiler_mode(result_wasm, "", &[])
+        .unwrap_or_else(|e| {
+            panic!("BOOT-04 dotted-flat-file: 生成 wasm の実行に失敗した: {e}")
+        });
+    assert_ne!(
+        run_output, "7\n",
+        "BOOT-04 dotted-flat-file: compiler-mode が src/Syntax.Token.ls を module source に採用している"
+    );
 }
 
 #[test]
