@@ -2916,17 +2916,25 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `I-71` の compiler 側 fix (別 slice で完了済み)、
   `#[ignore]` を外すかどうかの判断。**cargo が要る。**
 
-- [ ] `TARGET-DEFN-PARITY-01` target-defn parity が `ast-make-type-constrained` で分岐する原因を付ける — Issue `I-80`。
-  `selfhost_bootstrap_four_layer` の parity probe 2 件が marker の期待値に届かない。
-  stage1 側 marker 126 が 5 (期待 7 / `part_009.rs:411`)、
-  stage2 側 marker 127 が 0 (期待 5 / `part_009.rs:302`)。
-  どちらも対象 defn は `ast-make-type-constrained`。
-  `I-72` の解決でインスタンス化が通るようになり、初めてこの assertion まで到達して露出した。
-  受入条件: 先に RED を立てる。**stage1 側と stage2 側を 1 つの原因にまとめないこと。**
-  marker が別である以上、同じ原因である保証が無い。
-  「対象 defn が短く切れている」のか「別の defn を見ている」のかを、
-  marker 値の解釈ではなく実際に読んでいる defn の同定によって決めること。
-  **含めない範囲**: 他の parity probe の赤 (本件は marker 126/127 の 2 件のみ)。**cargo が要る。**
+- [ ] `TARGET-DEFN-PARITY-01` 陳腐化した target-defn probe を作り直す — Issue `I-80`。
+  **診断も裁定も済んでいる** — `docs/adr/decisions-target-defn-probe-shape-drift.md`。
+  probe は `make-type-constrained` の body を添字直打ちで辿り、`let` + 二重 `vector-push` の
+  旧 shape を前提にしている。現在は `vector-push-pair-rooted` 単一呼び出しなので
+  marker 126 が 5 (期待 7)、marker 127 が 0 (期待 5) になる。**compiler の regression ではない。**
+  受入条件:
+  - 先に RED を立てる。実装前に現状の赤を再現すること
+  - stage2 側 (`..._reaches_...` / `part_009.rs:302`) は期待値リテラルをやめ、
+    **stage1 の probe 出力との比較**にする。test 名が主張しているのは parity であって形の pin ではない
+  - stage1 側 (`..._lengths` / `part_009.rs:411`) は shape pin として残し、
+    126 を 5 (`ast-apply`) へ、127 を現在の shape での実測へ更新する。
+    **何を pin しているのかをコメントで明示する**
+  - minimal fixture (`part_009.rs:456`) の旧 shape 文字列を現在の shape へ更新する
+  - **marker 129 以降は一度も評価されていない。** 126/127 を直した後に新しい赤が出たら、
+    それを黙って潰さず記録すること。**「126/127 が緑になった」を完了条件にしない**
+  **含めない範囲**: probe 本体 (`CompilerMode.ls`) を shape 非依存へ作り替えること (ADR 却下案 B)。
+  `(vector-get decls 31)` の hardcode は実際に問題を起こすまで触らない。
+  **`selfhost_bootstrap_four_layer` の実装 slice に束ねる** (`PROBE-ASSERTS-NOTHING-01` /
+  `VIOLATION-PROBE-STALE-01` と同一 lane)。**cargo が要る。**
 
 - [ ] `VIOLATION-PROBE-STALE-01` violation probe の極性を反転する — Issue `I-81`。
   **裁定は済んでいる** — `docs/adr/decisions-always-failing-diagnostic-probes.md` の裁定 1。

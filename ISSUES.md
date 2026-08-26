@@ -211,7 +211,7 @@
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
 | [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
-| [I-80](#i-80) | stage1/stage2 の target-defn parity が `ast-make-type-constrained` で分岐する | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
+| [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | open | 診断済み・裁定済み。実装未着手 (2026-08-27) |
 | [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
 | [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。3 件は非 ignore。裁定は ADR 済 |
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
@@ -5337,12 +5337,13 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `I-77` / `I-70` (同じ「緑だが検査していない」類型)、`I-64` (sweep が拾えなかった)。
 
 <a id="i-80"></a>
-### I-80: stage1/stage2 の target-defn parity が `ast-make-type-constrained` で分岐する
+### I-80: target-defn probe が AST の形を添字直打ちで辿り、`make-type-constrained` の refactor に追随していない
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-27 (`I-72` の fix 後の部分再測定で露出)
 - **内容**: `selfhost_bootstrap_four_layer` の target-defn parity probe 2 件が、
-  marker の値が期待値に届かずに落ちる。どちらも対象 defn は `ast-make-type-constrained`。
+  marker の値が期待値に届かずに落ちる。どちらも対象 defn は `make-type-constrained`
+  (台帳が長く使ってきた `ast-make-type-constrained` という名前は**ソースのどこにも存在しない**)。
 
   | test | marker | 実測 | 期待 | 位置 |
   |---|---|---|---|---|
@@ -5354,11 +5355,39 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   したがって **`I-72` の fix が持ち込んだ regression ではない**。
   ただし「fix 前は緑だった」ことの実証でもない — fix 前は assertion が走っていないので
   比較できる過去の値が存在しない。
-- **未診断**。marker 126 が 5 / marker 127 が 0 という値が
-  「対象 defn が短く切れている」のか「そもそも別の defn を見ている」のかは特定していない。
-- **stage1 側と stage2 側で marker が別**なので、原因が同じとは限らない。
-  1 つの結論にまとめないこと。
-- **関連**: `I-72` (これを隠していた)、`I-75` (`..._lengths` の移管元)、`I-64` (発見経路)。
+- **診断済み (2026-08-27)。compiler の regression ではなく probe の陳腐化である。**
+  probe (`selfhost/src/App/CompilerMode.ls` の `target-defn` モード) は
+  `make-type-constrained` の AST を**添字直打ち**で辿り、body が
+  `(let [v (vector-new 2)] (vector-push (vector-push v ...) ...))` の形をしていることを
+  前提にしている。現在の定義 (`selfhost/src/Syntax/AST.ls:260`) は
+  `(vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash)` で
+  **`let` が無い**。よって marker 126 (`body[0]`) は `ast-let` (7) ではなく
+  `ast-apply` (5) になり、marker 127 (`body[3][3][4]` の tag) は平坦化された AST の
+  外を指して 0 になる。**2 つの実測値がこれ 1 つで説明できる。**
+- **時系列が裏付ける。** probe 本体と test 名はどちらも `357f261d` (2026-04-11) 生まれ。
+  `AST.ls:260` の `vector-push-pair-rooted` 化は `901c10d8` (2026-04-22)。
+  **refactor は probe より 11 日新しく、probe は追随していない。**
+  旧 shape は `part_009.rs:456` の minimal fixture 文字列に残骸として残っている。
+- **当初の原因候補はどちらも外れていた。** 「対象 defn が短く切れている」でも
+  「別の defn を見ている」でもない。同じ probe の marker 124 (`decl[0]` = 20 = `ast-defn`) と
+  marker 125 (param 数 = 1) は**通っている**。probe は**正しい defn を正しく見つけており**、
+  壊れているのは body 内ナビゲーションだけである。
+- **stage1 側と stage2 側は同一原因である (当初の見立ての訂正)。**
+  「marker が別なので原因が同じとは限らない」と書いたが、実物は
+  **同じ `target-defn` probe を stage1 の binary と stage2 の binary で走らせているだけ**で、
+  落ちる marker が違うのは assertion の並び順の差にすぎない
+  (stage1 側は 126 を `== 7` で見るので 126 で、stage2 側は 126 を `> 0` でしか見ないので 127 で落ちる)。
+  **慎重さは実物を読むまでの態度であって、読んだ後まで持ち越すものではない。**
+- **未検証の層が残っている。** marker 129 以降 (`129 == 131` の hash 一致、`130`/`132`/`133` の
+  lookup 非空) は 126/127 で落ちるため**一度も評価されていない**。
+  probe 本体は marker 131 以降のために `(vector-get decls 31)` も添字直打ちしている。
+  **126/127 を直すと下から新しい赤が出る可能性がある** (`I-72` → `I-80` と同じ構造)。
+  「126/127 が緑になった」を完了条件にしないこと。
+- **裁定は済んでいる**: `docs/adr/decisions-target-defn-probe-shape-drift.md`。
+  stage2 側はリテラル pin をやめ stage1 出力との parity 比較にする。
+  stage1 側は shape pin として残しリテラルを実測へ更新する。minimal fixture は現在の shape へ更新する。
+- **関連**: `I-72` (これを隠していた)、`I-75` (`..._lengths` の移管元)、`I-64` (発見経路)、
+  `I-82` (probe が主題を検査していない類型)、`I-84` (構造上必ず赤くなる probe)。
   引き取り先は `TODO.md` の `TARGET-DEFN-PARITY-01`。
 
 <a id="i-81"></a>

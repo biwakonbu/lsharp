@@ -4,7 +4,8 @@
 - **Date**: 2026-08-27
 - **Scope**: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/part_002.rs` の
   `run_wasm_with*_compiler_mode*` helper 群と、その全呼び出し箇所
-- **Related**: `ISSUES.md` `I-72` (resolved) / `I-79` / `I-80` / `I-81` /
+- **Related**: `ISSUES.md` `I-72` (resolved) / `I-79` / `I-80`
+  (裁定は [`decisions-target-defn-probe-shape-drift.md`](decisions-target-defn-probe-shape-drift.md)) / `I-81` /
   `TODO.md` `TARGET-DEFN-PARITY-01` / `VIOLATION-PROBE-STALE-01` /
   `docs/adr/decisions-selfhost-empty-do-unit-value.md` (`I-71`。本件を隠していた層) /
   commit `b73938ea` (11-import ABI を導入した変更)
