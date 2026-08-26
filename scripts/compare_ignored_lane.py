@@ -72,7 +72,9 @@ def load_ledger(path):
 def load_run(path):
     """1 ログを読む。返すのは (宣言数, {`module::test`: 結果}, 重複 Counter, Summary)。"""
     text = path.read_text(errors="replace")
-    m = re.search(r"^running (\d+) tests", text, re.MULTILINE)
+    # cargo は test が 1 件のとき `running 1 tests` ではなく `running 1 test` と書く。
+    # 単数形を取りこぼすと宣言数が None になり、その module だけ完走判定が無言で消える。
+    m = re.search(r"^running (\d+) tests?$", text, re.MULTILINE)
     declared = int(m.group(1)) if m else None
 
     results = {}

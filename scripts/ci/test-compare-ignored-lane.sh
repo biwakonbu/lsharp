@@ -162,4 +162,20 @@ rc="$(run_cmp "$TMP_ROOT/i.log" --ledger "$TMP_ROOT/ledger10.txt")"
 expect_rc 1 "$rc" "case10 同一ログ内の重複"
 expect_out "完走していない" "case10"
 
-echo "PASS: compare_ignored_lane.py の契約 10 件"
+# --- 11. cargo の単数形 `running 1 test` を宣言数として拾う -------------------
+# test が 1 件だけの module では cargo は `running 1 tests` ではなく
+# `running 1 test` と書く。ここを取りこぼすと宣言数が None になり、
+# 「宣言と結果行が一致しているか」の検査がその module だけ無言で消える。
+# 2026-08-24 の full sweep で `incremental_benchmark` と
+# `selfhost_bootstrap_contracts` が実際にこれで NG になった。
+make_ledger "$TMP_ROOT/ledger11.txt" "modA::t_red"
+{
+  printf '\nrunning 1 test\n'
+  printf 'test e2e::modA::t_red ... FAILED\n'
+  printf '\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s\n'
+} > "$TMP_ROOT/j.log"
+rc="$(run_cmp "$TMP_ROOT/j.log" --ledger "$TMP_ROOT/ledger11.txt")"
+expect_rc 0 "$rc" "case11 単数形 running 1 test"
+expect_out "宣言 1 / 結果行 1" "case11"
+
+echo "PASS: compare_ignored_lane.py の契約 11 件"
