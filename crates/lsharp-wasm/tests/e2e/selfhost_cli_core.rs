@@ -957,7 +957,11 @@ fn test_e2e_selfhost_cli_check_source_core() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 3, "cli check core 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "Int", "check 結果は型名 Int を返すべき");
+    // `I-45` (`914bd9f1`) が 0 引数 `defn` を `Unit -> body` で env へ登録するようにしたので、
+    // `(defn main [] 42)` の program 型は `Unit -> Int` になる。`render-type-text`
+    // (`Cli.ls:715`) は ty-fun (tag 3) を `"Fn"` へ潰すため、`check` の型名は `"Fn"` を返す。
+    // 契約変更への追随であり、正本は `docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
+    assert_eq!(lines[0], "Fn", "check 結果は型名 Fn を返すべき");
     assert_eq!(
         lines[1], "diagnostics:0",
         "check diagnostics summary は 0 件であるべき"
@@ -1154,7 +1158,16 @@ fn test_e2e_selfhost_cli_check_source_builtin_application_type_contract() {
         "cli check builtin application 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "Bool", "builtin not の戻り値型は Bool であるべき");
+    // `I-45` の契約により `(defn probe [] (not true))` の program 型は `Unit -> Bool` になり、
+    // `render-type-text` はこれを `"Fn"` へ潰す。
+    // **この pin は builtin `not` の戻り値型を検査していない** -- `"Fn"` はどの `defn` でも
+    // 返るので、`Bool` かどうかを 1 ビットも区別しない。失われた coverage は `I-76` /
+    // `CHECK-BUILTIN-RET-COV-01` が保持する。正本は
+    // `docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
+    assert_eq!(
+        lines[0], "Fn",
+        "check の型名は program 型 (Unit -> Bool) を潰した Fn であるべき"
+    );
     assert_eq!(
         lines[1], "diagnostics:0",
         "builtin not の check は診断0件であるべき"
@@ -1277,7 +1290,11 @@ fn test_e2e_selfhost_cli_check_file_handler() {
         "cli check file handler 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "Int", "check 結果は型名 Int を返すべき");
+    // `I-45` (`914bd9f1`) が 0 引数 `defn` を `Unit -> body` で env へ登録するようにしたので、
+    // `(defn main [] 42)` の program 型は `Unit -> Int` になる。`render-type-text`
+    // (`Cli.ls:715`) は ty-fun (tag 3) を `"Fn"` へ潰すため、`check` の型名は `"Fn"` を返す。
+    // 契約変更への追随であり、正本は `docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
+    assert_eq!(lines[0], "Fn", "check 結果は型名 Fn を返すべき");
     assert_eq!(
         lines[1], "diagnostics:0",
         "check diagnostics summary は 0 件であるべき"

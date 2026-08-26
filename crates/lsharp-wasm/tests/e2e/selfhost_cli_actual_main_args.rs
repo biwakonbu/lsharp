@@ -282,9 +282,13 @@ fn test_e2e_selfhost_cli_main_batched_version_and_parse_argv() {
 fn test_e2e_selfhost_cli_main_with_args_check_file() {
     let lines = run_cli_main_with_input_file("check", "(defn main [] 42)", &["check", "input.ls"]);
 
+    // `I-45` (`914bd9f1`) が 0 引数 `defn` を `Unit -> body` で env へ登録するようにしたので、
+    // `(defn main [] 42)` の program 型は `Unit -> Int` になる。`render-type-text`
+    // (`Cli.ls:715`) は ty-fun (tag 3) を `"Fn"` へ潰すため、`check` の型名は `"Fn"` を返す。
+    // 契約変更への追随であり、正本は `docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
     assert_output_lines(
         &lines,
-        &["Int", "diagnostics:0"],
+        &["Fn", "diagnostics:0"],
         "Cli main check argv は型名と diagnostics summary を返すべき",
     );
 }
@@ -313,7 +317,11 @@ fn test_e2e_selfhost_cli_main_with_args_check_json_file() {
     );
     let report: Value = serde_json::from_str(&lines[0]).expect("check --json output は valid JSON");
     assert_eq!(report["command"], "check");
-    assert_eq!(report["type"], "Int");
+    // `I-45` (`914bd9f1`) が 0 引数 `defn` を `Unit -> body` で env へ登録するようにしたので、
+    // `(defn main [] 42)` の program 型は `Unit -> Int` になる。`render-type-text`
+    // (`Cli.ls:715`) は ty-fun (tag 3) を `"Fn"` へ潰すため、`check` の型名は `"Fn"` を返す。
+    // 契約変更への追随であり、正本は `docs/adr/decisions-selfhost-zero-arity-defn-type.md`。
+    assert_eq!(report["type"], "Fn");
     assert_eq!(report["diagnostics"]["count"], 0);
     assert_eq!(report["migration"].as_array().unwrap().len(), 0);
 }

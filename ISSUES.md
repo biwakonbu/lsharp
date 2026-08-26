@@ -207,6 +207,7 @@
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
 | [I-75](#i-75) | sweep で露出した未分類の赤 19 件 | 中 | open | -- |
+| [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 
 ### ドキュメント (DOC)
 
@@ -4579,7 +4580,7 @@
   |---|---:|
   | 新規に露出した赤 | 145 |
   | うち新規 issue を要した cluster | 5 (`I-71`〜`I-75`) |
-  | 既存項目の射程が広がったもの | `CHECK-TYPE-PIN-01` +3 / `REPL-TYPE-TAG-01` +1 |
+  | 既存項目の射程が広がったもの | `check` の型名 pin +3 / `REPL-TYPE-TAG-01` +1 |
   | 緑に転じて台帳から外したもの | 1 |
 
   **懸念そのものが実測で裏付けられた。** `I-45` の契約変更 (`914bd9f1`、2026-08-22) が
@@ -4825,8 +4826,8 @@
 
       | pin 位置 | 期待値 | 引き取り先 |
       |---|---|---|
-      | `selfhost_cli_actual_main_args.rs` `..._check_file` | `Int` → `Fn` | `CHECK-TYPE-PIN-01` |
-      | `selfhost_cli_actual_main_args.rs` `..._check_json_file` | `Int` → `Fn` | `CHECK-TYPE-PIN-01` |
+      | `selfhost_cli_actual_main_args.rs` `..._check_file` | `Int` → `Fn` | 2026-08-27 解決 |
+      | `selfhost_cli_actual_main_args.rs` `..._check_json_file` | `Int` → `Fn` | 2026-08-27 解決 |
       | `selfhost_cli_actual_main_args.rs:1786` `..._repl_summary` | `type:Int` → `type:Fn` | `REPL-TYPE-TAG-01` |
       | `selfhost_cli_core.rs:4792` (repl 系、未 sweep) | `type:Int` → `type:Fn` | `REPL-TYPE-TAG-01` |
 
@@ -4837,7 +4838,10 @@
       の Evidence 節が `..._check_file` は `Int` を返すと書いている。同 ADR は
       「output contract が green になったら normal test にする」と書いており、
       **ignore 下の test の自称期待値をそのまま Evidence にした**ため再検証されていない。
-      引き取り先は `TODO.md` の `CHECK-TYPE-PIN-01` で、`REPL-TYPE-TAG-01` からは外す。
+      引き取り先は `check` 型名 pin の追随 slice で、`REPL-TYPE-TAG-01` からは外す。
+      **2026-08-27 に解決した。** pin 5 本を `"Fn"` へ追随させ、当該 ADR の Evidence も訂正した。
+      判別の結果 `render-type-text` のバグではなく `I-45` 契約そのものであることが確定している
+      (下記 `I-76`)。経緯は [`decisions-selfhost-zero-arity-defn-type.md`](docs/adr/decisions-selfhost-zero-arity-defn-type.md) の「7〜11 本目」節。
     - **L2**: `repl-session-eval` が tag を見ずに `ty-name` を呼ぶ (本 issue の当初の指摘)。
   **L1 を直せば L2 の症状も消えるが、L2 は独立の欠陥である。** 型が本当に Fun である
   program を評価した瞬間に同じアドレス印字が再発する。
@@ -5073,7 +5077,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `CHECK-TYPE-PIN-01` / `REPL-TYPE-TAG-01` のいずれにも収まらない **19 件**。
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **19 件**。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
@@ -5092,3 +5096,34 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **本 issue は保持であって診断ではない。** 19 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
+<a id="i-76"></a>
+### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`check` 型名 pin の追随 slice での判別作業)
+- **内容**: `run-check-program` (`selfhost/src/App/Cli.ls:744-745`) は
+  `infer-program-analysis-type` が返す **program 全体の型**を `render-type-text` へ渡す。
+  program の末尾が `defn` である限り、これは常に関数型である。
+  `I-45` (`decisions-selfhost-zero-arity-defn-type.md`、`914bd9f1`) が 0 引数 `defn` を
+  `Unit -> body` にしたので、**引数の有無にかかわらず `check` の型名は `"Fn"` に潰れる**。
+
+  影響を受けたのは `test_e2e_selfhost_cli_check_source_builtin_application_type_contract`
+  (`selfhost_cli_core.rs:1138`)。fixture は `(defn probe [] (not true))` で、
+  assertion は `"Bool"` を要求し「builtin not の戻り値型は Bool であるべき」と書いてある。
+  `I-45` 以前は 0 引数 `defn` の型が body 型そのものだったのでこの assertion は成立していたが、
+  現在は `Unit -> Bool` になり `"Fn"` が返る。
+
+- **pin を `"Fn"` へ追随させると test は緑になるが、test 名が主張する検査は消える。**
+  `"Fn"` はどんな `defn` に対しても返る値なので、builtin `not` の戻り値型を
+  1 ビットも区別しない。**緑になることと検査していることは別である。**
+  当該 slice では契約追随として pin を動かしたが、
+  **失われた coverage を本 issue が保持する**。
+- **これは `render-type-text` のバグではない。** 判別済み: `render-type-text` は
+  適用結果を関数型へ潰しているのではなく、そもそも適用結果を渡されていない。
+  `Cli.ls:715` の tag 分岐は仕様どおり動いている。**実装は触らない。**
+- **式の型を検査する経路が `check` にあるべきかは未決**。`check` の契約は
+  「program を型検査して型名と診断数を返す」であり、任意の式の型を問う口ではない。
+  builtin の戻り値型は `Types/TypeInferBuiltins` 側の unit test で見るのが筋かもしれない。
+  **どちらへ寄せるかは本 issue では決めない。**
+- **関連**: `I-45` (原因となった契約変更)、`I-69` (同じ `914bd9f1` の別の取り残し)。
+  引き取り先は `TODO.md` の `CHECK-BUILTIN-RET-COV-01`。

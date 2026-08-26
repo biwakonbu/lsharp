@@ -148,7 +148,7 @@ exit code で区別できなくなる。台帳は *修正しないと決めた�
 | `SWEEP-UNCLASSIFIED-01` (`I-75`) | 19 | どの cluster にも収まらなかった。症状が 1 件ずつ違う |
 | `ROOT-IMBALANCED-HELPER-01` (`I-74`) | 9 | `ImbalancedExit depth:1` (`compile-file-state` 6 / `compile-pair-state` 3)。`I-14` 案 E の射程外 |
 | `STAGE-WASM-IMPORT-COUNT-01` (`I-72`) | 8 | `expected 11 imports, found 10`。8 件とも数値が完全一致 |
-| `CHECK-TYPE-PIN-01` | 3 | `selfhost_cli_core` の型名 pin。`I-45` の更新漏れが**さらに 3 本**見つかった |
+| `check` の型名 pin | 3 | `selfhost_cli_core` の型名 pin。`I-45` の更新漏れが**さらに 3 本**見つかった。**2026-08-27 に 5 本まとめて解決** (`decisions-selfhost-zero-arity-defn-type.md` の「7〜11 本目」節)。台帳からも 5 行削除済み |
 | `REPL-TYPE-TAG-01` | 1 | `selfhost_cli_core::test_e2e_selfhost_cli_repl_core` のアドレス印字 |
 
 **cluster が大きいことは同一原因の証拠ではない。** 72 件が 3 offset に収束するのは
@@ -195,7 +195,7 @@ sweep はそれを 1 件、**混入から 1 日で**実証した。
 構造的な帰結**である。網羅は「気を付ける」では達成されず、lane を回すことでしか達成されない。
 sweep を回さなければ、次に誰かがこれらを `#[ignore]` から外す日まで観測されなかった。
 
-引き取り先は `TODO.md` の `CHECK-TYPE-PIN-01` (`check` 系 2 本) と
+引き取り先は `check` 型名 pin の追随 slice (`check` 系 2 本、2026-08-27 解決) と
 `REPL-TYPE-TAG-01` (`..._repl_summary`)。
 
 ## 再実行の手順

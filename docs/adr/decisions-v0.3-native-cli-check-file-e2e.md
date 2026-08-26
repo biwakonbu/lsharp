@@ -26,11 +26,18 @@ oracle lane.
 ## Evidence
 
 - `test_e2e_selfhost_cli_main_with_args_check_file` executes `check input.ls` and returns
-  `Int` / `diagnostics:0` with exit success.
+  `Int` / `diagnostics:0` with exit success (**下の訂正節を参照**)。
+- `test_support_selfhost_cli_runtime_bundle_cached` verifies the cached bundle identity and
+  `Tools.Validation.ManifestInput` module marker.
+- `test_e2e_selfhost_cli_main_no_args_shows_help` executes the same actual bundle without argv and
+  returns the `Usage: lsharp <command>` and `Commands:` help markers with exit success.
+- `test_e2e_selfhost_cli_main_batched_version_and_parse_argv` compiles the bundle once, then
+  verifies `--version` and `-v` return `lsharp 0.1.0`, and `parse input.ls` returns the expected
+  `decls:1` / `diagnostics:0` summary.
 
 ### 訂正 (2026-08-24、`--ignored` lane 全量 sweep)
 
-直上 1 件目の Evidence は**現在の実測と食い違う**。当時の観測なので原文は残し、差分をここに書く。
+本節 1 件目の Evidence (`..._check_file`) は**現在の実測と食い違う**。当時の観測なので原文は残し、差分をここに書く。
 
 | 当時の主張 | 2026-08-24 実測 |
 |---|---|
@@ -46,15 +53,15 @@ oracle lane.
 `render-type-text` はこれを `"Fn"` と表示する。本 Evidence の fixture は 0-arity なので、
 `Int` を返していた当時の観測はこの契約変更によって無効になった。
 
-**test 側の pin をどちらへ寄せるかは本 ADR では決めない。** `TODO.md` の
-`CHECK-TYPE-PIN-01` が引き取っている。
-- `test_support_selfhost_cli_runtime_bundle_cached` verifies the cached bundle identity and
-  `Tools.Validation.ManifestInput` module marker.
-- `test_e2e_selfhost_cli_main_no_args_shows_help` executes the same actual bundle without argv and
-  returns the `Usage: lsharp <command>` and `Commands:` help markers with exit success.
-- `test_e2e_selfhost_cli_main_batched_version_and_parse_argv` compiles the bundle once, then
-  verifies `--version` and `-v` return `lsharp 0.1.0`, and `parse input.ls` returns the expected
-  `decls:1` / `diagnostics:0` summary.
+**pin は `"Fn"` へ追随させた (2026-08-27)。** 経緯は
+[`decisions-selfhost-zero-arity-defn-type.md`](decisions-selfhost-zero-arity-defn-type.md) の「7〜11 本目」節。
+判別の結果、これは `render-type-text` のバグではなく `I-45` 契約そのものだと確定した
+(詳細は `ISSUES.md` の `I-76`)。
+
+**方法論として残す点**: 本 ADR は `#[ignore]` 下の test の**自称期待値**を Evidence にしていた。
+lane から外れた test は赤に転じても誰も気付かないので、Evidence として引くなら
+**どの lane が実際にそれを回しているか**を併記しなければならない。この失敗モードは
+`ISSUES.md` の `I-70` が 43 件を突き合わせて確認したもので、本 ADR はその 3 件のうちの 1 件である。
 
 ## Boundary
 

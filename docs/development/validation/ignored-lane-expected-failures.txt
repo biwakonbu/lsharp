@@ -305,16 +305,24 @@ lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_stateful_single_ses
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry  # 保留: LSP stdio frame 系。selfhost_lsp_docs_ops のログ待ち
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry  # 保留: 同上
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak  # 保留: 同上
-lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_file  # 引き取り先: CHECK-TYPE-PIN-01 -- [a] 陳腐化 pin。914bd9f1 (I-45) が Unit -> body へ変えた際の更新漏れ。契約は decisions-selfhost-zero-arity-defn-type.md
-lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_check_json_file  # 引き取り先: CHECK-TYPE-PIN-01 -- [a] 陳腐化 pin。同上 (--json 経路)
 lsharp-wasm::e2e selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_repl_summary  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L2 (アドレス印字)
 
+# 削除 (2026-08-27): check の型名 pin 5 本
+#   (selfhost_cli_actual_main_args::..._check_file / ..._check_json_file,
+#    selfhost_cli_core::..._check_file_handler / ..._check_source_core /
+#    ..._check_source_builtin_application_type_contract) は
+#   I-45 契約 (Unit -> body) へ pin を追随させて緑に転じたので台帳から外した。
+#   GREEN: /Users/biwakonbu/github/tmp/checkpin/pin.log  ok. 5 passed; 0 failed; 311.96s
+#   **したがって 2026-08-24 の sweep ログに対して compare_ignored_lane.py を回すと
+#   この 5 件が「新規 FAIL」に見えて exit 1 になる。** ログの方が修正より古いだけで、
+#   退行ではない。突合の基準は次の full sweep のログである。
+#   判断の正本は docs/adr/decisions-selfhost-zero-arity-defn-type.md の「7〜11 本目」節。
+
 # ---- 2026-08-24 full sweep (18 module / 1,431 件) で新たに露出した 145 件 ----
+# **現在この節は 142 行である。** うち 3 件 (check の型名 pin) は 2026-08-27 に緑へ転じて
+# 削除した (直上の削除注記を参照)。露出時点の 145 という数は sweep の実測なので変えない。
 # 引き取り先の ID は ISSUES.md I-71〜I-75 および TODO.md の該当項目。
 # **原因が付いて緑になるまで行を消さない** (compare_ignored_lane.py が新規 FAIL と読む)。
-lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_check_file_handler  # 引き取り先: CHECK-TYPE-PIN-01 -- [a] 陳腐化 pin の疑い。I-45 (Unit -> body) の更新漏れ。ただし判別前 -- CHECK-TYPE-PIN-01 の表を参照
-lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_check_source_builtin_application_type_contract  # 引き取り先: CHECK-TYPE-PIN-01 -- [a] 陳腐化 pin の疑い。I-45 (Unit -> body) の更新漏れ。ただし判別前 -- CHECK-TYPE-PIN-01 の表を参照
-lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_check_source_core  # 引き取り先: CHECK-TYPE-PIN-01 -- [a] 陳腐化 pin の疑い。I-45 (Unit -> body) の更新漏れ。ただし判別前 -- CHECK-TYPE-PIN-01 の表を参照
 lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う
 lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う
 lsharp-wasm::e2e selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_point_stage2_stage3  # 引き取り先: I-71 -- [c] I-71 stage-N 生成 Wasm の translation error (offset 329391/457947/310805 の 3 種、expected i64 but nothing on stack)。ftable/function index の誤解決を疑う / I-70 で突き合わせ済 (2026-08-24): decisions-test-gate-staleness-repair.md が本名を引くが、引用は panic メッセージであり本文が selfhost_bootstrap_acceptance.rs を含むので参照は一意。同名 test が selfhost_typeinfer_pipeline_bootstrap にも在り緑だが、ADR はそちらを指していない。ADR 側の訂正は不要

@@ -173,6 +173,52 @@ ty-fun (tag 3) を `"Fn"` へ潰すので、`Unit -> Int` になった `main` �
 `workspace-expected-failures.txt` へは追記していない — 同ファイルの正本は 2026-08-16/17 の
 計測で、その時点では 5 本とも緑だったからである。
 
+### 7〜11 本目 (2026-08-27、`--ignored` 全量 sweep で確定)
+
+前節の「**6 本もまだ下限である**」は当たっていた。`I-64` の `--ignored` lane 全量 sweep
+(2026-08-24、18 module / 1,431 件) が `914bd9f1` 以降はじめて full lane を回し、
+**残り 5 本が確定した**。合計 11 本。
+
+| test | 旧期待 | 実測 = 新期待 |
+|---|---|---|
+| `selfhost_cli_actual_main_args::..._main_with_args_check_file` | `"Int"` | `"Fn"` |
+| `selfhost_cli_actual_main_args::..._main_with_args_check_json_file` | `report["type"] == "Int"` | `== "Fn"` |
+| `selfhost_cli_core::..._check_file_handler` | `"Int"` | `"Fn"` |
+| `selfhost_cli_core::..._check_source_core` | `"Int"` | `"Fn"` |
+| `selfhost_cli_core::..._check_source_builtin_application_type_contract` | `"Bool"` | `"Fn"` |
+
+5 本とも fixture は 0 引数 `defn` で、`run-check-program` (`Cli.ls:744-745`) が
+`infer-program-analysis-type` の返す **program 全体の型**を `render-type-text` へ渡す経路である。
+**11 本すべてが同一の機序**で、新しい失敗モードは出なかった。
+
+#### 5 本目は別扱いを要した — 判別の記録
+
+`..._check_source_builtin_application_type_contract` だけ旧期待が `"Int"` ではなく `"Bool"` で、
+fixture も `(defn probe [] (not true))` と `(not x)` を含む。ここには
+**`render-type-text` が適用結果を関数型へ潰している**という別の仮説が立ちうる。
+それが正しければ本物の型付けバグであり、pin を `"Fn"` へ動かすのは**バグの塗り潰し**になる。
+
+**pin を動かす前に判別した。結果は契約側**である。`run-check-program` が
+`render-type-text` へ渡すのは program の型であって式の型ではない。`(not true)` の型は
+`render-type-text` に一度も到達しない。program の末尾は `defn` なので、`I-45` 適用後は
+arity を問わず常に関数型であり、`"Fn"` は正しい出力である。**実装は触っていない。**
+
+**ただしこの pin は緑になっても検査を失っている。** `"Fn"` はどの `defn` に対しても返るので、
+builtin `not` の戻り値型を 1 ビットも区別しない。test 名が主張する検査は消えた。
+**緑になることと検査していることは別である。** 失われた coverage は `ISSUES.md` の `I-76` /
+`TODO.md` の `CHECK-BUILTIN-RET-COV-01` が保持する。ここで代替経路を作らないのは、
+「`check` に式の型を問う口を足すか、`TypeInferBuiltins` の unit test へ寄せるか」が
+契約の話であり、pin 追随の slice で決めるべきでないからである。
+
+
+```
+# RED (--ignored 全量 sweep で観測、2026-08-24)
+/Users/biwakonbu/github/tmp/i64/mod-selfhost_cli_core.log            left: "Fn" / right: "Bool"
+/Users/biwakonbu/github/tmp/i64/mod-selfhost_cli_actual_main_args.log  left: "Fn" / right: "Int"
+# 張り直し後の GREEN
+/Users/biwakonbu/github/tmp/checkpin/pin.log        ok. 5 passed; 0 failed; 311.96s
+```
+
 ### 計測していない範囲
 
 - **selfhost の自己適用 (stage chain)**。`#[ignore]` lane

@@ -2849,7 +2849,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     - **L1 は本項目から外した (2026-08-23)。** `..._check_file` / `..._check_json_file` が
       `"Fn"` を返すのは infer のバグではなく、`decisions-selfhost-zero-arity-defn-type.md`
       (2026-08-22 accepted / `914bd9f1` / `I-45`) が Rust parity を根拠に選んだ契約どおりの挙動。
-      赤 2 件は同 commit が更新し漏らした陳腐化 pin なので `CHECK-TYPE-PIN-01` へ移した。
+      赤 2 件は同 commit が更新し漏らした陳腐化 pin なので本項目から外し、
+      2026-08-27 に `"Fn"` へ追随させて解決した (`decisions-selfhost-zero-arity-defn-type.md` の「7〜11 本目」節)。
     - **L2** `repl-session-eval` (`Cli.ls:1463`) が tag を見ずに `ty-name` を呼ぶ。本項目の本体。
   受入条件: 先に RED を立てる。`lsharp repl` が `(defn main [] 42)` に対し **`type:Fn`** を
   印字すること (`type:Int` ではない — `I-45` の契約で `Unit -> Int` になり、
@@ -2862,7 +2863,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
       **pin `type:Int` → `type:Fn` への更新を本項目の作業に含める**。
       これは実装に合わせて期待値を緩めるのではなく、`I-45` の契約
       (`decisions-selfhost-zero-arity-defn-type.md`) に pin を追随させる訂正である
-      (`CHECK-TYPE-PIN-01` の 2 本と同じ根拠、同じ fixture `(defn main [] 42)` = 17 byte)。
+      (2026-08-27 に解決した `check` の型名 pin 5 本と同じ根拠、
+      同じ fixture `(defn main [] 42)` = 17 byte。`decisions-selfhost-zero-arity-defn-type.md` の「7〜11 本目」節)。
       **sweep で実測が付いた (2026-08-24)。** `selfhost_cli_core.rs:4790` の実測は
       `type:type--9223372036853734496`、`..._repl_summary` (`:1786`) は
       `type:type--9223372036853734056`。**値が run ごとに違う**のでアドレス由来という
@@ -2876,41 +2878,28 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `builtin-type-name-text` を通す)。新規設計は要らない。
   **含めない範囲**: `selfhost_gc_stateful_soak` の LSP stdio frame 3 件 (別原因)、
   `EmbeddedCli.ls:113-114` の同型コード (`repl` 経路を持たないなら触らない)、
-  `check` の型名 pin (`CHECK-TYPE-PIN-01`)。
+  `check` の型名 pin (2026-08-27 に別 slice で解決済み。`decisions-selfhost-zero-arity-defn-type.md` の「7〜11 本目」節)。
 
-- [ ] `CHECK-TYPE-PIN-01` `I-45` が更新し漏らした `check` の型名 pin を追随させる — Issue `I-69` / `I-64`。
-  `914bd9f1` (2026-08-22、`decisions-selfhost-zero-arity-defn-type.md`) が 0 引数 `defn` を
-  `Unit -> body` へ変えた際、同一ファイルの型名 pin を全部取り残した。翌日の陳腐化 pin 修復パス
-  `13a505b2` (2026-08-23、`I-60`) が `..._check_format_json` の pin だけを `"Fn"` へ直したが、
-  **同ファイルの兄弟 3 本は取り残されたまま**である (`..._check_file` / `..._check_json_file` /
-  `..._repl_summary`。最後の 1 本は `REPL-TYPE-TAG-01` が引き取る)。直された 1 本も
-  `#[ignore]` 下にあり、赤で気付いたのではない。
-  **`I-64` が想定していた壊れ方そのもので、混入から 1 日で観測された。**
-  赤を狙った修復パスですら取りこぼしている点が本件の重さである。
-  **射程が `selfhost_cli_core` にも広がった (2026-08-24、sweep 完走)。** 同じ壊れ方が
-  3 本追加で見つかった。**`13a505b2` が取り残した兄弟は 3 本ではなく 6 本だった**ことになる。
-
-  | test | 実測 | pin |
-  |---|---|---|
-  | `selfhost_cli_core::..._check_file_handler` | `Fn` | `Int` |
-  | `selfhost_cli_core::..._check_source_core` | `Fn` | `Int` |
-  | `selfhost_cli_core::..._check_source_builtin_application_type_contract` (`:1157`) | `Fn` | `Bool` |
-
-  3 本目は期待が `Int` ではなく `Bool` である点に注意する。`(not x)` の**戻り値**型を
-  見ているので、`Unit -> body` 契約とは別に **`render-type-text` が適用結果ではなく
-  関数型そのものを潰している可能性**がある。**pin を直す前にどちらか判別すること。**
-  判別せずに `"Fn"` へ書き換えると、本物の型付けバグを pin で塗り潰す。
-
-  受入条件: (a) `..._check_file` / `..._check_json_file` および上表の
-  `selfhost_cli_core` 3 本の型名 pin を
-  `decisions-selfhost-zero-arity-defn-type.md` を根拠に更新し、全て緑になること。
-  ただし `..._check_source_builtin_application_type_contract` は上記の判別を先に行い、
-  **実装側の誤りだった場合は pin を動かさず別項目へ切る**こと。
-  (b) `decisions-v0.3-native-cli-check-file-e2e.md` の Evidence 節 (`Int` / `diagnostics:0` と
-  書いている行) を実測値へ訂正し、**`#[ignore]` 下の test の自称期待値を Evidence にしていた**
-  旨を残すこと。
-  **含めない範囲**: `infer` / `render-type-text` の挙動変更 (契約は `I-45` で確定済み。実装は
-  触らない)、`repl` のアドレス印字 (`REPL-TYPE-TAG-01`)。
+- [ ] `CHECK-BUILTIN-RET-COV-01` `check` の型名では検査できなくなった builtin 戻り値型の
+  coverage を回復する — Issue `I-76`。
+  `check` 型名 pin の追随 slice (2026-08-27) の判別で確定した:
+  `run-check-program` (`Cli.ls:744-745`) が
+  `render-type-text` へ渡すのは **program 全体の型**であり、末尾が `defn` である限り
+  常に関数型になる。`I-45` で 0 引数 `defn` も `Unit -> body` になったので、
+  **`check` の型名は引数の有無にかかわらず `"Fn"` に潰れる**。
+  `..._check_source_builtin_application_type_contract` は fixture
+  `(defn probe [] (not true))` に対し `"Bool"` を pin していたが、
+  2026-08-27 に `"Fn"` へ追随させた (`decisions-selfhost-zero-arity-defn-type.md` の「7〜11 本目」節)。**緑にはなるが、
+  `"Fn"` はどの `defn` でも返るので builtin `not` の戻り値型を何も区別しない。**
+  受入条件: 先に RED を立てる。builtin の戻り値型が `Bool` であることを
+  **`"Fn"` に潰れない経路**で検査すること。候補は 2 つあり、**どちらを採るかを先に決めて
+  ADR に却下理由ごと残すこと**。(1) `Types/TypeInferBuiltins` 側の unit test で
+  `infer` の結果型を直接見る。(2) `check` に式の型を問う口を足す
+  (契約変更なので `docs/language/` の更新が要る)。
+  **含めない範囲**: `render-type-text` / `infer-program-analysis-type` の挙動変更
+  (`I-76` で「実装は触らない」と判定済み)、同 slice が動かした残り 4 本の pin
+  (あちらは coverage を失っていない -- `check` パイプラインが通ることの検査であって、
+  特定の式の型の検査ではない)。**cargo が要る。**
 
 - [ ] `STAGE-WASM-TRANSLATE-01` stage-N 生成 Wasm の `expected i64 but nothing on stack` を潰す — Issue `I-71`。
   `--ignored` 全量 sweep (2026-08-24) の最大収量。**赤 72 件**が
@@ -2974,7 +2963,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
 - [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 19 件に原因を付ける — Issue `I-75`。
-  新規赤 145 件のうち `I-71`〜`I-74` / `CHECK-TYPE-PIN-01` / `REPL-TYPE-TAG-01` の
+  新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
+  `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
   内訳は `ignored-lane-expected-failures.txt` の `引き取り先: I-75` 行が正本。
   **先に `exit code 1` 3 件の stderr を拾えるようにする。** `support.rs:188` が
