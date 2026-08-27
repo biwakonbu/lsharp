@@ -469,7 +469,8 @@ fn build_minimal_component_wasm() -> Vec<u8> {
 
 #[test]
 fn test_run_wasm_wasi_nonzero_exit_reports_captured_stdout() {
-    let wasm_bytes = compile_preview1(r#"(defn main [] (do (print-string "error: boom") (proc-exit 1) 0))"#);
+    let wasm_bytes =
+        compile_preview1(r#"(defn main [] (do (print-string "error: boom") (proc-exit 1) 0))"#);
 
     let err = run_wasm_wasi_with_dir_args_and_stdin(&wasm_bytes, None, &[], "")
         .expect_err("exit code 1 は Err になるべき");
@@ -502,16 +503,13 @@ fn test_run_wasm_wasi_nonzero_exit_marks_empty_stdout() {
 
 #[test]
 fn test_run_wasm_with_mode_preview1_nonzero_exit_reports_captured_stdout() {
-    let wasm_bytes = compile_preview1(r#"(defn main [] (do (print-string "error: mode-boom") (proc-exit 1) 0))"#);
+    let wasm_bytes = compile_preview1(
+        r#"(defn main [] (do (print-string "error: mode-boom") (proc-exit 1) 0))"#,
+    );
 
-    let err = run_wasm_with_mode_and_dir_args_and_stdin(
-        &wasm_bytes,
-        WasiMode::Preview1,
-        None,
-        &[],
-        "",
-    )
-    .expect_err("exit code 1 は Err になるべき");
+    let err =
+        run_wasm_with_mode_and_dir_args_and_stdin(&wasm_bytes, WasiMode::Preview1, None, &[], "")
+            .expect_err("exit code 1 は Err になるべき");
 
     assert!(err.contains("WASI Preview1 実行に失敗"), "{err}");
     assert!(err.contains("exit code 1"), "{err}");
@@ -526,8 +524,7 @@ fn test_format_nonzero_exit_error_keeps_prefix_verbatim_and_appends_stdout() {
     let message = format_nonzero_exit_error("実行に失敗", 1, "error: boom\n");
 
     assert_eq!(
-        message,
-        "実行に失敗: exit code 1; stdout=\"error: boom\\n\"",
+        message, "実行に失敗: exit code 1; stdout=\"error: boom\\n\"",
         "既存の前置きは逐語で残し、後ろへ足すだけにすること"
     );
 }
@@ -549,10 +546,7 @@ fn test_format_nonzero_exit_error_keeps_head_and_tail_of_long_stdout() {
 
     let message = format_nonzero_exit_error("実行に失敗", 1, &stdout);
 
-    assert!(
-        message.contains("HEAD-MARKER"),
-        "先頭を残すこと: {message}"
-    );
+    assert!(message.contains("HEAD-MARKER"), "先頭を残すこと: {message}");
     assert!(
         message.contains("error: TAIL-MARKER"),
         "末尾を残すこと: {message}"
