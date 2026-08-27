@@ -2986,8 +2986,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **母数 13 は動かさない。裁定 5 で #9 が削除から assertion 追加へ移った分だけ内訳が動いている。**
   うち 3 件 (`test_i64_if_condition_validity` / `test_parse_compiler_ls` /
   `test_parse_caws_standalone`) は `#[ignore]` を持たず、通常 lane で毎回走る。
-  走査は `scripts/sweep_unchecked_result.py`。**出力をそのまま件数として使わないこと**
-  (既知の偽陽性 2 件が残っている)。
+  走査は `scripts/sweep_unchecked_result.py`。**出力をそのまま件数として使わないこと** —
+  生 hit は行単位で 18 件ある。test 単位へ畳んで 15、走査の偽陽性 1 件
+  (`runtime_allocator_closures.rs:1604`) と基準外 1 件 (`part_007.rs:264`) を落として **13**。
+  この検算は 2026-08-27 に再実行済み (ADR の Evidence 節が正本)。
   受入条件:
   - **`panic!` へ一括置換して済ませないこと。** `assert!(matches!(x, A | B | C | D | E))` のような
     **恒真な assertion を足して緑にしない**
@@ -3029,6 +3031,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - **是正の型は `part_008.rs:471` の `..._reports_main_again_build_progress` に倣う** —
     debug 出力を `Vec<i64>` へ parse し、marker の値と順序を `ordered_marker_positions(...)` で
     検査する。**新規設計を起こさない**
+  - **`sweep_unchecked_result.py` はこの形を見つけられない。** 判定が
+    「結果を束縛したが assert していない」なので、`assert!(!...is_empty())` があると hit しない。
+    12 件の一覧は `I-85` の表が正本。網羅を主張するなら**別の走査を書く**
   - **期待値は実測で確定する。** 12 件それぞれ probe の主題が違うので、
     一括の期待値は置けない。名前が主題を示しても極性までは示さない (`I-82` #5 の実例)
   - **12 件とも `#[ignore]`。** 再計測は `selfhost_bootstrap_four_layer` 1 本

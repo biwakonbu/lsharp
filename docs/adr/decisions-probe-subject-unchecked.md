@@ -314,7 +314,28 @@ four_layer の prefix ルール 4 本 (`test_e2e_boot04_` / `test_e2e_bootstrap_
 
 ## Evidence
 
-実装後に埋める。現時点で確定している実測は 1 つだけ。
+実装後に埋める。現時点で確定している実測は下記 (cargo を要さない範囲のみ)。
+
+
+### 13 という件数の検算 (2026-08-27、cargo 不使用)
+
+`python3 scripts/sweep_unchecked_result.py` を再実行し、**18 hit** を得た。
+hit は行単位なので、test 単位へ畳んでから基準を当てる。
+
+| 段階 | 数 | 内訳 |
+|---|---|---|
+| 生 hit | 18 | `a':match` 8 / `b:if-let` 1 / `c:binding` 9 |
+| test 単位へ畳む | 15 | `stage_chain.rs:54969/54974/54979/54984` の 4 hit が #13 の 1 test に畳まれる |
+| 走査の偽陽性を落とす | 14 | `runtime_allocator_closures.rs:1604` — `LSHARP_GC_METRICS_OUT` の `if let` で probe ではない |
+| 基準の外を落とす | **13** | `part_007.rs:264` — 主題を別に検査している (上の「基準の外にある隣接ケース」) |
+
+**引用単位と test 単位を混ぜない。** 生 hit 18 をそのまま件数として使うと、
+#13 が 4 件に膨らむ。これが「件数が 3 度動いた」うちの 1 回の正体である。
+
+**走査は `I-85` の形を見つけられない。** `sweep_unchecked_result.py` の判定は
+「結果を束縛したが assert していない」であり、`assert!(!output.trim().is_empty())` があれば hit しない。
+走査の定義としては正しい。`I-85` の 12 件を見つけるには**別の走査が要る**
+(「主題の assertion が存在するが、その中身が出力の有無しか見ていない」)。
 
 | 対象 | 実測 | 取得条件 |
 |---|---|---|
