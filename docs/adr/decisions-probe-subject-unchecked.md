@@ -138,6 +138,14 @@ wasmparser と wasmtime に食わせ、結果を `eprintln!` するだけであ�
 したがって正しい契約は「**wasmparser と wasmtime の両方がこれを reject する**」である。
 `is_ok()` を assert すると赤になり、赤を消そうとして fixture を書き換える、という悪い連鎖に入る。
 
+> **訂正 (2026-08-27、裁定 6 の実測による)。** 上の 1 文は誤りだった。実測では
+> `validate_wasm_detailed` は **`Ok(())` を返す**。wasmparser が見逃したのではなく、
+> この helper が `ValidPayload::Func` を捨てて関数本体を 1 つも検証しないためである
+> (裁定 5 が指摘した弱さと同じもの)。**正しい契約は「両方が reject する」ではなく
+> 3 者の強度差そのもの**であり、裁定 6 でそう固定した。
+> `is_ok()` を assert すると赤になる、という予測も誤りで、実際には緑になる。
+> **「実物から導く」と書いた裁定が、実物を見る前に極性を書いてしまっていた。**
+
 **`I-83` との関係**: 2 つ目のエラー (`expected [i64] but got []`) は、`I-83` が記録した
 `expected i64 but nothing on stack` と同じ形である。この fixture は
 「`if (result i64)` に else が無い」という `I-83` の症状の最小再現形になっている可能性がある。
@@ -230,6 +238,88 @@ stage2 を wasmtime で load して走らせており、wasmtime は load 時に
 **内訳の移動。** 13 件は 13 件のまま。削除 4 → **3** (`test_debug_stage2_save` は基準外のまま別枠) /
 assertion 追加 8 → **9**。件数の定義はこれまでに 3 度動いており、これ以上動かさないと決めた。
 **動いたのは内訳であって母数ではない。**
+
+### 裁定 6: 非 ignore 3 件 (#5 / #6 / #7) の実質化 — 完了 (2026-08-27)
+
+`#[ignore]` を持たない 3 件は lane を要さないので先に閉じた。**実測を先に取り、
+その結果が裁定 2 の予測を 1 点で否定したので、裁定 2 を訂正したうえで契約を書き直した。**
+
+#### 実測 (`cargo test -p lsharp-wasm --test e2e -- --nocapture --exact`)
+
+| 対象 | 実測 |
+|---|---|
+| `validate_wasm_detailed(TEST_I64_IF_WASM)` | `Ok(())` |
+| `validate_wasm_function_bodies(TEST_I64_IF_WASM)` | `Err("関数本体の検証に失敗: 1 件\nfunc[0] body=[23..32] err@26 (0x1a): type mismatch: expected i32, found i64")` |
+| `wasmtime::Module::new(.., TEST_I64_IF_WASM)` | `Err("WebAssembly translation error … Invalid input WebAssembly code at offset 26: type mismatch: expected i32, found i64")` |
+| `lsharp_syntax::parse(Compiler.ls)` | `Ok`、`decls = 312` |
+| `lsharp_syntax::parse(test_caws.ls)` | `Err(Parse(Multiple([...])))` -- 末尾 `2945..2951` に 6 件 |
+
+#### #5 は 裁定 5 の実行可能な証拠になった
+
+裁定 5 は「3 つの wasm 検証 helper の強度が違う」をソース読解で導いた。**#5 の fixture は
+その差が現れる最小の実例そのものだった** — 32 bytes の同じバイト列に対して、弱い helper は
+`Ok`、強い helper と wasmtime は同じ型不一致 (`expected i32, found i64` @ offset 26) を返す。
+
+そこで #5 の契約を「両方 reject」ではなく **3 者の強度差の pin** にした。
+1 行目の `validate_wasm_detailed(...).is_ok()` は望ましさの表明ではなく、
+**弱い helper が弱いままであることの確認**である。ここが赤くなったら 裁定 5 の前提
+(弱い helper を検査の引き取り先にしてはならない) が変わったという合図なので、
+失敗メッセージにそう書いた。
+
+これで **「引き取り先の helper 選択は実測で裏付けられた」** — 裁定 5 は
+「`validate_wasm_function_bodies` を使う」と決めたが、それが実際に本体の型不一致を捕捉することは
+未実測だった。#5 がそれを恒常的に検査する。
+
+#### #7 は fixture 側が壊れていた — 修復して pin した
+
+`test_caws.ls` (2,952 bytes / 2 行) は括弧の釣り合いが取れている (文字列・コメントを
+除いて数えても最終深さ 0) のに Rust parser が拒否する、という一見矛盾した実測から入った。
+構造を機械的に走査して原因が 1 箇所に確定した。
+
+- **offset 1795 の `(if (> arg-count 0) (do ...))` が else 節を欠く 2 引数 `if`。**
+  L# の `if` は 3 引数である (`crates/lsharp-syntax/src/parser/expr.rs:194` の `parse_if` が
+  cond / then / else を順に必須で読む)
+- parser はこの `if` の閉じ括弧 (offset 2945) で else を求めて `)` に当たる。
+  **報告された最初のエラー span 2945..2946 と一致する**。残り 5 件は回復の連鎖
+- 走査した全 form のうち arity 異常は**この 1 箇所だけ**だった
+
+**Rust parser の拒否が正しく、fixture が壊れていた。** そこで `0` を 1 つ補って修復し、
+`Ok` / `decls == 2` を pin した。修復後、深くネストした 2.9KB の実コードが 1 ファイルとして
+パースできることの回帰ガードになる。
+
+**期待値を実測へ書き換えるのではなく、壊れた入力を直した。** この 2 つは形が似ているが別物である
+(前者は本 ADR が繰り返し禁じてきたもの)。区別できたのは、fixture が壊れているという判定を
+**parser の実装 (`parse_if` の arity) という独立した根拠**から取ったからである。
+実測の値だけを根拠にしたなら、どちらの向きにも書けてしまう。
+
+#### 副産物: selfhost parser は壊れた fixture を受理していた (`I-86`)
+
+修復前の fixture を `lsharp parse` (native selfhost へ委譲される) に食わせると
+`decls:2 diagnostics:0` を返した。最小例でも同じで、2 引数 `if` も top-level のゴミ atom
+(`@@@ ###` → `decls:7`) も `diagnostics:0` で通る。**Rust reference より緩い。**
+`diagnostics` チャネル自体は生きている (括弧不足は `P0001` を返す) ので、
+報告経路が無いのではなく検査が無い。
+
+**本 slice では直さない。** `ISSUES.md` の `I-86` / `TODO.md` の `SELFHOST-PARSE-LENIENT-01` へ切った。
+なお fixture を修復したので、**この乖離を検出する test は現存しない**。修復と引き換えに
+検出手段を失ったことは、`I-86` に明記した。
+
+#### RED の取り方 (3 件とも入力を壊して取った)
+
+| test | 壊した入力 | 結果 |
+|---|---|---|
+| #5 | `TEST_I64_IF_WASM[..20]` (切り詰め) | 1 つ目の assert で FAILED |
+| #6 | `Compiler.ls` の先頭 2,000 bytes だけ | パース失敗で FAILED |
+| #7 | fixture を修復前へ戻す | パース失敗で FAILED |
+
+**期待値を一時的に狂わせる形 (弱い RED) は使っていない。** 3 件とも入力側を壊した。
+`I-79` が定めた形 (b) と同じ取り方である。
+
+#### 内訳は動かない
+
+3 件はいずれも 裁定 2 / 裁定 3 の **assertion 追加** 帯にいたままである。母数 13 も内訳
+(assertion 追加 9 / 削除 3 / 実質化 1) も動かない。**残 10 件は全部 `#[ignore]` 側**で、
+`selfhost_bootstrap_four_layer` の再計測 1 本が要る。
 
 ## 却下した案
 

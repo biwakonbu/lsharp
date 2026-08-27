@@ -2984,8 +2984,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   残りは実装で、内訳は **assertion 追加 9 件 / 削除 3 件 (+ 基準外の隣接 `test_debug_stage2_save`) /
   恒真 assert の実質化 1 件**。
   **母数 13 は動かさない。裁定 5 で #9 が削除から assertion 追加へ移った分だけ内訳が動いている。**
-  うち 3 件 (`test_i64_if_condition_validity` / `test_parse_compiler_ls` /
-  `test_parse_caws_standalone`) は `#[ignore]` を持たず、通常 lane で毎回走る。
+  **非 ignore の 3 件 (`test_i64_if_condition_validity` / `test_parse_compiler_ls` /
+  `test_parse_caws_standalone`) は 2026-08-27 に実質化を完了した** (ADR の 裁定 6 が正本)。
+  **残 10 件は全部 `#[ignore]` 側で、lane 1 本が要る。**
   走査は `scripts/sweep_unchecked_result.py`。**出力をそのまま件数として使わないこと** —
   生 hit は行単位で 18 件ある。test 単位へ畳んで 15、走査の偽陽性 1 件
   (`runtime_allocator_closures.rs:1604`) と基準外 1 件 (`part_007.rs:264`) を落として **13**。
@@ -2994,7 +2995,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - **`panic!` へ一括置換して済ませないこと。** `assert!(matches!(x, A | B | C | D | E))` のような
     **恒真な assertion を足して緑にしない**
   - **期待値を test 名から推定しないこと。** `test_i64_if_condition_validity` は
-    fixture が仕様上不正な wasm で、正しい契約は `is_ok()` ではなく **両方が reject する**である
+    fixture が仕様上不正な wasm だが、実測 (2026-08-27) では **`validate_wasm_detailed` は
+    `Ok` を返す**。「両方が reject する」という本項目の当初の予測は誤りだった。
+    正しい契約は 3 者の強度差そのもの (弱い helper は見逃し、強い helper と wasmtime が捕捉する)
   - 削除する 3 件 + 基準外 1 件は、**診断出力の引き取り先の同値性を実測で確かめてから**削除する
     (ADR に候補は書いたが未検証)
   - **`test_validate_stage2_wasm` は削除しない。実質化する** (ADR 裁定 5)。当初の削除裁定は
@@ -3005,20 +3008,39 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     (`AGENTS.md` の rename 再計測規約も発火する)。**変換ならこの 3 箇所は無傷で済む**
   - **#9 は `validate_wasm_function_bodies` で assert する。`validate_wasm_detailed` ではない。**
     後者は `ValidPayload::Func` を捨てるので関数本体を 1 つも検証しない。
-    **実測が先** — targeted で 1 回走らせて両者の戻りを見てから pin する。FAIL なら
-    **check を緩めず**新規 issue (次番 `I-85`) を切り、ignored lane 台帳へ行を足す
+    **実測が先** -- targeted で 1 回走らせて両者の戻りを見てから pin する。FAIL なら
+    **check を緩めず**新規 issue (次の空き番は `I-87`。`I-85` / `I-86` は使用済み) を切り、
+    ignored lane 台帳へ行を足す。
+    なお `validate_wasm_function_bodies` が実際に本体の型不一致を捕捉することは
+    `test_i64_if_condition_validity` が固定済みなので、helper 選択の根拠は実測で裏付けられている
   - 削除する 4 件は `scripts/` / `docs/` / gate リストのいずれからも参照が無いことを実測済み。
     four_layer の prefix ルール 4 本とも `test_debug_` / `test_validate_` に一致しないので
     dead prefix (`TESTGATE-01`) も生じない
-  - `test_parse_compiler_ls` / `test_parse_caws_standalone` の実測が失敗を示したら、
-    **fixture や実装を赤が消える方向に触らず**、新規 issue を切って台帳へ載せる。
-    非 ignore なので引き取り先は `workspace-expected-failures.txt` 側
+  - `test_parse_compiler_ls` / `test_parse_caws_standalone` は実測済み (2026-08-27)。
+    前者は `Ok decls=312`。後者は fixture 自体が壊れており
+    (offset 1795 の `if` が else 節を欠く 2 引数 `if`)、Rust parser の拒否が正しかった。
+    fixture へ `0` を補って修復し、`Ok decls=2` を pin した。
+    **selfhost parser が壊れた fixture を `diagnostics:0` で受理していた乖離は `I-86`。**
   - **13 件中 12 件が `selfhost_bootstrap_four_layer` に属する。** 実装後に同 module の
     再計測が 1 本要る (前回実測 6748s ≈ 112 分)。計測 → 変更 → 再計測を細切れに繰り返さず、
     **four_layer に触る裁定を 1 slice に束ねて lane 1 本で覆うこと**
   - `..._representative_const_only_entrypoint_helper_offsets` (13 件目) は
     `selfhost_native_stage_chain` に属するので、four_layer の slice には入れない
   **含めない範囲**: probe が露出させる個々の失敗の修正。**cargo が要る。**
+
+- [ ] `SELFHOST-PARSE-LENIENT-01` selfhost parser の構文検査を Rust reference に合わせる — Issue `I-86`。
+  実測 (2026-08-27) で 2 形の乖離を確認した。`lsharp parse` は native selfhost へ委譲される。
+  - 2 引数 `if` (else 節欠落) を `diagnostics:0` で受理する。Rust は `Err`
+  - top-level のゴミ atom (`@@@ ###`) を `decls:7` として受理する。Rust は `Lex` エラー
+  受入条件:
+  - **どちらの形も先に赤い test を書く。** 現状 `diagnostics:0` を返すことを固定してから直す
+  - `if` の arity は `crates/lsharp-syntax/src/parser/expr.rs:194` の `parse_if` が正本
+    (cond / then / else を順に必須で読む)。selfhost 側をこれに合わせる
+  - 括弧不足は既に `P0001` として報告されるので、**報告経路を新設するのではなく検査を足す**
+  - 是正後、`tests/fixtures/selfhost-debug/test_caws.ls` の修復前バージョンが
+    selfhost 側でも拒否されることを実測する (修復済みなので fixture は複製して使う)
+  **含めない範囲**: Rust/selfhost の差分全般の網羅 (それは `NATIVE-DIFF-PIN-01` / `I-73`)。
+  **cargo が要る。**
 
 - [ ] `WEAK-SUBJECT-ASSERT-01` 主題 assertion が「空でないこと」だけの probe 12 件を実質化する — Issue `I-85`。
   `selfhost_bootstrap_four_layer` の `test_debug_boot04_*` 12 件

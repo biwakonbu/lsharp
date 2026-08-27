@@ -217,6 +217,7 @@
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
 | [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | open | `I-81` の裁定中に走査で発見 (2026-08-27)。うち 1 件は `I-75` が誤分類 |
 | [I-85](#i-85) | `test_debug_boot04_*` 12 件の主題 assertion が `!output.trim().is_empty()` だけ | 中 | open | `I-82` の裁定 5 を書く途中で発見 (2026-08-27)。`I-82` の 13 件には**含まない** |
+| [I-86](#i-86) | selfhost parser が Rust reference より緩く、不正な構文を `diagnostics:0` で受理する | 中 | open | `I-82` の #7 を実測して発見 (2026-08-27)。2 引数 `if` と top-level のゴミ atom の 2 形 |
 
 ### ドキュメント (DOC)
 
@@ -5646,3 +5647,37 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `I-82` の実装 slice と同じ module なので、**束ねて lane 1 本で覆うのが安い**。
 - **関連**: `I-82` (発見経路。基準の外という判定も含む)、`I-84` (「常に赤い probe」の裏返し)。
   引き取り先は `TODO.md` の `WEAK-SUBJECT-ASSERT-01`。
+
+<a id="i-86"></a>
+
+### I-86: selfhost parser が Rust reference parser より緩く、不正な構文を `diagnostics:0` で受理する
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-82` の #7 `test_parse_caws_standalone` に assertion を足すため、
+  fixture が本当にパースできるのかを実測して発見)
+- **内容**: 同じソースに対して Rust reference parser (`lsharp_syntax::parse`) と
+  selfhost parser (`lsharp parse` は native selfhost へ委譲される) の判定が割れる。
+
+  | 入力 | Rust reference | selfhost `parse` |
+  |---|---|---|
+  | `(defn main [] (if (> 1 0) 42))` -- 2 引数 `if` | `Err` (`expected "式", found ")"`) | `decls:2 diagnostics:0` |
+  | `(defn main [] (if (> 1 0) 42 0))` -- 3 引数 `if` | `Ok decls=2` | `decls:2 diagnostics:0` |
+  | `(module T)` + `@@@ ###` | `Err` (`Lex UnexpectedChar '@'`) | `decls:7 diagnostics:0` |
+  | `(defn main [] (if (> 1 0) 42 0)` -- 閉じ括弧不足 | (未計測) | `diagnostics:1,P0001@1:1` |
+
+  L# の `if` は 3 引数である (`crates/lsharp-syntax/src/parser/expr.rs:194` の `parse_if` は
+  cond / then / else を順に必須で読む)。**Rust 側が正しく、selfhost 側が緩い。**
+- **`diagnostics` チャネル自体は生きている。** 閉じ括弧不足は `P0001` として報告される。
+  報告経路が無いのではなく、**この 2 形が検査されていない**。
+- **top-level のゴミが decl として数えられる方が重い。** `@@@ ###` が `decls:7` になるということは、
+  selfhost の top-level が `(` 以外のトークンを decl 境界として受け入れている。
+  構文エラーが decl 数の水増しとして通過する。
+- **発見経路**: `tests/fixtures/selfhost-debug/test_caws.ls` は `compile-apply-with-source` の
+  古い inline 版を抜き出した fixture で、offset 1795 の `(if (> arg-count 0) (do ...))` が
+  else 節を欠いていた。Rust parser はこれを拒否し (末尾に余った `)` 6 個としてエラーが出る)、
+  selfhost CLI は `diagnostics:0` で受理していた。fixture 側は `0` を補って修復済み
+  (`I-82` の #7 の是正に含む)。**修復したので、この乖離を検出する test は現存しない。**
+- **本 issue では直さない。** selfhost parser の arity 検査追加は `I-82` の probe 実質化 slice の
+  範囲外である。`I-73` (native differential の pin) と同じ帯の、Rust/selfhost 差分の問題として扱う。
+- **関連**: `I-82` (発見経路)、`I-73` (Rust/selfhost 差分の pin)。
+  引き取り先は `TODO.md` の `SELFHOST-PARSE-LENIENT-01`。

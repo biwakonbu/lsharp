@@ -583,14 +583,38 @@ fn test_e2e_boot04_compiler_mode_ignores_dotted_flat_file() {
 
 #[test]
 fn test_i64_if_condition_validity() {
-    // i64 を if 条件に使う wasm を wasmparser と wasmtime で検証
-    let vresult = validate_wasm_detailed(TEST_I64_IF_WASM);
-    eprintln!("wasmparser result: {:?}", vresult);
+    // if 条件は i32 でなければならないので、i64 を条件に使う TEST_I64_IF_WASM は不正である。
+    // 同じバイト列に対する 3 つの検証手段の強度差をここで固定する:
+    //
+    //   validate_wasm_detailed        -- ValidPayload::Func を捨てるので見逃す (Ok)
+    //   validate_wasm_function_bodies -- 関数本体を個別に検証するので捕捉する (Err)
+    //   wasmtime::Module::new         -- 翻訳時に捕捉する (Err)
+    //
+    // この強度差が docs/adr/decisions-probe-subject-unchecked.md 裁定 5 の根拠である。
+    // 裁定 5 はソース読解で導いたが、本 test はそれを実行可能な形で保持する。
+    // 「緑になることと検査していることは別である」を検査する側の test なので、
+    // 1 行目の Ok は「弱い helper が弱いままであること」の確認であって、望ましさの表明ではない。
+    assert!(
+        validate_wasm_detailed(TEST_I64_IF_WASM).is_ok(),
+        "validate_wasm_detailed が関数本体の型不一致を捕捉するようになった。\
+         裁定 5 の前提 (弱い helper を検査の引き取り先にしてはならない) を見直すこと: {:?}",
+        validate_wasm_detailed(TEST_I64_IF_WASM)
+    );
+
+    let bodies_error = validate_wasm_function_bodies(TEST_I64_IF_WASM)
+        .expect_err("validate_wasm_function_bodies は if 条件の i64 を捕捉するはず");
+    assert!(
+        bodies_error.contains("func[0]") && bodies_error.contains("expected i32, found i64"),
+        "本体検証のエラーが関数番号と型不一致の両方を示していない: {bodies_error}"
+    );
+
     let engine = wasmtime::Engine::default();
-    let mresult = wasmtime::Module::new(&engine, TEST_I64_IF_WASM);
-    eprintln!(
-        "wasmtime result: {}",
-        if mresult.is_ok() { "OK" } else { "FAIL" }
+    let module_error = wasmtime::Module::new(&engine, TEST_I64_IF_WASM)
+        .expect_err("wasmtime は i64 を if 条件に使う wasm を拒否するはず");
+    let module_error = format!("{module_error:?}");
+    assert!(
+        module_error.contains("expected i32, found i64"),
+        "wasmtime のエラーが型不一致を示していない: {module_error}"
     );
 }
 
@@ -615,25 +639,41 @@ fn test_debug_stage2_save() {
 
 #[test]
 fn test_parse_compiler_ls() {
-    // Compiler.ls をパースして構文エラーを検出する
+    // selfhost のコード生成本体が Rust reference parser で構文エラー無く読めること。
+    // decl 数は下限だけを固定する (実測 312 / 2026-08-27)。上限を固定すると
+    // 関数を 1 つ足すたびに落ちる test になり、主題 (構文が壊れていないこと) から外れる。
     let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls")).expect("read file");
-    match lsharp_syntax::parse(&source) {
-        Ok(_) => eprintln!("Compiler.ls パース成功"),
-        Err(e) => eprintln!("Compiler.ls パースエラー: {:?}", e),
-    }
+    let program = lsharp_syntax::parse(&source)
+        .unwrap_or_else(|error| panic!("Compiler.ls のパースに失敗した: {error:?}"));
+    assert!(
+        program.decls.len() >= 300,
+        "Compiler.ls の decl 数が下限を割った: {} (実測 312 / 2026-08-27)",
+        program.decls.len()
+    );
 }
 
 #[test]
 fn test_parse_caws_standalone() {
-    // compile-apply-with-source を単独でパースする
+    // compile-apply-with-source を単独ファイルとしてパースできること。
+    // fixture は深くネストした実コード (約 2.9KB を 1 行) なので、
+    // ネストの深さや長さで parser が壊れていないことの回帰ガードになる。
+    //
+    // 2026-08-27 の実測でこの fixture は offset 1795 の
+    // `(if (> arg-count 0) (do ...))` が else 節を欠いており、L# の if (3 引数) として
+    // 不正だった。Rust parser が拒否したのは正しい挙動なので、fixture 側に `0` を補って
+    // 修復した。selfhost parser は修復前の fixture を `diagnostics:0` で受理していた --
+    // この乖離は ISSUES.md の I-86。
     let source = std::fs::read_to_string(
         selfhost_project_root().join("tests/fixtures/selfhost-debug/test_caws.ls"),
     )
     .expect("read file");
-    match lsharp_syntax::parse(&source) {
-        Ok(prog) => eprintln!("パース成功: {} decls", prog.decls.len()),
-        Err(e) => eprintln!("パースエラー: {:?}", e),
-    }
+    let program = lsharp_syntax::parse(&source)
+        .unwrap_or_else(|error| panic!("test_caws.ls のパースに失敗した: {error:?}"));
+    assert_eq!(
+        program.decls.len(),
+        2,
+        "fixture は (module TestCAWS) と defn の 2 decl から成る"
+    );
 }
 
 #[test]
