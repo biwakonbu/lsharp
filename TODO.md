@@ -3069,13 +3069,11 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 11 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 6 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
   内訳は `ignored-lane-expected-failures.txt` の `引き取り先: I-75` 行が正本。
-  **先に `exit code 1` 3 件の stderr を拾えるようにする。** `support.rs:188` が
-  exit code だけを文字列化して捨てているので、現状は診断の材料が無い。
   起票時 19 件のうち 4 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` へ移管済み。
   **さらに `..._full_inline_mismatch_probe` 1 件を `I-84` へ移管した (15 → 14)。**
   この 1 件は「原因未診断」ではなく**構造上必ず赤くなる診断ダンプ**で、分類そのものが誤っていた。
@@ -3083,13 +3081,39 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   失敗出力を台帳へ書き込み、うち 3 件を移管した (14 → 11)** —
   LSP Position の origin ずれ 2 件を `I-90` へ、`..._check_reports_invalid_canonical_case` の
   型名 `Fn` vs `Bool` を `I-76` へ。
-  残る 11 件は**症状は台帳に載ったが原因は未確定**である。
-  そのうち 5 件は `main-with-args` の `-o` / `--target` 経路という 1 群に見えるが、
-  **3 件は stderr が無いので同一原因と決められない。**
-  受入条件: 残る 11 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
+  **2026-08-28 の分類パス (cargo 不使用、残留 temp dir の実測のみ) で `main-with-args` 系
+  5 件を移管した (11 -> 6)** — `-o` の出力契約 2 件を `I-93` へ、component target の
+  capability boundary 3 件を `I-94` へ。出所の commit は同じだが症状も直し方も別なので
+  1 件にまとめなかった。
+  残る 6 件は**症状は台帳に載ったが原因は未確定**である。
+  受入条件: 残る 6 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
+
+- [ ] `CLI-OUTPUT-CONTRACT-01` `compile -o` / `build --output` の出力先契約を裁定する — Issue `I-93`。
+  実装は output file へ wasm binary を書き summary は stdout に出すが、e2e 2 件は
+  output file に summary text が来ることを期待して `read_to_string` で落ちている。
+  **どちらが正しいかがまだ決まっていない。** Rust driver は output file へ binary を書くので
+  実装側が揃っている疑いが濃いが、test の assert message は明示的に逆の意図を書いており、
+  単なる書き間違いとは言えない。
+  受入条件: driver と guest の `-o` 契約を突き合わせて正本を 1 つに決め、ADR に却下理由まで
+  書いたうえで、負けた側を直して台帳 2 行を落とすこと。
+  **期待値を実装出力に合わせるだけの変更にしないこと** — `CLAUDE.md` が禁じる形になる。
+  実装出力とは独立な根拠を 3 点以上そろえてから動かす (`I-90` の前例と同じ精査)。
+  **含めない範囲**: `--target` 系の期待値 (`CLI-COMPONENT-TARGET-EXPECT-01` が持つ)。
+  **cargo が要る。**
+
+- [ ] `CLI-COMPONENT-TARGET-EXPECT-01` component target を期待する e2e 3 件を境界へ合わせる — Issue `I-94`。
+  `--target wasi-component` / `wasm` は guest の capability boundary で拒否される。
+  この境界は `I-15` が意図された仕様として文書化済みで、component packaging には
+  外部ツールが要るため guest 単独では遂行できない。**境界を実装しに行く項目ではない。**
+  受入条件: 3 件を「境界エラーを期待する」形へ書き換えるか、遂行不能を理由に落とすかを
+  ADR で裁定し、台帳 3 行を落とすこと。特に `..._compile_target_changes_wasm_size` は
+  preview1 と component の size を比較する形なので、**書き換えると test の主張が変わる。**
+  何を検査しなくなるかを ADR に明記すること (`I-76` と同じ失敗の型)。
+  **含めない範囲**: guest への component packaging の実装。`SMOKE-GATE-03` (CI)。
+  **cargo が要る。**
 
 - [ ] `SELFHOST-TUPLE-REC-01` selfhost の異種 vector タプルをレコードへ移す — Issue `I-48`。
   `push-int-vector` / `push-object-vector` / `vector-push-*-rooted-v3` はいずれも

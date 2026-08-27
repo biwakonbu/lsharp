@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 11 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ移管。残り 11 件は症状を実測して台帳へ書いた |
+| [I-75](#i-75) | sweep で露出した未分類の赤 6 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、`main-with-args` 系 5 件を 2026-08-28 に `I-93` / `I-94` へ移管。残り 6 件は症状を実測して台帳へ書いた |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -224,6 +224,8 @@
 | [I-90](#i-90) | selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている | 中 | open | 判別測定で request 側 1 origin を確定し期待値 2 件を是正 (2026-08-28)。focused 3 本は緑。**`selfhost_cli_core` の lane 再計測が未了なので open のまま** |
 | [I-91](#i-91) | WASI runner が exit code 非 0 のとき捕捉済みの stdout を捨てるため、CLI の `error:` 行が失敗メッセージに届かない | 中 | resolved | 2026-08-27 に共通 helper へ寄せて解決。**`I-75` の 3 件は赤のままで、診断文が付くだけである** |
 | [I-92](#i-92) | entrypoint offset probe の parity test が aarch64 の経路しか通らず、x86 では selfhost 版と generic 版で正規化の有無が食い違う | 低 | open | `I-82` #13 の harness 修正 (2026-08-27) の過程で判明。**バグではなく被覆の欠落である** |
+| [I-93](#i-93) | e2e 2 件が `compile -o` / `build --output` の出力先に stdout summary が書かれることを期待しているが、実装は wasm binary を書く | 中 | open | `I-75` から移管 (2026-08-28)。`2ba93d0a` (2026-07-12) が契約を変えたとき test を更新しなかった。**どちらが正しいかは本 issue では裁定しない** |
+| [I-94](#i-94) | e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する | 中 | open | `I-75` から移管 (2026-08-28)。境界そのものは `I-15` が意図された仕様として文書化済み。**欠陥は test 側の期待値にある** |
 
 ### ドキュメント (DOC)
 
@@ -5174,24 +5176,25 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 11 件
+### I-75: sweep で露出した未分類の赤 6 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **11 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **6 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
   さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
   LSP Position の origin ずれ 2 件を `I-90` へ、
-  `..._check_reports_invalid_canonical_case` 1 件を `I-76` へ移管した)。
+  `..._check_reports_invalid_canonical_case` 1 件を `I-76` へ移管した。
+  2026-08-28 に `main-with-args` 系 5 件を `I-93` / `I-94` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
 
   | module | 件数 | 実測した症状 |
   |---|---|---|
-  | `selfhost_cli_core` | 8 | `main-with-args` 系 5 (UTF-8 不正 2 / `exit code 1` 3) / check の import 解決 1 / self-feed compile の OOB trap 1 / `validate-source-json` の数値 1 |
+  | `selfhost_cli_core` | 3 | check の import 解決 1 / self-feed compile の OOB trap 1 / `validate-source-json` の数値 1 |
   | `selfhost_native_stage_chain` | 2 | OOB trap 1 / native と selfhost の hash 不一致 1 |
   | `selfhost_lsp_docs_ops` | 1 | formatter の module body canonical text |
 
@@ -5230,10 +5233,33 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   (`cli-stderr` が `print-string` 経由で fd 1 へ書く)。**つまり診断材料は捕捉されており、
   runner が exit code 非 0 のときに握り潰しているだけ**である。詳細と根拠は `I-91`。
   **`I-91` を直すことが本件 3 件の診断の前提**になる。
-- **本 issue は保持であって診断ではない。** 残り 11 件それぞれの原因が付いた時点で
+- **2026-08-28 の分類パス (cargo 不使用)。`main-with-args` 系 5 件に原因が付いた。**
+  診断材料は runner の出力ではなく**ディスク上に残っていた**。UTF-8 で落ちる 2 件は
+  `read_to_string(...).unwrap()` で panic するので `remove_dir_all` に到達せず、
+  `$TMPDIR` の作業 dir がそのまま残る。dir 名に `std::process::id()` が入るので
+  run ごとに区別も付く。**test の完走を待たずに決着した。**
+
+  | 移管先 | 件数 | 原因 |
+  |---|---|---|
+  | `I-93` | 2 | `-o` / `--output` は wasm binary を書き、summary は stdout に出る。test は逆を期待している |
+  | `I-94` | 3 | component target は guest の capability boundary (`I-15` が文書化済み) で拒否される |
+
+  **`I-93` と `I-94` を 1 件にまとめなかった。** 出所は同じ `2ba93d0a` (2026-07-12) だが、
+  症状も直し方も別である。commit が同じであることは原因が同じであることを意味しない。
+
+  **上の 2026-08-27 の記述のうち 1 件が誤りだったので取り消す。**
+  「**stdout に wasm binary が出ている疑いがある** (= `-o` が効いていない形)」と書いたが、
+  実測は逆だった。**`-o` は効いている。** binary が入るのは output file の方で、
+  stdout には summary が出ている。台帳の注記も同時に是正した。
+
+  **`EMBEDDED-CLI-OPTION-SPACE-01` との関係は「無関係」で確定した。** 5 件はいずれも
+  option とその値の間の空白ではなく、出力先の契約と target の capability で落ちている。
+
+- **本 issue は保持であって診断ではない。** 残り 6 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
-  `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)。
+  `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)、
+  `I-93` / `I-94` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
@@ -6152,3 +6178,140 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **引き取り先**: `TODO.md` の `NATIVE-X86-ENTRYPOINT-PARITY-01`
 - **根拠**: `docs/adr/decisions-probe-subject-unchecked.md` の
   「#13 の実装 — harness が emitter の列契約を破っていた」節の「覆えていない範囲」
+
+<a id="i-93"></a>
+
+### I-93: e2e 2 件が `compile -o` / `build --output` の出力先に stdout summary が書かれることを期待しているが、実装は wasm binary を書く
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-75` の 11 件を分類する過程)
+- **対象** (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`):
+
+  | test | 行 | 引数 |
+  |---|---|---|
+  | `..._main_with_args_compile_output_path` | `:16239` (`TEST-CLI-02-AF4`) | `compile input.ls -o out.txt` |
+  | `..._main_with_args_build_output_path` | `:16276` (`TEST-CLI-02-AF5`) | `build input.ls --output build.txt` |
+
+- **実装の契約** (`selfhost/src/App/Cli.ls:874-891`, `run-compile-output`):
+
+  ```
+  (write-file-bytes output-path wasm-bytes)   ;; output file <- wasm binary
+  (print-string summary)                      ;; stdout      <- wasm-size:<n>
+  ```
+
+  **output file に入るのは wasm binary で、summary は stdout にしか出ない。**
+- **test の期待**:
+
+  ```rust
+  let written = std::fs::read_to_string(dir.join("out.txt")).unwrap();
+  assert_eq!(written.trim(), lines[0], "compile -o は stdout summary を output file にも書くべき");
+  ```
+
+  `read_to_string` が binary を読んで `InvalidData "stream did not contain valid UTF-8"` で panic する。
+  assert には到達していない。
+- **実測 (2026-08-28)**: panic が `remove_dir_all` より前で起きるため temp dir が残る。
+  これを直接読んだ:
+
+  | dir | 中身 |
+  |---|---|
+  | `$TMPDIR/lsharp_test_cli_main_args_build_output_84106/build.txt` | 2845 byte / 先頭 `0061 736d 0100 0000` |
+  | `$TMPDIR/lsharp_test_cli_main_args_compile_output_15937/out.txt` | 2845 byte / 先頭 `0061 736d 0100 0000` |
+
+  `0061 736d` = `\0asm`、`0100 0000` = core module の version
+  (component なら `0d00 0100` になる)。**wasm core module が書かれている。**
+
+  同日の focused run (`--exact --ignored --test-threads 1` で 5 本、
+  `RUNEXIT=101` / `ELAPSED=1300.13` / `3076 filtered out` + 5 = 3081) の失敗出力も一致した:
+
+  ```
+  selfhost_cli_core.rs:16252 (compile) / :16289 (build)
+  called `Result::unwrap()` on an `Err` value:
+    Error { kind: InvalidData, message: "stream did not contain valid UTF-8" }
+  ```
+- **移管前の台帳注記は事実と向きが逆だった。**
+  `ignored-lane-expected-failures.txt` は「**stdout に wasm binary が出ている疑い**
+  (`-o` が効いていない形)」と書いていたが、実測は逆である。**`-o` は効いている。**
+  binary が入るのは output file の方で、stdout には summary が出ている。
+  移管と同時にこの注記を是正した。
+- **出所**: `2ba93d0a` (2026-07-12) `feat(selfhost): write actual CLI wasm output` が
+  `write-file-bytes` を導入したときに、先行する test 2 件
+  (`9deab1ce` 2026-03-27) の期待値を更新しなかった。`I-90` の `9175c6e5` と同型である。
+- **本 issue では impl / test のどちらが正しいかを裁定しない。** 材料だけ並べる:
+  - Rust driver の `lsharp compile x.ls -o x.wasm` は output file へ wasm binary を書く。
+    実装側が driver と揃っている疑いが濃い
+  - `I-15` の実測表でも guest preview1 経路の出力先頭は `0061736d` である
+  - 一方 test の assert message は「stdout summary を output file にも書くべき」と
+    明示的な意図を書いている。単なる書き間違いではない
+
+  裁定は修正 slice の ADR の仕事である (`I-90` でやった「設計ミス例外の根拠 3 点」と
+  同じ精査が要る)。
+- **引き取り先**: `TODO.md` の `CLI-OUTPUT-CONTRACT-01`
+- **関連**: `I-75` (発見経路)、`I-94` (同じ commit 由来の兄弟)、`I-15` (guest 出力の実測表)
+
+<a id="i-94"></a>
+
+### I-94: e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-75` の 11 件を分類する過程)
+- **対象** (`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`):
+
+  | test | 行 | 引数 | 通る関数 |
+  |---|---|---|---|
+  | `..._main_with_args_compile_target_and_output_path` | `:16313` (`TEST-CLI-02-AF6`) | `compile input.ls --target wasi-component -o targeted.txt` | `run-compile-output` |
+  | `..._main_with_args_build_output_path_and_target_alias` | `:16413` (`TEST-CLI-02-AF7`) | `build input.ls --output build-target.txt --target wasm` | `run-compile-output` |
+  | `..._main_with_args_compile_target_changes_wasm_size` | `:16357` (`TEST-CLI-02-AF6B`) | `compile input.ls --target wasi-component` (`-o` なし) | `run-compile` |
+
+  `wasm` は `parse-compile-target-name` (`Cli.ls:47`) で `compile-target-component` に写るので、
+  3 件とも component target である。
+- **実装の境界**: `run-compile-output` (`Cli.ls:876-890`) と `run-compile` (`Cli.ls:1437`) は
+  **どちらも** target が `preview1` でなければ `write-file-bytes` に到達せず、
+
+  ```
+  (do (cli-stderr (component-output-boundary-message)) (exit-compile-error))
+  ```
+
+  を出す。`component-output-boundary-message` (`Cli.ls:873`) は
+  `"wasi-component output requires external component packaging"`。
+  **関数は 2 本に分かれているが境界は同一である。**
+- **この境界は意図された仕様であり、`I-15` が resolved として文書化済みである。**
+  `I-15` は `EmbeddedCli.ls:1215/1230/1231` の同じ境界について
+  「`run-compile-output` は target が `preview1` でなければ**無条件に**
+  `error: wasi-component output requires external component packaging` を出して非 0 終了する」
+  と記録している。component packaging には外部ツールが要るので、guest 単独では遂行できない。
+  **本 issue は「component target を実装しろ」ではない。**
+- **したがって欠陥は test 側にある。** 3 件は境界の存在を知らずに
+  `wasm-size:` が返ることを期待している。特に `..._compile_target_changes_wasm_size` は
+  `preview1_size > component_size` という**両 target が成功する前提**の比較まで書いている。
+- **実測 (2026-08-28)**: panic 前に temp dir が残るのは UTF-8 系だけなので、
+  `-o` を渡す 2 件は dir が消えずに残った側から確認した。
+
+  | dir | 中身 |
+  |---|---|
+  | `$TMPDIR/lsharp_test_cli_main_args_build_output_target_84106/` | `input.ls` のみ。**`build-target.txt` が存在しない** |
+  | `$TMPDIR/lsharp_test_cli_main_args_compile_target_output_15937/` | `input.ls` のみ。**`targeted.txt` が存在しない** |
+
+  **output file が 1 byte も作られていない。** `write-file-bytes` の手前で
+  非 0 終了する経路以外にこれを説明する道が無い。
+  失敗メッセージ側の実測は次のとおり (同日の focused run、`support.rs:188`。
+  3 件とも文字列が完全に一致した):
+
+  ```
+  実行に失敗: exit code 1; stdout="error: wasi-component output requires external component packaging\n"
+  ```
+
+- **`I-91` の是正がこの経路を覆えたことの実測でもある。** 2026-08-27 以前は
+  `support.rs:188` が exit code だけを文字列化しており、上の `stdout="..."` が付かなかった。
+  `I-75` は「載らなければ `I-91` の是正がこの経路を覆えていないことになり、それ自体が所見になる」
+  と先に書いていた。**載った。**
+- **出所**: `I-93` と同じ `2ba93d0a` (2026-07-12) が `write-file-bytes` と
+  `component-output-boundary-message` を**同時に**入れた。test 3 件は
+  `bc752767` (2026-03-31) が先に書いており、更新されなかった。
+  `b634ae71` (2026-07-17) が `standalone-preview1-capability-boundary-message` を後から足している。
+- **`I-93` と束ねない理由**: 症状も直し方も別である。`I-93` は出力先に何が入るかの
+  食い違いで、修正は assertion の読み方を変える形になる。本件は「その target が
+  そもそも guest で遂行できない」ことの取り扱いで、修正は境界を期待する形に
+  書き換えるか test 自体を落とすかの判断になる。commit が同じであることは
+  原因が同じであることを意味しない。
+- **引き取り先**: `TODO.md` の `CLI-COMPONENT-TARGET-EXPECT-01`
+- **関連**: `I-15` (同じ境界の文書化、resolved)、`I-75` (発見経路)、`I-93` (同じ commit 由来の兄弟)
