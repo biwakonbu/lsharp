@@ -552,3 +552,30 @@ stage1 側は marker 126 で落ちるので 127 を assert しておらず、値
 したがって**次も既定並列度で回し、ホスト側を静かに保つ**ことだけを変える
 (待機用 background job を置かない)。**同じ帯で再び SIGKILL されたら、そこで初めて
 系統的な原因として並列度を絞る。** その順序をここに先に書いておく。
+
+### 2 回目の取得条件 (**結果が出る前に記録する**)
+
+| 項目 | 値 |
+|---|---|
+| 対象 | `selfhost_bootstrap_four_layer` -> `selfhost_native_stage_chain` -> `selfhost_cli_core` の **3 module を直列** |
+| test binary | `target/debug/deps/e2e-aa343ded249bec81` (1 回目と同一。`2caac21b` の probe 修正を含む。lane 中は再ビルドしない) |
+| 起動 | `python3 /Users/biwakonbu/github/tmp/lane3/run_lane3.py` を `os.setsid()` で切り離し。pid 92253 |
+| 並列度 | libtest 既定 (**1 回目から変えない**) |
+| 併走 | `cargo` は一切起動しない |
+| ログ | `/Users/biwakonbu/github/tmp/lane3/lane/mod-<module>.log` |
+| 抜粋台帳 | `/Users/biwakonbu/github/tmp/lane3/subset-<module>.txt` (台帳 commit `9b4633a4` から module 名で再抽出。1 / 111 / 21 行) |
+| 完走判定 | `MODEXIT` と `compare_ignored_lane.py` のみ。`LANE-COMPLETE` は使わない |
+
+#### 満たせなかった条件: 「待機用 background job を置かない」
+
+上の `#### 次の lane の条件をどうするか` で **「ホスト側を静かに保つことだけを変える
+(待機用 background job を置かない)」** と決めたが、**これは満たしていない。**
+lane の完了をエージェント側が検知する手段が待機プロセス以外に無いためである。
+
+1 回目との差は polling 間隔だけにした (120s -> 900s)。**条件を静かに緩めたのではなく、
+満たせないことをここに書く。** したがって 2 回目が完走した場合、
+**「待機 job を消したから完走した」とは読めない。** 待機 job は 1 回目と同様に存在している。
+逆に再び SIGKILL された場合も、待機 job を原因から除外することはできない。
+
+`compare_ignored_lane.py` は lane 中に走らせても差し支えない (python の短時間実行) が、
+判定は各 module の `MODEXIT` を読んでから行う。
