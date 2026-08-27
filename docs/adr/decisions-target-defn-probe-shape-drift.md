@@ -1,13 +1,14 @@
 # target-defn probe が AST の形を添字直打ちで辿っている
 
-- **Status**: doc-GREEN (裁定 1〜3 とも実装済。lane 再計測待ち)
-- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (doc-GREEN)
+- **Status**: doc-GREEN (完了 / 2026-08-28)
+- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (実装) / 2026-08-28 (lane 完走確認)
 - **Scope**: `selfhost_bootstrap_four_layer` の target-defn parity probe 2 件と、
   その probe 本体 (`selfhost/src/App/CompilerMode.ls` の `target-defn` モード)
 - **Related**: `ISSUES.md` `I-80` (本件) / `I-72` (これを隠していた) / `I-75` (移管元) /
   `I-82` (`decisions-probe-subject-unchecked.md`) / `I-84`
   (`decisions-always-failing-diagnostic-probes.md`)。
-  引き取り先は `TODO.md` の `TARGET-DEFN-PARITY-01`。
+  引き取り先だった `TODO.md` の `TARGET-DEFN-PARITY-01` は 2026-08-28 に完了・削除済み。
+  残った作業は `TARGET-DEFN-NAV-STALE-01` (`I-88`) が持つ。
 
 ## 何が起きているか
 
@@ -297,9 +298,11 @@ stage1 / stage2 とも `[301, 0, 302, 5]` で予測どおり。
 
 ## 満たせなかったこと
 
-- **`selfhost_bootstrap_four_layer` の lane 再計測をまだ回していない。** 個別実行 3 件が
-  緑であることは lane 1 本の完走ではない。台帳 2 行の削除もこの再計測の後である。
-  `I-80` / `I-81` / `I-82` / `I-85` の 4 項目が同じ 1 本を待っている。
+- **lane 再計測は 2026-08-28 に完了した (当初は未了)。** `selfhost_bootstrap_four_layer` が
+  144 宣言 / 144 結果行 / FAIL 1 (`I-83` のみ) / `MODEXIT=101` / 5,816.58s で完走し、
+  `compare_ignored_lane.py` は `新規 FAIL 0 / 解消 0 / 未出現 0` を返した。
+  **1 回目 (2026-08-27) は `MODEXIT=-9` (SIGKILL) で完走せず、判定を保留していた。**
+  lane 実測は [ignored-lane-sweep-2026-08-23.md](../development/operations/ignored-lane-sweep-2026-08-23.md) の `結果 (2 回目 -- 3 module とも完走)`。
 - **裁定 2 の「127 を現在の shape での実測へ更新する」を文言どおりには実行しなかった。**
   上記のとおり、実測値がゴミであることが実行の前提を壊した。
   代わりに pin の対象を移し、その判断と根拠をここに書いた。**条件を静かに緩めてはいない。**

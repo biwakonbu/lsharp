@@ -1,13 +1,14 @@
 # 主題を検査していない probe test の裁定
 
-- **Status**: doc-GREEN (13 件すべて実質化。lane 再計測のみ未了)
-- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (doc-GREEN)
+- **Status**: doc-GREEN (完了 / 2026-08-28)
+- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (実装) / 2026-08-28 (lane 完走確認)
 - **Scope**: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/` の 13 test と
   `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の 1 test
 - **Related**: `I-82` (本 ADR の起点) / `I-79` と
   [`decisions-harness-swallowed-error-arms.md`](decisions-harness-swallowed-error-arms.md) (親。形 (b) だけが解決済み) /
   `I-83` (`test_i64_if.wasm` と同型の症状) / `I-81` (同種の probe 裁定だが対象は別 test)
-- **引き取り先**: `TODO.md` の `PROBE-ASSERTS-NOTHING-01`
+- **引き取り先**: `TODO.md` の `PROBE-ASSERTS-NOTHING-01`。2026-08-28 に完了・削除済み。
+  覆えていない x86 側の parity は `I-92` / `NATIVE-X86-ENTRYPOINT-PARITY-01` が持つ
 
 ## 決めること
 
@@ -629,13 +630,13 @@ emitter が要求するのは **placeholder 込みの列**である。根拠は 
   13 件すべてに主題の assertion が入った。
 - **x86 の経路は測れていない** (`I-92` / `NATIVE-X86-ENTRYPOINT-PARITY-01`)。
   #13 の parity は aarch64 でしか成立を確認していない。
-- **#13 の lane 再計測はまだ済んでいない。** 個別実行 2 件が緑であることは
-  `selfhost_native_stage_chain` の module 完走ではない。`AGENTS.md` の partial-lane 規約により
-  台帳行の削除は再計測の後である
-- **lane 全体の再計測はまだ済んでいない。** 個別実行 15 件は緑だが、
-  `compare_ignored_lane.py` の完走判定は module 単位のログを要求する
-  (`running N tests` == 一意な result 行数)。`running 1 test` のログ 15 本では代用できない。
-  `AGENTS.md` の改名ルール (`d29cb5a1`) により `I-81` の改名だけでも module 再計測が要る
+- **lane 再計測は 2026-08-28 に完了した (当初は未了)。** #13 を含む
+  `selfhost_native_stage_chain` が 613 宣言 / 613 結果行 / FAIL 111 / `MODEXIT=101` /
+  18,545.78s、`selfhost_bootstrap_four_layer` が 144 / 144 / FAIL 1 / 5,816.58s で完走し、
+  どちらも `compare_ignored_lane.py` は `新規 FAIL 0 / 解消 0 / 未出現 0` を返した。
+  個別実行 15 件の緑では代用できない (完走判定は `running N tests` == 一意な result 行数を
+  module 単位で要求する) という当初の記述はそのとおりで、module 単位で測り直した。
+  lane 実測は [ignored-lane-sweep-2026-08-23.md](../development/operations/ignored-lane-sweep-2026-08-23.md) の `結果 (2 回目 -- 3 module とも完走)`。
 - **probe 名と arg スロットの対応を検査する常設の仕組みは無い。** 誤配置 1 件を見つけた照合は
   使い捨ての script で行った。同じ誤りは再発しうる
 - **`I-87` (`read-file` が失敗を空文字列に潰す) は直していない。** test 側で fixture の置き場を

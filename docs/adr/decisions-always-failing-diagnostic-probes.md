@@ -1,12 +1,13 @@
 # 構造上必ず赤くなる診断 probe の裁定
 
-- **Status**: doc-GREEN (5 件とも実装済。lane 再計測 2 本のみ未了)
-- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (#1 の doc-GREEN)
+- **Status**: doc-GREEN (完了 / 2026-08-28)
+- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (実装) / 2026-08-28 (lane 完走確認)
 - **Scope**: `crates/lsharp-wasm/tests/e2e/` の 5 test と、それが使う lookup harness
 - **Related**: `I-84` (本 ADR の起点) / `I-81` (発見経路。5 件のうち 1 件) /
   `I-75` (誤分類していた 1 件) / `I-82` と
   [`decisions-probe-subject-unchecked.md`](decisions-probe-subject-unchecked.md) (裏返しの類型)
-- **引き取り先**: `TODO.md` の `ALWAYS-RED-PROBE-01` / `VIOLATION-PROBE-STALE-01`
+- **引き取り先**: `TODO.md` の `ALWAYS-RED-PROBE-01` / `VIOLATION-PROBE-STALE-01`。
+  どちらも 2026-08-28 に完了・削除済み
 
 ## 背景
 
@@ -256,7 +257,7 @@ test 名は `..._full_inline_mismatch_probe` → `..._full_inline_compile_has_no
 | `..._full_inline_compile_has_no_mismatch` の個別実行 | **ok** (215.76s、2026-08-27、`--exact` 完全修飾名) |
 | 反転前の同 test | `FAILED` (無条件 `panic!`)。dump は上の表 |
 | `cargo clippy -p lsharp-wasm --tests` の `selfhost_cli_core.rs` 分 | 警告 **0** |
-| `ignored-lane-expected-failures.txt` の該当行 | **未削除**。`selfhost_cli_core` の lane 再計測待ち |
+| `ignored-lane-expected-failures.txt` の該当行 | **削除済み** (`9b4633a4`)。`selfhost_cli_core` の lane 完走で確認 (2026-08-28) |
 
 **`--exact` は完全修飾名を要求する。** 短縮名で撃つと `running 0 tests` になり、
 `RUNEXIT=0` で終わる。**「0 件走って exit 0」を緑と読まないこと。**
@@ -278,11 +279,15 @@ test 名は `..._full_inline_mismatch_probe` → `..._full_inline_compile_has_no
 
 ## 満たせなかったこと
 
-- **5 件とも実装が入った (2026-08-27)。** ただし `I-84` は **open のまま**である —
-  `selfhost_cli_core` と `selfhost_native_stage_chain` の lane 再計測 2 本が未了で、
-  台帳行 2 本 (`..._full_inline_mismatch_probe` と `#3`〜`#5` 由来) がまだ消せない
-- **#1 の lane 再計測は未了。** 改名したので `AGENTS.md` の規約 (`d29cb5a1`) により
-  `selfhost_bootstrap_four_layer` の module 再計測が要る。個別実行の緑では代用できない
+- **5 件とも実装が入り (2026-08-27)、lane 再計測 3 本で確認した (2026-08-28)。**
+  `selfhost_native_stage_chain` 613 宣言 / 613 結果行 / FAIL 111 (= 台帳 111 行)、
+  `selfhost_cli_core` 381 / 381 / FAIL 21 (= 台帳 21 行)、
+  `selfhost_bootstrap_four_layer` 144 / 144 / FAIL 1。3 本とも
+  `新規 FAIL 0 / 解消 0 / 未出現 0` で `I-84` は resolved にした。
+  台帳行 4 本は `9b4633a4` で削除済みで、comparer が `未出現 0` を返したことにより
+  **過不足なく落ちていた**ことが確認できた。lane 実測は [ignored-lane-sweep-2026-08-23.md](../development/operations/ignored-lane-sweep-2026-08-23.md) の `結果 (2 回目 -- 3 module とも完走)`。
+- **#1 の lane 再計測も同じ 3 本で解消した (当初は未了)。** 改名したので
+  `AGENTS.md` の規約 (`d29cb5a1`) により module 再計測が要り、個別実行の緑では代用できなかった
   (`compare_ignored_lane.py` の完走判定は module 単位のログを要求する)
 - **#2 の未実測は解消した (2026-08-27)。** 反転の前に測り、`wasm-bytes-eq=1` /
   `first-function-mismatch=-1` を確認してから反転した。上の「#2 の実装」節が正本

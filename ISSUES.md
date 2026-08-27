@@ -211,12 +211,12 @@
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
 | [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
-| [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | open (実装は 2026-08-27 に完了。lane 再計測待ち) | test 側 3 件を是正。marker 129 以降の初回評価で新規赤は 0。副産物が `I-88` |
-| [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27)。同日、極性を反転し改名。**lane 再計測待ち** |
-| [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。**同日 12 件を是正。残るは #13 の 1 件** |
+| [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | resolved | test 側 3 件を是正。marker 129 以降の初回評価で新規赤は 0。2026-08-28 の lane で完走確認。副産物が `I-88` |
+| [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | resolved | `I-72` 解決後に露出 (2026-08-27)。同日、極性を反転し改名。2026-08-28 の lane で完走確認 |
+| [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | resolved | `I-79` の全数調査で発見 (2026-08-27)。13 件とも是正。2026-08-28 の lane で完走確認 |
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
-| [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | open | `I-81` の裁定中に走査で発見 (2026-08-27)。うち 1 件は `I-75` が誤分類。**5 件のうち 1 件 (#1) は `I-81` として同日決着**。残り 4 件 |
-| [I-85](#i-85) | `test_debug_boot04_*` 12 件の主題 assertion が `!output.trim().is_empty()` だけ | 中 | open | `I-82` の裁定 5 を書く途中で発見 (2026-08-27)。同日 12 件とも実質化。**lane 再計測待ち**。副産物が `I-87` |
+| [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | resolved | `I-81` の裁定中に走査で発見 (2026-08-27)。#1 は `I-81` へ、#3 / #4 は削除、#2 / #5 は実契約へ作り替え。2026-08-28 の lane で完走確認 |
+| [I-85](#i-85) | `test_debug_boot04_*` 12 件の主題 assertion が `!output.trim().is_empty()` だけ | 中 | resolved | `I-82` の裁定 5 を書く途中で発見 (2026-08-27)。同日 12 件とも実質化。2026-08-28 の lane で完走確認。副産物が `I-87` |
 | [I-86](#i-86) | selfhost parser が Rust reference より緩く、不正な構文を `diagnostics:0` で受理する | 中 | open | `I-82` の #7 を実測して発見 (2026-08-27)。2 引数 `if` と top-level のゴミ atom の 2 形 |
 | [I-87](#i-87) | WASI 経路の `read-file` が preopen 外のパスに対しエラーではなく空文字列を返す | 中 | open | `I-85` の是正中に発見 (2026-08-27)。fixture が読めていないのに test が緑になっていた |
 | [I-88](#i-88) | target-defn probe の body ナビゲーションが旧 shape 前提のままで、下流 marker が「壊れていること」を pin している | 低 | deferred | `I-80` の却下案 B の代償を記録したもの (2026-08-27) |
@@ -5410,7 +5410,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 <a id="i-80"></a>
 ### I-80: target-defn probe が AST の形を添字直打ちで辿り、`make-type-constrained` の refactor に追随していない
 
-- **影響度**: 中 / **状態**: open (実装は 2026-08-27 に完了。lane 再計測待ち)
+- **影響度**: 中 / **状態**: resolved (2026-08-28)
 - **発見**: 2026-08-27 (`I-72` の fix 後の部分再測定で露出)
 - **内容**: `selfhost_bootstrap_four_layer` の target-defn parity probe 2 件が、
   marker の値が期待値に届かずに落ちる。どちらも対象 defn は `make-type-constrained`
@@ -5513,11 +5513,20 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `I-82` (probe が主題を検査していない類型)、`I-84` (構造上必ず赤くなる probe)、
   `I-88` (却下案 B の代償)。
   引き取り先は `TODO.md` の `TARGET-DEFN-PARITY-01`。
+- **解決** (2026-08-28): 裁定 1〜3 の実装 (2026-08-27) を `selfhost_bootstrap_four_layer` の
+  lane 再計測で確認した。144 宣言 / 144 結果行 / FAIL 1 (`I-83` のみ) / `MODEXIT=101` /
+  5,816.58s で完走し、`compare_ignored_lane.py` は `新規 FAIL 0 / 解消 0 / 未出現 0` を返した。
+  **1 回目の lane は `MODEXIT=-9` (SIGKILL) で完走しておらず、判定は保留されていた。**
+  実測は [ignored-lane-sweep-2026-08-23.md](docs/development/operations/ignored-lane-sweep-2026-08-23.md)
+  の `結果 (2 回目 -- 3 module とも完走)`。判断の正本は
+  [decisions-target-defn-probe-shape-drift.md](docs/adr/decisions-target-defn-probe-shape-drift.md)。
+  **probe 本体 (`CompilerMode.ls`) は陳腐化したままである** — 却下案 B は却下のまま維持し、
+  `I-88` へ引き取らせた。
 
 <a id="i-81"></a>
 ### I-81: `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる
 
-- **影響度**: 中 / **状態**: open (実装は 2026-08-27 に完了。lane 再計測待ち)
+- **影響度**: 中 / **状態**: resolved (2026-08-28)
 - **発見**: 2026-08-27 (`I-72` の fix 後の部分再測定で露出)
 - **内容**: `test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff`
   (`part_014.rs:205:10`) は stage3 の Wasm から `local_bound_violation_indices` を集め、
@@ -5554,11 +5563,17 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   こちらは「赤だが欠陥は無いかもしれない」)、`I-64` (発見経路)、
   `I-84` (本 issue の裁定中に見つかった同型 4 件)。
   引き取り先は `TODO.md` の `VIOLATION-PROBE-STALE-01`。
+- **解決** (2026-08-28): 極性の反転と改名 (2026-08-27) を `selfhost_bootstrap_four_layer` の
+  lane 再計測で確認した。144 件完走 / 該当 test は緑 / 台帳行は削除済み。
+  検出力は非 `#[ignore]` の `test_local_bound_violation_indices_detects_out_of_range_local` が
+  別途担保している (out-of-range な local を仕込むと赤くなる)。
+  **violation が消えた原因そのものは追っていない。** 本 issue の主題は
+  「必ず赤い test を実契約へ作り替える」であり、そこまでである。
 
 <a id="i-82"></a>
 ### I-82: test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: resolved (2026-08-28)
 - **発見**: 2026-08-27 (`I-79` の全数調査)
 - **内容**: 実行結果を `eprintln!` / `println!` するだけで、**test 名が主張する主題を
   一度も検査していない** test が **13 件 / 16 箇所**ある。`I-79` (assertion が skip される) とは別で、
@@ -5631,6 +5646,15 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `I-83` (`test_i64_if.wasm` と同型の症状)、`I-77` / `I-70` (「緑だが検査していない」類型)。
   裁定は [`docs/adr/decisions-probe-subject-unchecked.md`](docs/adr/decisions-probe-subject-unchecked.md)。
   引き取り先は `TODO.md` の `PROBE-ASSERTS-NOTHING-01`。
+- **解決** (2026-08-28): 13 件とも実質化し、lane 再計測 2 本で確認した
+  (`selfhost_bootstrap_four_layer` 144 件完走 / `selfhost_native_stage_chain` 613 件完走、
+  どちらも `新規 FAIL 0 / 解消 0 / 未出現 0`)。
+  最後まで残った #13 は emitter の欠陥ではなく **harness が emitter の列契約を破っていた**もので、
+  `collect-callable-function-starts-{x86,aarch64}` が要求する import placeholder 込みの列ではなく
+  生の関数メタ列を渡していた。判断の正本は
+  [decisions-probe-subject-unchecked.md](docs/adr/decisions-probe-subject-unchecked.md)。
+  **x86 側は `normalize-...-for-target` が恒等なので parity が aarch64 でしか立っていない。**
+  この覆えていない範囲は `I-92` へ引き取らせた。
 
 <a id="i-83"></a>
 ### I-83: compiler-mode が生成した wasm が stack 不整合で load できない
@@ -5667,7 +5691,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 <a id="i-84"></a>
 ### I-84: 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: resolved (2026-08-28)
 - **発見**: 2026-08-27 (`I-81` の裁定中に `scripts/sweep_always_failing_tests.py` を書いて走査)
 - **内容**: body に分岐も `return` も無く、**最後に無条件 `panic!` する** `#[test]` が **5 件**ある。
   入力が何であれ必ず赤になる。調査中に書いた診断ダンプがそのまま checked in された形である。
@@ -5707,12 +5731,21 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `I-82` (「緑だが検査していない」の裏返し)。
   裁定は [`docs/adr/decisions-always-failing-diagnostic-probes.md`](docs/adr/decisions-always-failing-diagnostic-probes.md)。
   引き取り先は `TODO.md` の `ALWAYS-RED-PROBE-01`。
+- **解決** (2026-08-28): 5 件とも決着した。#1 は `I-81` として反転、#3 / #4 は削除、
+  #2 (`selfhost_cli_core`) と #5 (`selfhost_native_stage_chain`) は実契約へ作り替えた。
+  lane 再計測 2 本で確認 (`selfhost_native_stage_chain` 613 件完走 / FAIL 111 = 台帳 111 と一致、
+  `selfhost_cli_core` 381 件完走 / FAIL 21 = 台帳 21 と一致)。
+  #2 は無条件 `panic!` を「2 回コンパイルした Wasm が一致すること」へ反転したうえで、
+  **検出器そのものの自己検査 4 本を同じ実行に埋め込んだ** — 反転した test が
+  「見ていないから緑」になるのを防ぐためである。判断の正本は
+  [decisions-always-failing-diagnostic-probes.md](docs/adr/decisions-always-failing-diagnostic-probes.md)。
+  **直書きアドレスが指していた crash そのものの診断は範囲外**で、行っていない。
 
 <a id="i-85"></a>
 
 ### I-85: `test_debug_boot04_*` 12 件の主題 assertion が「空でないこと」だけを見ている
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: resolved (2026-08-28)
 - **発見**: 2026-08-27 (`I-82` の裁定 5 を書く途中、削除 4 件の引き取り先を静的に確かめていて発見)
 - **内容**: `selfhost_bootstrap_four_layer` の `test_debug_boot04_*` **12 件**が、
   probe が出した値そのものを `eprintln!` へ流し、主題の assertion は
@@ -5761,6 +5794,10 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **関連**: `I-82` (発見経路。基準の外という判定も含む)、`I-84` (「常に赤い probe」の裏返し)、
   `I-87` (是正中に露出した本体側の欠陥)。
   引き取り先は `TODO.md` の `WEAK-SUBJECT-ASSERT-01`。
+- **解決** (2026-08-28): 12 件とも実質化し、`selfhost_bootstrap_four_layer` の
+  lane 再計測 (144 件完走 / FAIL 1 = `I-83` のみ) で確認した。
+  **lane では他の test と同じプロセス空間で走るので順序依存が出るならここに出る**が、
+  新しい赤は 0 件だった。副産物の `I-87` は別項目として残る。
 
 <a id="i-86"></a>
 

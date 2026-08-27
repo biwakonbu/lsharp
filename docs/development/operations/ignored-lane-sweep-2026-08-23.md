@@ -579,3 +579,49 @@ lane の完了をエージェント側が検知する手段が待機プロセス
 
 `compare_ignored_lane.py` は lane 中に走らせても差し支えない (python の短時間実行) が、
 判定は各 module の `MODEXIT` を読んでから行う。
+
+### 結果 (2 回目 — 3 module とも完走)
+
+| module | 宣言数 | 結果行 (ユニーク) | passed | failed | `MODEXIT` | `ELAPSED` | comparer |
+|---|---|---|---|---|---|---|---|
+| `selfhost_bootstrap_four_layer` | 144 | 144 | 143 | 1 | 101 | 5,816.58s | exit 0 |
+| `selfhost_native_stage_chain` | 613 | 613 | 502 | 111 | 101 | 18,545.78s | exit 0 |
+| `selfhost_cli_core` | 381 | 381 | 360 | 21 | 101 | 16,217.67s | exit 0 |
+
+3 本とも `新規 FAIL 0 / 解消 0 / 未出現 0 / ログ間重複 0`、判定は
+`OK -- 完走し、台帳と一致した`。lane 全体は 20:23:57 開始 / 翌 07:40:17 終了 (11h16m)。
+
+`MODEXIT=101` は libtest が test 失敗で返す通常の終了コードである。
+**1 回目の `-9` (SIGKILL) は再現しなかった。**
+
+#### 予測との突き合わせ
+
+- **「赤は 1 件だけ」(four_layer) — 当たった。** 実測 FAIL 1 件は `I-83` の
+  `test_e2e_boot04_compiler_mode_ignores_dotted_flat_file` で、台帳に残る four_layer の
+  行と一致する。`I-82` / `I-85` で実質化した assertion が lane の順序依存で
+  新しく落ちる、ということも起きていない
+- **「宣言数 144」 — 1 回目で訂正した基礎のとおり。** 148 ではない。
+  訂正は 1 回目の結果が出た後に書いたものだが、2 回目の予測としては結果より前に確定していた
+- **SIGKILL の原因は依然として特定できていない。** 2 回目は完走したが、
+  1 回目との差は「待機 job の polling 間隔 (120s -> 900s)」と
+  「3 module 直列にしたこと」だけで、どちらも原因を説明する仮説ではない。
+  **完走したことを「条件を改善したから」と読んではならない。**
+  並列度は 1 回目と同じ libtest 既定である
+
+#### 台帳の増減 (2 回目で確定)
+
+| module | 台帳行数 | 内訳 |
+|---|---|---|
+| `selfhost_bootstrap_four_layer` | 1 | `I-83` のみ |
+| `selfhost_native_stage_chain` | 111 | 実測 FAIL 111 と一致 |
+| `selfhost_cli_core` | 21 | 実測 FAIL 21 と一致 |
+
+`9b4633a4` で落とした 4 行 (削除済 probe 2 件 + 改名して緑になった 2 件) は、
+comparer が `未出現` / `解消` を 0 と返したことで**過不足なく落ちていた**ことが確認できた。
+
+#### 宣言数が `I-64` 時点から動いた分
+
+| module | `I-64` 時点 | 本 lane | 差 | 説明 |
+|---|---|---|---|---|
+| `selfhost_native_stage_chain` | 615 | 613 | -2 | `I-84` #3 / #4 の probe 2 件を削除した |
+| `selfhost_cli_core` | 381 | 381 | 0 | `I-84` #2 は削除ではなく極性の反転なので数は動かない |
