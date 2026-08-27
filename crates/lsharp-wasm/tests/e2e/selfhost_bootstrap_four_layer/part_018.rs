@@ -189,3 +189,53 @@ fn parse_progress_values(output: &str, label: &str) -> Vec<i64> {
         })
         .collect()
 }
+
+/// target-defn probe (`selfhost/src/App/CompilerMode.ls` の
+/// `compile-file-mode-target-defn-parity-probe`) の出力を marker/value ペアへ分解する。
+///
+/// 出力は `121 59 124 20 ...` の交互列で、marker は昇順ではない (末尾に 123 / 122 が来る)。
+/// 先頭 2 値は probe の身元 (121 = probe 識別子 / 59 = 見ている decl の index) なので、
+/// **別の probe に到達していたらここで落ちる**。arg スロットの取り違えを黙って通さないための門である。
+fn parse_target_defn_pairs(output: &str, label: &str) -> Vec<(i64, i64)> {
+    let values: Vec<i64> = output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim()
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("{label}: 数値でない debug 出力: {line:?}"))
+        })
+        .collect();
+    assert_eq!(
+        values.len() % 2,
+        0,
+        "{label}: marker/value ペア数が崩れている: {values:?}"
+    );
+    assert!(
+        values.len() >= 42,
+        "{label}: target-defn probe の出力が短すぎる (実測 2026-08-27 は 54 値 / 27 ペア): {values:?}"
+    );
+    assert_eq!(
+        values[0], 121,
+        "{label}: 先頭 marker が 121 でない。target-defn 以外の probe に到達している: {values:?}"
+    );
+    assert_eq!(
+        values[1], 59,
+        "{label}: probe が見ている decl index が 59 でない: {values:?}"
+    );
+    values.chunks_exact(2).map(|c| (c[0], c[1])).collect()
+}
+
+/// `parse_target_defn_pairs` の結果から marker の値を引く。無ければ落ちる。
+fn target_defn_marker(pairs: &[(i64, i64)], marker: i64, label: &str) -> i64 {
+    pairs
+        .iter()
+        .find_map(|&(m, v)| (m == marker).then_some(v))
+        .unwrap_or_else(|| panic!("{label}: marker {marker} が見つからない: {pairs:?}"))
+}
+
+/// 旧 `let` shape 前提の body 内ナビゲーションが AST の外を読んでいる marker のうち、
+/// **値が binary 依存になるもの**。`I-80` / `decisions-target-defn-probe-shape-drift.md`。
+/// 範囲外読み出しは 0 を返すとは限らず、実測 2026-08-27 では
+/// stage1 が `[4294967296, 72057594054705152]`、stage2 が `[0, 0]` を返した。
+const TARGET_DEFN_OUT_OF_RANGE_MARKERS: [i64; 2] = [127, 128];

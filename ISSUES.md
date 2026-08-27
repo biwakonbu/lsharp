@@ -211,14 +211,15 @@
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
 | [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
-| [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | open | 診断済み・裁定済み。実装未着手 (2026-08-27) |
+| [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | open (実装は 2026-08-27 に完了。lane 再計測待ち) | test 側 3 件を是正。marker 129 以降の初回評価で新規赤は 0。副産物が `I-88` |
 | [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27)。同日、極性を反転し改名。**lane 再計測待ち** |
 | [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。**同日 12 件を是正。残るは #13 の 1 件** |
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
-| [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | open | `I-81` の裁定中に走査で発見 (2026-08-27)。うち 1 件は `I-75` が誤分類 |
+| [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | open | `I-81` の裁定中に走査で発見 (2026-08-27)。うち 1 件は `I-75` が誤分類。**5 件のうち 1 件 (#1) は `I-81` として同日決着**。残り 4 件 |
 | [I-85](#i-85) | `test_debug_boot04_*` 12 件の主題 assertion が `!output.trim().is_empty()` だけ | 中 | open | `I-82` の裁定 5 を書く途中で発見 (2026-08-27)。同日 12 件とも実質化。**lane 再計測待ち**。副産物が `I-87` |
 | [I-86](#i-86) | selfhost parser が Rust reference より緩く、不正な構文を `diagnostics:0` で受理する | 中 | open | `I-82` の #7 を実測して発見 (2026-08-27)。2 引数 `if` と top-level のゴミ atom の 2 形 |
 | [I-87](#i-87) | WASI 経路の `read-file` が preopen 外のパスに対しエラーではなく空文字列を返す | 中 | open | `I-85` の是正中に発見 (2026-08-27)。fixture が読めていないのに test が緑になっていた |
+| [I-88](#i-88) | target-defn probe の body ナビゲーションが旧 shape 前提のままで、下流 marker が「壊れていること」を pin している | 低 | deferred | `I-80` の却下案 B の代償を記録したもの (2026-08-27) |
 
 ### ドキュメント (DOC)
 
@@ -5342,7 +5343,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 <a id="i-80"></a>
 ### I-80: target-defn probe が AST の形を添字直打ちで辿り、`make-type-constrained` の refactor に追随していない
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: open (実装は 2026-08-27 に完了。lane 再計測待ち)
 - **発見**: 2026-08-27 (`I-72` の fix 後の部分再測定で露出)
 - **内容**: `selfhost_bootstrap_four_layer` の target-defn parity probe 2 件が、
   marker の値が期待値に届かずに落ちる。どちらも対象 defn は `make-type-constrained`
@@ -5428,8 +5429,22 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **裁定は済んでいる**: `docs/adr/decisions-target-defn-probe-shape-drift.md`。
   stage2 側はリテラル pin をやめ stage1 出力との parity 比較にする。
   stage1 側は shape pin として残しリテラルを実測へ更新する。minimal fixture は現在の shape へ更新する。
+- **是正 (2026-08-27)**: 裁定 1〜3 をすべて実装した。stage2 側は期待値リテラルを全廃して
+  stage1 出力との parity 比較にし、stage1 側は shape pin として 126 を 5 へ更新、
+  minimal fixture は現在の `vector-push-pair-rooted` 形へ差し替えた
+  (302 が 7 → 5 になるという予測を立ててから測り、そのとおりになった)。
+  3 件とも個別実行 `===EXIT 0`。**lane 再計測待ち。**
+- **marker 129 以降の初回評価では新しい赤は出なかった。ただし元の assertion は成立し得なかった。**
+  `129 == 131` / `130 > 0` / `133 > 0` はナビゲーションが壊れている以上、前提が偽である。
+  assertion を「壊れている状態を pin する」側 (`== 0`) へ付け替え、
+  **probe 本体が直されたら赤くなる向き**に置き直した。本来の assertion を復元すべきことは
+  `I-88` へ引き取らせた。
+- **裁定 2 の文言のうち 1 点は実行しなかった。** 「127 を現在の shape での実測へ更新する」は、
+  実測値 (stage1 `4294967296` / stage2 `0`) が**範囲外読み出しの binary 依存なゴミ**だったため、
+  pin せず parity の比較対象からも外した。判断と根拠は ADR の「満たせなかったこと」に書いた。
 - **関連**: `I-72` (これを隠していた)、`I-75` (`..._lengths` の移管元)、`I-64` (発見経路)、
-  `I-82` (probe が主題を検査していない類型)、`I-84` (構造上必ず赤くなる probe)。
+  `I-82` (probe が主題を検査していない類型)、`I-84` (構造上必ず赤くなる probe)、
+  `I-88` (却下案 B の代償)。
   引き取り先は `TODO.md` の `TARGET-DEFN-PARITY-01`。
 
 <a id="i-81"></a>
@@ -5742,3 +5757,45 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   **それは回避であって是正ではない**。
 - **関連**: `I-85` (発見経路。fixture 配置で回避済み)、`I-82` (同じ「緑だが何も見ていない」帯)。
   引き取り先は `TODO.md` の `SELFHOST-READFILE-SILENT-01`。
+
+<a id="i-88"></a>
+### I-88: target-defn probe の body ナビゲーションが旧 shape 前提のままで、下流 marker の assertion が「壊れていること」を pin している
+
+- **影響度**: 低 / **状態**: deferred (`I-80` の却下案 B を実行するときに解消する)
+- **発見**: 2026-08-27 (`I-80` の test 側是正の副産物)
+- **内容**: `selfhost/src/App/CompilerMode.ls` の `compile-file-mode-target-defn-parity-probe` は
+  `make-type-constrained` の body を **添字直打ち**で辿る:
+
+  ```
+  body        = (vector-get decl (+ 3 (vector-get decl 2)))
+  outer-expr  = (vector-get body 3)
+  inner-call  = (vector-get (vector-get outer-expr 3) 4)
+  inner-func  = (vector-get inner-call 1)
+  ```
+
+  この経路は body が `let` + 二重 `vector-push` である前提で書かれている。
+  現在の body は `vector-push-pair-rooted` 単一呼び出し (`ast-apply`) なので、
+  `outer-expr` 以下は **AST の外を読んでいる**。`I-80` はこれを診断済みで、
+  probe 本体を作り替える案 (却下案 B) は「selfhost 側の変更で stage0 再生成と native lane に
+  波及するため、test 2 件の赤を直す規模ではない」として**意図的に却下**した。
+- **本 issue が記録するのは、その却下の代償である。** `I-80` の是正で
+  `part_009.rs` の stage1 側 shape pin は、壊れた状態を明示的に pin する形になった:
+
+  | marker | 本来の assertion | 現在の assertion | 理由 |
+  |---|---|---|---|
+  | 129 | `== 131` (use-site と def-site の hash 一致) | `== 0` | `inner-func` がゴミなので hash が 0 |
+  | 130 | `> 0` (ftable lookup が空でない) | `== 0` | hash 0 は ftable に無い |
+  | 133 | `> 0` (chunked ftable lookup が空でない) | `== 0` | 同上 |
+  | 135 | (未評価) | `== 0` | 同上 |
+  | 127 / 128 | -- | **pin しない** | 範囲外読み出しで binary 依存。stage1 は `4294967296` / `72057594054705152`、stage2 は `0` / `0` |
+
+  **これは緑にするための書き換えではない。** 現在の assertion は probe 本体が直された瞬間に
+  赤くなる向きに置いてあり、コメントで「赤くなったらそれは正しい挙動である」と明示している。
+  ただし**「本来何を見るべきだったか」はコードからは復元できない**ので、ここに残す。
+- **解消の条件**: 案 B (probe を shape 非依存の構造走査へ作り替える) を実行したら、
+  上表の「本来の assertion」へ戻す。`(vector-get decls 31)` の hardcode も同時に扱う。
+  案 B の再検討トリガは `I-80` の ADR が定めている
+  (「`(vector-get decls 31)` の hardcode が実際に問題を起こした時点」)。
+- **関連**: `I-80` (親。test 側は是正済み)、`I-82` / `I-85` (主題を検査していない test の帯)、
+  `I-84` (恒常赤にしないための判断根拠)。
+  引き取り先は `TODO.md` の `TARGET-DEFN-NAV-STALE-01`。

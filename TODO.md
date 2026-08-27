@@ -2916,7 +2916,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `I-71` の compiler 側 fix (別 slice で完了済み)、
   `#[ignore]` を外すかどうかの判断。**cargo が要る。**
 
-- [ ] `TARGET-DEFN-PARITY-01` 陳腐化した target-defn probe を作り直す — Issue `I-80`。
+- [~] `TARGET-DEFN-PARITY-01` 陳腐化した target-defn probe を作り直す — Issue `I-80`。
+  **実装は 2026-08-27 に完了した。残るは lane 再計測と台帳 2 行の削除だけである** (末尾の現況を見よ)。
   **診断も裁定も済んでいる** — `docs/adr/decisions-target-defn-probe-shape-drift.md`。
   probe は `make-type-constrained` の body を添字直打ちで辿り、`let` + 二重 `vector-push` の
   旧 shape を前提にしている。現在は `vector-push-pair-rooted` 単一呼び出しなので
@@ -2938,6 +2939,33 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `(vector-get decls 31)` の hardcode は実際に問題を起こすまで触らない。
   **`selfhost_bootstrap_four_layer` の実装 slice に束ねる** (`PROBE-ASSERTS-NOTHING-01` /
   `VIOLATION-PROBE-STALE-01` と同一 lane)。**cargo が要る。**
+
+  **現況 (2026-08-27)**: 裁定 1〜3 をすべて実装し、3 件とも個別実行で `===EXIT 0`
+  (`..._reaches_...` 81.44s / `..._lengths` 73.49s / minimal fixture 76.76s)。
+  stage2 側は 27 marker ペアのうち 25 ペアを stage1 出力と突き合わせる parity 比較になった
+  (127/128 は範囲外読み出しで binary 依存なので除外。理由はコードと ADR に明記)。
+  **marker 129 以降の初回評価で新規の赤は 0 件。**ただし元の `129 == 131` / `130 > 0` は
+  前提が偽なので成立せず、assertion を「壊れている状態を pin する」側へ付け替えた。
+  復元すべきことは `TARGET-DEFN-NAV-STALE-01` (`I-88`) へ引き取らせた。
+  実測は `docs/adr/decisions-target-defn-probe-shape-drift.md` の Evidence が正本。
+  **残るのは `selfhost_bootstrap_four_layer` の lane 再計測 1 本と台帳 2 行
+  (`:357` / `:403`) の削除だけ。** この 1 本は `PROBE-ASSERTS-NOTHING-01` /
+  `VIOLATION-PROBE-STALE-01` / `WEAK-SUBJECT-ASSERT-01` と共有する。
+
+- [ ] `TARGET-DEFN-NAV-STALE-01` target-defn probe の body ナビゲーションを shape 非依存にする — Issue `I-88`。
+  **本項目は `I-80` の却下案 B そのものであり、いま着手すべきものではない。**
+  `TODO.md` に置くのは、`I-80` の是正で「壊れている状態を pin する」assertion を
+  4 つ増やした事実が、どの正本にも残らずに消えるのを防ぐためである。
+  受入条件:
+  - `CompilerMode.ls` の `compile-file-mode-target-defn-parity-probe` から
+    `outer-expr` / `inner-call` / `inner-func` の添字直打ちを外す
+  - `part_009.rs` の stage1 側 shape pin で、`129 == 0` / `130 == 0` / `133 == 0` / `135 == 0` を
+    本来の `129 == 131` / `130 > 0` / `133 > 0` へ戻す
+  - stage2 側 parity 比較の `TARGET_DEFN_OUT_OF_RANGE_MARKERS` (127/128) の除外を解く
+  - `(vector-get decls 31)` の hardcode も同時に扱う
+  **着手のトリガ**: `(vector-get decls 31)` の hardcode が実際に問題を起こしたとき
+  (`decisions-target-defn-probe-shape-drift.md` の却下案 B が定めた条件)。
+  **含めない範囲**: それ以外の probe。**stage0 の再生成と native lane への波及を伴う。cargo が要る。**
 
 - [~] `VIOLATION-PROBE-STALE-01` violation probe の極性を反転する — Issue `I-81`。
   **実装は 2026-08-27 に完了した。残るは lane 再計測と台帳行の削除だけである** (末尾の現況を見よ)。

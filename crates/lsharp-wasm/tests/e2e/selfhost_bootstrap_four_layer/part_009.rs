@@ -209,21 +209,6 @@ fn test_e2e_boot04_self_hosted_stage2_warm_target_defn_parity_reaches_ast_make_t
 #[test]
 #[ignore]
 fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_constrained() {
-    fn marker_value(values: &[i64], marker: i64) -> i64 {
-        assert_eq!(
-            values.len() % 2,
-            0,
-            "BOOT-04 target-defn: marker/value ペア数が崩れている: {:?}",
-            values
-        );
-        values
-            .chunks_exact(2)
-            .find_map(|chunk| (chunk[0] == marker).then_some(chunk[1]))
-            .unwrap_or_else(|| {
-                panic!("BOOT-04 target-defn: marker {marker} が見つからない: {values:?}")
-            })
-    }
-
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
         .parent()
@@ -236,6 +221,21 @@ fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_c
 
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
+
+    // App/Main.ls の dispatch は「どの arg スロットが非空か」で probe を選ぶ。
+    // target-defn は arg16 (arg17 は warm-target-defn で別物)。
+    let mut probe_args = vec!["compiler", "src/Syntax/AST.ls"];
+    while probe_args.len() < 16 {
+        probe_args.push("");
+    }
+    probe_args.push("target-defn");
+
+    let stage1_probe_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &probe_args,
+    )
+    .expect("BOOT-04 target-defn: stage1 の parity probe 実行に失敗した");
 
     let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
@@ -250,113 +250,53 @@ fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_c
     let parity_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
-        &[
-            "compiler",
-            "src/Syntax/AST.ls",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "target-defn",
-        ],
+        &probe_args,
     )
     .expect("BOOT-04 target-defn: stage2_self_compiler の parity probe 実行に失敗した");
-    let values: Vec<i64> = parity_output
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            line.trim()
-                .parse::<i64>()
-                .unwrap_or_else(|_| panic!("BOOT-04 target-defn: 数値でない debug 出力: {line:?}"))
-        })
-        .collect();
-    eprintln!("BOOT-04 target-defn values = {:?}", values);
 
-    assert!(
-        values.len() >= 8,
-        "BOOT-04 target-defn: debug 出力が短すぎる: {:?}",
-        values
-    );
-    assert_eq!(marker_value(&values, 121), 59);
-    assert_eq!(marker_value(&values, 124), 20);
-    assert!(
-        marker_value(&values, 125) > 0,
-        "BOOT-04 target-defn: param-count は正であるべき: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 126) > 0,
-        "BOOT-04 target-defn: body tag は正であるべき: {:?}",
-        values
-    );
-    assert_eq!(marker_value(&values, 127), 5);
-    assert_eq!(marker_value(&values, 128), 4);
+    // 本 test の主題は parity である — 同じ probe を同じ入力で stage1 の binary と
+    // stage2 の binary に走らせ、同じものが見えるか。AST の形の pin は主題ではないので
+    // 期待値リテラルは置かない (形の pin は stage1 側の `..._lengths` が引き受ける)。
+    // 裁定は `docs/adr/decisions-target-defn-probe-shape-drift.md` の裁定 1。
+    let stage1_pairs = parse_target_defn_pairs(&stage1_probe_output, "BOOT-04 target-defn stage1");
+    let stage2_pairs = parse_target_defn_pairs(&parity_output, "BOOT-04 target-defn stage2");
+    eprintln!("BOOT-04 target-defn stage1 = {stage1_pairs:?}");
+    eprintln!("BOOT-04 target-defn stage2 = {stage2_pairs:?}");
+
     assert_eq!(
-        marker_value(&values, 129),
-        marker_value(&values, 131),
-        "BOOT-04 target-defn: use-site と def-site の hash は一致するべき: {:?}",
-        values
+        stage1_pairs.iter().map(|&(m, _)| m).collect::<Vec<_>>(),
+        stage2_pairs.iter().map(|&(m, _)| m).collect::<Vec<_>>(),
+        "BOOT-04 target-defn: stage1 と stage2 で marker 列そのものが食い違う"
     );
+
+    // marker 127 / 128 だけは比較から外す。probe の body 内ナビゲーションが
+    // 旧 `let` shape 前提のまま AST の外を読んでおり (`I-80`)、範囲外読み出しの値は
+    // binary 依存で stage1 と stage2 で実際に食い違うためである。
+    // **これは stage 間の意味論の差ではなく、ゴミを読んでいることの帰結である。**
+    // probe 本体を直す (ADR 却下案 B) までは比較対象にしない。
+    // 除外した marker が消えていないことは上の marker 列一致が保証する。
+    for (&(marker, stage1_value), &(_, stage2_value)) in stage1_pairs.iter().zip(stage2_pairs.iter())
+    {
+        if TARGET_DEFN_OUT_OF_RANGE_MARKERS.contains(&marker) {
+            continue;
+        }
+        assert_eq!(
+            stage1_value, stage2_value,
+            "BOOT-04 target-defn: marker {marker} が stage1 と stage2 で食い違う: stage1={stage1_pairs:?} stage2={stage2_pairs:?}"
+        );
+    }
+
+    // parity が空回りしていないことの下限。除外した 2 件を差し引いても
+    // 25 ペアが実際に突き合わされている (実測 2026-08-27: 27 ペア)。
     assert!(
-        marker_value(&values, 130) > 0,
-        "BOOT-04 target-defn: use-site lookup は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 132) > 0,
-        "BOOT-04 target-defn: def-site lookup は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 133) > 0,
-        "BOOT-04 target-defn: local use-site lookup は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 134) > 0,
-        "BOOT-04 target-defn: local def-site lookup は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 123) > 0,
-        "BOOT-04 target-defn: ftable IR は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 122) > 0,
-        "BOOT-04 target-defn: source-aware IR は空であってはいけない: {:?}",
-        values
+        stage1_pairs.len() >= 27,
+        "BOOT-04 target-defn: 突き合わせたペアが少なすぎる: {stage1_pairs:?}"
     );
 }
 
 #[test]
 #[ignore]
 fn test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_lengths() {
-    fn marker_value(values: &[i64], marker: i64) -> i64 {
-        assert_eq!(
-            values.len() % 2,
-            0,
-            "BOOT-04 stage1 target-defn: marker/value ペア数が崩れている: {:?}",
-            values
-        );
-        values
-            .chunks_exact(2)
-            .find_map(|chunk| (chunk[0] == marker).then_some(chunk[1]))
-            .unwrap_or_else(|| {
-                panic!("BOOT-04 stage1 target-defn: marker {marker} が見つからない: {values:?}")
-            })
-    }
-
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
         .parent()
@@ -370,77 +310,108 @@ fn test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_l
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
 
+    let mut probe_args = vec!["compiler", "src/Syntax/AST.ls"];
+    while probe_args.len() < 16 {
+        probe_args.push("");
+    }
+    probe_args.push("target-defn");
+
     let parity_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
         Some(&selfhost_root),
-        &[
-            "compiler",
-            "src/Syntax/AST.ls",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "target-defn",
-        ],
+        &probe_args,
     )
     .expect("BOOT-04 stage1 target-defn: stage1 parity probe 実行に失敗した");
-    let values: Vec<i64> = parity_output
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            line.trim().parse::<i64>().unwrap_or_else(|_| {
-                panic!("BOOT-04 stage1 target-defn: 数値でない debug 出力: {line:?}")
-            })
-        })
-        .collect();
-    eprintln!("BOOT-04 stage1 target-defn values = {:?}", values);
+    let label = "BOOT-04 stage1 target-defn";
+    let pairs = parse_target_defn_pairs(&parity_output, label);
+    eprintln!("BOOT-04 stage1 target-defn = {pairs:?}");
+    let marker = |m: i64| target_defn_marker(&pairs, m, label);
 
-    assert_eq!(marker_value(&values, 121), 59);
-    assert_eq!(marker_value(&values, 124), 20);
-    assert_eq!(marker_value(&values, 125), 1);
-    assert_eq!(marker_value(&values, 126), 7);
-    assert_eq!(marker_value(&values, 127), 5);
-    assert_eq!(marker_value(&values, 128), 4);
-    assert_eq!(marker_value(&values, 129), marker_value(&values, 131));
+    // ---- 何を pin しているのか (`I-80` / decisions-target-defn-probe-shape-drift.md 裁定 2) ----
+    //
+    // (1) marker 124/125/126 は `selfhost/src/Syntax/AST.ls:260` の `make-type-constrained` の
+    //     **形そのもの**である。AST.ls を refactor するとここが赤くなる。**それは正しい挙動**で、
+    //     赤くなったら AST.ls の diff を見て値を更新すればよい。今回の問題は赤くなったことではなく、
+    //     4 ヶ月間 `I-72` に隠れて赤くならなかったことである。
+    // (2) marker 131..139 は probe が自分で仕込んだ sentinel (777 / 778 / 555 / 444 / 333 / 222) の
+    //     ftable / env 往復であり、AST の形とは無関係。登録経路の一致を見ている。
+    // (3) marker 127/128/129/130/133/135 は旧 `let` shape 前提のナビゲーションの出力で、
+    //     現在の body は `ast-apply` なので AST の外を読んでいる。127/128 は binary 依存なので
+    //     pin しない。129/130/133/135 はどちらの stage でも 0 になる (hash 0 は ftable に無く
+    //     lookup が全部外れる)。**probe 本体を直すとここは非 0 になり赤くなる。それも正しい。**
+    assert_eq!(
+        marker(124),
+        20,
+        "decl tag が ast-defn (20) でない: {pairs:?}"
+    );
+    assert_eq!(
+        marker(125),
+        1,
+        "make-type-constrained の param は name-hash の 1 個のはず: {pairs:?}"
+    );
+    assert_eq!(
+        marker(126),
+        5,
+        "body の式タグが ast-apply (5) でない。AST.ls:260 の make-type-constrained は \
+         vector-push-pair-rooted の単一呼び出しである: {pairs:?}"
+    );
+
+    // def-site 側 (`decls[31]`) は body ナビゲーションを経由しないので生きている。
+    assert_ne!(marker(131), 0, "def-site の name hash が 0: {pairs:?}");
     assert!(
-        marker_value(&values, 130) > 0,
-        "stage1 use-site lookup は空であってはいけない: {:?}",
-        values
+        marker(132) > 0,
+        "register-all-pairs の ftable に def-site が登録されていない: {pairs:?}"
     );
     assert!(
-        marker_value(&values, 132) > 0,
-        "stage1 def-site lookup は空であってはいけない: {:?}",
-        values
+        marker(134) > 0,
+        "register-defns-chunked の ftable に def-site が登録されていない: {pairs:?}"
+    );
+    assert_eq!(
+        marker(134),
+        marker(136),
+        "chunked 登録と再帰登録で同じ関数の index が違う: {pairs:?}"
+    );
+
+    // sentinel の往復。登録経路が 3 つあり、どれも decls[31] を 777 へ写すはず。
+    assert_eq!(marker(137), 777, "register-defns-step の登録結果: {pairs:?}");
+    assert_eq!(marker(138), 777, "register-defns の登録結果: {pairs:?}");
+    assert_eq!(marker(139), 777, "ftable-register 直接の登録結果: {pairs:?}");
+    assert_eq!(
+        marker(140),
+        32,
+        "register-defns-step は decls[31] を 1 件処理して次の decl index 32 を返すはず: {pairs:?}"
+    );
+    assert_eq!(
+        marker(141),
+        778,
+        "register-defns-step は次の関数 index として 778 を返すはず: {pairs:?}"
+    );
+    assert_eq!(marker(142), 555, "早期 ftable の往復: {pairs:?}");
+    assert_eq!(marker(143), 444, "正リテラル hash の往復: {pairs:?}");
+    assert_eq!(marker(144), 333, "負リテラル hash の往復: {pairs:?}");
+    assert_eq!(marker(145), 222, "env の往復: {pairs:?}");
+    assert_eq!(marker(146), 1, "ftable-size: {pairs:?}");
+    assert_eq!(marker(147), 1, "map-size: {pairs:?}");
+
+    // 壊れたナビゲーションの下流。現在の値を明示的に固定しておく。
+    for stale in [129, 130, 133, 135] {
+        assert_eq!(
+            marker(stale),
+            0,
+            "marker {stale} は壊れた body ナビゲーションの下流なので 0 のはず。\
+             非 0 になったなら probe 本体が直された可能性がある (I-80 を見よ): {pairs:?}"
+        );
+    }
+
+    // IR 長。実測 2026-08-27 は ftable 版 / source-aware 版とも 21 命令。
+    // 命令数そのものは codegen の改良で動くので下限だけを見る。
+    assert!(
+        marker(123) > 0,
+        "ftable IR は空であってはいけない: {pairs:?}"
     );
     assert!(
-        marker_value(&values, 133) > 0,
-        "stage1 local use-site lookup は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 134) > 0,
-        "stage1 local def-site lookup は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 123) > 0,
-        "stage1 ftable IR は空であってはいけない: {:?}",
-        values
-    );
-    assert!(
-        marker_value(&values, 122) > 0,
-        "stage1 source-aware IR は空であってはいけない: {:?}",
-        values
+        marker(122) > 0,
+        "source-aware IR は空であってはいけない: {pairs:?}"
     );
 }
 
@@ -470,7 +441,25 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
     let source_path = temp_root.join("mini_ast_shape.ls");
     std::fs::write(
         &source_path,
-        "(defn make-type-constrained [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v (ast-typeconstrained)) name-hash)))\n(defn ast-typeconstrained [] 24)\n(defn main [] 0)\n",
+        // fixture は `selfhost/src/Syntax/AST.ls:260` の現在の shape を鏡写しにする。
+        // `vector-push-pair-rooted` は builtin ではなく AST.ls:67 の module-local defn (14 行) なので、
+        // 定義ごと持ち込む。`root_push` / `root_set` / `root_pop` は runtime import であり、
+        // flat file を CompilerMode へ食わせる本 fixture では既存 minimal fixture と同じく stub を置く。
+        concat!(
+            "(defn make-type-constrained [name-hash]",
+            " (vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash))\n",
+            "(defn vector-push-pair-rooted [base first second]",
+            " (do (root_push first) (root_push second)",
+            " (let [base-slot (root_push base) with-first (vector-push base first)]",
+            " (do (root_set base-slot with-first)",
+            " (let [result (vector-push with-first second)]",
+            " (do (root_pop) (root_pop) (root_pop) result))))))\n",
+            "(defn ast-typeconstrained [] 24)\n",
+            "(defn root_push [x] 0)\n",
+            "(defn root_set [slot value] 0)\n",
+            "(defn root_pop [] 0)\n",
+            "(defn main [] 0)\n",
+        ),
     )
     .expect("mini source should be written");
 
@@ -518,13 +507,14 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
 
     // 本 test の主題は stage1 と stage2 が同じ defn を同じ形で見ることである。
     // 301 = 先頭 defn の index、302 = その body の式タグ。fixture の先頭 defn は
-    // make-type-constrained で、body は (let [...] ...) なのでタグ 7。
-    // 実測 2026-08-27: stage1 / stage2 とも [301, 0, 302, 7]。
+    // make-type-constrained で、body は vector-push-pair-rooted の単一呼び出しなので
+    // タグ 5 (ast-apply)。**旧 fixture は `let` 形 (タグ 7) を埋め込んでいたが、
+    // それは 2026-04-22 の `901c10d8` で AST.ls から消えた形の残骸だった** (`I-80`)。
     let stage1_values = parse_progress_values(&stage1_probe_output, "stage1 first-defn");
     let stage2_values = parse_progress_values(&probe_output, "stage2 first-defn");
     assert_eq!(
         stage1_values,
-        vec![301, 0, 302, 7],
+        vec![301, 0, 302, 5],
         "stage1 の first-defn probe が期待形と違う"
     );
     assert_eq!(

@@ -1,7 +1,7 @@
 # target-defn probe が AST の形を添字直打ちで辿っている
 
-- **Status**: doc-RED (裁定済み / 実装未着手)
-- **Date**: 2026-08-27
+- **Status**: doc-GREEN (裁定 1〜3 とも実装済。lane 再計測待ち)
+- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (doc-GREEN)
 - **Scope**: `selfhost_bootstrap_four_layer` の target-defn parity probe 2 件と、
   その probe 本体 (`selfhost/src/App/CompilerMode.ls` の `target-defn` モード)
 - **Related**: `ISSUES.md` `I-80` (本件) / `I-72` (これを隠していた) / `I-75` (移管元) /
@@ -193,4 +193,118 @@ module を跨ぐ `ALWAYS-RED-PROBE-01` の stage_chain 分と
 
 ## Evidence
 
-(実装後に埋める。裁定 1〜3 の受入判定と、marker 129 以降で新しく出た赤の有無を書く。)
+### RED の記録 (2026-08-27)
+
+`I-82` の部分再測定 (21 target / 2058.35s) が両方を赤で捉えている
+(`/Users/biwakonbu/github/tmp/i82/measure.log:153-168`)。本 slice はこの赤を出発点にした。
+
+| test | 落ちた位置 | left | right |
+|---|---|---|---|
+| `..._reaches_ast_make_type_constrained` | `part_009.rs:302` | 0 | 5 (marker 127) |
+| `..._lengths` | `part_009.rs:411` | 5 | 7 (marker 126) |
+
+同じ実行で **full dump が両 stage 分そろって取れた**。これが裁定 1 の設計を決めた。
+
+```
+stage1: 121:59 124:20 125:1 126:5 127:4294967296 128:72057594054705152 129:0 130:0
+        131:-5490128408457682031 132:83 133:0 134:39 135:0 136:39 137:777 138:777 139:777
+        140:32 141:778 142:555 143:444 144:333 145:222 146:1 147:1 123:21 122:21
+stage2: 上と同じ。ただし 127:0 / 128:0
+```
+
+**27 ペア中、食い違うのは 127 と 128 の 2 つだけである。**
+
+### 裁定 1 (stage2 側を parity 比較へ) — 実装済、ただし除外 2 件つき
+
+期待値リテラルを全廃し、同じ probe を stage1 の binary でも走らせて突き合わせる形にした。
+比較は 2 段:
+
+1. **marker 列そのものの一致** — 除外した marker が消えても気付けるようにするため
+2. **値の一致** — ただし 127 / 128 を除く
+
+**127 / 128 を除外したのは、裁定を書いた時点では見えていなかった実測による。**
+この 2 つは旧 `let` shape 前提のナビゲーションが AST の外を読んだ結果であり、
+範囲外読み出しの値は binary 依存になる。stage1 は `4294967296` / `72057594054705152`、
+stage2 は `0` / `0` を返す。**これは stage 間の意味論の差ではなく、ゴミを読んでいることの帰結である。**
+全 marker を parity 対象にすると恒常赤になり、`I-84` (構造上必ず赤くなる probe) の類型に落ちる。
+除外理由はコード内のコメントに書き、`TARGET_DEFN_OUT_OF_RANGE_MARKERS` として
+`part_018.rs` に定数化した。
+
+### 裁定 2 (stage1 側を shape pin として残す) — 実装済、ただし 127 の扱いは文言と違う
+
+126 の期待を 7 → **5 (`ast-apply`)** へ更新した。ここは文言どおり。
+
+**127 は「現在の shape での実測へ更新する」を実行しなかった。**
+実測すると stage1 は `4294967296` で、これは値としての意味を持たないゴミである。
+ゴミをリテラルで pin すると、次にここが赤くなったとき「何が変わったのか」を誰も読めない。
+代わりに次を pin した:
+
+- `129 / 130 / 133 / 135 == 0` — 壊れたナビゲーションの下流はどちらの stage でも 0 になる
+  (hash 0 は ftable に無いので lookup が全部外れる)。**probe 本体を直すとここは非 0 になり
+  赤くなる。それは正しい挙動である**とコメントに明記した
+- `134 == 136` — chunked 登録と再帰登録が同じ関数へ同じ index を与えること
+- `137 == 138 == 139 == 777` — 3 つの登録経路がどれも `decls[31]` を 777 へ写すこと
+- `140 == 32` / `141 == 778` — `register-defns-step` の返す次 index と次関数 id
+- `142..147` の sentinel 往復 (555 / 444 / 333 / 222 / 1 / 1)
+
+つまり **pin の対象を「ゴミの値」から「登録経路の一致」へ移した**。
+何を pin しているかは test 内のコメントブロックに 3 分類で書いてある。
+
+### 裁定 3 (minimal fixture) — 実装済
+
+fixture の body を `(let [v ...] (vector-push (vector-push ...) ...))` から
+`(vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash)` へ差し替え、
+`AST.ls:67` の 14 行の `vector-push-pair-rooted` を定義ごと持ち込んだ。
+`root_push` / `root_set` / `root_pop` は既存の minimal fixture
+(`mini_vector_push_shape.ls`) と同じく stub を置いた。
+
+**assertion は 302 が 7 → 5 へ変わる、という予測を立ててから測った。** 実測は
+stage1 / stage2 とも `[301, 0, 302, 5]` で予測どおり。
+この test の assertion は元から主題 (先頭 defn の形の parity) を見ていたので、そのまま活きた。
+
+### marker 129 以降の初回評価 — 新しい赤は 0 件
+
+`I-80` / `TODO.md` はどちらも「126/127 を直すと下から新しい赤が出る可能性がある」と書き、
+「126/127 が緑になったことを完了条件にするな」と釘を刺していた。**実測では新しい赤は出なかった。**
+ただし**これは「元の assertion がそのまま通った」という意味ではない**。元の
+
+- `129 == 131` (use-site と def-site の hash 一致)
+- `130 > 0` / `133 > 0` (lookup が空でない)
+
+は**成立し得ない**。ナビゲーションが壊れている以上、`inner-func` から取った use-site hash は
+0 であり、0 は ftable に無いので lookup も 0 になる。**前提が偽の assertion である。**
+そこで assertion を「壊れている状態を pin する」側へ付け替えた
+(`129 == 0` / `130 == 0` / `133 == 0` / `135 == 0`)。
+
+**これは期待値を実測へ書き換えたのではなく、何を主題とするかを付け替えたものである。**
+区別は次の一点にある — 付け替え後の assertion は、**probe 本体が直されたときに赤くなる**。
+黙って緑にしたのではなく、直した人に気付かせる向きに置き直した。
+元の 2 つの assertion を復元すべきことは `I-88` / `TARGET-DEFN-NAV-STALE-01` として台帳に載せた。
+
+### 検証
+
+| 対象 | 結果 |
+|---|---|
+| `cargo test -p lsharp-wasm --test e2e --no-run` | 警告 0 (10.01s) |
+| `cargo clippy -p lsharp-wasm --tests` の `part_009` / `part_018` 分 | 警告 0 |
+| `..._reaches_ast_make_type_constrained` 個別実行 | `===EXIT 0` (81.44s) |
+| `..._lengths` 個別実行 | `===EXIT 0` (73.49s) |
+| `..._first_defn_probe_on_minimal_make_type_constrained_shape` 個別実行 | `===EXIT 0` (76.76s) |
+
+ログは `/Users/biwakonbu/github/tmp/i82/i80.log` と `i80b.log`。
+`i80b.log` はコメント修正後の binary で 2 件を測り直したものである
+(`i80.log` の 1 本目 / 2 本目は修正前の binary で走っていた)。
+
+## 満たせなかったこと
+
+- **`selfhost_bootstrap_four_layer` の lane 再計測をまだ回していない。** 個別実行 3 件が
+  緑であることは lane 1 本の完走ではない。台帳 2 行の削除もこの再計測の後である。
+  `I-80` / `I-81` / `I-82` / `I-85` の 4 項目が同じ 1 本を待っている。
+- **裁定 2 の「127 を現在の shape での実測へ更新する」を文言どおりには実行しなかった。**
+  上記のとおり、実測値がゴミであることが実行の前提を壊した。
+  代わりに pin の対象を移し、その判断と根拠をここに書いた。**条件を静かに緩めてはいない。**
+- **probe 本体 (`CompilerMode.ls`) は陳腐化したままである。** 却下案 B は却下のまま維持した。
+  ただし本 slice で「壊れている状態を pin する」assertion を 4 つ増やしたので、
+  案 B を実行するときに何を戻すべきかが具体化した。`I-88` に引き取らせた。
+- **`(vector-get decls 31)` の hardcode は触っていない。** `TODO.md` の含めない範囲どおり。
+  decl の並び順が変われば 131 以降が同じ形で陳腐化する。
