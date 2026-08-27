@@ -3158,13 +3158,42 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   ADR に裏付けられた意図的な frame layout 変更なら pin を追随させる。
   そうでなければ regression であり、pin は正しく実装を直す。
   受入条件: (a) frame layout を 8 byte 動かした変更を git 履歴から特定し、
-  対応する ADR の有無を示すこと。(b) その結果として
+  対応する ADR の有無を示すこと。
+  **-> (a) は 2026-08-27 に済ませた。`361d0d99` (2026-05-17) が x86 param slot を
+  1 slot ずらしており、ADR は無い。根拠と「測定では確認していない」という限界は
+  `I-73` 本文にある。ただし (a) だけでは意図的な変更か regression かは決まらない。**
+  (b) その結果として
   「pin を直す」か「実装を直す」かを 33 件それぞれについて決めること
   (3 つの形は原因が別かもしれないので、まとめて 1 つの結論にしない)。
   (c) `..._nine_arg_bundle_bytes` の `NotFound` と
   `..._fifty_nine_arg_bundle_bytes` の `support.rs:1685` panic は
   assertion ですらないので、別途原因を付けること。
   **含めない範囲**: `NATIVE-I32SUB-01` (値そのものの誤り、別原因)。**cargo が要る。**
+
+- [ ] `NATIVE-X86-SPILL-DEAD-01` x86 の到達不能な 20 引数以上 spill テーブルを裁定する — Issue `I-89`。
+  `NativeCodegen.ls:13269-13991` の約 680 行 (`spill-native-function-params-x86-twenty-to-twenty-two`
+  から `...-twenty-to-sixty-one` まで) に caller が無い。唯一の生きた入口は `:14086` の
+  `spill-native-function-params-x86-loop` で、そちらは 1 origin の `native-param-slot-offset-x86` を使う。
+  死んだテーブルは `361d0d99` 以前の 0 origin `local-slot-offset` のままである。
+  受入条件: (a) 汎用 loop が 20 引数以上でも aarch64 側と同じ形のバイト列を出すことを
+  実測で示すこと。(b) 示せたらテーブルを削除し、示せなかったら**削除せず**
+  「なぜ汎用 loop で覆えないのか」を書くこと。
+  **確認せずに消さない。** aarch64 側の同型 chain は `:20056` から生きており、
+  x86 側だけを消すと片側だけ実装が無い状態になる。
+  **含めない範囲**: aarch64 側の chain、`I-73` の pin の裁定。**cargo が要る。**
+
+- [ ] `LSP-POSITION-ORIGIN-01` selfhost LSP の Position origin を判別して片付ける — Issue `I-90`。
+  `selfhost_cli_core` の赤 2 件 (`..._lsp_transport_hover_frame` / `..._lsp_transport_formatting_frame`)。
+  実装が返す range と test の期待が **line も character も一律 +1** ずれる。
+  LSP 仕様は zero-based なので実装側が仕様どおりに見えるが、
+  **request 側 (`line=2` を 2 行の文書に渡している) が 1 origin の可能性がある**。
+  受入条件: (a) 1 行目の `square` を狙う request を足して、
+  `line=0` と `line=1` のどちらで当たるかを実測すること (**どちらか一方しか当たらないので 1 回で決まる**)。
+  (b) その結果で「test の期待を 0 origin へ直す」か
+  「実装が入口と出口で origin を混ぜているのを直す」かを決めること。
+  **(a) をやる前に期待値を動かさないこと。** 動かせば 2 件は緑になるが、
+  もし実装側が混ぜているならその欠陥を隠したことになる。
+  **含めない範囲**: Rust 側 LSP (`lsharp-lsp`) の origin。**cargo が要る。**
 
 - [ ] `ROOT-IMBALANCED-HELPER-01` verifier が非 `main` helper を拒否する件を判別する — Issue `I-74`。
   `selfhost_cli_core` の赤 9 件が `ImbalancedExit { function: compile-file-state | compile-pair-state, depth: 1 }`。
@@ -3183,7 +3212,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 14 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 11 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
@@ -3193,7 +3222,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   起票時 19 件のうち 4 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` へ移管済み。
   **さらに `..._full_inline_mismatch_probe` 1 件を `I-84` へ移管した (15 → 14)。**
   この 1 件は「原因未診断」ではなく**構造上必ず赤くなる診断ダンプ**で、分類そのものが誤っていた。
-  受入条件: 残る 14 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
+  **2026-08-27 の分類パス (cargo 不使用、sweep ログの読み直しのみ) で 14 件すべての
+  失敗出力を台帳へ書き込み、うち 3 件を移管した (14 → 11)** —
+  LSP Position の origin ずれ 2 件を `I-90` へ、`..._check_reports_invalid_canonical_case` の
+  型名 `Fn` vs `Bool` を `I-76` へ。
+  残る 11 件は**症状は台帳に載ったが原因は未確定**である。
+  そのうち 5 件は `main-with-args` の `-o` / `--target` 経路という 1 群に見えるが、
+  **3 件は stderr が無いので同一原因と決められない。**
+  受入条件: 残る 11 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**

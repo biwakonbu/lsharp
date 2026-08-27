@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 14 件 | 中 | open | 5 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` / `I-84` へ移管 |
+| [I-75](#i-75) | sweep で露出した未分類の赤 11 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ移管。残り 11 件は症状を実測して台帳へ書いた |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -220,6 +220,8 @@
 | [I-86](#i-86) | selfhost parser が Rust reference より緩く、不正な構文を `diagnostics:0` で受理する | 中 | open | `I-82` の #7 を実測して発見 (2026-08-27)。2 引数 `if` と top-level のゴミ atom の 2 形 |
 | [I-87](#i-87) | WASI 経路の `read-file` が preopen 外のパスに対しエラーではなく空文字列を返す | 中 | open | `I-85` の是正中に発見 (2026-08-27)。fixture が読めていないのに test が緑になっていた |
 | [I-88](#i-88) | target-defn probe の body ナビゲーションが旧 shape 前提のままで、下流 marker が「壊れていること」を pin している | 低 | deferred | `I-80` の却下案 B の代償を記録したもの (2026-08-27) |
+| [I-89](#i-89) | x86 の 20 引数以上 param spill テーブル約 680 行が到達不能で、旧 slot 規約のまま残っている | 低 | open | `I-73` の受入条件 (a) を調べる途中で発見 (2026-08-27)。aarch64 側の同型 chain は生きている |
+| [I-90](#i-90) | selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている | 中 | open | `I-75` の 14 件を分類する中で診断確定 (2026-08-27)。line も character も一律 +1 |
 
 ### ドキュメント (DOC)
 
@@ -5099,14 +5101,48 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 
   **1 と 2 は「一律のずれ」であって、値がランダムに壊れているのではない。**
   frame layout を 8 byte 動かす変更が入り、pin が追随していない形と整合する。
-  **ただし ADR に裏付けられた意図的な変更なのか regression なのかは未確定**であり、
-  それを決めることが引き取り先の仕事である。
+- **受入条件 (a) の答え (2026-08-27、cargo 不使用の git 考古学)。**
+  **該当 commit は `361d0d99` "wip: advance linux x86 selfhost native path" (2026-05-17)。
+  対応する ADR は無い。**
+
+  | 対象 | commit | 日付 |
+  |---|---|---|
+  | pin の初出 | `a8fb4914` "Support native direct calls with fifteen args" | 2026-04-13 |
+  | 分割で `part_010.rs` へ移動 | `197bf027` "refactor(wasm): split native differential tests" | 2026-07-27 |
+  | frame layout を動かした変更 | **`361d0d99`** | **2026-05-17** |
+
+  `361d0d99` は `NativeCodegen.ls` に次を新設し、既存の
+  `(local-slot-offset param-index)` を機械的に置換した:
+
+  ```lisp
+  ;; selfhost IR は slot 0 を scratch として予約するため、x86 引数は slot 1 から退避する
+  (defn native-param-slot-offset-x86 [param-index]
+    (local-slot-offset (+ param-index 1)))
+  ```
+
+  `local-slot-offset [idx] = (* (+ idx 1) 8)` なので、これは **x86 の param slot を
+  一律 1 slot = 8 byte ずらす**。ずれの向きと大きさが実測と一致する。
+
+  **ADR が無いことの確認**: `361d0d99` の commit message は 1 行の `wip:` で body が空。
+  `docs/adr/` 全体を `native-param-slot-offset` / `slot 0 を scratch` で grep して 0 件。
+  `x86` と frame/stack slot を同時に含む ADR 2 件はいずれも別主題である。
+  同 commit は 10 ファイル / +5,391 / -1,325 の大きな wip で、
+  `selfhost_native_differential.rs` に +817 行を足しながら**既存 pin の追随はしていない**。
+- **(a) の限界を明記する。** `361d0d99` が当該 33 件のバイト列を実際に変えたことは
+  **測定では確認していない**。根拠は (i) x86 の frame を明示的に 1 slot ずらす commit が
+  履歴上これ 1 本だけ、(ii) pin より後、(iii) ずれの向きと大きさが一致する、
+  という状況証拠である。確定には `361d0d99^` と `361d0d99` の両方で emitter を build して
+  出力バイト列を差分する必要があり、**それは cargo が要る**。受入条件 (b) の作業に属する。
+- **したがって「意図的な変更か regression か」はまだ決まっていない。**
+  ADR が無いことは分かったが、ADR の不在は regression の証明ではない。
+  決めるのは引き取り先の仕事のままである。
 - **33 件の内訳には assertion 以外も 2 件ある**。
   `..._nine_arg_bundle_bytes` は `Os { code: 2, kind: NotFound }`、
   `..._fifty_nine_arg_bundle_bytes` は `support.rs:1685` で panic。**どちらも未診断**。
 - **`NATIVE-I32SUB-01` とは別**。あちらは i32 減算の値そのものの誤りで、
   本件は byte 列の配置のずれである。
-- **関連**: `I-64` (発見経路)。引き取り先は `TODO.md` の `NATIVE-DIFF-PIN-01`。
+- **関連**: `I-64` (発見経路)、`I-89` ((a) の調査中に見つかった x86 の到達不能な spill テーブル。
+  原因 commit が同じ `361d0d99`)。引き取り先は `TODO.md` の `NATIVE-DIFF-PIN-01`。
 
 <a id="i-74"></a>
 ### I-74: root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する
@@ -5136,23 +5172,25 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 14 件
+### I-75: sweep で露出した未分類の赤 11 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **14 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **11 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
-  さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ移管した)。
+  さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
+  LSP Position の origin ずれ 2 件を `I-90` へ、
+  `..._check_reports_invalid_canonical_case` 1 件を `I-76` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
 
-  | module | 件数 | 主な形 |
+  | module | 件数 | 実測した症状 |
   |---|---|---|
-  | `selfhost_cli_core` | 11 | `InvalidData: stream did not contain valid UTF-8` 2 / `exit code 1` 3 / LSP transport frame 2 / その他 4 |
-  | `selfhost_native_stage_chain` | 2 | |
+  | `selfhost_cli_core` | 8 | `main-with-args` 系 5 (UTF-8 不正 2 / `exit code 1` 3) / check の import 解決 1 / self-feed compile の OOB trap 1 / `validate-source-json` の数値 1 |
+  | `selfhost_native_stage_chain` | 2 | OOB trap 1 / native と selfhost の hash 不一致 1 |
   | `selfhost_lsp_docs_ops` | 1 | formatter の module body canonical text |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
@@ -5161,12 +5199,35 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   移った `..._full_inline_mismatch_probe` は「原因未診断の赤」ではなく
   **構造上必ず赤くなる診断ダンプ**で、分類そのものが誤っていた。
 
+
+- **2026-08-27 の分類パス (cargo 不使用)。** `I-64` sweep のログ
+  (`/Users/biwakonbu/github/tmp/i64/mod-*.log`) から 14 件すべての失敗出力を取り出し、
+  **台帳の注記を「原因未診断」から実測症状へ差し替えた**。結果:
+
+  | 判定 | 件数 | 内訳 |
+  |---|---|---|
+  | 原因が確定して移管 | 3 | LSP Position の origin ずれ 2 (`I-90`) / `check` 型名が `Fn` へ潰れる 1 (`I-76`) |
+  | 症状は取れたが原因未確定 | 8 | 下表 |
+  | ログから追加情報が取れない | 1 | `..._validate_source_json_reports_contradicting_evidence` (`left Number(0)` / `right 1` だけ) |
+
+  **原因未確定の 8 件のうち 5 件は `main-with-args` の 1 群**で、
+  `-o` / `--target` を渡す経路だけが落ちている。2 件は
+  `InvalidData: stream did not contain valid UTF-8` で、**stdout に wasm binary が
+  出ている疑いがある** (= `-o` が効いていない形)。残り 3 件は `exit code 1` で
+  **stderr が捨てられているので読めない**。
+  **この 5 件が同一原因かどうかは、stderr が取れるまで決めない。**
+  形が似ていることは同一原因の証拠ではない。
+- **`EMBEDDED-CLI-OPTION-SPACE-01` との関係は未確認である。** 名前は近いが、
+  当該項目が扱うのは option とその値の間の空白の扱いであり、本件の 5 件が
+  そこに落ちるかは測っていない。**近そうという理由で束ねない。**
+
 - **`exit code 1` 3 件と `NotFound` 系は stderr が台帳に残っていない。**
   `support.rs:188` が exit code だけを文字列化して捨てている。
   **再現時に stderr を拾えるようにすることが診断の前提**になる。
-- **本 issue は保持であって診断ではない。** 残り 14 件それぞれの原因が付いた時点で
+- **本 issue は保持であって診断ではない。** 残り 11 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
-- **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)。
+- **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
+  `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
@@ -5799,3 +5860,70 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **関連**: `I-80` (親。test 側は是正済み)、`I-82` / `I-85` (主題を検査していない test の帯)、
   `I-84` (恒常赤にしないための判断根拠)。
   引き取り先は `TODO.md` の `TARGET-DEFN-NAV-STALE-01`。
+
+<a id="i-89"></a>
+### I-89: x86 の 20 引数以上 param spill テーブル約 680 行が到達不能で、旧 slot 規約のまま残っている
+
+- **影響度**: 低 / **状態**: open
+- **発見**: 2026-08-27 (`I-73` の受入条件 (a) の git 考古学の副産物)
+- **内容**: `selfhost/src/Backend/Native/NativeCodegen.ls` の x86 param spill には
+  経路が 2 つあるが、**片方に caller が無い**。
+
+  | 経路 | 入口 | slot 規約 | 到達性 |
+  |---|---|---|---|
+  | 汎用 loop | `spill-native-function-params-x86-loop` (`:13971`) -> `spill-native-function-param-x86` (`:13949`) | `native-param-slot-offset-x86` = **1 origin** | **生きている** (`:14086` から全 param 数がここを通る) |
+  | hand-unrolled テーブル | `spill-native-function-params-x86-twenty-to-sixty-one` (`:13988`) | `local-slot-offset` = **0 origin** | **到達不能** |
+
+  後者の chain は `...-twenty-to-twenty-two` (`:13269`) から `...-twenty-to-sixty-one` (`:13988`)
+  まで約 680 行あるが、chain の根に caller が 1 つも無い
+  (`grep -rn spill-native-function-params-x86-twenty-to-sixty-one selfhost/src` が定義行だけを返す)。
+- **死んだテーブルは `361d0d99` 以前の 0 origin 規約のままである。**
+  `361d0d99` (2026-05-17) が「selfhost IR は slot 0 を scratch として予約する」として
+  x86 の param slot を 1 origin へ移したが、この置換は汎用 loop 側にしか適用されなかった。
+  さらに `spill-native-function-params-x86-twenty-plus` (`:13978`) は
+  **同一関数内で不整合**である — register 側 (param 0-5) が 0 origin、
+  stack 側 (`spill-native-function-stack-params-x86-loop`) が 1 origin。
+- **aarch64 側の同型 chain は生きている** (`:20056` から呼ばれる)。
+  死んでいるのは x86 側だけで、汎用 loop へ書き直した際の消し忘れである。
+- **現状では動作上のバグではない。** 到達不能なので実行されない。
+  記録する理由は、**旧 ABI を体現した 680 行が「正しそうな顔で」残っていること**にある。
+  将来ここへ分岐を戻すと params が 1 slot ずれる。
+- **削除の前に確認が要る**: `spill-native-function-params-aarch64-*` と対称に見えるので、
+  x86 側だけを消すと「片方だけ無い」状態になる。**汎用 loop が 20 引数以上でも
+  aarch64 側と同じバイト列を出すことを先に確かめること。**
+  確認せずに消すのは、動く可能性のある実装を捨てることになる。
+- **関連**: `I-73` (発見経路。ずれの原因 commit が同じ `361d0d99`)。
+  引き取り先は `TODO.md` の `NATIVE-X86-SPILL-DEAD-01`。
+
+<a id="i-90"></a>
+### I-90: selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-75` の 14 件を分類する作業。`I-64` sweep のログの読み直しだけで確定した)
+- **内容**: `selfhost_cli_core` の赤 2 件が、**LSP `Position` の origin ずれ**という同一原因で落ちている。
+
+  | test | 実装が返した range | test の期待 |
+  |---|---|---|
+  | `..._lsp_transport_hover_frame` | `{line:1,character:15}` - `{line:1,character:21}` | `{line:2,character:16}` - `{line:2,character:22}` |
+  | `..._lsp_transport_formatting_frame` | `{line:0,character:0}` - `{line:1,character:3}` | `{line:1,character:1}` - `{line:2,character:4}` |
+
+  **line も character も、4 つの数値すべてがちょうど +1 ずれている。** ずれ方に例外が無い。
+- **どちらが正しいかは LSP 仕様で決まる。** LSP の `Position` は `line` / `character` とも
+  **zero-based** である。hover の fixture は
+  `"(defn square [x] x)\n(defn main [] (square 1) (square 2))"` で、2 行目の `square` は
+  0 origin で 15..21 に載る。**実装が返した `{line:1,character:15}`-`{line:1,character:21}` が
+  仕様どおりで、test の期待が 1 origin である。**
+- **したがって本件は「実装のバグ」ではなく「test の期待が仕様と違う」側の疑いが濃い。**
+  ただし *断定はしない*。理由は次のとおり:
+  - hover の request 側は `(99, 2, 17, source)` を渡しており、`line=2` は 2 行しかない文書では
+    0 origin だと範囲外である。**request 側は 1 origin で書かれている可能性がある。**
+    もし実装が request を 1 origin で受けて response を 0 origin で返しているなら、
+    **実装自身が入口と出口で origin を混ぜている**ことになり、そちらが本体の欠陥になる
+  - `character=17` は `square` の内側なので 0 origin でも 1 origin でも成立し、
+    **この fixture だけでは request 側の origin を判別できない**
+- **判別の方法**: 文書の 1 行目 (`(defn square [x] x)`) の `square` を狙う request を足す。
+  0 origin なら `line=0`、1 origin なら `line=1` で当たる。**どちらか一方しか当たらない**ので
+  1 回の測定で決まる。`selfhost/src/App/Cli.ls` の `run-lsp-transport-request` が正本。
+- **`I-75` から移管した 2 件である。** 移管前の注記は「原因未診断」だった。
+- **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
+  引き取り先は `TODO.md` の `LSP-POSITION-ORIGIN-01`。
