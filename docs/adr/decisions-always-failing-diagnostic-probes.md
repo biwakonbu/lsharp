@@ -1,6 +1,6 @@
 # 構造上必ず赤くなる診断 probe の裁定
 
-- **Status**: 一部 doc-GREEN (#1 は実装済。#2〜#5 は未着手)
+- **Status**: doc-GREEN (5 件とも実装済。lane 再計測 2 本のみ未了)
 - **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (#1 の doc-GREEN)
 - **Scope**: `crates/lsharp-wasm/tests/e2e/` の 5 test と、それが使う lookup harness
 - **Related**: `I-84` (本 ADR の起点) / `I-81` (発見経路。5 件のうち 1 件) /
@@ -192,17 +192,101 @@ codegen が 1 命令動けば意味を失う値であり、**契約ではない*
 | `test_local_bound_violation_indices_detects_out_of_range_local` (非 ignore) | exit 0 (2026-08-27) |
 | `ignored-lane-expected-failures.txt` の該当行 | **削除済み** |
 
+### #2 の実装 (2026-08-27)
+
+#### 前提条件だった実測を先に取った
+
+本 ADR の「満たせなかったこと」は **「#2 の『現在 mismatch は無い』は未実測である」** と書き、
+**極性を反転する前に実測すること**を条件にしていた。実測した。
+
+```
+mismatch probe: ["7218", "7218", "1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1"]
+```
+
+`selfhost_cli_core.rs:3022`、2026-08-27、`e2e --ignored --nocapture --test-threads 1` の
+3 filter 同時走行。読み方は次のとおり。
+
+| 位置 | 値 | 意味 |
+|---|---|---|
+| 0 / 1 | `7218` / `7218` | 2 回の inline compile が出した Wasm の長さ |
+| 2 | `1` | `wasm-bytes-eq` — **バイト単位で一致** |
+| 3 | `-1` | `first-function-mismatch` — **食い違う関数は 1 つも無い** |
+| 4〜11 | 全て `-1` | mismatch が無いので下流の診断値は全て未定義 |
+
+**推測どおり「mismatch 無し」だった。** ただし推測が当たったことは実測を省ける理由にならない。
+`I-81` は「実物を読まずに症状から推測した記述」を後で撤回している (本 ADR の末尾)。
+
+#### 反転と、検出器の自己検査
+
+裁定 1 の文言どおり、末尾の無条件 `panic!` を条件付きに変えた。
+
+```rust
+if lines[0] != lines[1] || lines[2] != "1" || lines[3] != "-1" {
+    panic!("mismatch probe: {:?}", lines);
+}
+```
+
+**dump は 1 bit も変わらない。** 再発したときに従来と同じ 12 値がそのまま出る。
+test 名は `..._full_inline_mismatch_probe` → `..._full_inline_compile_has_no_mismatch` へ改めた。
+`#[ignore = "temporary diagnostic harness for local mismatch inspection"]` の理由文字列も
+実態と合わなくなったので落とした。
+
+**検出力の証明は #1 と違う置き方をした。** #1 は別 test (`..._detects_out_of_range_local`) を
+新設したが、#2 の検出器は harness 内の L# 関数なので Rust 側から直接叩けない。
+そこで **同じ実行の中で検出器へ既知の不一致を食わせ、その結果も出力させる**。
+
+| 追加した出力 | 入力 | 期待 |
+|---|---|---|
+| 12 | `first-function-mismatch` に `functions1[0]` と `functions1[1]` の 1 要素列 | `0` (検出する) |
+| 13 | 同じ検出器に `functions1[0]` を 2 つ | `-1` (一致と判定する) |
+| 14 | `wasm-bytes-eq` に `[1,2]` と `[1,3]` | `0` (**同じ長さで**内容の違いを検出する) |
+| 15 | 同じ検出器に `[1,2]` を 2 つ | `1` (一致と判定する) |
+
+14 を**同じ長さ**にしたのは意図的である。`wasm-bytes-eq` は長さが違えば
+比較ループへ入らず `0` を返すので (`selfhost_cli_core.rs:230-233`)、長さ違いの入力では
+**バイト比較ループが動くことを何も示せない。**
+
+この 4 つは主題 assertion の**手前**に置いた。検出器が死んでいるなら、
+主題の緑には意味が無い。どちらが壊れたのかが失敗メッセージで分かる順序にした。
+
+#### 検証
+
+| 対象 | 結果 |
+|---|---|
+| `..._full_inline_compile_has_no_mismatch` の個別実行 | **ok** (215.76s、2026-08-27、`--exact` 完全修飾名) |
+| 反転前の同 test | `FAILED` (無条件 `panic!`)。dump は上の表 |
+| `cargo clippy -p lsharp-wasm --tests` の `selfhost_cli_core.rs` 分 | 警告 **0** |
+| `ignored-lane-expected-failures.txt` の該当行 | **未削除**。`selfhost_cli_core` の lane 再計測待ち |
+
+**`--exact` は完全修飾名を要求する。** 短縮名で撃つと `running 0 tests` になり、
+`RUNEXIT=0` で終わる。**「0 件走って exit 0」を緑と読まないこと。**
+本 slice で 1 度これを踏んだ (`ELAPSED=2.21` が異常の指標になった)。
+
+### #3 / #4 / #5 の実装 (2026-08-27)
+
+| # | 位置 | 結果 |
+|---|---|---|
+| #3 | `stage_chain.rs:26574` | **削除済み** |
+| #4 | `stage_chain.rs:26623` | **削除済み** |
+| #5 | `stage_chain.rs:26660` | **作り替え済み**。`..._entrypoint_offset_resolves_to_app_main_main` として個別実行 **ok** |
+
+#5 は `run_selfhost_main_representative_aarch64_offset_lookup_harness` (82 行) を生かすための
+作り替えであり、`#[allow(dead_code)]` では逃げていない。裁定 2 の「削除する (#3 / #4 / #5)」に
+対しては、**#5 だけ削除ではなく作り替えになった** — `TODO.md` の
+`ALWAYS-RED-PROBE-01` が既にそう書き換えていたので、本 ADR の裁定 2 の見出しが古い。
+見出しは残し、ここに差分を書く。**裁定を静かに書き換えない。**
+
 ## 満たせなかったこと
 
-- **実装が入ったのは #1 だけである。** #2〜#5 は未着手で、`I-84` は open のまま
+- **5 件とも実装が入った (2026-08-27)。** ただし `I-84` は **open のまま**である —
+  `selfhost_cli_core` と `selfhost_native_stage_chain` の lane 再計測 2 本が未了で、
+  台帳行 2 本 (`..._full_inline_mismatch_probe` と `#3`〜`#5` 由来) がまだ消せない
 - **#1 の lane 再計測は未了。** 改名したので `AGENTS.md` の規約 (`d29cb5a1`) により
   `selfhost_bootstrap_four_layer` の module 再計測が要る。個別実行の緑では代用できない
   (`compare_ignored_lane.py` の完走判定は module 単位のログを要求する)
-- **#2 の「現在 mismatch は無い」は未実測である。** `assert!(lines.len() >= 12)` の手前で
-  落ちていない事実からそう推測しているだけで、`wasm-bytes-eq` の実際の値を見ていない。
-  **極性を反転する前に実測すること** — これは本 ADR 自身が `I-82` について書いた
-  「実物を確かめずに期待値を固定するな」に当たる
-- **#5 の作り替えで期待される `module::name` は決まっていない。** 実測が要る
+- **#2 の未実測は解消した (2026-08-27)。** 反転の前に測り、`wasm-bytes-eq=1` /
+  `first-function-mismatch=-1` を確認してから反転した。上の「#2 の実装」節が正本
+- **#5 の作り替えで期待される `module::name` も実測で確定した** (個別実行 ok)
 - **`I-81` の当初の記述が間違っていた。** 「改善した結果として足場が成立しなくなった」は、
   実物を読まずに症状 (`.expect` で落ちる位置) から推測した記述である。
   **落ちる位置が変わったことを、成立していた足場が壊れたことと読んだ。**

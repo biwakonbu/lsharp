@@ -3013,10 +3013,24 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - **stage_chain 3 件は module 外から名指しされていないことを実測済み** —
     `heavy_tests` 厳密名リスト 0 hit / `scripts/` 0 hit / 同 prefix の test が 89 件あるので
     dead prefix にもならない。`selfhost_native_stage_chain` の再計測だけで覆える
+  **現況 (2026-08-27)**: 4 件とも実装が入った。
+  - `..._full_inline_mismatch_probe` → **反転済み**。受入条件の「未実測のまま反転しない」を
+    先に片付けた: 実測は `["7218","7218","1","-1",...]` で **mismatch は 1 件も無い**
+    (`wasm-bytes-eq=1` / `first-function-mismatch=-1`)。test 名は
+    `..._full_inline_compile_has_no_mismatch` へ改めた。dump は再発時にそのまま出る。
+    **検出器の自己検査 4 値を同じ実行の中へ入れた** — 検出器は harness 内の L# 関数で
+    Rust から直接叩けないので、#1 のような別 test は立てられない。
+    `wasm-bytes-eq` の負例は**同じ長さ**にしてある (長さ違いは比較ループへ入らない)
+  - `stage_chain.rs:26574` / `:26623` → **削除済み**
+  - `stage_chain.rs:26660` → **作り替え済み**。
+    `..._entrypoint_offset_resolves_to_app_main_main` として個別実行が緑
+    (`run_selfhost_main_representative_aarch64_offset_lookup_harness` は生きている)
+  **残るのは lane 再計測 2 本** (`selfhost_cli_core` と `selfhost_native_stage_chain`)。
+  台帳行 `..._full_inline_mismatch_probe` は緑を確認してから削除する。
   **含めない範囲**: 直書きアドレスが指していた crash そのものの診断。**cargo が要る。**
 
 - [~] `PROBE-ASSERTS-NOTHING-01` 主題を検査していない probe test 13 件を裁定どおり是正する — Issue `I-82`。
-  **13 件中 12 件は 2026-08-27 に完了した。残るは #13 の 1 件と lane 再計測** (末尾の現況を見よ)。
+  **13 件とも 2026-08-27 に実装が入った。残るは lane 再計測だけ** (末尾の現況を見よ)。
   **裁定は済んでいる** — `docs/adr/decisions-probe-subject-unchecked.md`。
   残りは実装で、内訳は **assertion 追加 9 件 / 削除 3 件 (+ 基準外の隣接 `test_debug_stage2_save`) /
   恒真 assert の実質化 1 件**。
@@ -3064,9 +3078,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   - `..._representative_const_only_entrypoint_helper_offsets` (13 件目) は
     `selfhost_native_stage_chain` に属するので、four_layer の slice には入れない
   **現況 (2026-08-27)**: 削除 4 件 (#8 / #10 / #11 / `test_debug_stage2_save`) は実施済みで
-  `grep` 0 hit。#1〜#4 / #5〜#7 / #9 / #12 の 9 件は実質化済み。**残るは #13 の 1 件**で、
-  これは `selfhost_native_stage_chain` の lane に属する。実測値と pin の型は
-  ADR の Evidence 節が正本。**four_layer 側の lane 再計測 1 本も未了。**
+  `grep` 0 hit。#1〜#4 / #5〜#7 / #9 / #12 の 9 件は実質化済み。
+  **#13 も実装済みで個別実行は緑** — 主題の assertion が最初に赤くなり、原因が emitter ではなく
+  harness の列契約違反であることを cargo 抜きで特定した (selfhost 側に import placeholder を
+  含まない列を渡していた)。`callables` へ揃えたら一致した。
+  実測値と pin の型は ADR の Evidence 節が正本。
+  **残るは lane 再計測 2 本** — four_layer 側と `selfhost_native_stage_chain` 側である。
+  x86 経路の parity は覆えていない (`I-92` / `NATIVE-X86-ENTRYPOINT-PARITY-01`)。
   **含めない範囲**: probe が露出させる個々の失敗の修正。**cargo が要る。**
 
 - [ ] `SELFHOST-PARSE-LENIENT-01` selfhost parser の構文検査を Rust reference に合わせる — Issue `I-86`。
@@ -3181,6 +3199,19 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **確認せずに消さない。** aarch64 側の同型 chain は `:20056` から生きており、
   x86 側だけを消すと片側だけ実装が無い状態になる。
   **含めない範囲**: aarch64 側の chain、`I-73` の pin の裁定。**cargo が要る。**
+
+- [ ] `NATIVE-X86-ENTRYPOINT-PARITY-01` entrypoint offset の selfhost/generic parity を x86 でも測る — Issue `I-92`。
+  `..._const_only_entrypoint_helper_offsets` (`stage_chain.rs:54916`) は `(host-target)` を使うので
+  aarch64 の経路しか通らない。`normalize-selfhost-native-function-metas-for-target` は
+  `arch == 1` で恒等写像になるため、x86 では selfhost 側が正規化なし・generic 側が正規化ありになる。
+  受入条件: (a) probe が target を注入できるようにするか、x86 ホストで測るかを決めること。
+  (b) x86 で両辺の entrypoint offset を実測し、一致するかしないかを記録すること。
+  (c) 一致しないなら「x86 の IR が正規化を要さないから恒等でよい」のか
+  「恒等写像が誤りなのか」を判定して書くこと。
+  **一致させるために正規化を足す、を先にやらないこと。** 恒等写像が意図的な設計である
+  可能性が先に潰れる。
+  **含めない範囲**: aarch64 側の parity (`I-82` #13 で実測済み)、
+  `native-last-callable-function-idx-with-import-count` の列契約そのもの。**cargo が要る。**
 
 - [ ] `LSP-POSITION-ORIGIN-01` selfhost LSP の Position origin を判別して片付ける — Issue `I-90`。
   `selfhost_cli_core` の赤 2 件 (`..._lsp_transport_hover_frame` / `..._lsp_transport_formatting_frame`)。

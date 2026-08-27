@@ -2865,9 +2865,19 @@ fn test_e2e_selfhost_cli_direct_module_resolver_pair_creation_direct_compile_is_
     );
 }
 
+/// `ModuleResolver.ls` を full inline 経路で 2 回コンパイルしても Wasm が一致すること。
+///
+/// 元は末尾が無条件 `panic!("mismatch probe: {:?}", lines)` で、**入力が何であれ必ず赤**
+/// だった (`I-84` #2)。実測すると mismatch は 1 件も無く、probe が調べようとしていた
+/// 食い違いは再現しない。裁定は `docs/adr/decisions-always-failing-diagnostic-probes.md`
+/// の裁定 1 (極性反転)。dump は 1 bit も落とさず、**再発したときだけ**同じ形で出る。
+///
+/// 出力の後半 4 値は**検出器そのものの自己検査**である。極性を反転した test は
+/// 「常に緑で何も見ていない」へ落ちやすい (`I-82` の類型)。異なる入力を与えたときに
+/// 検出器が実際に非一致を返すことを、同じ実行の中で示す。
 #[test]
-#[ignore = "temporary diagnostic harness for local mismatch inspection"]
-fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
+#[ignore]
+fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_compile_has_no_mismatch() {
     let dir = cli_test_fixture_dir("module_resolver_full_inline_mismatch_probe");
     write_cli_fixture_files(
         &dir,
@@ -3005,6 +3015,22 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
       (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir1 mismatch-ir-idx) 1)))
       (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 0)))
       (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 1)))
+      (print (first-function-mismatch
+               (vector-push (vector-new 1) (vector-get functions1 0))
+               (vector-push (vector-new 1) (vector-get functions1 1))
+               0
+               1))
+      (print (first-function-mismatch
+               (vector-push (vector-new 1) (vector-get functions1 0))
+               (vector-push (vector-new 1) (vector-get functions1 0))
+               0
+               1))
+      (print (wasm-bytes-eq
+               (vector-push (vector-push (vector-new 2) 1) 2)
+               (vector-push (vector-push (vector-new 2) 1) 3)))
+      (print (wasm-bytes-eq
+               (vector-push (vector-push (vector-new 2) 1) 2)
+               (vector-push (vector-push (vector-new 2) 1) 2)))
       0)))
 "#,
     );
@@ -3015,11 +3041,34 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 12,
+        lines.len() >= 16,
         "module resolver full inline mismatch probe 出力が不足: {:?}",
         lines
     );
-    panic!("mismatch probe: {:?}", lines);
+
+    // 検出器の自己検査。ここが崩れたら、下の主題 assertion は「見ていない」だけである。
+    assert_eq!(
+        lines[12], "0",
+        "first-function-mismatch が別々の関数を一致と判定している (検出器が死んでいる): {lines:?}"
+    );
+    assert_eq!(
+        lines[13], "-1",
+        "first-function-mismatch が同一の関数を不一致と判定している: {lines:?}"
+    );
+    assert_eq!(
+        lines[14], "0",
+        "wasm-bytes-eq が同じ長さで内容の違うバイト列を一致と判定している (検出器が死んでいる): {lines:?}"
+    );
+    assert_eq!(
+        lines[15], "1",
+        "wasm-bytes-eq が同一のバイト列を不一致と判定している: {lines:?}"
+    );
+
+    // 主題。`I-84` #2 の反転はここだけである。
+    // 再発したときの dump は従来の無条件 panic! と 1 bit も違わない。
+    if lines[0] != lines[1] || lines[2] != "1" || lines[3] != "-1" {
+        panic!("mismatch probe: {:?}", lines);
+    }
 }
 
 /// TEST-CLI-02-M1F0I: ModuleResolver 13 form prefix の inline direct compile は 2 回連続でも同じ Wasm を返すこと

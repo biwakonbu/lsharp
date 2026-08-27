@@ -1,6 +1,6 @@
 # 主題を検査していない probe test の裁定
 
-- **Status**: doc-GREEN (13 件中 12 件を実質化。残るは #13 の 1 件)
+- **Status**: doc-GREEN (13 件すべて実質化。lane 再計測のみ未了)
 - **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (doc-GREEN)
 - **Scope**: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/` の 13 test と
   `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の 1 test
@@ -506,9 +506,6 @@ stage1 / stage2 とも `[301, 0, 302, 7]` となり、この test の主題 (sta
 
 ### 13 という件数の検算 (2026-08-27、cargo 不使用)
 
-
-### 13 という件数の検算 (2026-08-27、cargo 不使用)
-
 `python3 scripts/sweep_unchecked_result.py` を再実行し、**18 hit** を得た。
 hit は行単位なので、test 単位へ畳んでから基準を当てる。
 
@@ -531,12 +528,110 @@ hit は行単位なので、test 単位へ畳んでから基準を当てる。
 |---|---|---|
 | `tests/fixtures/selfhost-debug/test_i64_if.wasm` の妥当性 | **不正**。`wasm2wat` が 2 件のエラーを出す (`expected [i32] but got [i64]` / `` `if false` branch, expected [i64] but got [] ``) | `wasm2wat tests/fixtures/selfhost-debug/test_i64_if.wasm`、2026-08-27、32 bytes |
 
+### #13 の実装 — harness が emitter の列契約を破っていた (2026-08-27)
+
+**この節は裁定 3 の #13 分の doc-GREEN である。**
+
+#### RED — 主題の assertion が最初の 1 本目で落ちた
+
+`println!` 4 本を parity assertion 3 本へ置き換えて測ると、**主題そのものが赤くなった**。
+
+```
+assertion `left == right` failed: 末尾関数版の entrypoint offset が selfhost emitter と
+generic emitter で食い違う:
+selfhost_last=[1, 10, -8] selfhost_abs=[1, 10, 0] generic_abs=[1, 10, 0] generic_last=[1, 10, 0]
+  left: [1, 10, -8]
+ right: [1, 10, 0]
+```
+
+`stage_chain.rs:54968`、2026-08-27、`--exact` 2 件で 1032.78s。
+**Vec の要素 0 / 1 は harness の echo** (`(vector-length functions)` と `main-func-idx`) であり、
+offset は要素 2 だけである。食い違っているのは **-8 と 0** の 1 箇所。
+
+#### 原因は emitter ではなく harness である — cargo を使わずに確定した
+
+`run_selfhost_override_entrypoint_offset_probe` は `offset_expr` から 4 つの束縛を見せる。
+初版は **selfhost 側に `functions`、generic 側に `native-callables`** を渡していた。
+この 2 つは長さが違う (1 と 11)。`native-callables` は先頭に import placeholder を 10 個持つ。
+
+emitter が要求するのは **placeholder 込みの列**である。根拠は 3 つあり、いずれも実行を要さない。
+
+| 根拠 | 位置 | 内容 |
+|---|---|---|
+| `collect-callable-function-starts-x86` | `NativeCodegen.ls:9264` | ループを `idx = import-count` から `(vector-length functions)` まで回す。aarch64 版 (`:18317`) も同じ |
+| `native-last-callable-function-idx-with-import-count` | `NativeCodegen.ls:20785` | `len - 1` を返し、それが `callable-idx = entrypoint-func-idx - import-count` の被減数として使われる (`:20780`)。**大域 callable index を列長から導いている** |
+| harness 自身 | `stage_chain.rs:21240` | `callables` を `push-import-placeholders 0 10` + `functions` として組み立てている。generic 側にはこれを渡していた |
+
+長さ 1 の列に `import-count = 10` を渡すと、区間 `[10, 1)` は空になる。
+`function-starts` は空 vector になり、`callable-user-total-size` は 0 になる。
+**`-8` はこのゴミの帰結であって、selfhost emitter と generic emitter の意味論の差ではない。**
+
+#### `selfhost_abs` の緑は、偽の前提の下での偶然だった
+
+`selfhost_abs` は 0 を返して `generic_abs` と一致していた。**これは正しさの証拠ではない。**
+`function-starts` が空なので `native-bundle-entrypoint-offset-for-function-with-import-count` の
+`(< callable-idx len)` が偽になり、フォールバックの `0` が返っただけである。
+`I-82` の 127 / 128 marker と同じく **binary 依存のゴミ**であり、
+一致していたことに意味は無い。**赤い方だけを見て「片方は通っているのだから入力は正しい」と
+読んではならない。**
+
+#### 是正
+
+`functions` を渡していた 4 箇所を `callables` へ揃えた。selfhost 版 emitter は内部で
+`normalize-selfhost-native-function-metas-for-target` を掛けるので、正規化前の `callables` が
+正しい引数である (generic 版は自分では正規化しないので `native-callables` のまま)。
+
+| 位置 | test | #13 か |
+|---|---|---|
+| `stage_chain.rs:52679` / `:52685` | `..._helper_before_main_entrypoint_probe` | いいえ。`println!` のみの diagnostic probe |
+| `stage_chain.rs:54925` / `:54930` | `..._const_only_entrypoint_helper_offsets` | **はい** |
+
+**#13 の外の 2 箇所も同時に直した。** 同じ関数の同じ引数スロットに同じ誤りがあり、
+片方だけ直すと「契約を知りながら残した」ことになる。ただし当該 test は `println!` しか
+していないので、**判定は何も変わらない** (`I-85` の類型として別途残る)。
+
+列契約は `run_selfhost_override_entrypoint_offset_probe` の doc コメントへ固定した。
+**同じ誤りを次の人がやらない置き場は、test 本体ではなく harness である。**
+
+#### 覆えていない範囲
+
+`target` は `(host-target)` なので、本 test が通るのは **aarch64 の経路だけ**である。
+`normalize-selfhost-native-function-metas-for-target` は `(= (target-arch target) 1)` のとき
+恒等写像になるため、**x86 では selfhost 版と generic 版で正規化の有無が食い違う**。
+本 test はその差を検出しない。x86 ホストで測るか target を注入できるようにするかは
+本 slice の範囲外とし、`ISSUES.md` の `I-92` に載せた。
+
+#### GREEN
+
+`callables` へ揃えた binary で測り直すと **緑になった**。
+
+| test | 結果 |
+|---|---|
+| `..._const_only_entrypoint_helper_offsets` (#13) | **ok** |
+| `..._entrypoint_offset_resolves_to_app_main_main` (#5) | **ok** |
+
+`e2e --ignored --nocapture --test-threads 1` に 3 filter を同時に渡して 1729.49s
+(3 件目は `I-84` #2 の反転前実測)、2026-08-27、`target/debug/deps/e2e-aa343ded249bec81`。
+
+**これで「emitter が食い違っている」という読みは否定された。** 4 つの emitter は
+同じ入力に対して同じ entrypoint offset を出す。`-8` は harness が渡した列が
+契約を満たしていなかったことの帰結だった。
+
+**#5 は本 slice で追加した `start == entrypoint_offset` の assertion 込みで緑である。**
+裁定 3 が「実測が否定したら落としてよい」と留保していた 2 つのうち、
+こちらは**実測が支持したので残す**。もう一方 (#13 の `selfhost_last == selfhost_abs`) も
+同じ実行で緑になったので残す。**どちらも落とさなかった。**
+
 ## 満たせなかったこと
 
-- **#13 は着手していない。** `..._const_only_entrypoint_helper_offsets` は
-  `selfhost_native_stage_chain` にあり、本 slice が回した
-  `selfhost_bootstrap_four_layer` とは lane が違う。13 件のうち **12 件で閉じ、1 件を残した**。
-  `TODO.md` の `PROBE-ASSERTS-NOTHING-01` は削除せず、**残 1 件として残す**
+- **#13 は 2026-08-27 に閉じた。** 実装と実測は上の
+  「#13 の実装 — harness が emitter の列契約を破っていた」節。
+  13 件すべてに主題の assertion が入った。
+- **x86 の経路は測れていない** (`I-92` / `NATIVE-X86-ENTRYPOINT-PARITY-01`)。
+  #13 の parity は aarch64 でしか成立を確認していない。
+- **#13 の lane 再計測はまだ済んでいない。** 個別実行 2 件が緑であることは
+  `selfhost_native_stage_chain` の module 完走ではない。`AGENTS.md` の partial-lane 規約により
+  台帳行の削除は再計測の後である
 - **lane 全体の再計測はまだ済んでいない。** 個別実行 15 件は緑だが、
   `compare_ignored_lane.py` の完走判定は module 単位のログを要求する
   (`running N tests` == 一意な result 行数)。`running 1 test` のログ 15 本では代用できない。

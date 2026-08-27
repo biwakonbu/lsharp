@@ -223,6 +223,7 @@
 | [I-89](#i-89) | x86 の 20 引数以上 param spill テーブル約 680 行が到達不能で、旧 slot 規約のまま残っている | 低 | open | `I-73` の受入条件 (a) を調べる途中で発見 (2026-08-27)。aarch64 側の同型 chain は生きている |
 | [I-90](#i-90) | selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている | 中 | open | `I-75` の 14 件を分類する中で診断確定 (2026-08-27)。line も character も一律 +1 |
 | [I-91](#i-91) | WASI runner が exit code 非 0 のとき捕捉済みの stdout を捨てるため、CLI の `error:` 行が失敗メッセージに届かない | 中 | resolved | 2026-08-27 に共通 helper へ寄せて解決。**`I-75` の 3 件は赤のままで、診断文が付くだけである** |
+| [I-92](#i-92) | entrypoint offset probe の parity test が aarch64 の経路しか通らず、x86 では selfhost 版と generic 版で正規化の有無が食い違う | 低 | open | `I-82` #13 の harness 修正 (2026-08-27) の過程で判明。**バグではなく被覆の欠落である** |
 
 ### ドキュメント (DOC)
 
@@ -6059,3 +6060,33 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **`I-75` の 3 件は依然として赤である。** 本件が変えたのは失敗メッセージの情報量だけで、
   失敗そのものは直していない。台帳の行は消さず、次の `selfhost_cli_core` lane の実測で
   注記を診断文へ差し替える。
+
+<a id="i-92"></a>
+
+### I-92: entrypoint offset probe の parity test が aarch64 の経路しか通らず、x86 では selfhost 版と generic 版で正規化の有無が食い違う
+
+- **影響度**: 低 / **状態**: open
+- **発見**: 2026-08-27 (`I-82` #13 の harness 修正の過程)
+- **内容**: `emit-native-selfhost-function-meta-bundle-entrypoint-payload-*` は入力へ
+  `normalize-selfhost-native-function-metas-for-target` を掛ける。この関数は
+
+  ```
+  ;; selfhost/src/Backend/Native/NativeCodegen.ls:20753
+  (defn normalize-selfhost-native-function-metas-for-target [functions target]
+    (if (= (target-arch target) 1)
+      functions
+      (normalize-selfhost-native-function-metas functions)))
+  ```
+
+  であり、**`arch == 1` (x86) では恒等写像**になる。一方 parity を検査する
+  `..._const_only_entrypoint_helper_offsets` (`stage_chain.rs:54916`) の generic 側は
+  `native-callables` = `normalize-selfhost-native-function-metas callables` を**常に**渡す。
+  したがって x86 では「正規化なし vs 正規化あり」を比べることになり、
+  aarch64 では両辺とも正規化ありになる。
+- **本 test は `(host-target)` を使う**ので、開発機 (aarch64) では後者しか走らない。
+  **x86 の経路は誰も測っていない。**
+- **バグとは限らない。** x86 の IR が正規化を要さない設計なら恒等写像は正しい。
+  争点は「正しいかどうかが未検証であること」の方である。
+- **引き取り先**: `TODO.md` の `NATIVE-X86-ENTRYPOINT-PARITY-01`
+- **根拠**: `docs/adr/decisions-probe-subject-unchecked.md` の
+  「#13 の実装 — harness が emitter の列契約を破っていた」節の「覆えていない範囲」

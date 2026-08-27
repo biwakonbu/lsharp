@@ -21177,6 +21177,26 @@ fn run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness_loo
     )
 }
 
+/// entrypoint offset の emitter を harness 内から直接叩く probe。
+///
+/// `offset_expr` から見える束縛は 4 つある。**どれを渡すかは自由ではない。**
+///
+/// - `functions` — payload の生の関数メタ列。**import placeholder を含まない**
+/// - `callables` — `functions` の先頭に placeholder 10 個を足したもの
+/// - `native-callables` — `callables` を `normalize-selfhost-native-function-metas` したもの
+/// - `target` — `host-target`
+///
+/// entrypoint offset 系の emitter は `import-count` 個の placeholder が
+/// **先頭に載っている列**を要求する。`collect-callable-function-starts-{x86,aarch64}` が
+/// `idx = import-count` から `(vector-length functions)` まで回すためで、placeholder 抜きの列を
+/// 渡すと区間が空になり `function-starts` が空 vector になる。
+/// `native-last-callable-function-idx-with-import-count` が `len - 1` を大域 callable index として
+/// 返すのも同じ前提である。
+///
+/// したがって **`functions` を直接渡してはならない。** selfhost 版 emitter は内部で
+/// `normalize-selfhost-native-function-metas-for-target` を掛けるので `callables` を、
+/// generic 版はそれ自身では正規化しないので `native-callables` を渡す。
+/// 詳細は `docs/adr/decisions-probe-subject-unchecked.md` の #13 の節。
 fn run_selfhost_override_entrypoint_offset_probe(
     label: &str,
     main_source: &str,
@@ -26570,118 +26590,71 @@ fn test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layou
 }
 
 #[test]
-#[ignore = "diagnostic: map representative crash offset to selfhost source order"]
-fn test_e2e_selfhost_main_representative_crash_offset_maps_to_rust_function() {
-    let [pc_callable_idx, pc_start, pc_next_start, pc_absolute_idx] =
-        run_selfhost_main_representative_aarch64_offset_lookup_harness(0x6200d0);
-    let [lr_callable_idx, lr_start, lr_next_start, lr_absolute_idx] =
-        run_selfhost_main_representative_aarch64_offset_lookup_harness(0x621700);
-    let order = representative_selfhost_registration_order();
-    let pc_entry = order
-        .iter()
-        .find(|entry| entry.absolute_idx == pc_absolute_idx)
-        .unwrap_or_else(|| {
-            panic!("pc absolute idx が representative order 範囲外: {pc_absolute_idx}")
-        });
-    let lr_entry = order
-        .iter()
-        .find(|entry| entry.absolute_idx == lr_absolute_idx)
-        .unwrap_or_else(|| {
-            panic!("lr absolute idx が representative order 範囲外: {lr_absolute_idx}")
-        });
-    let nearby = order
-        .iter()
-        .skip(pc_absolute_idx.saturating_sub(10).saturating_sub(8))
-        .take(17)
-        .map(|entry| {
-            format!(
-                "{}:{}::{}#{}",
-                entry.absolute_idx, entry.module, entry.name, entry.decl_idx
-            )
-        })
-        .collect::<Vec<_>>();
-    panic!(
-        "representative crash pc 0x6200d0 => callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{}; lr 0x621700 => callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{}; nearby={:?}",
-        pc_callable_idx,
-        pc_absolute_idx,
-        pc_start,
-        pc_next_start,
-        pc_entry.module,
-        pc_entry.name,
-        lr_callable_idx,
-        lr_absolute_idx,
-        lr_start,
-        lr_next_start,
-        lr_entry.module,
-        lr_entry.name,
-        nearby
+#[ignore]
+fn test_e2e_selfhost_main_representative_entrypoint_offset_resolves_to_app_main_main() {
+    // I-84 #5: 元は crash アドレス 0x106d24 を直書きし、辿り着いた関数名を panic! で
+    // 吐き出すだけの診断 probe だった。直書きアドレスは測定時のビルドにしか意味を持たず、
+    // 成功パスが存在しないので構造上必ず赤かった。
+    // 主題を「layout が返す entrypoint offset が App.Main::main を指す」という契約へ移す。
+    // 裁定は docs/adr/decisions-always-failing-diagnostic-probes.md。
+    let layout = run_selfhost_main_representative_aarch64_layout_harness();
+    assert!(
+        layout.entrypoint_offset > 0,
+        "AArch64 layout の entrypoint offset が 0 に落ちている: {layout:?}"
     );
-}
 
-#[test]
-#[ignore = "diagnostic: map representative post-entry call targets to selfhost source order"]
-fn test_e2e_selfhost_main_representative_post_entry_call_targets_map_to_source_order() {
-    let targets = [
-        0x1674bcusize,
-        0x16765c,
-        0x167684,
-        0x1676ac,
-        0x169ffc,
-        0x16a190,
-    ];
-    let order = representative_selfhost_registration_order();
-    let mapped = targets
-        .iter()
-        .map(|target| {
-            let [callable_idx, start, next_start, absolute_idx] =
-                run_selfhost_main_representative_aarch64_offset_lookup_harness(*target);
-            let entry = order
-                .iter()
-                .find(|entry| entry.absolute_idx == absolute_idx)
-                .unwrap_or_else(|| {
-                    panic!("absolute idx が representative order 範囲外: target=0x{target:x} absolute_idx={absolute_idx}")
-                });
-            format!(
-                "target=0x{target:x} callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{}",
-                callable_idx,
-                absolute_idx,
-                start,
-                next_start,
-                entry.module,
-                entry.name
-            )
-        })
-        .collect::<Vec<_>>();
-    panic!("representative post-entry call target mapping: {mapped:?}");
-}
-
-#[test]
-#[ignore = "diagnostic: map refreshed representative crash x8 offset to selfhost source order"]
-fn test_e2e_selfhost_main_representative_crash_x8_offset_maps_to_source_order() {
-    let target = 0x106d24usize;
     let [callable_idx, start, next_start, absolute_idx] =
-        run_selfhost_main_representative_aarch64_offset_lookup_harness(target);
+        run_selfhost_main_representative_aarch64_offset_lookup_harness(layout.entrypoint_offset);
     let order = representative_selfhost_registration_order();
+    let nearby = |center: usize| {
+        order
+            .iter()
+            .skip(center.saturating_sub(8))
+            .take(17)
+            .map(|entry| {
+                format!(
+                    "{}:{}::{}#{}",
+                    entry.absolute_idx, entry.module, entry.name, entry.decl_idx
+                )
+            })
+            .collect::<Vec<_>>()
+    };
     let entry = order
         .iter()
         .find(|entry| entry.absolute_idx == absolute_idx)
         .unwrap_or_else(|| {
-            panic!("absolute idx が representative order 範囲外: target=0x{target:x} absolute_idx={absolute_idx}")
-        });
-    let nearby = order
-        .iter()
-        .skip(absolute_idx.saturating_sub(8))
-        .take(17)
-        .map(|entry| {
-            format!(
-                "{}:{}::{}#{}",
-                entry.absolute_idx, entry.module, entry.name, entry.decl_idx
+            panic!(
+                "entrypoint offset 0x{:x} の absolute idx が representative order の範囲外: \
+                 absolute_idx={absolute_idx} callable_idx={callable_idx} order_len={} nearby={:?}",
+                layout.entrypoint_offset,
+                order.len(),
+                nearby(absolute_idx)
             )
-        })
-        .collect::<Vec<_>>();
-    panic!(
-        "representative crash x8 0x{target:x} => callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{} nearby={:?}",
-        callable_idx, absolute_idx, start, next_start, entry.module, entry.name, nearby
+        });
+
+    // 主題 1: entrypoint は App.Main の main を指していなければならない。
+    assert_eq!(
+        entry.module,
+        "App.Main",
+        "entrypoint offset 0x{:x} が App.Main 以外の module を指している: {entry:?} nearby={:?}",
+        layout.entrypoint_offset,
+        nearby(absolute_idx)
+    );
+    assert_eq!(
+        entry.name,
+        "main",
+        "entrypoint offset 0x{:x} が main 以外の関数を指している: {entry:?} nearby={:?}",
+        layout.entrypoint_offset,
+        nearby(absolute_idx)
+    );
+
+    // 主題 2: entrypoint は関数の途中ではなく先頭に載っていなければならない。
+    // lookup harness は「target 以下で最大の start」を返すので、先頭に載っていれば一致する。
+    assert_eq!(
+        start, layout.entrypoint_offset,
+        "entrypoint offset が関数の先頭に載っていない: start=0x{start:x} \
+         entrypoint=0x{:x} next_start=0x{next_start:x} {entry:?}",
+        layout.entrypoint_offset
     );
 }
 
@@ -52723,13 +52696,13 @@ fn test_e2e_selfhost_pipeline_smoke_representative_helper_before_main_entrypoint
     let selfhost_abs = run_selfhost_override_entrypoint_offset_probe(
         "native-stage23-helper-before-main-entrypoint-selfhost-abs",
         main_source,
-        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count functions 10 main-func-idx target) 1)"#,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count callables 10 main-func-idx target) 1)"#,
     )
     .expect("helper-before-main selfhost abs probe 実行に失敗");
     let selfhost_last = run_selfhost_override_entrypoint_offset_probe(
         "native-stage23-helper-before-main-entrypoint-selfhost-last",
         main_source,
-        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-with-import-count functions 10 target) 1)"#,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-with-import-count callables 10 target) 1)"#,
     )
     .expect("helper-before-main selfhost last probe 実行に失敗");
     let generic_abs = run_selfhost_override_entrypoint_offset_probe(
@@ -54959,7 +54932,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
-#[ignore = "diagnostic entrypoint helper semantics for override main"]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_const_only_entrypoint_helper_offsets() {
     let main_source = r#"(module App.Main)
 
@@ -54969,12 +54942,12 @@ fn test_e2e_selfhost_pipeline_smoke_representative_const_only_entrypoint_helper_
     let selfhost_last = run_selfhost_override_entrypoint_offset_probe(
         "native-stage23-const-only-entrypoint-selfhost-last",
         main_source,
-        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-with-import-count functions 10 target) 1)"#,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-with-import-count callables 10 target) 1)"#,
     );
     let selfhost_abs = run_selfhost_override_entrypoint_offset_probe(
         "native-stage23-const-only-entrypoint-selfhost-abs",
         main_source,
-        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count functions 10 main-func-idx target) 1)"#,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count callables 10 main-func-idx target) 1)"#,
     );
     let generic_abs = run_selfhost_override_entrypoint_offset_probe(
         "native-stage23-const-only-entrypoint-generic-abs",
@@ -54987,10 +54960,48 @@ fn test_e2e_selfhost_pipeline_smoke_representative_const_only_entrypoint_helper_
         r#"(vector-get (emit-native-function-meta-bundle-entrypoint-payload-with-import-count native-callables 10 target) 1)"#,
     );
 
-    println!("selfhost_last={selfhost_last:?}");
-    println!("selfhost_abs={selfhost_abs:?}");
-    println!("generic_abs={generic_abs:?}");
-    println!("generic_last={generic_last:?}");
+    // I-82 #13: 元は 4 つの Result を println! するだけで assertion が 1 つも無かった。
+    // probe の戻りは Result<Vec<i64>, String> なので、**実行に失敗して Err になっても緑**
+    // だった。裁定は docs/adr/decisions-probe-subject-unchecked.md。
+    //
+    // 主題は「selfhost 版 emitter と generic 版 emitter が同じ entrypoint offset を出すこと」。
+    // 入力 main は const-only なので、両者が食い違う理由は無い。
+    //
+    // selfhost 側へ `functions` (placeholder 抜き) を渡していた初版は、emitter の列契約を
+    // 破っていたので比較が成立していなかった。両家族へ placeholder 込みの列を渡す。
+    // 契約は run_selfhost_override_entrypoint_offset_probe の doc コメントを見よ。
+    let unwrap_offsets = |label: &str, probed: Result<Vec<i64>, String>| -> Vec<i64> {
+        let values = probed.unwrap_or_else(|err| {
+            panic!("const-only entrypoint probe {label} の実行に失敗: {err}")
+        });
+        assert!(
+            !values.is_empty(),
+            "const-only entrypoint probe {label} が数値を 1 つも返していない"
+        );
+        values
+    };
+    let selfhost_last = unwrap_offsets("selfhost_last", selfhost_last);
+    let selfhost_abs = unwrap_offsets("selfhost_abs", selfhost_abs);
+    let generic_abs = unwrap_offsets("generic_abs", generic_abs);
+    let generic_last = unwrap_offsets("generic_last", generic_last);
+    let dump = format!(
+        "selfhost_last={selfhost_last:?} selfhost_abs={selfhost_abs:?} \
+         generic_abs={generic_abs:?} generic_last={generic_last:?}"
+    );
+
+    assert_eq!(
+        selfhost_last, generic_last,
+        "末尾関数版の entrypoint offset が selfhost emitter と generic emitter で食い違う: {dump}"
+    );
+    assert_eq!(
+        selfhost_abs, generic_abs,
+        "関数指定版の entrypoint offset が selfhost emitter と generic emitter で食い違う: {dump}"
+    );
+    // const-only main は唯一の関数なので、末尾関数版と関数指定版も一致するはずである。
+    assert_eq!(
+        selfhost_last, selfhost_abs,
+        "const-only main で末尾関数版と関数指定版の entrypoint offset が食い違う: {dump}"
+    );
 }
 
 #[test]
