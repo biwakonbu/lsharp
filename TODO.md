@@ -3028,7 +3028,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: aarch64 側の parity (`I-82` #13 で実測済み)、
   `native-last-callable-function-idx-with-import-count` の列契約そのもの。**cargo が要る。**
 
-- [ ] `LSP-POSITION-ORIGIN-01` selfhost LSP の Position origin を判別して片付ける — Issue `I-90`。
+- [~] `LSP-POSITION-ORIGIN-01` selfhost LSP の Position origin を判別して片付ける — Issue `I-90`。
   `selfhost_cli_core` の赤 2 件 (`..._lsp_transport_hover_frame` / `..._lsp_transport_formatting_frame`)。
   実装が返す range と test の期待が **line も character も一律 +1** ずれる。
   LSP 仕様は zero-based なので実装側が仕様どおりに見えるが、
@@ -3044,6 +3044,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **(a) をやる前に (c) をやらないこと。** 先に直せば 2 件は緑になるが、
   入口の origin が未確定のまま残る。
   **含めない範囲**: Rust 側 LSP (`lsharp-lsp`) の origin。**cargo が要る。**
+  **(a) (b) (c) は 2026-08-28 に完了した。** (a) は request 側 1 origin と判明 (pin test
+  `..._lsp_transport_request_params_are_one_origin` を新設)、(b) は「入口 1 origin を契約として
+  明文化する」を採用 (`docs/adr/decisions-lsp-position-origin.md`)、(c) は期待値 2 件を wire へ是正。
+  focused 3 本は緑 (`RUNEXIT=0`)。
+  **残るのは lane 完走のみ。** `selfhost_cli_core` を 1 本回して台帳 2 行を落とすところまでが
+  completion boundary。**この lane は `SWEEP-UNCLASSIFIED-01` と束ねる** (項目ごとに lane を
+  回さない)。lane 後の宣言数は 381 -> **382** になる (pin test 1 本増)。
 
 - [ ] `ROOT-IMBALANCED-HELPER-01` verifier が非 `main` helper を拒否する件を判別する — Issue `I-74`。
   `selfhost_cli_core` の赤 9 件が `ImbalancedExit { function: compile-file-state | compile-pair-state, depth: 1 }`。

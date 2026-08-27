@@ -221,7 +221,7 @@
 | [I-87](#i-87) | WASI 経路の `read-file` が preopen 外のパスに対しエラーではなく空文字列を返す | 中 | open | `I-85` の是正中に発見 (2026-08-27)。fixture が読めていないのに test が緑になっていた |
 | [I-88](#i-88) | target-defn probe の body ナビゲーションが旧 shape 前提のままで、下流 marker が「壊れていること」を pin している | 低 | deferred | `I-80` の却下案 B の代償を記録したもの (2026-08-27) |
 | [I-89](#i-89) | x86 の 20 引数以上 param spill テーブル約 680 行が到達不能で、旧 slot 規約のまま残っている | 低 | open | `I-73` の受入条件 (a) を調べる途中で発見 (2026-08-27)。aarch64 側の同型 chain は生きている |
-| [I-90](#i-90) | selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている | 中 | open | `I-75` の 14 件を分類する中で診断確定 (2026-08-27)。line も character も一律 +1 |
+| [I-90](#i-90) | selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている | 中 | open | 判別測定で request 側 1 origin を確定し期待値 2 件を是正 (2026-08-28)。focused 3 本は緑。**`selfhost_cli_core` の lane 再計測が未了なので open のまま** |
 | [I-91](#i-91) | WASI runner が exit code 非 0 のとき捕捉済みの stdout を捨てるため、CLI の `error:` 行が失敗メッセージに届かない | 中 | resolved | 2026-08-27 に共通 helper へ寄せて解決。**`I-75` の 3 件は赤のままで、診断文が付くだけである** |
 | [I-92](#i-92) | entrypoint offset probe の parity test が aarch64 の経路しか通らず、x86 では selfhost 版と generic 版で正規化の有無が食い違う | 低 | open | `I-82` #13 の harness 修正 (2026-08-27) の過程で判明。**バグではなく被覆の欠落である** |
 
@@ -6001,6 +6001,31 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **`I-75` から移管した 2 件である。** 移管前の注記は「原因未診断」だった。
 - **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
   引き取り先は `TODO.md` の `LSP-POSITION-ORIGIN-01`。
+- **判別測定の結果 (2026-08-28): request 側は 1 origin だった。**
+  hover を `(99, 1, 8, source)` で撃つ pin test
+  (`..._lsp_transport_request_params_are_one_origin`) を足して測ったところ、
+  1 行目の `square` が返った。**上の「判別の方法 (更新)」に書いた 2 択のうち 1 origin 側**である。
+
+  これで origin の全体像が確定した。**実装は入口と出口で origin を混ぜてはいなかった。**
+
+  | 層 | origin | 変換箇所 |
+  |---|---|---|
+  | wire (stdio JSON-RPC) | 0 | -- |
+  | 内部 params vector | 1 | `lsp-stdio-nav-params` (`App/Cli.ls:2121-2130`) が `+1` |
+  | 内部解析位置 | 1 | `lsp-offset-from-line-col` / `lsp-position-from-offset` が `(1,1)` 起点 |
+  | 内部 range -> wire | 0 | `lsp-render-wire-range-json` (`LspServerCore.ls:517-528`) が `-1` |
+
+  `lsp-render-wire-range-json` には契約がコメントで既に書かれていた。
+  **欠けていたのは「内部 params vector も 1 origin 側に属する」という一点だけ**で、
+  それがどの正本にも無かったために `run-lsp-transport-request` の期待値が wire と内部で混ざった。
+  出所は `9175c6e5` (2026-08-03) が wire 変換を入れたとき、先行 test 2 件を更新しなかったことである。
+- **是正 (2026-08-28)**: 期待値 2 件を wire (0 origin) へ直し、focused 3 本が緑になった
+  (`RUNEXIT=0` / `ELAPSED=648.61`)。裁定と却下理由は
+  `docs/adr/decisions-lsp-position-origin.md` が正本。
+- **状態を `resolved` にしない理由**: `selfhost_cli_core` の lane 再計測が未了で、
+  台帳 2 行 (`ignored-lane-expected-failures.txt:402-403`) をまだ落としていない。
+  **focused test の緑は lane 1 本の完走ではない。** 同じ lane を `I-75` の 11 件の
+  診断材料採取と束ねる。
 
 <a id="i-91"></a>
 ### I-91: WASI runner が exit code 非 0 のとき捕捉済みの stdout を捨てるため、CLI の `error:` 行が失敗メッセージに届かない

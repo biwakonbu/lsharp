@@ -5036,10 +5036,14 @@ fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
 }
 
 /// TEST-CLI-02-M9b: selfhost/src/App/Cli.ls の LSP transport helper が hover request を framed response にできること
+///
+/// params は `run-lsp-transport-request` が受ける **内部 vector** なので `line` / `col` は
+/// 1 origin、返る frame は wire なので 0 origin である (`decisions-lsp-position-origin.md`)。
+/// 両者を混ぜて 1 origin の期待値を書かないこと。
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
-    let body = r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":2,"character":16},"end":{"line":2,"character":22}},"contents":"defn square"}}"#;
+    let body = r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":1,"character":15},"end":{"line":1,"character":21}},"contents":"defn square"}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
     let harness = format!(
@@ -5071,6 +5075,53 @@ fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
     assert_eq!(
         output, expected,
         "run-lsp-transport-request は hover request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M9b-origin: `run-lsp-transport-request` が受ける内部 params vector の
+/// `line` / `col` が 1 origin であることを固定する (`I-90` / ADR decisions-lsp-position-origin.md)。
+///
+/// 判別の仕組み: 1 行目の `square` (index 6..12) を `(99, 1, 8, source)` で狙う。
+/// - request が 1 origin なら 1 行目に当たり `square` が返る
+/// - request が 0 origin なら 2 行目 `(defn main [] ...)` の `main` が返る
+///
+/// **返る symbol 名まで変わるので、この 1 本で origin が決まる。**
+/// response 側は wire なので 0 origin である (`lsp-render-wire-range-json` が境界で -1 する)。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_lsp_transport_request_params_are_one_origin() {
+    let body = r#"{"jsonrpc":"2.0","id":8,"result":{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":12}},"contents":"defn square"}}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [params
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 99)
+                1)
+              8)
+            "{source}")
+        request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                8)
+              (lsp-method-hover))
+            params)]
+    (print-string (run-lsp-transport-request request))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "内部 params の line/col は 1 origin。1 origin なら 1 行目の square、0 origin なら 2 行目の main が返る"
     );
 }
 
@@ -5318,10 +5369,14 @@ fn test_e2e_selfhost_cli_lsp_stdio_standard_uri_navigation_contract() {
 }
 
 /// TEST-CLI-02-M9e: selfhost/src/App/Cli.ls の LSP transport helper が formatting request を framed response にできること
+///
+/// params は `run-lsp-transport-request` が受ける **内部 vector** なので `line` / `col` は
+/// 1 origin、返る frame は wire なので 0 origin である (`decisions-lsp-position-origin.md`)。
+/// 両者を混ぜて 1 origin の期待値を書かないこと。
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
-    let body = r#"{"jsonrpc":"2.0","id":12,"result":[{"range":{"start":{"line":1,"character":1},"end":{"line":2,"character":4}},"newText":"(defn main [] 1)\n"}]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":12,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":1,"character":3}},"newText":"(defn main [] 1)\n"}]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn main []\n 1)";
     let harness = format!(
