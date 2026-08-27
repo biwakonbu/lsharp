@@ -3187,12 +3187,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   実装が返す range と test の期待が **line も character も一律 +1** ずれる。
   LSP 仕様は zero-based なので実装側が仕様どおりに見えるが、
   **request 側 (`line=2` を 2 行の文書に渡している) が 1 origin の可能性がある**。
-  受入条件: (a) 1 行目の `square` を狙う request を足して、
-  `line=0` と `line=1` のどちらで当たるかを実測すること (**どちらか一方しか当たらないので 1 回で決まる**)。
-  (b) その結果で「test の期待を 0 origin へ直す」か
-  「実装が入口と出口で origin を混ぜているのを直す」かを決めること。
-  **(a) をやる前に期待値を動かさないこと。** 動かせば 2 件は緑になるが、
-  もし実装側が混ぜているならその欠陥を隠したことになる。
+  **response 側は実測で確定済み (2026-08-27)**: 同ファイルの
+  `..._references_frame` が **params 完全一致・同一文書で 0 origin を期待して緑**である。
+  したがって response は 0 origin であり、hover / formatting の期待値が誤っている。
+  受入条件: (a) hover を `(99, 1, 8, source)` で撃ち、request 側の origin を決めること。
+  1 origin なら `square` (`{line:0,character:6}`)、0 origin なら `main`
+  (`{line:1,character:6}`) が返る。**symbol 名まで変わるので 1 回で決まる。**
+  (b) その結果で「request も 0 origin へ揃える」か「入口 1 origin を契約として明文化する」かを
+  決めること。(c) hover / formatting の期待値 2 件を 0 origin へ直すこと。
+  **(a) をやる前に (c) をやらないこと。** 先に直せば 2 件は緑になるが、
+  入口の origin が未確定のまま残る。
   **含めない範囲**: Rust 側 LSP (`lsharp-lsp`) の origin。**cargo が要る。**
 
 - [ ] `ROOT-IMBALANCED-HELPER-01` verifier が非 `main` helper を拒否する件を判別する — Issue `I-74`。

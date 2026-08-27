@@ -5929,6 +5929,37 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **判別の方法**: 文書の 1 行目 (`(defn square [x] x)`) の `square` を狙う request を足す。
   0 origin なら `line=0`、1 origin なら `line=1` で当たる。**どちらか一方しか当たらない**ので
   1 回の測定で決まる。`selfhost/src/App/Cli.ls` の `run-lsp-transport-request` が正本。
+- **追記 (2026-08-27): 兄弟 test の実測だけで response 側の origin が確定した。**
+  同じファイルの `test_e2e_selfhost_cli_lsp_transport_references_frame`
+  (`selfhost_cli_core.rs:5031`) は **params が hover と 1 文字も違わない**
+  (`(99, 2, 17, source)`、同じ 2 行の文書) にもかかわらず、期待値が **0 origin** で書かれている:
+
+  ```
+  {"line":0,"character":6} / {"line":1,"character":15} / {"line":1,"character":26}
+  ```
+
+  そして `I-64` の lane 実測でこの test は **ok** である
+  (`/Users/biwakonbu/github/tmp/i64/mod-selfhost_cli_core.log`)。
+
+  | test | params | 期待の origin | lane 実測 |
+  |---|---|---|---|
+  | `..._references_frame` | `(99, 2, 17, source)` | **0** | **ok** |
+  | `..._hover_frame` | `(99, 2, 17, source)` | 1 | FAILED |
+  | `..._formatting_frame` | (同文書) | 1 | FAILED |
+
+  **同じ helper・同じ文書・同じ params で、0 origin を期待する側だけが緑である。**
+  したがって `run-lsp-transport-request` の response Position は 0 origin であり、
+  これは LSP 仕様とも一致する。**hover / formatting の期待値 2 件が 1 origin なのが誤り**である。
+- **ただし request 側の origin はこれでも決まらない。** references は symbol の全出現を返すので、
+  cursor が `square` へ解決さえすれば期待値は当たる。`line=2` が 2 行の文書で通っている以上、
+  **request は 1 origin か、範囲外を clamp しているかのどちらか**である。ここは未確定のまま残す。
+- **判別の方法 (更新)**: hover を `(99, 1, 8, source)` で撃つ。
+  - request が 1 origin なら 1 行目 `(defn square [x] x)` の `square` に当たり、
+    response は `{line:0,character:6}` - `{line:0,character:12}`
+  - request が 0 origin なら 2 行目 `(defn main [] ...)` の `main` に当たり、
+    response は `{line:1,character:6}` - `{line:1,character:10}`
+
+  **返る symbol 名まで変わるので取り違えようがない。** 1 回で決まる。
 - **`I-75` から移管した 2 件である。** 移管前の注記は「原因未診断」だった。
 - **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
   引き取り先は `TODO.md` の `LSP-POSITION-ORIGIN-01`。
