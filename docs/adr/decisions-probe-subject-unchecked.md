@@ -1,7 +1,7 @@
 # 主題を検査していない probe test の裁定
 
-- **Status**: doc-RED (裁定は確定、実装は未着手)
-- **Date**: 2026-08-27
+- **Status**: doc-GREEN (13 件中 12 件を実質化。残るは #13 の 1 件)
+- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (doc-GREEN)
 - **Scope**: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/` の 13 test と
   `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の 1 test
 - **Related**: `I-82` (本 ADR の起点) / `I-79` と
@@ -321,6 +321,31 @@ assertion 追加 8 → **9**。件数の定義はこれまでに 3 度動いて�
 (assertion 追加 9 / 削除 3 / 実質化 1) も動かない。**残 10 件は全部 `#[ignore]` 側**で、
 `selfhost_bootstrap_four_layer` の再計測 1 本が要る。
 
+### 裁定 7: pin の強さは「入力の由来」で決める (2026-08-27 追加)
+
+裁定 3 は「期待値は実測で確定する」とだけ書いていた。実装してみると、**実測値をそのまま
+`assert_eq!` に置くと壊れる test と、置かないと何も検査しない test の 2 種類がある**ことが分かった。
+判断の分かれ目は入力がどこから来るかである。
+
+| 入力の由来 | pin の強さ | 理由 |
+|---|---|---|
+| test 内の文字列リテラル / test が生成する fixture | **全値を `assert_eq!`** | 入力が 1 バイトも動かないので、出力が動いたら実装が変わったということ。下限で見ると検査していないのと同じ |
+| 実在の `.ls` ファイル (`src/App/Main.ls` 等) | marker は exact、数値は**下限と関係式** | `.ls` を 1 行編集するだけで decl 数もバイト数も動く。exact に pin すると「ソースを触るたびに落ちる test」になり、主題 (progress の構造) から外れる |
+
+**関係式が主役である。** 下限だけでは弱いが、下限に加えて
+「冒頭で宣言した decl 数 == 末尾の decl 数」「import 数 == pair 数 - 1」
+「出力長 == 21 + 10 * (decl 数 - 1)」のような**値どうしの拘束**を置くと、
+個々の数が動いても構造の破れは捕まる。実装では
+`part_018.rs` の `assert_debug_progress_shape` / `assert_build_compile_progress_shape` に
+この拘束を集約した。
+
+**却下した案。**
+
+- **全部 exact。** `.ls` を触るたびに無関係な test が赤くなる。赤が日常になれば
+  台帳が信用を失う — `I-84` が示した失敗形そのものである
+- **全部下限。** `#4` (`..._string_length_if_progress`) の入力は test 内リテラルであり、
+  下限で見ると「41 値のうち 1 値でも壊れて」も通る。実質化した意味が消える
+
 ## 却下した案
 
 ### 案 A: 13 件を一括削除
@@ -404,7 +429,82 @@ four_layer の prefix ルール 4 本 (`test_e2e_boot04_` / `test_e2e_bootstrap_
 
 ## Evidence
 
-実装後に埋める。現時点で確定している実測は下記 (cargo を要さない範囲のみ)。
+### 13 件の決着 (2026-08-27)
+
+| # | test | 裁定 | 状態 |
+|---|---|---|---|
+| 1 | `..._reports_main_again_cache_pairs_progress` | 3 | **実質化済** (`part_008.rs`) |
+| 2 | `..._reports_main_again_progress` | 3 | **実質化済** (`part_008.rs`) |
+| 3 | `..._reports_module_resolver_progress` | 3 | **実質化済** (`part_011.rs`) |
+| 4 | `..._reports_string_length_if_progress` | 3 | **実質化済** (`part_011.rs`、全値 exact) |
+| 5 | `test_i64_if_condition_validity` | 2 | 実質化済 (裁定 6) |
+| 6 | `test_parse_compiler_ls` | 3 | 実質化済 (裁定 6) |
+| 7 | `test_parse_caws_standalone` | 3 | 実質化済 (裁定 6。fixture 側の破損を修復) |
+| 8 | `test_debug_stage2_output_minimal` | 1 | **削除済** |
+| 9 | `test_validate_stage2_wasm` | 5 | **実質化済** (`part_015.rs`) |
+| 10 | `test_debug_stage3_output_chars` | 1 | **削除済** |
+| 11 | `test_debug_stage3_main_again_output_chars` | 1 | **削除済** |
+| 12 | `..._stage2_classifies_chunked_lexer_failure_band` | 4 | **実質化済** (`part_014.rs`) |
+| 13 | `..._const_only_entrypoint_helper_offsets` | 3 | **未着手** (`stage_chain.rs`。別 lane module) |
+| - | `test_debug_stage2_save` | 1 | **削除済** |
+
+削除 4 件は `grep -rn 'fn test_debug_stage2_output_minimal|...' crates/lsharp-wasm/tests/e2e`
+が 0 hit であることで確認した (2026-08-27)。**残るは #13 の 1 件だけ**である。
+
+### 実測値 (2026-08-27、`cargo test -p lsharp-wasm --test e2e -- --exact <t> --ignored --nocapture`)
+
+| test | 実測 | pin の型 |
+|---|---|---|
+| #1 cache-pairs-progress | `[85, 32, 31]` | marker exact + pair 数下限 26 + `import == pair - 1` |
+| #2 main-again progress | 42359 値。冒頭 `[1, 4, 2, 31, 3, 4146]` / 末尾 `[30, 31, 3688, 4, 4, 4146]` | marker exact + 冒頭と末尾の再掲一致 + 下限 |
+| #3 module-resolver progress | 401 値。decl 39 / src 12043 bytes / import 0 | 同上 + `len == 21 + 10 * (decl - 1)` |
+| #4 string-length-if progress | 41 値。decl 3 / src 203 bytes | **全 41 値 exact** (入力が test 内リテラル) |
+| #9 stage2 wasm | `validate_wasm_function_bodies` = `Ok(())` / `wasmtime::Module::new` = `Ok(())` / 1575570 bytes | 2 経路の成功 + サイズ下限 1MB |
+| #12 failure band | `no-probe-failure`。below=650 / cross=660 / multi=1090 / large=8975 / main=1575570 bytes | band 名 exact + バイト数の単調性 |
+
+`validate_wasm_detailed` は **使わなかった**。裁定 5 の記述どおり `ValidPayload::Func` を捨てるため、
+関数本体が壊れていても `Ok(())` を返す。実測でも 3 者とも `Ok` だったが、
+**「壊れていないから 3 者とも Ok」なのか「見ていないから Ok」なのかを区別できない検査は使えない。**
+
+### 実測が見つけた本物のバグ 2 件
+
+**(1) probe 名の文字列は飾りだった。** `..._first_defn_ir_parity_on_minimal_demo_main_shape` は
+`91..99` の marker を期待する test だが、実測は `150,1,151,1,152,4,153,4,154,0` —
+`cache-compile-phase-probe` の marker 列だった。原因は
+`selfhost/src/App/Main.ls` の dispatch が **「どの arg スロットが非空か」だけで probe を選ぶ**ことにある
+(22 段の `(if (> (string-length (command-line-arg N)) 0) ...)` 連鎖)。probe 名の文字列自体は読まれない。
+当該 test は名前を arg18 (= `cache-compile-phase`) に置いており、arg13 が正しかった。
+**test 名が主張する probe に一度も到達していなかった。**
+修正後の再実測で 17 値の `91..99` 列を得た。
+
+同じ誤配置が他にないか、`part_008/009/010/011` の probe 名 17 箇所を dispatch 表と突き合わせた。
+**他の 16 件は正しかった。** ただしこの照合は使い捨て script で行っており、常設の検査は無い。
+
+**(2) fixture が 1 バイトも読まれていなかった (`I-87`)。** `..._first_defn_probe_on_minimal_make_type_constrained_shape` の
+stage1 側 probe は `301,-1` (= defn が 1 つも無い) を返していた。
+fixture を `std::env::temp_dir()` に置いて絶対パスで渡していたが、stage1 の WASI runner は
+selfhost ルートだけを `"."` へ preopen する (`wasi_runner/preview1.rs:109-117`) ので**原理的に読めない**。
+しかも `read-file` は失敗時にエラーではなく空文字列を返すため、**guest は空ファイルとして先へ進む**。
+出力自体は空でないので `assert!(!output.trim().is_empty())` は通っていた。
+fixture を `selfhost/target/test-artifacts/` 配下へ移し相対パスで渡したところ、
+stage1 / stage2 とも `[301, 0, 302, 7]` となり、この test の主題 (stage1 と stage2 が同じ defn を同じ形で見る)
+が初めて成立した。**空文字列に潰れる `read-file` 自体は直していない** — `I-87` として登録した。
+
+### 隣接する `I-85` (12 件) も同じ slice で閉じた
+
+`assert!(!output.trim().is_empty())` だけを持っていた `test_debug_boot04_*` 12 件
+(`part_009.rs` 4 / `part_010.rs` 7 / `part_011.rs` 1) を裁定 7 の型で実質化した。
+`grep -rn 'trim().is_empty()' crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/`
+の hit は全て無関係な `.filter()` だけになった (2026-08-27)。
+
+### 検証 (2026-08-27)
+
+- `cargo test -p lsharp-wasm --test e2e --no-run` — 警告 0
+- `cargo clippy -p lsharp-wasm --tests` — 本 slice が触った fragment の警告 **0**
+  (workspace 全体では別ファイル由来の既存 warning が 11 件残る)
+- 個別実行 **19 件すべて `exit 0`** (`I-81` の改名後 test と #1〜#4 を含む)
+
+### 13 という件数の検算 (2026-08-27、cargo 不使用)
 
 
 ### 13 という件数の検算 (2026-08-27、cargo 不使用)
@@ -433,10 +533,18 @@ hit は行単位なので、test 単位へ畳んでから基準を当てる。
 
 ## 満たせなかったこと
 
-- **裁定だけで、実装は 1 件も入っていない。** 本 ADR は doc-RED である。
-  緑にした test は 0 件で、`I-82` は open のままである
-- **#6 / #7 / #12 / #13 の期待値は決まっていない。** 「構造を決めて実測で埋める」と書いたが、
-  実測が「現状は失敗する」を示した場合に何件の新規 issue が出るかは分かっていない
+- **#13 は着手していない。** `..._const_only_entrypoint_helper_offsets` は
+  `selfhost_native_stage_chain` にあり、本 slice が回した
+  `selfhost_bootstrap_four_layer` とは lane が違う。13 件のうち **12 件で閉じ、1 件を残した**。
+  `TODO.md` の `PROBE-ASSERTS-NOTHING-01` は削除せず、**残 1 件として残す**
+- **lane 全体の再計測はまだ済んでいない。** 個別実行 15 件は緑だが、
+  `compare_ignored_lane.py` の完走判定は module 単位のログを要求する
+  (`running N tests` == 一意な result 行数)。`running 1 test` のログ 15 本では代用できない。
+  `AGENTS.md` の改名ルール (`d29cb5a1`) により `I-81` の改名だけでも module 再計測が要る
+- **probe 名と arg スロットの対応を検査する常設の仕組みは無い。** 誤配置 1 件を見つけた照合は
+  使い捨ての script で行った。同じ誤りは再発しうる
+- **`I-87` (`read-file` が失敗を空文字列に潰す) は直していない。** test 側で fixture の置き場を
+  変えて回避しただけである。**回避であって是正ではない**ことを `I-87` 本文にも書いた
 - **`I-82` の枠組みを書き直した。** 「assertion を 1 つも持たない」は 13 件中 6 件で成り立たない。
   commit 済みの記述だが直した。**正確さが churn に勝つ**という判断であり、
   件数が 4 度目に動いても「基準が精緻化された」履歴として残るよう、基準文を先に置く構成にした

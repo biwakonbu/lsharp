@@ -447,16 +447,6 @@ fn test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_l
 #[test]
 #[ignore]
 fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_shape() {
-    let temp_root =
-        std::env::temp_dir().join(format!("lsharp_target_defn_minimal_{}", std::process::id()));
-    std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
-    let source_path = temp_root.join("mini_ast_shape.ls");
-    std::fs::write(
-        &source_path,
-        "(defn make-type-constrained [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v (ast-typeconstrained)) name-hash)))\n(defn ast-typeconstrained [] 24)\n(defn main [] 0)\n",
-    )
-    .expect("mini source should be written");
-
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
         .parent()
@@ -467,9 +457,30 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
 
+    // fixture は selfhost ルート配下に置く。stage1 は WASI の preopen が
+    // selfhost ルートを "." に張るだけなので、std::env::temp_dir() の絶対パスは
+    // 原理的に読めない。実測 (2026-08-27) では read-file が空文字列を返し、
+    // stage1 側の probe が 301,-1 (= defn が 1 つも無い) になっていた。
+    // つまり stage1 と stage2 を並べる本 test の主題が stage1 側で成立していなかった。
+    let temp_root = selfhost_root
+        .join("target/test-artifacts")
+        .join(format!("lsharp_target_defn_minimal_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
+    let source_path = temp_root.join("mini_ast_shape.ls");
+    std::fs::write(
+        &source_path,
+        "(defn make-type-constrained [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v (ast-typeconstrained)) name-hash)))\n(defn ast-typeconstrained [] 24)\n(defn main [] 0)\n",
+    )
+    .expect("mini source should be written");
+
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
-    let source_path_str = source_path.to_str().expect("utf-8 path");
+    let source_path_str = source_path
+        .strip_prefix(&selfhost_root)
+        .expect("fixture は selfhost ルート配下に置くこと")
+        .to_str()
+        .expect("utf-8 path");
     let mut source_step_args = vec!["compiler", source_path_str];
     while source_step_args.len() < 21 {
         source_step_args.push("");
@@ -504,7 +515,22 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
     )
     .expect("stage2 first-defn probe on minimal source should run");
     eprintln!("BOOT-04 minimal first-defn values = {:?}", probe_output);
-    assert!(!probe_output.trim().is_empty());
+
+    // 本 test の主題は stage1 と stage2 が同じ defn を同じ形で見ることである。
+    // 301 = 先頭 defn の index、302 = その body の式タグ。fixture の先頭 defn は
+    // make-type-constrained で、body は (let [...] ...) なのでタグ 7。
+    // 実測 2026-08-27: stage1 / stage2 とも [301, 0, 302, 7]。
+    let stage1_values = parse_progress_values(&stage1_probe_output, "stage1 first-defn");
+    let stage2_values = parse_progress_values(&probe_output, "stage2 first-defn");
+    assert_eq!(
+        stage1_values,
+        vec![301, 0, 302, 7],
+        "stage1 の first-defn probe が期待形と違う"
+    );
+    assert_eq!(
+        stage2_values, stage1_values,
+        "stage1 と stage2 で先頭 defn の見え方が食い違っている"
+    );
 }
 
 #[test]
@@ -543,38 +569,43 @@ fn test_debug_boot04_stage2_first_defn_ir_parity_on_minimal_demo_main_shape() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
+    // App/Main.ls の dispatch は「どの arg スロットが非空か」で probe を選ぶ (probe 名の
+    // 文字列自体は見ていない)。first-defn-ir-parity は arg13。以前はここが arg18 で、
+    // 実際には cache-compile-phase-probe が走っていた (実測 2026-08-27 で 150/151/152/153/154 =
+    // cache-compile-phase-probe のマーカー列が出ていた)。test 名の probe に到達していなかった。
     let source_path_str = source_path.to_str().expect("utf-8 path");
+    let mut probe_args = vec!["compiler", source_path_str];
+    while probe_args.len() < 13 {
+        probe_args.push("");
+    }
+    probe_args.push("first-defn-ir-parity");
     let probe_output = run_wasm_with_eleven_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
-        &[
-            "compiler",
-            source_path_str,
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "first-defn-ir-parity",
-        ],
+        &probe_args,
     )
     .expect("stage2 first-defn-ir-parity probe on minimal demo-main source should run");
     eprintln!(
         "BOOT-04 minimal demo-main first-defn-ir-parity = {:?}",
         probe_output
     );
-    assert!(!probe_output.trim().is_empty());
+    // 91..99 は first-defn-ir-parity probe のマーカー。source 経路と ftable 経路が
+    // 同じ IR 長 (96/97 の直後の値) を出すことが parity の主題である。
+    // 実測 2026-08-27: [91,1,92,10,93,94,10,95,1,96,10,97,10,98,0,99,10]。
+    let values = parse_progress_values(&probe_output, "first-defn-ir-parity");
+    assert_eq!(
+        values,
+        vec![91, 1, 92, 10, 93, 94, 10, 95, 1, 96, 10, 97, 10, 98, 0, 99, 10],
+        "first-defn-ir-parity の出力形が変わった"
+    );
+    assert_eq!(
+        values[10], values[12],
+        "source 経路と ftable 経路の IR 長が食い違っている: {values:?}"
+    );
+    assert_eq!(
+        values[1], values[8],
+        "defn index の replay が一致していない: {values:?}"
+    );
 }
 
 #[test]
@@ -632,7 +663,41 @@ fn test_debug_boot04_stage2_first_defn_source_probe_on_minimal_text_eq_loop_shap
         "BOOT-04 minimal text-eq-loop source probe = {:?}",
         probe_output
     );
-    assert!(!probe_output.trim().is_empty());
+    let values = parse_progress_values(&probe_output, "BOOT-04 minimal text-eq-loop source probe");
+
+    // 実測 (2026-08-27): 301 <first defn の index> 302 <body tag> 303 <cond tag> 304 <IR 命令数>
+    // に続き、命令ごとに 206 <序数> 209 <?> 207 <opcode> 208 <引数> が並ぶ。
+    // fixture は本 test 内のリテラルなので、すべて exact に固定できる。
+    assert_eq!(
+        &values[..8],
+        &[301, 1, 302, 6, 303, 5, 304, 3],
+        "BOOT-04 minimal text-eq-loop source probe: 先頭 8 値が実測と違う: {values:?}"
+    );
+    let instr_count = values[7];
+    let ordinals: Vec<i64> = values
+        .windows(2)
+        .filter(|pair| pair[0] == 206)
+        .map(|pair| pair[1])
+        .collect();
+    assert_eq!(
+        ordinals,
+        (0..instr_count).collect::<Vec<_>>(),
+        "BOOT-04 minimal text-eq-loop source probe: 命令の序数が 0..{instr_count} の連番でない: {values:?}"
+    );
+    assert_eq!(
+        values.len() as i64,
+        8 + 8 * instr_count,
+        "BOOT-04 minimal text-eq-loop source probe: 長さが命令数から決まる形になっていない: {values:?}"
+    );
+    // 命令列そのもの。ここが動いたら cond 式のコード生成が変わったということ。
+    assert_eq!(
+        &values[8..],
+        &[
+            206, 0, 209, 2, 207, 10, 208, 3, 206, 1, 209, 2, 207, 1, 208, 1, 206, 2, 209, 2, 207,
+            20, 208, 0
+        ],
+        "BOOT-04 minimal text-eq-loop source probe: cond1 の IR が実測と違う: {values:?}"
+    );
 }
 
 #[test]
@@ -693,5 +758,14 @@ fn test_debug_boot04_stage2_first_defn_source_step_probe_on_minimal_path_parent_
         "BOOT-04 minimal path-parent source step probe = {:?}",
         probe_output
     );
-    assert!(!probe_output.trim().is_empty());
+    let values = parse_progress_values(&probe_output, "BOOT-04 minimal path-parent source step probe");
+
+    // 実測 (2026-08-27): 301 <first defn の index> 302 <body tag>。
+    // path-parent の body は tag 7 (let) で tag-if ではないため、probe は 303/304 を出さずに終わる。
+    // fixture は本 test 内のリテラルなので exact に固定できる。
+    assert_eq!(
+        values,
+        vec![301, 1, 302, 7],
+        "BOOT-04 minimal path-parent source step probe: 出力が実測と違う"
+    );
 }

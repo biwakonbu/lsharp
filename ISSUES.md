@@ -212,12 +212,13 @@
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
 | [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
 | [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | open | 診断済み・裁定済み。実装未着手 (2026-08-27) |
-| [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27) |
-| [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。3 件は非 ignore。裁定は ADR 済 |
+| [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | open | `I-72` 解決後に露出 (2026-08-27)。同日、極性を反転し改名。**lane 再計測待ち** |
+| [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。**同日 12 件を是正。残るは #13 の 1 件** |
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
 | [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | open | `I-81` の裁定中に走査で発見 (2026-08-27)。うち 1 件は `I-75` が誤分類 |
-| [I-85](#i-85) | `test_debug_boot04_*` 12 件の主題 assertion が `!output.trim().is_empty()` だけ | 中 | open | `I-82` の裁定 5 を書く途中で発見 (2026-08-27)。`I-82` の 13 件には**含まない** |
+| [I-85](#i-85) | `test_debug_boot04_*` 12 件の主題 assertion が `!output.trim().is_empty()` だけ | 中 | open | `I-82` の裁定 5 を書く途中で発見 (2026-08-27)。同日 12 件とも実質化。**lane 再計測待ち**。副産物が `I-87` |
 | [I-86](#i-86) | selfhost parser が Rust reference より緩く、不正な構文を `diagnostics:0` で受理する | 中 | open | `I-82` の #7 を実測して発見 (2026-08-27)。2 引数 `if` と top-level のゴミ atom の 2 形 |
+| [I-87](#i-87) | WASI 経路の `read-file` が preopen 外のパスに対しエラーではなく空文字列を返す | 中 | open | `I-85` の是正中に発見 (2026-08-27)。fixture が読めていないのに test が緑になっていた |
 
 ### ドキュメント (DOC)
 
@@ -5434,7 +5435,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 <a id="i-81"></a>
 ### I-81: `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: open (実装は 2026-08-27 に完了。lane 再計測待ち)
 - **発見**: 2026-08-27 (`I-72` の fix 後の部分再測定で露出)
 - **内容**: `test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff`
   (`part_014.rs:205:10`) は stage3 の Wasm から `local_bound_violation_indices` を集め、
@@ -5456,6 +5457,17 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   詳細は [`docs/adr/decisions-always-failing-diagnostic-probes.md`](docs/adr/decisions-always-failing-diagnostic-probes.md)。
 - **`I-72` の下から出てきた層である。** 解決前はインスタンス化で止まっており、
   この収集まで到達していなかった。
+- **解決 (2026-08-27)**: 裁定どおり極性を反転した。末尾の無条件 `panic!` を
+  `let Some(&first_bad) = bad_indices.first() else { return; };` で包み、violation 0 件を緑にした。
+  ダンプは失敗メッセージとして残してある。test 名は
+  `test_v2_12_self_hosted_stage2_compiler_mode_has_no_local_bound_violation` へ改めた。
+  **検出力は別に証明した** — 非 ignore の
+  `test_local_bound_violation_indices_detects_out_of_range_local` (`part_017.rs`) が、
+  範囲外の local を仕込んだ入力で `local_bound_violation_indices` が実際に検出することを固定する。
+  これを置かずに反転すると `I-82` と同じ「常に緑で何も見ていない」test になる。
+  個別実行は緑 (`--exact ... --ignored`、exit 0)。
+  `docs/development/validation/ignored-lane-expected-failures.txt` の該当行は削除した。
+  **`selfhost_bootstrap_four_layer` の lane 再計測は未了** (`AGENTS.md` の改名再計測規約)。
 - **関連**: `I-72` (これを隠していた)、`I-79` (「緑だが検査していない」の裏返しで、
   こちらは「赤だが欠陥は無いかもしれない」)、`I-64` (発見経路)、
   `I-84` (本 issue の裁定中に見つかった同型 4 件)。
@@ -5509,10 +5521,14 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **形 (d) は「恒真な assertion」である。** `assert!(matches!(classification, A | B | C | D | E))`
   と書かれているが、`classification` はその 5 値のいずれかにしか成りえない構造で作られている。
   **assertion があることと、検査していることは別である。**
-- **裁定は済んでいる。実装が未着手である。**
+- **裁定は済んでいる。実装は 13 件中 12 件まで進んだ (2026-08-27)。**
   [`docs/adr/decisions-probe-subject-unchecked.md`](docs/adr/decisions-probe-subject-unchecked.md) が
   test ごとの裁定を確定した。内訳は **assertion 追加 8 件 / 削除 4 件 (+ 基準外の隣接 1 件) /
   恒真 assert の実質化 1 件**。一括削除・一括 `panic!`・一括 `#[ignore]` の 3 案はいずれも却下した。
+  削除 4 件は実施済み (`grep` 0 hit)。実質化は #1〜#4 / #5〜#7 / #9 / #12 の 9 件が完了した。
+  **残るのは #13 `..._const_only_entrypoint_helper_offsets` の 1 件**で、これは
+  `selfhost_native_stage_chain` に属するため four_layer の lane では覆えない。
+  実測値と pin の型は ADR の Evidence 節が正本。**four_layer の lane 再計測も未了。**
 - **`test_i64_if_condition_validity` は極性が逆だった。** fixture
   `tests/fixtures/selfhost-debug/test_i64_if.wasm` は**仕様上不正な wasm** で
   (`if` 条件が i64 / `if (result i64)` に else が無い)、正しい契約は
@@ -5645,7 +5661,23 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **12 件は全部 `#[ignore]` 側なので、是正には `selfhost_bootstrap_four_layer` の
   再計測 1 本 (前回実測 6748s ≈ 112 分) が要る。**
   `I-82` の実装 slice と同じ module なので、**束ねて lane 1 本で覆うのが安い**。
-- **関連**: `I-82` (発見経路。基準の外という判定も含む)、`I-84` (「常に赤い probe」の裏返し)。
+- **是正 (2026-08-27。lane 再計測は未了)**: 12 件とも実質化した。pin の強さは入力の由来で分けた —
+  test 内リテラルが入力なら全値 `assert_eq!`、実在の `.ls` が入力なら marker は exact で
+  数値は下限と関係式 (ADR `decisions-probe-subject-unchecked.md` の 裁定 7 が正本)。
+  共通の構造検査は `part_018.rs` の `assert_build_compile_progress_shape` /
+  `assert_debug_progress_shape` に集約した。
+  `grep -rn 'trim().is_empty()' .../selfhost_bootstrap_four_layer/` の hit は
+  無関係な `.filter()` だけになった。
+- **是正の過程で本物のバグが 2 件出た。「空でない」で通っていたものは、実際に壊れていた。**
+  - `..._first_defn_ir_parity_on_minimal_demo_main_shape` は probe 名を arg18 に置いており、
+    実際には `cache-compile-phase-probe` が走っていた (`App/Main.ls` の dispatch は
+    **arg スロットだけで probe を選び、probe 名の文字列は読まない**)。arg13 へ直した
+  - `..._first_defn_probe_on_minimal_make_type_constrained_shape` の fixture は
+    preopen 外に置かれており **1 バイトも読まれていなかった** (`301,-1` = defn 0 件)。
+    fixture の置き場を直して stage1 / stage2 とも `[301, 0, 302, 7]` になった。
+    空文字列に潰れる `read-file` 自体は `I-87` として登録した
+- **関連**: `I-82` (発見経路。基準の外という判定も含む)、`I-84` (「常に赤い probe」の裏返し)、
+  `I-87` (是正中に露出した本体側の欠陥)。
   引き取り先は `TODO.md` の `WEAK-SUBJECT-ASSERT-01`。
 
 <a id="i-86"></a>
@@ -5681,3 +5713,32 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   範囲外である。`I-73` (native differential の pin) と同じ帯の、Rust/selfhost 差分の問題として扱う。
 - **関連**: `I-82` (発見経路)、`I-73` (Rust/selfhost 差分の pin)。
   引き取り先は `TODO.md` の `SELFHOST-PARSE-LENIENT-01`。
+
+<a id="i-87"></a>
+
+### I-87: WASI 経路の `read-file` が preopen 外のパスに対しエラーではなく空文字列を返す
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-85` の `test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_shape`
+  を実質化する際、stage1 側の probe が `301,-1` = 「defn が 1 つも無い」を返すのを実測して発見)
+- **内容**: stage1 を動かす WASI runner は
+  `crates/lsharp-wasm/src/wasi_runner/preview1.rs:109-117` で
+  `builder.preopened_dir(dir_path, ".", DirPerms::all(), FilePerms::all())` を張るだけである。
+  つまり guest から見える root は selfhost ルート 1 つで、それ以外のパスは**原理的に開けない**。
+  ところが開けなかったとき `read-file` は**エラーを返さず空文字列を返す**。
+  guest 側はそれを「中身が空のファイル」として扱い、そのまま先へ進む。
+- **これが test を無言で骨抜きにする。** 実例:
+  `std::env::temp_dir()` 配下へ書いた fixture を絶対パスで stage1 に渡していた test は、
+  fixture が 1 バイトも読まれていないのに probe 出力自体は空でないため
+  `assert!(!output.trim().is_empty())` を通過していた。probe が出していたのは
+  「入力が空だったときの値」(`301,-1`) であって、test 名が主張する parity ではない。
+  `I-85` / `I-82` の「主題を検査していない test」が緑であり続けた原因の一つがこれである。
+- **eleven-import 版は挙動が違う。** `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/part_002.rs:42-60`
+  の host func は `root_dir.join(rel_path)` を使うため絶対パスも解決でき、失敗時は panic する。
+  **同じ `read-file` という名前で、経路によって「絶対パスが通るか」も「失敗が見えるか」も違う。**
+- **直し方の方向**: 失敗を空文字列に潰さない。`read-file` に成否を返させるか、
+  少なくとも guest 側で「長さ 0」と「読めなかった」を区別できるようにする。
+  test 側の回避 (fixture を preopen 配下へ置く) は `I-85` の是正で既に入れたが、
+  **それは回避であって是正ではない**。
+- **関連**: `I-85` (発見経路。fixture 配置で回避済み)、`I-82` (同じ「緑だが何も見ていない」帯)。
+  引き取り先は `TODO.md` の `SELFHOST-READFILE-SILENT-01`。

@@ -619,25 +619,6 @@ fn test_i64_if_condition_validity() {
 }
 
 #[test]
-#[ignore]
-fn test_debug_stage2_save() {
-    // stage2 を生成してファイルに保存する (デバッグ用)
-    let main_path = selfhost_main_path();
-    let stage1_wasm = compile_file_only(&main_path);
-    let selfhost_dir = selfhost_package_root();
-    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm,
-        Some(&selfhost_dir),
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("stage1 failed");
-    let modules = parse_emitted_wasm_modules(&output, 1);
-    let stage2 = &modules[0];
-    std::fs::write("stage2_debug.wasm", stage2).expect("write failed");
-    eprintln!("stage2_debug.wasm written ({} bytes)", stage2.len());
-}
-
-#[test]
 fn test_parse_compiler_ls() {
     // selfhost のコード生成本体が Rust reference parser で構文エラー無く読めること。
     // decl 数は下限だけを固定する (実測 312 / 2026-08-27)。上限を固定すると
@@ -678,52 +659,6 @@ fn test_parse_caws_standalone() {
 
 #[test]
 #[ignore]
-fn test_debug_stage2_output_minimal() {
-    // stage2 が minimal.ls をコンパイルした出力を保存・検証する
-    let main_path = selfhost_main_path();
-    let selfhost_root = main_path
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    let stage1_wasm = compile_file_only(&main_path);
-
-    // stage1 で src/App/Main.ls をコンパイル → stage2
-    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm,
-        Some(&selfhost_root),
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("stage1 failed");
-    let modules = parse_emitted_wasm_modules(&output, 1);
-    let stage2 = &modules[0];
-    std::fs::write("stage2_debug2.wasm", stage2).expect("write failed");
-    eprintln!("stage2 written ({} bytes)", stage2.len());
-
-    // stage2 で minimal.ls をコンパイル
-    let fixture_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
-    let stage3_result = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        stage2,
-        Some(&fixture_dir),
-        &["compiler", "minimal.ls"],
-    );
-    match stage3_result {
-        Err(e) => eprintln!("stage2->minimal failed: {}", e),
-        Ok(out) => {
-            let modules3 = parse_emitted_wasm_modules(&out, 1);
-            let stage3 = &modules3[0];
-            std::fs::write("stage3_minimal.wasm", stage3).expect("write failed");
-            eprintln!("stage3 written ({} bytes)", stage3.len());
-        }
-    }
-}
-
-#[test]
-#[ignore]
 fn test_validate_stage2_wasm() {
     // stage2 を詳細バリデーション
     let main_path = selfhost_main_path();
@@ -744,8 +679,16 @@ fn test_validate_stage2_wasm() {
     .expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
-    match validate_wasm_detailed(stage2) {
-        Ok(_) => eprintln!("stage2 詳細バリデーション PASSED ({} bytes)", stage2.len()),
-        Err(e) => eprintln!("stage2 詳細バリデーション FAILED: {}", e),
-    }
+    // validate_wasm_detailed は ValidPayload::Func を捨てるので、関数本体が壊れていても
+    // Ok(()) を返す。「詳細バリデーション」という名前に反して主題を検査していないため、
+    // 本 test では使わない (I-82 裁定 5)。実測 2026-08-27 で 3 者とも Ok、stage2 は 1575570 bytes。
+    validate_wasm_function_bodies(stage2)
+        .unwrap_or_else(|e| panic!("stage2 の関数本体バリデーションに失敗した: {e}"));
+    wasmtime::Module::new(&wasmtime::Engine::default(), stage2)
+        .unwrap_or_else(|e| panic!("stage2 を wasmtime が読めない: {e}"));
+    assert!(
+        stage2.len() > 1_000_000,
+        "stage2 が小さすぎる ({} bytes)。空に近い module を検証しても意味が無い",
+        stage2.len()
+    );
 }

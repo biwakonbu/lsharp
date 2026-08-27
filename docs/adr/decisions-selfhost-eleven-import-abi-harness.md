@@ -208,6 +208,12 @@ cargo test -p lsharp-wasm --test e2e -- --ignored --exact \
 | `four_layer::test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_lengths` | `I-80` (`I-75` から移管) | marker 126 が 5、期待 7 (`part_009.rs:411:5`) |
 | `four_layer::test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff` | `I-81` (`I-72` から移管) | `local_bound_violation_indices` が空 (`part_014.rs:205:10`) |
 
+> **追記 (2026-08-27)**: 最後の 1 行は `I-81` の裁定で決着した。
+> この test は violation が在っても無くても赤くなる構造 (末尾が無条件 `panic!`) で、
+> 「空になったこと」は欠陥ではなく良い状態だった。極性を反転して
+> `..._compiler_mode_has_no_local_bound_violation` へ改名し、台帳行は削除した。
+> 詳細は [`decisions-always-failing-diagnostic-probes.md`](decisions-always-failing-diagnostic-probes.md)。
+
 ### 受入条件の判定
 
 | 受入条件 | 判定 |

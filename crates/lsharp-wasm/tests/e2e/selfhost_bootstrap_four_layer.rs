@@ -16,3 +16,4 @@ include!("selfhost_bootstrap_four_layer/part_014.rs");
 include!("selfhost_bootstrap_four_layer/part_015.rs");
 include!("selfhost_bootstrap_four_layer/part_016.rs");
 include!("selfhost_bootstrap_four_layer/part_017.rs");
+include!("selfhost_bootstrap_four_layer/part_018.rs");

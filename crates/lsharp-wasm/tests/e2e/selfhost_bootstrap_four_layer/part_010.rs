@@ -68,7 +68,45 @@ fn test_debug_boot04_stage2_build_compile_progress_on_minimal_path_parent_shape(
         "BOOT-04 minimal path-parent build compile progress = {:?}",
         progress_output
     );
-    assert!(!progress_output.trim().is_empty());
+    let values = parse_progress_values(&progress_output, "BOOT-04 minimal path-parent build compile progress");
+    let (first_bytes, first_decls, last_bytes, last_decls, total_functions) =
+        assert_build_compile_progress_shape(&values, "BOOT-04 minimal path-parent build compile progress");
+
+    // import を持たない単一 fixture なので、先頭 pair と末尾 pair は同じものを指す。
+    assert_eq!(values[2], 1, "BOOT-04 minimal path-parent build compile progress: import 無しなので pair 数は 1");
+    assert_eq!(
+        first_bytes, last_bytes,
+        "BOOT-04 minimal path-parent build compile progress: 先頭と末尾の src バイト数が一致しない"
+    );
+    assert_eq!(
+        first_decls, last_decls,
+        "BOOT-04 minimal path-parent build compile progress: 先頭と末尾の decl 数が一致しない"
+    );
+
+    // fixture は本 test 自身が書いたものなので、compiler が読んだバイト数は実サイズと一致するはず。
+    // 食い違うなら compiler が読んだのは別のファイルである。
+    let written_bytes = std::fs::metadata(&source_path)
+        .expect("BOOT-04 minimal path-parent build compile progress: fixture の metadata が取れない")
+        .len() as i64;
+    assert_eq!(
+        last_bytes, written_bytes,
+        "BOOT-04 minimal path-parent build compile progress: compiler が読んだバイト数が fixture の実サイズと違う"
+    );
+
+    // (module ...) は関数にならないので、生成関数は decl 数 - 1。
+    assert_eq!(
+        total_functions,
+        last_decls - 1,
+        "BOOT-04 minimal path-parent build compile progress: 生成関数の総数が decl 数 - 1 でない"
+    );
+    // pair ループは decl 1 個あたり 10 値、前後に 12 + 6 値が付く。
+    assert_eq!(
+        values.len() as i64,
+        18 + 10 * (last_decls - 1),
+        "BOOT-04 minimal path-parent build compile progress: progress の長さが decl 数から決まる形になっていない"
+    );
+    // fixture は test 内のリテラル / 生成ループから決まるので decl 数は exact に固定できる。
+    assert_eq!(last_decls, 7, "BOOT-04 minimal path-parent build compile progress: fixture の decl 数が変わった (実測 7 / 2026-08-27)");
 }
 
 #[test]
@@ -163,7 +201,34 @@ fn test_debug_boot04_stage1_build_compile_progress_on_app_cli() {
         "BOOT-04 App/Cli stage1 build compile progress = {:?}",
         progress_output
     );
-    assert!(!progress_output.trim().is_empty());
+    let values = parse_progress_values(&progress_output, "BOOT-04 App/Cli stage1 build compile progress");
+    let (first_bytes, first_decls, last_bytes, last_decls, total_functions) =
+        assert_build_compile_progress_shape(&values, "BOOT-04 App/Cli stage1 build compile progress");
+
+    // import 閉包に含まれる module 数。import 文を足し引きしたときだけ動くので exact に固定する。
+    assert_eq!(
+        values[2], 44,
+        "BOOT-04 App/Cli stage1 build compile progress: import 閉包の module 数が変わった (実測 44 / 2026-08-27)"
+    );
+    // import した module の関数も乗るので、生成関数は末尾 module の decl 数より必ず多い。
+    assert!(
+        total_functions > last_decls,
+        "BOOT-04 App/Cli stage1 build compile progress: 生成関数 {total_functions} が末尾 module の decl 数 {last_decls} 以下"
+    );
+    // 以下は `.ls` を 1 行編集するだけで動くので下限だけを見る。
+    // 実測 (2026-08-27): 先頭 12043B/39 decl, 末尾 133977B/403 decl, 生成関数 4605。
+    assert!(
+        first_bytes > 6021 && first_decls > 19,
+        "BOOT-04 App/Cli stage1 build compile progress: 先頭 module が小さすぎる: {first_bytes}B/{first_decls} decl"
+    );
+    assert!(
+        last_bytes > 66988 && last_decls > 201,
+        "BOOT-04 App/Cli stage1 build compile progress: 末尾 module が小さすぎる: {last_bytes}B/{last_decls} decl"
+    );
+    assert!(
+        total_functions > 2302,
+        "BOOT-04 App/Cli stage1 build compile progress: 生成関数の総数が少なすぎる: {total_functions}"
+    );
 }
 
 #[test]
@@ -258,7 +323,34 @@ fn test_debug_boot04_stage1_build_compile_progress_on_compiler_module() {
         "BOOT-04 Compiler.ls stage1 build compile progress = {:?}",
         progress_output
     );
-    assert!(!progress_output.trim().is_empty());
+    let values = parse_progress_values(&progress_output, "BOOT-04 Compiler.ls stage1 build compile progress");
+    let (first_bytes, first_decls, last_bytes, last_decls, total_functions) =
+        assert_build_compile_progress_shape(&values, "BOOT-04 Compiler.ls stage1 build compile progress");
+
+    // import 閉包に含まれる module 数。import 文を足し引きしたときだけ動くので exact に固定する。
+    assert_eq!(
+        values[2], 6,
+        "BOOT-04 Compiler.ls stage1 build compile progress: import 閉包の module 数が変わった (実測 6 / 2026-08-27)"
+    );
+    // import した module の関数も乗るので、生成関数は末尾 module の decl 数より必ず多い。
+    assert!(
+        total_functions > last_decls,
+        "BOOT-04 Compiler.ls stage1 build compile progress: 生成関数 {total_functions} が末尾 module の decl 数 {last_decls} 以下"
+    );
+    // 以下は `.ls` を 1 行編集するだけで動くので下限だけを見る。
+    // 実測 (2026-08-27): 先頭 1916B/45 decl, 末尾 210442B/312 decl, 生成関数 847。
+    assert!(
+        first_bytes > 958 && first_decls > 22,
+        "BOOT-04 Compiler.ls stage1 build compile progress: 先頭 module が小さすぎる: {first_bytes}B/{first_decls} decl"
+    );
+    assert!(
+        last_bytes > 105221 && last_decls > 156,
+        "BOOT-04 Compiler.ls stage1 build compile progress: 末尾 module が小さすぎる: {last_bytes}B/{last_decls} decl"
+    );
+    assert!(
+        total_functions > 423,
+        "BOOT-04 Compiler.ls stage1 build compile progress: 生成関数の総数が少なすぎる: {total_functions}"
+    );
 }
 
 #[test]
@@ -353,7 +445,34 @@ fn test_debug_boot04_stage1_build_compile_progress_on_compiler_mode_module() {
         "BOOT-04 CompilerMode.ls stage1 build compile progress = {:?}",
         progress_output
     );
-    assert!(!progress_output.trim().is_empty());
+    let values = parse_progress_values(&progress_output, "BOOT-04 CompilerMode.ls stage1 build compile progress");
+    let (first_bytes, first_decls, last_bytes, last_decls, total_functions) =
+        assert_build_compile_progress_shape(&values, "BOOT-04 CompilerMode.ls stage1 build compile progress");
+
+    // import 閉包に含まれる module 数。import 文を足し引きしたときだけ動くので exact に固定する。
+    assert_eq!(
+        values[2], 12,
+        "BOOT-04 CompilerMode.ls stage1 build compile progress: import 閉包の module 数が変わった (実測 12 / 2026-08-27)"
+    );
+    // import した module の関数も乗るので、生成関数は末尾 module の decl 数より必ず多い。
+    assert!(
+        total_functions > last_decls,
+        "BOOT-04 CompilerMode.ls stage1 build compile progress: 生成関数 {total_functions} が末尾 module の decl 数 {last_decls} 以下"
+    );
+    // 以下は `.ls` を 1 行編集するだけで動くので下限だけを見る。
+    // 実測 (2026-08-27): 先頭 12043B/39 decl, 末尾 290763B/318 decl, 生成関数 1942。
+    assert!(
+        first_bytes > 6021 && first_decls > 19,
+        "BOOT-04 CompilerMode.ls stage1 build compile progress: 先頭 module が小さすぎる: {first_bytes}B/{first_decls} decl"
+    );
+    assert!(
+        last_bytes > 145381 && last_decls > 159,
+        "BOOT-04 CompilerMode.ls stage1 build compile progress: 末尾 module が小さすぎる: {last_bytes}B/{last_decls} decl"
+    );
+    assert!(
+        total_functions > 971,
+        "BOOT-04 CompilerMode.ls stage1 build compile progress: 生成関数の総数が少なすぎる: {total_functions}"
+    );
 }
 
 #[test]
@@ -465,7 +584,45 @@ fn test_debug_boot04_stage1_build_compile_progress_on_minimal_vector_push_shape(
         "BOOT-04 minimal vector-push stage1 build compile progress = {:?}",
         progress_output
     );
-    assert!(!progress_output.trim().is_empty());
+    let values = parse_progress_values(&progress_output, "BOOT-04 minimal vector-push stage1 build compile progress");
+    let (first_bytes, first_decls, last_bytes, last_decls, total_functions) =
+        assert_build_compile_progress_shape(&values, "BOOT-04 minimal vector-push stage1 build compile progress");
+
+    // import を持たない単一 fixture なので、先頭 pair と末尾 pair は同じものを指す。
+    assert_eq!(values[2], 1, "BOOT-04 minimal vector-push stage1 build compile progress: import 無しなので pair 数は 1");
+    assert_eq!(
+        first_bytes, last_bytes,
+        "BOOT-04 minimal vector-push stage1 build compile progress: 先頭と末尾の src バイト数が一致しない"
+    );
+    assert_eq!(
+        first_decls, last_decls,
+        "BOOT-04 minimal vector-push stage1 build compile progress: 先頭と末尾の decl 数が一致しない"
+    );
+
+    // fixture は本 test 自身が書いたものなので、compiler が読んだバイト数は実サイズと一致するはず。
+    // 食い違うなら compiler が読んだのは別のファイルである。
+    let written_bytes = std::fs::metadata(&source_path)
+        .expect("BOOT-04 minimal vector-push stage1 build compile progress: fixture の metadata が取れない")
+        .len() as i64;
+    assert_eq!(
+        last_bytes, written_bytes,
+        "BOOT-04 minimal vector-push stage1 build compile progress: compiler が読んだバイト数が fixture の実サイズと違う"
+    );
+
+    // (module ...) は関数にならないので、生成関数は decl 数 - 1。
+    assert_eq!(
+        total_functions,
+        last_decls - 1,
+        "BOOT-04 minimal vector-push stage1 build compile progress: 生成関数の総数が decl 数 - 1 でない"
+    );
+    // pair ループは decl 1 個あたり 10 値、前後に 12 + 6 値が付く。
+    assert_eq!(
+        values.len() as i64,
+        18 + 10 * (last_decls - 1),
+        "BOOT-04 minimal vector-push stage1 build compile progress: progress の長さが decl 数から決まる形になっていない"
+    );
+    // fixture は test 内のリテラル / 生成ループから決まるので decl 数は exact に固定できる。
+    assert_eq!(last_decls, 18, "BOOT-04 minimal vector-push stage1 build compile progress: fixture の decl 数が変わった (実測 18 / 2026-08-27)");
 }
 
 #[test]
@@ -581,7 +738,45 @@ fn test_debug_boot04_stage1_build_compile_progress_on_padded_vector_push_shape()
         "BOOT-04 padded vector-push stage1 build compile progress = {:?}",
         progress_output
     );
-    assert!(!progress_output.trim().is_empty());
+    let values = parse_progress_values(&progress_output, "BOOT-04 padded vector-push stage1 build compile progress");
+    let (first_bytes, first_decls, last_bytes, last_decls, total_functions) =
+        assert_build_compile_progress_shape(&values, "BOOT-04 padded vector-push stage1 build compile progress");
+
+    // import を持たない単一 fixture なので、先頭 pair と末尾 pair は同じものを指す。
+    assert_eq!(values[2], 1, "BOOT-04 padded vector-push stage1 build compile progress: import 無しなので pair 数は 1");
+    assert_eq!(
+        first_bytes, last_bytes,
+        "BOOT-04 padded vector-push stage1 build compile progress: 先頭と末尾の src バイト数が一致しない"
+    );
+    assert_eq!(
+        first_decls, last_decls,
+        "BOOT-04 padded vector-push stage1 build compile progress: 先頭と末尾の decl 数が一致しない"
+    );
+
+    // fixture は本 test 自身が書いたものなので、compiler が読んだバイト数は実サイズと一致するはず。
+    // 食い違うなら compiler が読んだのは別のファイルである。
+    let written_bytes = std::fs::metadata(&source_path)
+        .expect("BOOT-04 padded vector-push stage1 build compile progress: fixture の metadata が取れない")
+        .len() as i64;
+    assert_eq!(
+        last_bytes, written_bytes,
+        "BOOT-04 padded vector-push stage1 build compile progress: compiler が読んだバイト数が fixture の実サイズと違う"
+    );
+
+    // (module ...) は関数にならないので、生成関数は decl 数 - 1。
+    assert_eq!(
+        total_functions,
+        last_decls - 1,
+        "BOOT-04 padded vector-push stage1 build compile progress: 生成関数の総数が decl 数 - 1 でない"
+    );
+    // pair ループは decl 1 個あたり 10 値、前後に 12 + 6 値が付く。
+    assert_eq!(
+        values.len() as i64,
+        18 + 10 * (last_decls - 1),
+        "BOOT-04 padded vector-push stage1 build compile progress: progress の長さが decl 数から決まる形になっていない"
+    );
+    // fixture は test 内のリテラル / 生成ループから決まるので decl 数は exact に固定できる。
+    assert_eq!(last_decls, 216, "BOOT-04 padded vector-push stage1 build compile progress: fixture の decl 数が変わった (実測 216 / 2026-08-27)");
 }
 
 #[test]
@@ -700,5 +895,43 @@ fn test_debug_boot04_stage1_build_compile_progress_on_large_ftable_vector_push_s
         "BOOT-04 large-ftable vector-push stage1 build compile progress = {:?}",
         progress_output
     );
-    assert!(!progress_output.trim().is_empty());
+    let values = parse_progress_values(&progress_output, "BOOT-04 large-ftable vector-push stage1 build compile progress");
+    let (first_bytes, first_decls, last_bytes, last_decls, total_functions) =
+        assert_build_compile_progress_shape(&values, "BOOT-04 large-ftable vector-push stage1 build compile progress");
+
+    // import を持たない単一 fixture なので、先頭 pair と末尾 pair は同じものを指す。
+    assert_eq!(values[2], 1, "BOOT-04 large-ftable vector-push stage1 build compile progress: import 無しなので pair 数は 1");
+    assert_eq!(
+        first_bytes, last_bytes,
+        "BOOT-04 large-ftable vector-push stage1 build compile progress: 先頭と末尾の src バイト数が一致しない"
+    );
+    assert_eq!(
+        first_decls, last_decls,
+        "BOOT-04 large-ftable vector-push stage1 build compile progress: 先頭と末尾の decl 数が一致しない"
+    );
+
+    // fixture は本 test 自身が書いたものなので、compiler が読んだバイト数は実サイズと一致するはず。
+    // 食い違うなら compiler が読んだのは別のファイルである。
+    let written_bytes = std::fs::metadata(&source_path)
+        .expect("BOOT-04 large-ftable vector-push stage1 build compile progress: fixture の metadata が取れない")
+        .len() as i64;
+    assert_eq!(
+        last_bytes, written_bytes,
+        "BOOT-04 large-ftable vector-push stage1 build compile progress: compiler が読んだバイト数が fixture の実サイズと違う"
+    );
+
+    // (module ...) は関数にならないので、生成関数は decl 数 - 1。
+    assert_eq!(
+        total_functions,
+        last_decls - 1,
+        "BOOT-04 large-ftable vector-push stage1 build compile progress: 生成関数の総数が decl 数 - 1 でない"
+    );
+    // pair ループは decl 1 個あたり 10 値、前後に 12 + 6 値が付く。
+    assert_eq!(
+        values.len() as i64,
+        18 + 10 * (last_decls - 1),
+        "BOOT-04 large-ftable vector-push stage1 build compile progress: progress の長さが decl 数から決まる形になっていない"
+    );
+    // fixture は test 内のリテラル / 生成ループから決まるので decl 数は exact に固定できる。
+    assert_eq!(last_decls, 1016, "BOOT-04 large-ftable vector-push stage1 build compile progress: fixture の decl 数が変わった (実測 1016 / 2026-08-27)");
 }

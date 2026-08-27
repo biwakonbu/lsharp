@@ -1,7 +1,7 @@
 # 構造上必ず赤くなる診断 probe の裁定
 
-- **Status**: doc-RED (裁定は確定、実装は未着手)
-- **Date**: 2026-08-27
+- **Status**: 一部 doc-GREEN (#1 は実装済。#2〜#5 は未着手)
+- **Date**: 2026-08-27 (doc-RED) / 2026-08-27 (#1 の doc-GREEN)
 - **Scope**: `crates/lsharp-wasm/tests/e2e/` の 5 test と、それが使う lookup harness
 - **Related**: `I-84` (本 ADR の起点) / `I-81` (発見経路。5 件のうち 1 件) /
   `I-75` (誤分類していた 1 件) / `I-82` と
@@ -172,9 +172,32 @@ codegen が 1 命令動けば意味を失う値であり、**契約ではない*
 | `run_selfhost_main_representative_aarch64_offset_lookup_harness` の利用 | **5 hits = 定義 1 + 利用 4**。利用は削除対象 3 件のみ | `grep -c` |
 | `representative_selfhost_registration_order` の利用 | **5 hits = 定義 1 + 利用 4**。うち `:26363` は削除対象外 | `grep -n` |
 
+### #1 の実装 (2026-08-27)
+
+裁定どおり極性を反転した。末尾の無条件 `panic!` を
+`let Some(&first_bad) = bad_indices.first() else { return; };` で包み、violation 0 件を緑にした。
+ダンプは失敗メッセージとして残してある。test 名は主題に合わせて
+`test_v2_12_self_hosted_stage2_compiler_mode_has_no_local_bound_violation` へ改めた。
+
+**反転する前に検出力を証明した。** 極性を反転しただけでは
+「violation が 0 件なのか、検出器が動いていないのか」を区別できない —
+`I-82` が扱った「常に緑で何も見ていない」test になる。そこで非 ignore の
+`test_local_bound_violation_indices_detects_out_of_range_local` (`part_017.rs`) を新設し、
+範囲外の local を仕込んだ入力に対して `local_bound_violation_indices` が実際に検出することを固定した。
+**この test が緑であることが、#1 の緑に意味を与えている。**
+
+| 検証 | 結果 |
+|---|---|
+| `..._has_no_local_bound_violation` の個別実行 | exit 0 (2026-08-27) |
+| `test_local_bound_violation_indices_detects_out_of_range_local` (非 ignore) | exit 0 (2026-08-27) |
+| `ignored-lane-expected-failures.txt` の該当行 | **削除済み** |
+
 ## 満たせなかったこと
 
-- **裁定だけで、実装は 1 件も入っていない。** 緑にした test は 0 件で、`I-84` は open のまま
+- **実装が入ったのは #1 だけである。** #2〜#5 は未着手で、`I-84` は open のまま
+- **#1 の lane 再計測は未了。** 改名したので `AGENTS.md` の規約 (`d29cb5a1`) により
+  `selfhost_bootstrap_four_layer` の module 再計測が要る。個別実行の緑では代用できない
+  (`compare_ignored_lane.py` の完走判定は module 単位のログを要求する)
 - **#2 の「現在 mismatch は無い」は未実測である。** `assert!(lines.len() >= 12)` の手前で
   落ちていない事実からそう推測しているだけで、`wasm-bytes-eq` の実際の値を見ていない。
   **極性を反転する前に実測すること** — これは本 ADR 自身が `I-82` について書いた

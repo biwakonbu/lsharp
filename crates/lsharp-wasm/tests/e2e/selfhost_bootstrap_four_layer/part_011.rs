@@ -111,7 +111,62 @@ fn test_debug_boot04_stage2_ast_chunked_step_progress_on_ast_file() {
         run_wasm_with_eleven_imports_compiler_mode_fs(stage2_self_compiler, &selfhost_root, &args)
             .expect("stage2 ast-chunked-step probe should run");
     eprintln!("BOOT-04 ast-chunked-step values = {:?}", output);
-    assert!(!output.trim().is_empty());
+    let values = parse_progress_values(&output, "BOOT-04 ast-chunked-step");
+    assert!(
+        values.len() > 100,
+        "BOOT-04 ast-chunked-step: 出力が短すぎる: {values:?}"
+    );
+
+    // 実測 (2026-08-27) の構造:
+    //   150 <parse 回数> 151 <decl 数>
+    //   decl ごとに 170 <序数> ... (decl 0 は (module ...) なので内側 marker を出さない)
+    //   153 <生成関数の総数>
+    assert_eq!(values[0], 150, "BOOT-04 ast-chunked-step: 先頭 marker は 150");
+    assert_eq!(values[2], 151, "BOOT-04 ast-chunked-step: 3 番目の marker は 151");
+    let parse_count = values[1];
+    let decl_count = values[3];
+    assert_eq!(
+        parse_count, 2,
+        "BOOT-04 ast-chunked-step: AST.ls は自身 + import の 2 回パースされるはず"
+    );
+    // AST.ls は実ソースなので decl 数は下限だけ (実測 45 / 2026-08-27)。
+    assert!(
+        decl_count >= 40,
+        "BOOT-04 ast-chunked-step: AST.ls の decl 数が下限を割った: {decl_count}"
+    );
+
+    // 170 は decl 1 個につき 1 回、直後に 0 から始まる序数が来る。
+    let step_ordinals: Vec<i64> = values
+        .windows(2)
+        .filter(|pair| pair[0] == 170)
+        .map(|pair| pair[1])
+        .collect();
+    assert_eq!(
+        step_ordinals,
+        (0..decl_count).collect::<Vec<_>>(),
+        "BOOT-04 ast-chunked-step: 170 の序数が 0..{decl_count} の連番になっていない"
+    );
+
+    // decl 0 は (module ...) で関数にならないため、内側 marker は decl 数 - 1 回。
+    for marker in [172, 173, 174, 175, 176, 177, 180, 181, 182, 183, 184, 185] {
+        assert_eq!(
+            values.iter().filter(|value| **value == marker).count() as i64,
+            decl_count - 1,
+            "BOOT-04 ast-chunked-step: marker {marker} の出現回数が decl 数 - 1 でない"
+        );
+    }
+
+    assert_eq!(
+        values[values.len() - 2],
+        153,
+        "BOOT-04 ast-chunked-step: 終端 marker 153 が末尾から 2 番目に無い: {:?}",
+        &values[values.len().saturating_sub(6)..]
+    );
+    assert_eq!(
+        values[values.len() - 1],
+        decl_count - 1,
+        "BOOT-04 ast-chunked-step: 生成関数の総数が decl 数 - 1 でない"
+    );
 }
 
 #[test]
@@ -397,10 +452,34 @@ fn test_e2e_boot04_self_hosted_stage2_reports_module_resolver_progress() {
             "progress",
             "module-resolver",
         ],
+    )
+    .expect("BOOT-04 module-resolver-progress: stage2 の progress probe が失敗した");
+
+    // I-82 裁定 3: 従来は Result を print するだけだった。
+    // 単一 module を回す経路なので import 数は 0 になり、生成関数の総数は decl 数 - 1 に一致する。
+    // 出力長も decl 数から一意に決まる (pair ごとに 10 値 + 前後の固定 21 値)。
+    // 実測 2026-08-27: 401 値、decl 数 39、src 12043 bytes。
+    let values = parse_progress_values(&progress_output, "module-resolver-progress");
+    let (import_count, last_decls, total_functions) =
+        assert_debug_progress_shape(&values, "module-resolver-progress");
+    assert_eq!(
+        import_count, 0,
+        "単一 module の progress なのに import 数が 0 でない: {import_count}"
     );
-    eprintln!(
-        "BOOT-04 module-resolver-progress output = {:?}",
-        progress_output
+    assert_eq!(
+        total_functions,
+        last_decls - 1,
+        "import が無いので生成関数の総数は decl 数 - 1 であるべき: {total_functions} / {last_decls}"
+    );
+    assert!(
+        last_decls >= 30,
+        "decl 数が少なすぎる ({last_decls}): selfhost の module を読めていない疑い"
+    );
+    assert_eq!(
+        values.len() as i64,
+        21 + 10 * (last_decls - 1),
+        "出力長が decl 数 {last_decls} から決まる値と食い違う: {}",
+        values.len()
     );
 }
 
@@ -441,10 +520,25 @@ fn test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress() {
             "progress",
             "inline",
         ],
-    );
-    eprintln!(
-        "BOOT-04 string-length-if-progress output = {:?}",
-        progress_output
+    )
+    .expect("BOOT-04 string-length-if-progress: stage2 の inline progress probe が失敗した");
+
+    // I-82 裁定 3: 従来は Result を print するだけだった。
+    // 入力が上の `source` リテラルなので、出力は 1 値も動く余地が無い。
+    // ここは下限ではなく完全一致で固定する — 動いたら inline 経路の挙動が変わったということ。
+    // 実測 2026-08-27: 41 値 (decl 数 3、src 203 bytes)。
+    let values = parse_progress_values(&progress_output, "string-length-if-progress");
+    assert_debug_progress_shape(&values, "string-length-if-progress");
+    assert_eq!(
+        values,
+        vec![
+            1, 3, 2, 0, 3, 2, 29, 0, 203, 3,
+            40, 0, 25, 43, 0, 40, 1, 20, 41, 1,
+            42, 1, 1, 43, 1, 40, 2, 20, 41, 2,
+            42, 2, 2, 43, 2, 30, 0, 203, 3, 4,
+            2,
+        ],
+        "inline source は固定なのに progress 出力が変わった"
     );
 }
 

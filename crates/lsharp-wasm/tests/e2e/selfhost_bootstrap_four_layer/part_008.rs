@@ -357,10 +357,30 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_cache_pairs_progress() 
             "",
             "pairs-progress",
         ],
+    )
+    .expect("BOOT-04 main-cache-pairs-progress: stage2 の pairs-progress probe が失敗した");
+    eprintln!("BOOT-04 main-cache-pairs-progress output = {progress_output:?}");
+
+    // I-82 裁定 3: 従来は Result を print するだけで、**実行失敗すら握り潰していた**。
+    // 85 は cache-pairs probe の marker で、続く 2 値は「解決した pair 数」と
+    // 「そのうち import として数えた数」。後者は前者 - 1 になる (自分自身を除くため)。
+    // 実測 2026-08-27: [85, 32, 31]。pair 数は Main.ls の import 構成で動くので下限で見る。
+    let values = parse_progress_values(&progress_output, "main-cache-pairs-progress");
+    assert_eq!(
+        values.len(),
+        3,
+        "main-cache-pairs-progress の出力は 3 値であるべき: {values:?}"
     );
-    eprintln!(
-        "BOOT-04 main-cache-pairs-progress output = {:?}",
-        progress_output
+    assert_eq!(values[0], 85, "先頭 marker が 85 でない: {values:?}");
+    assert!(
+        values[1] >= 26,
+        "解決した pair 数が少なすぎる ({}): selfhost の module 構成が壊れている疑い",
+        values[1]
+    );
+    assert_eq!(
+        values[2],
+        values[1] - 1,
+        "import 数は pair 数 - 1 であるべき: {values:?}"
     );
 }
 
@@ -462,8 +482,29 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_progress() {
             "progress",
             "main-again",
         ],
+    )
+    .expect("BOOT-04 main-progress: stage2 の main-again progress probe が失敗した");
+
+    // I-82 裁定 3: 従来は Result を print するだけだった。
+    // 主題は「冒頭で宣言した数と、全 module を走り切った末尾の数が一致すること」。
+    // 実測 2026-08-27: 42359 値、冒頭 [1, 4, 2, 31, 3, 4146] / 末尾 [30, 31, 3688, 4, 4, 4146]。
+    // selfhost 全体を再コンパイルする経路なので、個々の数は .ls の編集で動く。下限で見る。
+    let values = parse_progress_values(&progress_output, "main-progress");
+    let (import_count, last_decls, total_functions) =
+        assert_debug_progress_shape(&values, "main-progress");
+    assert!(
+        import_count >= 20,
+        "main-again progress の import 数が少なすぎる ({import_count}): selfhost 全体を回れていない"
     );
-    eprintln!("BOOT-04 main-progress output = {:?}", progress_output);
+    assert!(
+        last_decls >= 2,
+        "main-again progress の末尾 decl 数が少なすぎる ({last_decls})"
+    );
+    assert!(
+        total_functions >= 1_000,
+        "main-again progress の生成関数総数が少なすぎる ({total_functions}): \
+         selfhost 全体をコンパイルしていれば 4000 前後になる"
+    );
 }
 
 #[test]

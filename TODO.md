@@ -2939,7 +2939,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **`selfhost_bootstrap_four_layer` の実装 slice に束ねる** (`PROBE-ASSERTS-NOTHING-01` /
   `VIOLATION-PROBE-STALE-01` と同一 lane)。**cargo が要る。**
 
-- [ ] `VIOLATION-PROBE-STALE-01` violation probe の極性を反転する — Issue `I-81`。
+- [~] `VIOLATION-PROBE-STALE-01` violation probe の極性を反転する — Issue `I-81`。
+  **実装は 2026-08-27 に完了した。残るは lane 再計測と台帳行の削除だけである** (末尾の現況を見よ)。
   **裁定は済んでいる** — `docs/adr/decisions-always-failing-diagnostic-probes.md` の裁定 1。
   `test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff`
   (`part_014.rs:154`) は **body に分岐も `return` も無く最後に無条件 `panic!` する**ため、
@@ -2955,6 +2956,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     `selfhost_bootstrap_four_layer` の再計測が要る。
     **`PROBE-ASSERTS-NOTHING-01` と同じ slice に束ね、lane 1 本で覆うこと**
   - 緑になったら `ignored-lane-expected-failures.txt` の該当行を削除する
+  **現況 (2026-08-27)**: 極性反転・改名 (`..._has_no_local_bound_violation`) 済み。
+  検出力は非 ignore の `test_local_bound_violation_indices_detects_out_of_range_local` で
+  別途証明した (out-of-range な local を仕込むと赤くなる)。個別実行は緑
+  (`--exact ... --ignored`、exit 0)。**台帳行は削除済み。**
+  **残るのは `selfhost_bootstrap_four_layer` の lane 再計測 1 本だけ** で、
+  これは `PROBE-ASSERTS-NOTHING-01` / `WEAK-SUBJECT-ASSERT-01` / `TARGET-DEFN-PARITY-01` と
+  共有する 1 本である。**4 項目が同じ 1 本を待っている。**
   **含めない範囲**: violation が消えた原因そのものの追跡。**cargo が要る。**
 
 - [ ] `ALWAYS-RED-PROBE-01` 構造上必ず赤い診断 probe 5 件を裁定どおり畳む — Issue `I-84`。
@@ -2979,7 +2987,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     dead prefix にもならない。`selfhost_native_stage_chain` の再計測だけで覆える
   **含めない範囲**: 直書きアドレスが指していた crash そのものの診断。**cargo が要る。**
 
-- [ ] `PROBE-ASSERTS-NOTHING-01` 主題を検査していない probe test 13 件を裁定どおり是正する — Issue `I-82`。
+- [~] `PROBE-ASSERTS-NOTHING-01` 主題を検査していない probe test 13 件を裁定どおり是正する — Issue `I-82`。
+  **13 件中 12 件は 2026-08-27 に完了した。残るは #13 の 1 件と lane 再計測** (末尾の現況を見よ)。
   **裁定は済んでいる** — `docs/adr/decisions-probe-subject-unchecked.md`。
   残りは実装で、内訳は **assertion 追加 9 件 / 削除 3 件 (+ 基準外の隣接 `test_debug_stage2_save`) /
   恒真 assert の実質化 1 件**。
@@ -3026,6 +3035,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     **four_layer に触る裁定を 1 slice に束ねて lane 1 本で覆うこと**
   - `..._representative_const_only_entrypoint_helper_offsets` (13 件目) は
     `selfhost_native_stage_chain` に属するので、four_layer の slice には入れない
+  **現況 (2026-08-27)**: 削除 4 件 (#8 / #10 / #11 / `test_debug_stage2_save`) は実施済みで
+  `grep` 0 hit。#1〜#4 / #5〜#7 / #9 / #12 の 9 件は実質化済み。**残るは #13 の 1 件**で、
+  これは `selfhost_native_stage_chain` の lane に属する。実測値と pin の型は
+  ADR の Evidence 節が正本。**four_layer 側の lane 再計測 1 本も未了。**
   **含めない範囲**: probe が露出させる個々の失敗の修正。**cargo が要る。**
 
 - [ ] `SELFHOST-PARSE-LENIENT-01` selfhost parser の構文検査を Rust reference に合わせる — Issue `I-86`。
@@ -3042,7 +3055,20 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: Rust/selfhost の差分全般の網羅 (それは `NATIVE-DIFF-PIN-01` / `I-73`)。
   **cargo が要る。**
 
-- [ ] `WEAK-SUBJECT-ASSERT-01` 主題 assertion が「空でないこと」だけの probe 12 件を実質化する — Issue `I-85`。
+- [ ] `SELFHOST-READFILE-SILENT-01` WASI 経路の `read-file` の失敗を空文字列に潰さない — Issue `I-87`。
+  `crates/lsharp-wasm/src/wasi_runner/preview1.rs:109-117` は selfhost ルートだけを `"."` へ
+  preopen する。その外のパスは開けないが、`read-file` はエラーではなく空文字列を返すため、
+  guest は「空のファイル」として先へ進む。
+  受入条件:
+  - **先に赤い test を書く。** preopen 外のパスを渡したとき現状は空文字列が返ることを固定してから直す
+  - 「長さ 0 のファイル」と「読めなかった」を guest 側で区別できるようにする
+  - eleven-import 版 (`tests/e2e/selfhost_bootstrap_four_layer/part_002.rs:42-60`) は
+    `root_dir.join(rel_path)` で絶対パスも解決し失敗時に panic する。**どちらへ寄せるかを先に決める**
+  **含めない範囲**: fixture を preopen 配下へ移す回避 (`I-85` の是正で既に入っている)。
+  **cargo が要る。**
+
+- [~] `WEAK-SUBJECT-ASSERT-01` 主題 assertion が「空でないこと」だけの probe 12 件を実質化する — Issue `I-85`。
+  **12 件とも 2026-08-27 に実質化した。残るは lane 再計測だけである** (末尾の現況を見よ)。
   `selfhost_bootstrap_four_layer` の `test_debug_boot04_*` 12 件
   (`part_009.rs` 4 / `part_010.rs` 7 / `part_011.rs` 1)。いずれも probe が出した値を
   `eprintln!` へ流し、主題の assertion は `assert!(!output.trim().is_empty())` 1 行だけ。
@@ -3060,6 +3086,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     一括の期待値は置けない。名前が主題を示しても極性までは示さない (`I-82` #5 の実例)
   - **12 件とも `#[ignore]`。** 再計測は `selfhost_bootstrap_four_layer` 1 本
     (前回実測 6748s ≈ 112 分)。`PROBE-ASSERTS-NOTHING-01` と**同じ module なので束ねる**
+  **現況 (2026-08-27)**: 12 件とも実質化済み。
+  `grep -rn 'trim().is_empty()' crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/` の
+  hit は無関係な `.filter()` だけになった。pin の型は ADR
+  `decisions-probe-subject-unchecked.md` の 裁定 7 が正本 (入力が test 内リテラルなら全値 exact、
+  実在の `.ls` なら marker exact + 下限 + 関係式)。
+  **是正の過程で本物のバグを 2 件見つけた** — probe 名の arg スロット誤配置 1 件 (修正済み) と、
+  fixture が preopen 外で 1 バイトも読まれていなかった件 (`I-87` として登録、test 側は回避済み)。
+  **残るのは lane 再計測 1 本だけ。**
   **含めない範囲**: probe が露出させる値そのものの正しさの追及。**cargo が要る。**
 
 - [ ] `COMPILER-MODE-STACK-01` compiler-mode 生成 wasm の stack 不整合を診断する — Issue `I-83`。

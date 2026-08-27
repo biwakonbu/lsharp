@@ -149,9 +149,15 @@ fn test_v2_12_self_hosted_stage2_loads_compiler_mode_module() {
     );
 }
 
+// I-81: 旧名は test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff。
+// 旧実装は最後に無条件 panic! を置いており、violation が有っても無くても必ず赤だった。
+// 「stage3 の CompilerMode.ls に local 範囲外参照が無いこと」が主題なので、
+// violation が無ければ緑、有れば従来の 14 項目ダンプを失敗メッセージとして出す形に直した。
+// 検出器が動くことは part_017.rs の
+// test_local_bound_violation_indices_detects_out_of_range_local が独立に固定している。
 #[test]
-#[ignore = "診断専用: regular invariant は test_v2_12_self_hosted_stage2_loads_compiler_mode_module が担う"]
-fn test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff() {
+#[ignore = "重量級: stage1 -> stage2 -> stage3 の 3 段コンパイルを通す"]
+fn test_v2_12_self_hosted_stage2_compiler_mode_has_no_local_bound_violation() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
         .parent()
@@ -200,21 +206,24 @@ fn test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff
     let stage3_compiler_mode = &stage3_modules[0];
 
     let bad_indices = local_bound_violation_indices(stage3_compiler_mode);
-    let first_bad = *bad_indices
-        .first()
-        .expect("V2-12 CompilerMode diff: stage3 output に violation があること");
-    let stage1_body = function_body_bytes(stage1_compiler_mode, first_bad)
-        .expect("V2-12 CompilerMode diff: stage1 body が見つかること");
-    let stage3_body = function_body_bytes(stage3_compiler_mode, first_bad)
-        .expect("V2-12 CompilerMode diff: stage3 body が見つかること");
-    let diff_at = first_byte_diff(stage1_body.as_slice(), stage3_body.as_slice())
-        .expect("V2-12 CompilerMode diff: body 差分があること");
+    let Some(&first_bad) = bad_indices.first() else {
+        // violation 無し = 期待どおり。ここが本 test の緑の出口。
+        return;
+    };
+
+    // ここから先は失敗経路。旧実装の 14 項目ダンプをそのまま失敗メッセージに使う。
+    // body / 差分が取れない場合も violation 自体は事実なので、
+    // 取れなかったことを含めて報告する。
+    let stage1_body = function_body_bytes(stage1_compiler_mode, first_bad).unwrap_or_default();
+    let stage3_body = function_body_bytes(stage3_compiler_mode, first_bad).unwrap_or_default();
+    let diff_at = first_byte_diff(stage1_body.as_slice(), stage3_body.as_slice()).unwrap_or(0);
     let window_start = diff_at.saturating_sub(16);
     let window_end_stage1 = (diff_at + 24).min(stage1_body.len());
     let window_end_stage3 = (diff_at + 24).min(stage3_body.len());
 
     panic!(
-        "V2-12 CompilerMode diff: path={}; first_bad={}; diff_at={}; stage1_size={}; stage3_size={}; stage1_prefix={:?}; stage3_prefix={:?}; stage1_window={:?}; stage3_window={:?}; stage1_ops={:?}; stage3_violations={:?}; stage1_fingerprint={}; stage3_fingerprint={}",
+        "V2-12 CompilerMode: stage3 に local 範囲外参照が {} 件ある。path={}; first_bad={}; diff_at={}; stage1_size={}; stage3_size={}; stage1_prefix={:?}; stage3_prefix={:?}; stage1_window={:?}; stage3_window={:?}; stage1_ops={:?}; stage3_violations={:?}; stage1_fingerprint={}; stage3_fingerprint={}",
+        bad_indices.len(),
         compiler_mode_path.display(),
         first_bad,
         diff_at,
@@ -685,7 +694,7 @@ fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
         "no-probe-failure"
     };
 
-    eprintln!(
+    let diag = format!(
         "BOOT-04 chunk-band diag: below={} cross={} multi={} large={} main={} => {}",
         summarize(&below_boundary),
         summarize(&cross_boundary),
@@ -694,13 +703,48 @@ fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
         summarize_optional(&main_again),
         classification
     );
+    eprintln!("{diag}");
 
-    assert!(matches!(
-        classification,
-        "local-before-boundary"
-            | "first-boundary-crossing"
-            | "post-first-chunk"
-            | "real-world-only"
-            | "no-probe-failure"
-    ));
+    // classification は上の if 連鎖で 5 つの文字列のどれかに必ずなるので、
+    // 「5 つのどれかであること」を assert しても恒真であり何も検査していなかった。
+    // 主題は「chunk 境界に起因する失敗帯が存在しないこと」なので、
+    // 実測 (2026-08-27) の no-probe-failure を pin する。
+    // ここが別の値に転んだら chunk 境界の回帰なので、緩めずに原因を追うこと。
+    assert_eq!(
+        classification, "no-probe-failure",
+        "chunk 境界に起因する失敗帯が再発した: {diag}"
+    );
+
+    // ok が「空の wasm を返しただけ」でないことを確かめる。
+    // 実測 (2026-08-27): below=650 / cross=660 / multi=1090 / large=8975 / main=1575570。
+    // helper 数に比例して伸びる量なので、下限と単調増加だけを固定し上限は置かない。
+    let below_bytes = below_boundary.expect("below-boundary は ok のはず");
+    let cross_bytes = cross_boundary.expect("cross-boundary は ok のはず");
+    let multi_bytes = multi_chunk.expect("multi-chunk は ok のはず");
+    let large_bytes = large_single_file
+        .expect("need_real_world が真なら Some")
+        .expect("large-single-file は ok のはず");
+    let main_bytes = main_again
+        .expect("need_real_world が真なら Some")
+        .expect("main-again は ok のはず");
+    assert!(
+        below_bytes > 300,
+        "below-boundary の wasm が小さすぎる: {diag}"
+    );
+    assert!(
+        cross_bytes > below_bytes,
+        "chunk 境界を跨ぐ 37 helper が 36 helper より小さい: {diag}"
+    );
+    assert!(
+        multi_bytes > cross_bytes,
+        "80 helper が 37 helper より小さい: {diag}"
+    );
+    assert!(
+        large_bytes > multi_bytes,
+        "800 helper が 80 helper より小さい: {diag}"
+    );
+    assert!(
+        main_bytes > 500_000,
+        "main-again の stage3 wasm が小さすぎる: {diag}"
+    );
 }

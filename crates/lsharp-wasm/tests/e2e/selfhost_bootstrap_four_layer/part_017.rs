@@ -96,3 +96,83 @@ fn test_e2e_bootstrap_compiler_mode_emits_valid_stage2_wasm_for_empty_do_block()
 
     std::fs::remove_dir_all(&temp_root).expect("I-71 temp dir を削除できない");
 }
+
+// =============================================================================
+// I-81: local_bound_violation_indices が本当に検出できることの証明
+//
+// V2-12 の診断 test 群は「violation が見つかること」を前提に body diff を出す。
+// もし検出側が壊れていたら「violation 無し」に見えるだけで、診断は静かに
+// 何も報告しなくなる。診断 test を「violation 無しなら緑」へ書き換える前に、
+// 検出器そのものが動くことを独立に固定しておく必要がある。
+//
+// selfhost の compile を一切通さない手組み wasm なので数ミリ秒で終わる。
+// =============================================================================
+
+/// I-81: 手組み wasm で violation 側と正常側の両方を判別できること
+#[test]
+fn test_local_bound_violation_indices_detects_out_of_range_local() {
+    use wasm_encoder::{
+        CodeSection, Function, FunctionSection, Instruction, Module, TypeSection, ValType,
+    };
+
+    let mut types = TypeSection::new();
+    // type 0: [] -> []  (local が 1 つも無い)
+    types.ty().function(Vec::<ValType>::new(), Vec::<ValType>::new());
+    // type 1: [i64] -> []  (param が 1 つある)
+    types.ty().function(vec![ValType::I64], Vec::<ValType>::new());
+
+    let mut functions = FunctionSection::new();
+    functions.function(0);
+    functions.function(1);
+
+    let mut code = CodeSection::new();
+    // func 0: local が 0 個なのに local.get 0 を読む -- 範囲外
+    let mut bad = Function::new(Vec::<(u32, ValType)>::new());
+    bad.instruction(&Instruction::LocalGet(0));
+    bad.instruction(&Instruction::Drop);
+    bad.instruction(&Instruction::End);
+    code.function(&bad);
+    // func 1: param 0 を読むだけ -- 範囲内
+    let mut good = Function::new(Vec::<(u32, ValType)>::new());
+    good.instruction(&Instruction::LocalGet(0));
+    good.instruction(&Instruction::Drop);
+    good.instruction(&Instruction::End);
+    code.function(&good);
+
+    let mut module = Module::new();
+    module.section(&types);
+    module.section(&functions);
+    module.section(&code);
+    let wasm = module.finish();
+
+    // 検出器は func 0 だけを挙げること。
+    // 空 Vec が返るなら検出器が死んでおり、V2-12 の診断は「violation 無し」に
+    // 見えるだけで何も報告しなくなる。
+    assert_eq!(
+        local_bound_violation_indices(&wasm),
+        vec![0_u32],
+        "範囲外 local.get を持つ func 0 だけが検出されるべき"
+    );
+
+    // 正常側だけの module では空であること (偽陽性が無いこと)。
+    let mut types_ok = TypeSection::new();
+    types_ok
+        .ty()
+        .function(vec![ValType::I64], Vec::<ValType>::new());
+    let mut functions_ok = FunctionSection::new();
+    functions_ok.function(0);
+    let mut code_ok = CodeSection::new();
+    let mut only_good = Function::new(Vec::<(u32, ValType)>::new());
+    only_good.instruction(&Instruction::LocalGet(0));
+    only_good.instruction(&Instruction::Drop);
+    only_good.instruction(&Instruction::End);
+    code_ok.function(&only_good);
+    let mut module_ok = Module::new();
+    module_ok.section(&types_ok);
+    module_ok.section(&functions_ok);
+    module_ok.section(&code_ok);
+    assert!(
+        local_bound_violation_indices(&module_ok.finish()).is_empty(),
+        "範囲内の local.get しか無い module を violation と誤判定してはいけない"
+    );
+}
