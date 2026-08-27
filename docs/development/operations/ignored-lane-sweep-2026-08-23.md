@@ -378,3 +378,60 @@ fix 前後で症状を test 単位に突き合わせると、`expected i64 but n
 | `four_layer::..._stage2_target_defn_parity_reaches_ast_make_type_constrained` | `I-80` |
 | `four_layer::..._stage1_target_defn_parity_reports_ast_make_type_constrained_lengths` | `I-80` (`I-75` から移管) |
 | `four_layer::..._reports_compiler_mode_first_violation_body_diff` | `I-81` |
+
+
+## `selfhost_bootstrap_four_layer` の再計測 (2026-08-27)
+
+### 取得条件
+
+| 項目 | 値 |
+|---|---|
+| runner | `/Users/biwakonbu/github/tmp/i79/run_lane_i79.py` (pid 43934、`os.setsid()` で切り離し) |
+| 開始 | 2026-08-27 07:39:20 (`LANE-START`) |
+| 所要 | **6517.18s** (108.6 分)。前回同 module 6748s に対し **3.4% 短縮** |
+| ログ | `/Users/biwakonbu/github/tmp/i79/lane/mod-selfhost_bootstrap_four_layer.log` |
+| 台帳 | subset `/Users/biwakonbu/github/tmp/i79/lane/subset-four_layer.txt` (4 行。module 名で抽出) |
+| 突合 | `python3 scripts/compare_ignored_lane.py --ledger <subset> <log>` |
+
+### 結果
+
+```
+宣言 148 / 結果行 148 / 重複 0  [144 passed / 4 failed / 6517.13s]
+完走判定 : OK
+新規 FAIL : 0 件 / 解消 : 0 件 / 未出現 : 0 件
+判定: OK -- 完走し、台帳と一致した   (exit 0)
+```
+
+赤 4 件は subset 台帳の 4 行と過不足なく一致した。`I-83` の
+`Invalid input WebAssembly code at offset 270: type mismatch: expected i64 but nothing on stack` と、
+`I-81` の `part_014.rs:205:10` `V2-12 CompilerMode diff: stage3 output に violation があること` は
+**どちらも既存記述どおりに再現した**。台帳への追記は不要である。
+
+### 再現ではなく新しく分かったこと — 範囲外読み出しは 0 を返すとは限らない
+
+`I-80` の 2 件について full marker dump が取れた。本 sweep の記録は
+「marker 127 は AST の外を指して **0 になる**」と書いていたが、それは stage2 側だけだった。
+stage1 側は marker 126 で落ちるので 127 を assert しておらず、値が見えていなかった。
+
+| marker | stage1 | stage2 |
+|---|---|---|
+| 127 (`inner-call[0]`) | **4294967296** (= 2^32) | 0 |
+| 128 (`inner-func[0]`) | **72057594054705152** (= 2^56 + 2^24) | 0 |
+
+同じ probe を同じ入力で走らせても、Rust の stage1 と self-hosted の stage2 で
+**範囲外読み出しの結果が違う**。詳細は `ISSUES.md` の `I-80` が正本。
+
+> 片方の binary だけで観測した値を「こういう値が返る」と一般化しない。
+> 範囲外読み出しの挙動は実装ごとに違い、それ自体が情報である。
+
+### 緑の 144 件が運んだ情報
+
+`test_validate_stage2_wasm` は **ok** で終わった。これは検査が通ったことを意味しない —
+この test は結果を `eprintln!` に流すだけで、`Ok` でも `Err` でも緑になる
+(`ISSUES.md` `I-82` の #9)。nextest は緑の test の出力を捨てるので、
+**実際の validator の戻り値はこのログから読めない。**
+`I-82` の実装では targeted 実行で `--nocapture` を取る必要がある。
+
+同様に `test_debug_boot04_*` 12 件もすべて緑だが、主題の assertion は
+`assert!(!output.trim().is_empty())` 1 行だけである (`I-85`)。
+**「144 passed」は 144 件の契約が守られていることを意味しない。**

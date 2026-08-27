@@ -5364,7 +5364,46 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `(vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash)` で
   **`let` が無い**。よって marker 126 (`body[0]`) は `ast-let` (7) ではなく
   `ast-apply` (5) になり、marker 127 (`body[3][3][4]` の tag) は平坦化された AST の
-  外を指して 0 になる。**2 つの実測値がこれ 1 つで説明できる。**
+  外を指す。**2 つの実測値がこれ 1 つで説明できる。**
+
+  probe 本体 (`CompilerMode.ls:6323-6327`) のナビゲーションは次の 5 行である。
+  `let` を前提にしていることがそのまま読める。
+
+  ```lisp
+  decl        (vector-get decls target-idx)
+  body        (vector-get decl (+ 3 (vector-get decl 2)))
+  outer-expr  (vector-get body 3)
+  inner-call  (vector-get (vector-get outer-expr 3) 4)
+  inner-func  (vector-get inner-call 1)
+  ```
+
+- **範囲外読み出しの値は stage1 と stage2 で違う (2026-08-27 の再計測で判明。上の記述の訂正)。**
+  本 issue は当初「marker 127 は…外を指して **0 になる**」と書いたが、これは stage2 側だけの話だった。
+  stage1 側は 126 で落ちるので 127 を assert しておらず、値が見えていなかった。
+  full dump を取ると **stage1 の 127 は `4294967296` (= 2^32)、128 は `72057594054705152`
+  (= 2^56 + 2^24)** で、stage2 の `0` / `0` とは違う。
+
+  | marker | 意味 (emitter より) | stage1 実測 | stage2 実測 | 期待 |
+  |---|---|---|---|---|
+  | 124 | `decl[0]` (decl tag) | 20 | 20 | 20 |
+  | 125 | `decl[2]` (param 数) | 1 | 1 | 1 |
+  | 126 | `body[0]` (body tag) | **5** | **5** | 7 |
+  | 127 | `inner-call[0]` | **4294967296** | **0** | 5 |
+  | 128 | `inner-func[0]` | **72057594054705152** | **0** | 4 |
+  | 129 | `inner-func[1]` (use-site hash) | 0 | 0 | `== 131` |
+  | 130 | `ftable-lookup ftable 129` | 0 | 0 | `> 0` |
+  | 131 | `decls[31][1]` (def-site hash) | -5490128408457682031 | 同左 | -- |
+
+  **範囲外読み出しは 0 を返すとは限らない。** 同じ probe を同じ入力で走らせても、
+  stage1 (Rust) と stage2 (self-hosted) で違う値が出る。片方だけ見て
+  「0 が返る」と一般化したのが誤りだった。
+- **126/127 を直しても緑にならない可能性が、予測から実測へ変わった。**
+  full dump では 129 (=0) と 131 (=-5490128408457682031) が一致せず、130 も 0 である。
+  現在の assertion 順ではここまで到達しないが、**到達すれば落ちる値が今そこにある**。
+  ただしこれらは壊れた navigation の下流の値なので、
+  **navigation を直せば再計算される。「129 は直後に落ちる」と読むのは誤りである**
+  (「offset の集合は原因の集合ではない」)。確定しているのは
+  「126/127 の緑を完了条件にしてはいけない」という一点。
 - **時系列が裏付ける。** probe 本体と test 名はどちらも `357f261d` (2026-04-11) 生まれ。
   `AST.ls:260` の `vector-push-pair-rooted` 化は `901c10d8` (2026-04-22)。
   **refactor は probe より 11 日新しく、probe は追随していない。**
