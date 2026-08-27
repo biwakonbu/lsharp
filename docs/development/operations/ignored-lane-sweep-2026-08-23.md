@@ -435,3 +435,120 @@ stage1 側は marker 126 で落ちるので 127 を assert しておらず、値
 同様に `test_debug_boot04_*` 12 件もすべて緑だが、主題の assertion は
 `assert!(!output.trim().is_empty())` 1 行だけである (`I-85`)。
 **「144 passed」は 144 件の契約が守られていることを意味しない。**
+
+## 部分再測定: `I-80` / `I-81` / `I-82` / `I-85` の実装後 (2026-08-27)
+
+4 項目とも `selfhost_bootstrap_four_layer` の実装 slice なので **lane 1 本で覆う**。
+判断の正本は [decisions-probe-subject-unchecked.md](../../adr/decisions-probe-subject-unchecked.md) /
+[decisions-always-failing-diagnostic-probes.md](../../adr/decisions-always-failing-diagnostic-probes.md) /
+[decisions-target-defn-probe-shape-drift.md](../../adr/decisions-target-defn-probe-shape-drift.md)。
+
+### 取得条件
+
+| 項目 | 値 |
+|---|---|
+| 対象 | `selfhost_bootstrap_four_layer` のみ |
+| test binary | `target/debug/deps/e2e-aa343ded249bec81` (main `29fc24d1` で `cargo build -p lsharp-wasm --tests`。lane 中は再ビルドしない) |
+| 起動 | `python3 /Users/biwakonbu/github/tmp/i80/run_lane_i80.py` を `os.setsid()` で切り離し |
+| filter | `<bin> --ignored e2e::selfhost_bootstrap_four_layer::` |
+| 並列度 | libtest 既定 |
+| 機種 | Mac17,2 / 10 core / macOS 26.5.1 |
+| 併走 | **無し。** lane 中は `cargo` を一切起動しない |
+| ログ | `/Users/biwakonbu/github/tmp/i80/lane/mod-selfhost_bootstrap_four_layer.log` |
+| 完走マーカ | 同ディレクトリ `progress.txt` の `LANE-COMPLETE` 行 |
+| 抜粋台帳 | `/Users/biwakonbu/github/tmp/i80/subset.txt` (**台帳 3 行の削除後に取り直した**。残り 1 行) |
+| rename 前ログ | `/Users/biwakonbu/github/tmp/i80/lane/pre-rename-mod-selfhost_bootstrap_four_layer.log.bak` (`I-79` 時点の測定) |
+
+### 測る前に立てた予測
+
+- **赤は 1 件だけになるはず。** `I-79` 時点の実測は 148 宣言 / 148 結果 / **FAIL 4** で、
+  内訳は `I-80` の 2 件 + `I-81` の 1 件 + `I-83` の 1 件である。前 3 者は実装済で個別実行は緑、
+  `I-83` は未着手なので赤のまま残る。台帳に残る four_layer の行も `I-83` の
+  `test_e2e_boot04_compiler_mode_ignores_dotted_flat_file` 1 件のみで、数が合う。
+  - **訂正 (lane 完走前に記録)**: この行は当初「FAIL 3 / その 3 件は `I-80` 2 件と `I-81` 1 件」と
+    書いていたが誤りである。`FAIL 3` は `I-72` 時点の測定値 (6,748.02s) であり、
+    `I-79` 時点 (6,517.13s) は `I-83` が加わって 4 件だった。**結論 (赤は 1 件) は変わらないが、
+    結果が出た後で基礎を直すと予測を後付けしたように見えるので、出る前に直しておく。**
+- **`I-82` / `I-85` の 12 件は元から緑だったので、赤の増減には現れない。**
+  ここで見たいのは「assertion を実質化したせいで新しく落ちる test が無いか」である。
+  個別実行 19 件は緑を確認済みだが、**lane では他の test と同じプロセス空間で走る**ので
+  順序依存が出るならここに出る。
+- **宣言数は 148 から動かないはず。** 本 slice は test の追加も削除もしていない
+  (`I-81` の rename 1 件のみ)。動いたら数え漏れを疑うこと。
+
+### 結果 (1 回目 — SIGKILL で完走せず)
+
+**この lane は完走していない。** `MODEXIT=-9` (SIGKILL) で 6,420.99s / 108 件の時点で落ちた。
+
+| 項目 | 実測 |
+|---|---|
+| 宣言数 | **144** (予測は 148) |
+| 結果行 (ユニーク) | 108 |
+| ログ間重複 | 0 |
+| FAILED | 1 (`test_e2e_boot04_compiler_mode_ignores_dotted_flat_file` = `I-83`) |
+| `MODEXIT` | **-9 (SIGKILL)** |
+| `ELAPSED` | 6,420.99s |
+| `compare_ignored_lane.py` exit code | **1** (`判定: NG -- 完走していない`) |
+
+`progress.txt` には `LANE-COMPLETE 2026-08-27T13:29:48` が書かれているが、
+**このマーカは完走を意味しない。** `run_lane_i80.py` は `subprocess.call()` が返った時点で
+書くので、子プロセスが signal で殺されても書かれる。
+**完走判定に使えるのは `MODEXIT` と `compare_ignored_lane.py` だけである。**
+
+#### 外した予測 1: 「宣言数は 148 から動かないはず」
+
+**外れた。実測 144。** 予測の根拠に書いた「本 slice は test の追加も削除もしていない
+(`I-81` の rename 1 件のみ)」が**事実として誤りだった**。
+`32565f9a` (`I-79` 測定時点) と `29fc24d1` (本 lane の binary) の間で four_layer の
+`fn test_` は 152 → 149 に減っており、内訳は次のとおり:
+
+| 変化 | test |
+|---|---|
+| 削除 | `test_debug_stage2_output_minimal` |
+| 削除 | `test_debug_stage2_save` |
+| 削除 | `test_debug_stage3_main_again_output_chars` |
+| 削除 | `test_debug_stage3_output_chars` |
+| 削除 | `test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff` |
+| 追加 | `test_local_bound_violation_indices_detects_out_of_range_local` |
+| 追加 | `test_v2_12_self_hosted_stage2_compiler_mode_has_no_local_bound_violation` |
+
+`--ignored` 側の差 -4 は、追加 2 件のうち 1 件が `#[ignore]` を持たないことで説明が付く。
+**つまり数え漏れは lane 側ではなく、予測を書いた自分の側にあった。**
+「動いたら数え漏れを疑うこと」と書いた釘は正しく効いたが、疑うべき対象を取り違えていた。
+
+#### 外した予測 2 ではないもの: 「赤は 1 件だけ」
+
+108 件までの範囲では**赤は `I-83` の 1 件だけ**で、予測どおりに見える。
+**ただし完走していないので判定は保留する。** 残り 36 件の中に赤があるかは測っていない。
+`compare_ignored_lane.py` も `新規 FAIL 0 / 解消 0 / 未出現 0` を返しているが、
+これは 108 件分の情報であって 144 件分ではない。
+
+#### SIGKILL の原因
+
+**特定できていない。** 分かっていることだけ書く:
+
+- 同じ binary 構成・同じ並列度 (libtest 既定 / 10 core) の `I-79` lane は
+  148 宣言で `MODEXIT=101` (通常の test 失敗終了) / 6,517.18s で**完走している**。
+  設定そのものが完走不能ということはない
+- 落ちた時刻 (6,420.99s) は過去 2 本の完走時刻 (6,517s / 6,748s) の直前であり、
+  **終盤で落ちている**。残っていたのは stage1→stage2 の重い 36 件で、
+  この帯は同時に多数が 60s 超で走る (`has been running for over 60 seconds` が
+  ログ末尾に密集している)
+- 本 lane 中、`cargo` は起動していない。ただし**同一ホストで待機用の
+  background job が走っていた**。これが直接の原因である証拠は無い
+- macOS の jetsam は SIGKILL を使うので、メモリ逼迫は候補として残る。**未検証である**
+
+#### 次の lane の条件をどうするか (**結果が出る前に決めておく**)
+
+一度は「次は並列度を絞る」と書いたが、**撤回する。** 理由:
+
+- **原因が未検証のまま条件を変えると、次に完走したときそれが「絞ったおかげ」なのか
+  「たまたま」なのかを区別できない。** SIGKILL の原因は特定できていない
+- 既定並列度は `I-79` で完走の実績がある。**壊れていると分かっていない条件を先に変えない**
+- 残る lane は four_layer (約 1.8h) / stage_chain (約 4.5h) / cli_core (約 4.1h) の
+  計 10.4h ある。10 core → 6 core に絞ると総計が 16h 規模になる。
+  **未検証の仮説に 6 時間を払う判断にはならない**
+
+したがって**次も既定並列度で回し、ホスト側を静かに保つ**ことだけを変える
+(待機用 background job を置かない)。**同じ帯で再び SIGKILL されたら、そこで初めて
+系統的な原因として並列度を絞る。** その順序をここに先に書いておく。
