@@ -12,6 +12,9 @@ use wasmtime::*;
 
 const DEFAULT_MAX_WASM_STACK: usize = 64 * 1024 * 1024;
 const DEFAULT_STDOUT_CAPTURE_BYTES: usize = 64 * 1024 * 1024;
+/// 失敗メッセージへ載せる捕捉済み stdout の、先頭と末尾それぞれの上限。
+const CAPTURED_STDOUT_HEAD_BYTES: usize = 2048;
+const CAPTURED_STDOUT_TAIL_BYTES: usize = 2048;
 
 fn configured_engine() -> Result<Engine, String> {
     let mut config = Config::new();
@@ -47,9 +50,10 @@ pub fn run_wasm_with_mode_and_dir_args_and_stdin(
     if output.exit_code == 0 {
         Ok(output.stdout)
     } else {
-        Err(format!(
-            "WASI {:?} 実行に失敗: exit code {}",
-            mode, output.exit_code
+        Err(format_nonzero_exit_error(
+            &format!("WASI {mode:?} 実行に失敗"),
+            output.exit_code,
+            &output.stdout,
         ))
     }
 }
@@ -115,6 +119,43 @@ fn decode_stdout_bytes(bytes: &[u8]) -> Result<String, String> {
             "stdout の UTF-8 変換に失敗: {e}; lossy_stdout={lossy:?}; stdout_hex_prefix={hex_prefix}"
         )
     })
+}
+
+/// 捕捉済み stdout の先頭と末尾を残した診断表現を返す。
+///
+/// 末尾を必ず残すのは、CLI の `error: ...` 行が**最後に**出るからである。
+/// 先頭だけ切り出す実装にすると、狙った 1 行がちょうど落ちる。
+fn render_captured_stdout(stdout: &str) -> String {
+    if stdout.is_empty() {
+        // 空であること自体が所見になる (出力が fd 2 へ出たか、そもそも出ていない)。
+        // 黙って何も足さないと「載せ忘れ」と区別が付かない。
+        return "<空>".to_string();
+    }
+    let bytes = stdout.as_bytes();
+    if bytes.len() <= CAPTURED_STDOUT_HEAD_BYTES + CAPTURED_STDOUT_TAIL_BYTES {
+        return format!("{stdout:?}");
+    }
+    let head = String::from_utf8_lossy(&bytes[..CAPTURED_STDOUT_HEAD_BYTES]);
+    let tail = String::from_utf8_lossy(&bytes[bytes.len() - CAPTURED_STDOUT_TAIL_BYTES..]);
+    let omitted = bytes.len() - CAPTURED_STDOUT_HEAD_BYTES - CAPTURED_STDOUT_TAIL_BYTES;
+    format!("{head:?}...<{omitted} bytes 省略>...{tail:?}")
+}
+
+/// exit code 非 0 の失敗メッセージを組み立てる。
+///
+/// **既存メッセージを前置きとして逐語で残し、後ろへ足すだけにする。**
+/// 書き換えると、まだ見つかっていない `contains` assertion を壊し得る。
+///
+/// 捕捉済み stdout を必ず添えるのは、selfhost CLI の `cli-stderr` が
+/// 名前に反して fd 2 ではなく `print-string` 経由で fd 1 へ書くためである
+/// (`selfhost/src/App/EmbeddedCli.ls`)。診断に要る `error: ...` 行は stdout 側にある。
+/// ここで捨てると、テストの失敗メッセージが `exit code 1` だけになって原因が追えない
+/// (`ISSUES.md` の `I-91`)。
+pub(crate) fn format_nonzero_exit_error(label: &str, exit_code: i32, stdout: &str) -> String {
+    format!(
+        "{label}: exit code {exit_code}; stdout={}",
+        render_captured_stdout(stdout)
+    )
 }
 
 fn format_component_trap_with_stdout(error: String, bytes: &[u8]) -> String {

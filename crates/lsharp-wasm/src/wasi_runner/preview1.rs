@@ -40,7 +40,11 @@ pub fn run_wasm_wasi_with_dir_args_and_stdin(
     if output.exit_code == 0 {
         Ok(output.stdout)
     } else {
-        Err(format!("実行に失敗: exit code {}", output.exit_code))
+        Err(super::format_nonzero_exit_error(
+            "実行に失敗",
+            output.exit_code,
+            &output.stdout,
+        ))
     }
 }
 

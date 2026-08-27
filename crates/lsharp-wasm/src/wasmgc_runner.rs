@@ -105,7 +105,11 @@ pub fn run_wasm_wasmgc(wasm_bytes: &[u8]) -> Result<String, String> {
     if output.exit_code == 0 {
         Ok(output.stdout)
     } else {
-        Err(format!("WasmGC 実行に失敗: exit code {}", output.exit_code))
+        Err(crate::wasi_runner::format_nonzero_exit_error(
+            "WasmGC 実行に失敗",
+            output.exit_code,
+            &output.stdout,
+        ))
     }
 }
 

@@ -44,9 +44,10 @@ pub fn run_wasm_component_with_args_and_stdin(
     if output.exit_code == 0 {
         Ok(output.stdout)
     } else {
-        Err(format!(
-            "Component 実行に失敗: exit code {}",
-            output.exit_code
+        Err(super::format_nonzero_exit_error(
+            "Component 実行に失敗",
+            output.exit_code,
+            &output.stdout,
         ))
     }
 }
@@ -63,9 +64,10 @@ pub fn run_wasm_component_with_dir_args_and_stdin(
     if output.exit_code == 0 {
         Ok(output.stdout)
     } else {
-        Err(format!(
-            "Component 実行に失敗: exit code {}",
-            output.exit_code
+        Err(super::format_nonzero_exit_error(
+            "Component 実行に失敗",
+            output.exit_code,
+            &output.stdout,
         ))
     }
 }

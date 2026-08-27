@@ -459,3 +459,122 @@ fn build_minimal_component_wasm() -> Vec<u8> {
     let component = Component::new();
     component.finish()
 }
+
+// --- I-91 / WASI-RUNNER-EXIT-STDOUT-01 ---
+//
+// exit code 非 0 のとき、runner は捕捉済みの stdout を捨てていた。
+// selfhost CLI の `cli-stderr` は fd 2 ではなく `print-string` 経由で fd 1 へ書くので
+// (`selfhost/src/App/EmbeddedCli.ls:1306`)、診断に必要な `error: ...` 行は
+// まさにその捨てられていた stdout の中にある。
+
+#[test]
+fn test_run_wasm_wasi_nonzero_exit_reports_captured_stdout() {
+    let wasm_bytes = compile_preview1(r#"(defn main [] (do (print-string "error: boom") (proc-exit 1) 0))"#);
+
+    let err = run_wasm_wasi_with_dir_args_and_stdin(&wasm_bytes, None, &[], "")
+        .expect_err("exit code 1 は Err になるべき");
+
+    assert!(
+        err.contains("exit code 1"),
+        "既存の前置きを逐語で保つこと: {err}"
+    );
+    assert!(
+        err.contains("error: boom"),
+        "捕捉済み stdout を失敗メッセージへ載せること: {err}"
+    );
+}
+
+#[test]
+fn test_run_wasm_wasi_nonzero_exit_marks_empty_stdout() {
+    // stdout が空であること自体が所見になる (= 出力が fd 2 か、そもそも出ていない)。
+    // 黙って何も足さないと「載せ忘れ」と区別が付かないので明示する。
+    let wasm_bytes = compile_preview1("(defn main [] (do (proc-exit 3) 0))");
+
+    let err = run_wasm_wasi_with_dir_args_and_stdin(&wasm_bytes, None, &[], "")
+        .expect_err("exit code 3 は Err になるべき");
+
+    assert!(err.contains("exit code 3"), "{err}");
+    assert!(
+        err.contains("<空>"),
+        "stdout が空であることを明示すること: {err}"
+    );
+}
+
+#[test]
+fn test_run_wasm_with_mode_preview1_nonzero_exit_reports_captured_stdout() {
+    let wasm_bytes = compile_preview1(r#"(defn main [] (do (print-string "error: mode-boom") (proc-exit 1) 0))"#);
+
+    let err = run_wasm_with_mode_and_dir_args_and_stdin(
+        &wasm_bytes,
+        WasiMode::Preview1,
+        None,
+        &[],
+        "",
+    )
+    .expect_err("exit code 1 は Err になるべき");
+
+    assert!(err.contains("WASI Preview1 実行に失敗"), "{err}");
+    assert!(err.contains("exit code 1"), "{err}");
+    assert!(
+        err.contains("error: mode-boom"),
+        "mode dispatch 経路でも stdout を載せること: {err}"
+    );
+}
+
+#[test]
+fn test_format_nonzero_exit_error_keeps_prefix_verbatim_and_appends_stdout() {
+    let message = format_nonzero_exit_error("実行に失敗", 1, "error: boom\n");
+
+    assert_eq!(
+        message,
+        "実行に失敗: exit code 1; stdout=\"error: boom\\n\"",
+        "既存の前置きは逐語で残し、後ろへ足すだけにすること"
+    );
+}
+
+#[test]
+fn test_format_nonzero_exit_error_marks_empty_stdout_explicitly() {
+    let message = format_nonzero_exit_error("Component 実行に失敗", 2, "");
+
+    assert_eq!(message, "Component 実行に失敗: exit code 2; stdout=<空>");
+}
+
+#[test]
+fn test_format_nonzero_exit_error_keeps_head_and_tail_of_long_stdout() {
+    // CLI の `error:` 行は最後に出るので、末尾を落とす切り方では診断にならない。
+    let mut stdout = String::new();
+    stdout.push_str("HEAD-MARKER");
+    stdout.push_str(&"x".repeat(8192));
+    stdout.push_str("error: TAIL-MARKER");
+
+    let message = format_nonzero_exit_error("実行に失敗", 1, &stdout);
+
+    assert!(
+        message.contains("HEAD-MARKER"),
+        "先頭を残すこと: {message}"
+    );
+    assert!(
+        message.contains("error: TAIL-MARKER"),
+        "末尾を残すこと: {message}"
+    );
+    assert!(
+        message.contains("bytes 省略"),
+        "省略した事実と量を明示すること: {message}"
+    );
+    assert!(
+        message.len() < stdout.len(),
+        "省略が効いていること: {} vs {}",
+        message.len(),
+        stdout.len()
+    );
+}
+
+#[test]
+fn test_render_captured_stdout_does_not_truncate_at_boundary_length() {
+    // 上限ちょうどは省略しない (境界で挙動が飛ばないこと)。
+    let stdout = "y".repeat(CAPTURED_STDOUT_HEAD_BYTES + CAPTURED_STDOUT_TAIL_BYTES);
+
+    let rendered = render_captured_stdout(&stdout);
+
+    assert!(!rendered.contains("bytes 省略"), "境界では省略しないこと");
+}

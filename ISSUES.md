@@ -222,6 +222,7 @@
 | [I-88](#i-88) | target-defn probe の body ナビゲーションが旧 shape 前提のままで、下流 marker が「壊れていること」を pin している | 低 | deferred | `I-80` の却下案 B の代償を記録したもの (2026-08-27) |
 | [I-89](#i-89) | x86 の 20 引数以上 param spill テーブル約 680 行が到達不能で、旧 slot 規約のまま残っている | 低 | open | `I-73` の受入条件 (a) を調べる途中で発見 (2026-08-27)。aarch64 側の同型 chain は生きている |
 | [I-90](#i-90) | selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている | 中 | open | `I-75` の 14 件を分類する中で診断確定 (2026-08-27)。line も character も一律 +1 |
+| [I-91](#i-91) | WASI runner が exit code 非 0 のとき捕捉済みの stdout を捨てるため、CLI の `error:` 行が失敗メッセージに届かない | 中 | resolved | 2026-08-27 に共通 helper へ寄せて解決。**`I-75` の 3 件は赤のままで、診断文が付くだけである** |
 
 ### ドキュメント (DOC)
 
@@ -5214,16 +5215,20 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `-o` / `--target` を渡す経路だけが落ちている。2 件は
   `InvalidData: stream did not contain valid UTF-8` で、**stdout に wasm binary が
   出ている疑いがある** (= `-o` が効いていない形)。残り 3 件は `exit code 1` で
-  **stderr が捨てられているので読めない**。
-  **この 5 件が同一原因かどうかは、stderr が取れるまで決めない。**
+  **診断文が失われている**。
+  **この 5 件が同一原因かどうかは、失われた診断文が取れるまで決めない。**
   形が似ていることは同一原因の証拠ではない。
 - **`EMBEDDED-CLI-OPTION-SPACE-01` との関係は未確認である。** 名前は近いが、
   当該項目が扱うのは option とその値の間の空白の扱いであり、本件の 5 件が
   そこに落ちるかは測っていない。**近そうという理由で束ねない。**
 
-- **`exit code 1` 3 件と `NotFound` 系は stderr が台帳に残っていない。**
-  `support.rs:188` が exit code だけを文字列化して捨てている。
-  **再現時に stderr を拾えるようにすることが診断の前提**になる。
+- **`exit code 1` 3 件と `NotFound` 系は診断文が台帳に残っていない。**
+  **当初「`support.rs:188` が stderr を捨てている」と書いたが、これは誤りだった。**
+  2026-08-27 に経路を辿ったところ、捨てられているのは **stderr ではなく捕捉済みの
+  stdout** であり、しかも selfhost CLI の `error:` 行はもともと stdout 側に載っている
+  (`cli-stderr` が `print-string` 経由で fd 1 へ書く)。**つまり診断材料は捕捉されており、
+  runner が exit code 非 0 のときに握り潰しているだけ**である。詳細と根拠は `I-91`。
+  **`I-91` を直すことが本件 3 件の診断の前提**になる。
 - **本 issue は保持であって診断ではない。** 残り 11 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
@@ -5927,3 +5932,99 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **`I-75` から移管した 2 件である。** 移管前の注記は「原因未診断」だった。
 - **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
   引き取り先は `TODO.md` の `LSP-POSITION-ORIGIN-01`。
+
+<a id="i-91"></a>
+### I-91: WASI runner が exit code 非 0 のとき捕捉済みの stdout を捨てるため、CLI の `error:` 行が失敗メッセージに届かない
+
+- **影響度**: 中 / **状態**: resolved (2026-08-27)
+- **発見**: 2026-08-27 (`I-75` の `exit code 1` 3 件がなぜ診断不能なのかを辿る中で確定した)
+- **内容**: `run_wasm_wasi_with_dir_args_and_stdin` は capture 版から
+  `ExecutionOutput { stdout, exit_code }` を受け取りながら、`exit_code != 0` の分岐で
+  **`stdout` を使わずに捨てている**。
+
+  ```rust
+  // crates/lsharp-wasm/src/wasi_runner/preview1.rs:39-44
+  let output = run_wasm_wasi_with_dir_args_and_stdin_capture(wasm_bytes, dir, args, stdin)?;
+  if output.exit_code == 0 {
+      Ok(output.stdout)
+  } else {
+      Err(format!("実行に失敗: exit code {}", output.exit_code))   // output.stdout を捨てている
+  }
+  ```
+
+  結果として e2e の失敗メッセージが `"実行に失敗: exit code 1"` だけになる
+  (`support.rs:188` の `.unwrap()` 経由)。
+- **同じ形が 4 箇所ある。** いずれも capture 済みの stdout を手に持ったまま捨てている。
+
+  | ファイル | 行 | メッセージ |
+  |---|---|---|
+  | `wasi_runner/preview1.rs` | 43 | `実行に失敗: exit code {}` |
+  | `wasi_runner.rs` | 51 | `WASI {:?} 実行に失敗: exit code {}` |
+  | `wasi_runner/preview2.rs` | 48 / 67 | `Component 実行に失敗: exit code {}` |
+  | `wasmgc_runner.rs` | 108 | `WasmGC 実行に失敗: exit code {}` |
+
+- **当初は「stderr を捨てているので診断材料が無い」と書いていた。これは二重に誤りだった。**
+  - 誤り 1: 捨てているのは stderr ではなく **stdout** である。
+    `grep -n 'stderr'` を 3 つの runner ファイルに掛けると **hit 0 件** で、
+    `WasiCtxBuilder` は `.stderr(..)` を一度も呼んでいない。**guest の fd 2 はそもそも
+    捕捉されておらず**、wasmtime の既定で捨てられている。ここは事実だが、本件の争点ではない。
+  - 誤り 2: **診断文は fd 2 に出ていない。** `selfhost/src/App/EmbeddedCli.ls:1306` は
+
+    ```
+    (defn cli-stderr [msg] (do (print-string (string-concat "error: " msg)) (print-string "\n")))
+    ```
+
+    であり、`print-string` は `WasiBackend.ls:54-57` のとおり `fd_write(fd=1, ...)` である。
+    **名前に反して `cli-stderr` は stdout へ書く。** 同じ helper が
+    `selfhost/src/App/Cli.ls` にもあり、両者合わせて 19 箇所から呼ばれている。
+  - **したがって、失いたくない `error: ...` 行は、まさに捨てられている `output.stdout`
+    の中に入っている。** 追加の捕捉配線は要らない。
+- **trap 経路は既に正しく畳み込んでいる。** 同じ `preview1.rs` の
+  `run_wasm_wasi_capture_raw` は trap のとき
+  `format!("{trap_error}; stdout_lossy={:?}", String::from_utf8_lossy(&bytes))` を返す。
+  **欠けているのは「clean な WASI `exit(N≠0)`」の側だけ**である。
+  `extract_i32_exit` が成功すると `trap_error` は `None` のままとなり、
+  `RawExecutionOutput` が `Ok` で返り、そこから先の wrapper で stdout が落ちる。
+- **文字列に依存している test は無い。** 5 つの emit 箇所はすべて `src/` 配下で、
+  `実行に失敗: exit code` を assertion に使っている test はリポジトリ全体で 0 件である
+  (e2e 側の "exit code" hit は native の exit 42 を見る別件)。
+- **却下: guest の fd 2 を捕捉する。** 上のとおり `selfhost/` は fd 2 へ何も書かないので、
+  配線を足しても捕まるものが無い。**捕まらないものを捕まえる配線は、次に読む人へ
+  「fd 2 は見ている」という誤った合図を送る。** 将来 guest 側が fd 2 を使い始めたら、
+  そのとき別 issue として起票する。
+- **関連**: `I-75` (この 3 件の診断がここで止まっている)、`I-64` (sweep の元)。
+  引き取り先は `TODO.md` の `WASI-RUNNER-EXIT-STDOUT-01`。
+- **解決 (2026-08-27)**: 5 箇所を共通 helper
+  `wasi_runner::format_nonzero_exit_error(label, exit_code, stdout)` へ寄せた。
+
+  ```
+  実行に失敗: exit code 1; stdout="error: boom\n"
+  ```
+
+  設計上の選択と理由:
+
+  | 選択 | 理由 |
+  |---|---|
+  | 既存メッセージを **前置きとして逐語で残し、後ろへ足す**だけにした | 書き換えると未検出の `contains` assertion を壊し得る。grep では 0 件だったが、0 件であることに実装を賭けない |
+  | stdout が空なら `stdout=<空>` と明示 | 空であること自体が「fd 2 へ出た / そもそも出ていない」という所見になる。黙って何も足さないと載せ忘れと区別が付かない |
+  | 省略は**先頭 2048 + 末尾 2048 バイト**の両側残し | CLI の `error:` 行は最後に出る。先頭だけ残す切り方では狙った 1 行がちょうど落ちる |
+  | `String::from_utf8_lossy` で描画 | exit 経路の stdout は binary であり得る (`-o` が効かず wasm binary が stdout に出る疑いが `I-75` にある) |
+
+- **検証**: RED → GREEN を 1 往復で取った。
+
+  | 段階 | 結果 |
+  |---|---|
+  | RED (`cargo test -p lsharp-wasm --lib wasi_runner`) | 3 failed。実測メッセージは `実行に失敗: exit code 1` / `exit code 3` / `WASI Preview1 実行に失敗: exit code 1` で、いずれも stdout を含まなかった |
+  | GREEN (同上) | 33 passed / 0 failed |
+  | `cargo test -p lsharp-wasm --lib` | 147 passed / 0 failed |
+  | `cargo clippy -p lsharp-wasm --lib --tests` | 新規警告 0 (既存の `let result = (\|\| {...})()` 由来の警告のみ) |
+
+  test は behavioral 3 件 + 純 helper 4 件の計 7 件。
+  behavioral 側を先に書いて RED を取り、helper の単体 test は実装と同時に足した。
+  **順序をこうしたのは、helper の存在を前提にした test を先に書くと RED が
+  「コンパイルが通らない」になり、現行メッセージが何であったかが記録に残らないためである。**
+- **ADR を別立てしなかった。** 判断は「fd 2 の捕捉を却下したこと」1 点で、根拠が
+  `cli-stderr` の実装 1 行に閉じている。独立した ADR にするだけの分岐が無いので本文へ書いた。
+- **`I-75` の 3 件は依然として赤である。** 本件が変えたのは失敗メッセージの情報量だけで、
+  失敗そのものは直していない。台帳の行は消さず、次の `selfhost_cli_core` lane の実測で
+  注記を診断文へ差し替える。
