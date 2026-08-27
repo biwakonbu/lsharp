@@ -51,6 +51,16 @@
 無害な診断出力へ格下げされ、独立に直す動機が消える。**「同じ形が何件あるか」を数える前に、
 その形の定義を実物で確かめること** — 形が同じでも基準が同じとは限らない。
 
+同じ確認の中で **3 番目の帯**が見つかった。`test_debug_boot04_*` **12 件**
+(`part_009.rs` 4 / `part_010.rs` 7 / `part_011.rs` 1) は主題の assertion を持つが、
+その中身が `assert!(!output.trim().is_empty())` 1 行だけである。probe の値そのものは
+`eprintln!` へ流れる。**基準には当たらない** — assertion は有り、literal に恒真でもない
+(出力が空なら落ちる)。**`I-82` の 13 件には含めず、件数も動かさない。**
+別 issue `I-85` として起票し、引き取り先を `TODO.md` の `WEAK-SUBJECT-ASSERT-01` に置いた。
+
+> 基準を後から広げて件数を合わせるのは、数え直しではなく基準の書き換えである。
+> 基準の外にある問題は、基準の外にあるまま別の台帳へ載せる。
+
 ## 裁定
 
 | # | test | 位置 | ignore | 裁定 |
@@ -80,7 +90,27 @@
 
 | 削除する probe | 引き取り先 |
 |---|---|
-| #8 / #10 / #11 / `test_debug_stage2_save` | **`.wasm` の書き出しと生出力の目視。** 同じ chain を組む非 debug test が同 module に残るので、`cargo test -p lsharp-wasm --test e2e -- --ignored <name> --nocapture` で同じ生出力が読める。**この同値性は実装時に実測で確かめる** — 確かめずに削除しない |
+| #8 / #10 / #11 / `test_debug_stage2_save` | **生出力は同 module の非 debug test で読める (静的に確認済み。下表)。`.wasm` の書き出しは引き取り先が無く、意図して失う。** |
+
+**引き取り先の静的確認 (2026-08-27、cargo 不使用)。**
+
+| 削除する test | 主題 | 同 module に残る非 debug の同型 test |
+|---|---|---|
+| #8 `test_debug_stage2_output_minimal` | stage2 → stage3 (minimal.ls) | `part_007.rs` `test_e2e_boot04_stage2_compiler_to_stage3_minimal` |
+| #10 `test_debug_stage3_output_chars` | 同上の出力文字列 | 同上 |
+| #11 `test_debug_stage3_main_again_output_chars` | stage2 → stage3 (`src/App/Main.ls`) | `part_013.rs` `test_e2e_boot04_self_hosted_stage2_compiles_main_again` |
+| `test_debug_stage2_save` | stage2 の生成 | stage2 chain は 12 fragment・数十 test が組む |
+
+#8 / #9 / `test_debug_stage2_save` は **同一の stage2** を作る
+(`compile_file_only(selfhost_main_path())` → `["compiler", "src/App/Main.ls"]` を selfhost root で実行)。
+#9 が見ているのは**実 selfhost の stage2** であり、`part_017.rs:86` の 2 箇所が見ている
+temp dir の合成 `Main.ls` とは主題が違う — 裁定 5 の根拠はここで裏が取れている。
+
+**失うものを正直に書く。** `stage2_debug.wasm` / `stage2_debug2.wasm` / `stage3_minimal.wasm` の
+**ファイル書き出しには引き取り先が無い。** 他のどの test もこれらを書かない。
+再取得したければ一時的に 1 行足すか、単発 script を書くことになる。
+**これは受け入れる損失であって、同値な代替があるという主張ではない。**
+test harness を成果物置き場にしないことの対価である。
 
 ### 裁定 2: assertion 追加 — 極性は実物から導く (#5)
 
@@ -186,8 +216,8 @@ assert!(matches!(
    「detailed だと赤くなるかもしれないから弱い方を assert する」は、このリポジトリが
    数週間かけて文書化した anti-pattern そのものである (「緑になることと検査していることは別である」)
 3. **実測が先。** 実装時に #9 を targeted で 1 回走らせ、両 validator の実際の戻りを見てから pin する。
-   FAIL だった場合は **check を緩めない** — `ISSUES.md` に新規 issue (次番 `I-85`) を切り、
-   ignored lane 台帳へ行を足す
+   FAIL だった場合は **check を緩めない** — `ISSUES.md` に新規 issue を切り (採番は実装時。
+   `I-85` は本 slice で別件に使った)、ignored lane 台帳へ行を足す
 
 **新規カバレッジという主張は過大なので、正直な効能を書いておく。** BOOT-04 の chain test 群は
 stage2 を wasmtime で load して走らせており、wasmtime は load 時に関数本体まで検証する。

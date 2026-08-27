@@ -3018,6 +3018,23 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     `selfhost_native_stage_chain` に属するので、four_layer の slice には入れない
   **含めない範囲**: probe が露出させる個々の失敗の修正。**cargo が要る。**
 
+- [ ] `WEAK-SUBJECT-ASSERT-01` 主題 assertion が「空でないこと」だけの probe 12 件を実質化する — Issue `I-85`。
+  `selfhost_bootstrap_four_layer` の `test_debug_boot04_*` 12 件
+  (`part_009.rs` 4 / `part_010.rs` 7 / `part_011.rs` 1)。いずれも probe が出した値を
+  `eprintln!` へ流し、主題の assertion は `assert!(!output.trim().is_empty())` 1 行だけ。
+  受入条件:
+  - **`I-82` の 13 件に混ぜない。件数を動かさない。** 基準 (「主題の assertion が無い」) の
+    外にある別問題として扱う。`I-82` の件数は既に 3 度動いており、
+    **基準を後から広げるのはその 4 回目になる**
+  - **是正の型は `part_008.rs:471` の `..._reports_main_again_build_progress` に倣う** —
+    debug 出力を `Vec<i64>` へ parse し、marker の値と順序を `ordered_marker_positions(...)` で
+    検査する。**新規設計を起こさない**
+  - **期待値は実測で確定する。** 12 件それぞれ probe の主題が違うので、
+    一括の期待値は置けない。名前が主題を示しても極性までは示さない (`I-82` #5 の実例)
+  - **12 件とも `#[ignore]`。** 再計測は `selfhost_bootstrap_four_layer` 1 本
+    (前回実測 6748s ≈ 112 分)。`PROBE-ASSERTS-NOTHING-01` と**同じ module なので束ねる**
+  **含めない範囲**: probe が露出させる値そのものの正しさの追及。**cargo が要る。**
+
 - [ ] `COMPILER-MODE-STACK-01` compiler-mode 生成 wasm の stack 不整合を診断する — Issue `I-83`。
   `test_e2e_boot04_compiler_mode_ignores_dotted_flat_file` が生成した wasm が
   `Invalid input WebAssembly code at offset 270: type mismatch: expected i64 but nothing on stack`

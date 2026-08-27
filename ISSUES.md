@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 15 件 | 中 | open | 4 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` へ移管 |
+| [I-75](#i-75) | sweep で露出した未分類の赤 14 件 | 中 | open | 5 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` / `I-84` へ移管 |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -216,6 +216,7 @@
 | [I-82](#i-82) | test 名が主張する主題を検査していない probe test が 13 件あり、常に緑になる | 中 | open | `I-79` の全数調査で発見 (2026-08-27)。3 件は非 ignore。裁定は ADR 済 |
 | [I-83](#i-83) | compiler-mode が生成した wasm が stack 不整合で load できない | 高 | open | `I-79` の是正で初めて実測 (2026-08-27) |
 | [I-84](#i-84) | 構造上必ず赤くなる test が 5 件、台帳に恒久的な赤として載っている | 中 | open | `I-81` の裁定中に走査で発見 (2026-08-27)。うち 1 件は `I-75` が誤分類 |
+| [I-85](#i-85) | `test_debug_boot04_*` 12 件の主題 assertion が `!output.trim().is_empty()` だけ | 中 | open | `I-82` の裁定 5 を書く途中で発見 (2026-08-27)。`I-82` の 13 件には**含まない** |
 
 ### ドキュメント (DOC)
 
@@ -5132,7 +5133,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 15 件
+### I-75: sweep で露出した未分類の赤 14 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
@@ -5160,7 +5161,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **`exit code 1` 3 件と `NotFound` 系は stderr が台帳に残っていない。**
   `support.rs:188` が exit code だけを文字列化して捨てている。
   **再現時に stderr を拾えるようにすることが診断の前提**になる。
-- **本 issue は保持であって診断ではない。** 残り 15 件それぞれの原因が付いた時点で
+- **本 issue は保持であって診断ではない。** 残り 14 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
@@ -5568,3 +5569,41 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `I-82` (「緑だが検査していない」の裏返し)。
   裁定は [`docs/adr/decisions-always-failing-diagnostic-probes.md`](docs/adr/decisions-always-failing-diagnostic-probes.md)。
   引き取り先は `TODO.md` の `ALWAYS-RED-PROBE-01`。
+
+<a id="i-85"></a>
+
+### I-85: `test_debug_boot04_*` 12 件の主題 assertion が「空でないこと」だけを見ている
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-27 (`I-82` の裁定 5 を書く途中、削除 4 件の引き取り先を静的に確かめていて発見)
+- **内容**: `selfhost_bootstrap_four_layer` の `test_debug_boot04_*` **12 件**が、
+  probe が出した値そのものを `eprintln!` へ流し、主題の assertion は
+  **`assert!(!output.trim().is_empty())` 1 行だけ**という同一構造を持つ。
+
+  | fragment | 件数 |
+  |---|---|
+  | `part_009.rs` | 4 (`:507` / `:577` / `:635` / `:696`) |
+  | `part_010.rs` | 7 (`:71` / `:166` / `:261` / `:356` / `:468` / `:584` / `:703`) |
+  | `part_011.rs` | 1 (`:114`) |
+
+  12 件とも構造が同じで、`assert_valid_wasm(...)` 1〜2 個 (中間結果) +
+  `eprintln!("... values = {:?}", output)` + 上記 1 行、で終わる。
+- **`I-82` の 13 件には含まない。件数を動かさない。**
+  `I-82` の基準は「主題を検査する assertion が**無い**」であり、この 12 件には有る。
+  literal に恒真でもない (出力が空なら落ちる)。**基準の外にある。**
+  `I-82` の件数はこれまで 3 度動いており、そのうち 1 回は数える対象の定義が誤っていたことによる。
+  **基準を後から広げて件数を動かすのは、その 4 回目になる。**
+- **それでも問題である理由**: probe の名前が主張しているのは
+  「first-defn の値」「build compile progress の marker 列」といった**値の内容**であって、
+  出力が存在することではない。値が全部 0 に化けても、marker の順序が崩れても、この test は緑のままである。
+  `I-82` の #12 (恒真 `assert!(matches!(...))`) と同じ帯にいる。
+- **是正の型は既にリポジトリ内にある。**
+  `four_layer/part_008.rs:471` の `..._reports_main_again_build_progress` は
+  同じ debug 出力を `Vec<i64>` へ parse し、`values[0] == 50` / marker 50..=67 の順序を
+  `ordered_marker_positions(...)` で検査し、末尾の wasm size 一致まで見ている。
+  **新規設計は要らない。この形へ寄せる。**
+- **12 件は全部 `#[ignore]` 側なので、是正には `selfhost_bootstrap_four_layer` の
+  再計測 1 本 (前回実測 6748s ≈ 112 分) が要る。**
+  `I-82` の実装 slice と同じ module なので、**束ねて lane 1 本で覆うのが安い**。
+- **関連**: `I-82` (発見経路。基準の外という判定も含む)、`I-84` (「常に赤い probe」の裏返し)。
+  引き取り先は `TODO.md` の `WEAK-SUBJECT-ASSERT-01`。
