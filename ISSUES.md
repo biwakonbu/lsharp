@@ -209,7 +209,7 @@
 | [I-75](#i-75) | sweep で露出した未分類の赤 (全 19 件を移管し終えた) | 中 | resolved | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 11 件を `I-93`〜`I-100` へ移管。**保持 issue としての役目を終えたので resolved。個々の原因は移管先が持つ** |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
-| [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
+| [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。**2026-08-28 に診断確定**: 算術バグではなく `reject-native-only-wasm-opcode` の意図的 trap。赤 3 件は同一原因 |
 | [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
 | [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | resolved | test 側 3 件を是正。marker 129 以降の初回評価で新規赤は 0。2026-08-28 の lane で完走確認。副産物が `I-88` |
 | [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | resolved | `I-72` 解決後に露出 (2026-08-27)。同日、極性を反転し改名。2026-08-28 の lane で完走確認 |
@@ -5417,8 +5417,8 @@ Evidence として書かれていたのは実測値ではなく、test の自称
 - **`I-71` / `I-72` とは層が違う。** `I-71` は translation、`I-72` は instantiation、
   本件は**実行**。同じ test 群に 3 層が積み重なっているので、
   上の層を直すたびに下の層が新しく見えるだけで、赤の数は減らない。
-- **未診断**。除数がどこで 0 になるかは特定していない。`func[1144]` の自己再帰 8 段は
-  compiler 内のリスト走査に見えるが、逆アセンブルで確認していない。
+- **診断確定 (2026-08-28)。算術バグではない。** 詳細は下記「診断」節。
+  以前ここに書いていた「未診断。除数がどこで 0 になるかは特定していない」は解消した。
 - **赤 3 件** (`I-72` 解決後の 2026-08-27 実測)。3 件とも `selfhost_bootstrap_acceptance` で、
   いずれも `src/App/Cli.ls` を食わせた時点で落ちる。
 
@@ -5428,12 +5428,110 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   | `test_e2e_bootstrap_fixed_input_set_stage_chain_match` | `part_002.rs:515:9` | `I-72` との複合だったが、`I-72` 解決後は本件単独 |
   | `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` | `part_002.rs:295:9` | stage2 側。**同一原因とは断定していない** (下記) |
 
-- **3 件目の trap 種別は不明のままである。** harness が `{e}` で整形するのでエラー文字列が
-  `<wasm function 4157>; printed=""` で終わり、trap kind が落ちる。
-  trace 形状と対象 path は 1・2 件目と一致するが、それは「同じ場所を通った」証拠であって
-  「同じ原因である」証拠ではない。`{e:?}` へ変えれば拾える
-  (`I-79` と同じ「harness が情報を握り潰す」類型)。
+- **3 件目の trap 種別が文字列から落ちる件は残る (harness 側の問題)。** harness が `{e}` で
+  整形するのでエラー文字列が `<wasm function 4157>; printed=""` で終わり、trap kind が消える。
+  `{e:?}` へ変えれば拾える (`I-79` と同じ「harness が情報を握り潰す」類型)。
+  **ただし原因の同一性は下記の診断で決着した** -- trap kind の文字列を待つ必要はもう無い。
+
+#### 診断 (2026-08-28、cargo を使わず artifact の逆アセンブルのみ)
+
+**まず台帳自身の読み違いを訂正する。** 上の抜粋は 38 frame の trace を末尾側だけ載せており、
+`37: 0x184b55 - <wasm function 4174>` が trap 地点であるかのように読める。そうではない。
+**4174 は export section が `_start` に割り当てている index** であり、最外周の frame である。
+trap 地点は抜粋が落としていた **frame 0 = `0x543cd - <wasm function 1231>`** である。
+`func[1144]` の自己再帰 8 段 (frame 25..32) を「compiler 内のリスト走査」と見ていた旧注記は、
+そもそも trap と無関係な中間 frame を診断していた。
+
+完全な 38 frame は
+`/Users/biwakonbu/github/tmp/i72/lane/mod-selfhost_bootstrap_acceptance.log` の
+`:65` (stage1 単独) / `:299` (stage1 + stage2) / `:762` (stage2 単独) に残っている。
+
+**artifact の同定。** `ci-artifacts/bootstrap-diff/local/stage1_a.wasm` (1,594,503 byte) の
+code section を pure Python で走査し、各 function body の file offset 範囲を作って
+backtrace の offset を引いたところ、**12 frame すべてが trace の index と一致した**。
+stage2 側も同様に `stage2_debug.wasm` (1,575,570 byte、`.gitignore:7` の `*.wasm` により未追跡) で
+**10 frame すべて一致**した。**同定の根拠は file の timestamp ではなく、この offset 一致である。**
+
+**trap 地点のバイト。** `0x543cd` のバイトは `0x7f` = `i64.div_s`。
+function 1231 の body (0x543b8..0x543d6、30 byte) を decode すると:
+
+```wasm
+local.get 1        ;; opcode
+i64.const 86
+i64.eq
+if (result i64)
+  local.get 1
+  i64.const 0
+  i64.div_s        ;; <-- 0x543cd。ここで trap
+  drop
+  local.get 0
+else
+  local.get 0
+end
+```
+
+これは `selfhost/src/Backend/Wasm/WasmEmit.ls:2212-2215` の
+
+```lisp
+(defn reject-native-only-wasm-opcode [bytes opcode]
+  (if (= opcode 86)
+    (do (/ opcode 0) bytes)
+    bytes))
+```
+
+と 1 対 1 に対応する。`(/ <x> 0)` 形の意図的 trap は **selfhost/src 全体でこの 1 箇所しか無い**
+(`grep -rnE '\(/ [a-z0-9-]+ 0\)' selfhost/src` の hit は 1 件)。
+
+**index と defn の対応も独立に裏が取れた。** frame 0/1/2 = function 1231/1232/1233 と
+**連番**であり、`reject-native-only-wasm-opcode` (`:2212`) /
+`emit-runtime-ir-instr-tail-high-final` (`:2217`) / `emit-runtime-ir-instr-tail-high` (`:2238`) は
+ソース上で**間に何も挟まず隣接**し、かつ呼び出し順はその逆順である。
+すなわち **wasm function index = defn の登録順**であり、これは byte 一致とは独立の証拠である。
+
+**根本原因。** trap は除数がたまたま 0 になった算術バグではなく、
+**「native 専用 opcode が Wasm emitter の末端まで届いた」ことを検出した意図的な拒否**である。
+opcode 86 は `ir-command-line-args` (`selfhost/src/IR/IR.ls:89`、
+`Backend/Wasm/CompilerBase.ls:72` の `op-command-line-args` も同値)。
+本来は `standalone-ir-instr` (`WasmEmit.ls:706-727`) が emit 前に **86 -> 91** へ書き換える。
+適用点は `build-function-body-function-standalone` (`WasmEmit.ls:883`) の
+`standalone-ir-instrs` 経路 1 箇所だけである。
+**生の 86 がその書き換えを素通りして `emit-runtime-ir-instr-tail-high-final` (`:2217`) に届いた**
+というのが本件の正体で、stage1 compiler が `App/Cli.ls` を食う経路でこれが起きている。
+
+**3 件目 (stage2 側) も同一原因である。** stage2 の frame 0 = function 1066 の body は
+24 byte で、locals 宣言の差 (`00` 対 `03 01 7e 01 7e 01 7f`) を除き
+stage1_a の function 1231 と**同一の byte 列**であり、`0x4cbaf` のバイトも `0x7f` = `i64.div_s`。
+上に書いた「同一原因とは断定していない」という留保は、これで解消した。
+
+**まだ決めていないこと。** *なぜ* 書き換えが適用されなかったのかは特定していない。
+`build-function-body-function-standalone` 以外の body builder が何本あり、
+どの条件でどれが選ばれるのかを読んでいない。
+**この読みが済むまで修正方向を決めない** -- 同じ証拠から
+(a) 書き換えを飛ばす builder 経路の欠陥、(b) その mode では `command-line-args` が設計上未対応、
+(c) 経路によらず拒否は診断メッセージであるべき、の 3 通りの修正が導ける。
+
+#### 同じ根から出る、本件のスコープ外の危険 2 件
+
+1. **生の 91 が同じ末端に届いても trap しない。黙って別命令として emit される。**
+   `standalone-ir-instr` は 86 -> 91 (`standalone-command-line-args-opcode`) と
+   生 91 (`ir-read-stdin`) -> 98 (`standalone-read-stdin-opcode`) の**両方**を写す。
+   末端 `emit-runtime-ir-instr-tail-high-final` は 91 を standalone command-line-args として
+   受け付けるので、書き換えを取りこぼした生の 91 は
+   **`read-stdin` が `command-line-args` に化ける silent miscompile** になる。
+   根の条件は本件と同じだが、失敗の形は trap より悪い (気付けない)。
+2. **書き換えの守備範囲は IO opcode だけではない。** `standalone-ir-instr` の末尾は
+   `(make-instr 40 (+ operand 11))` (`WasmEmit.ls:721` 付近) で **operand の付け替え**も行う。
+   書き換えを飛ばす経路があるなら、影響範囲は opcode 86 の 1 点に留まらない。
+
+上記 2 件は `I-78` の修正と同じ場所を触るので独立 issue には切らず、本エントリで保持する。
+
 - **関連**: `I-75` (分離元)、`I-71` / `I-72` (同じ test 群の別の層)、`I-64` (発見経路)。
+  逆アセンブルの手順は
+  `docs/development/operations/bootstrap-diff-artifacts.md` の
+  「wasm backtrace を artifact に突き合わせる」節が正本。
+  意図的 trap がメッセージを一切持てないことは
+  `docs/adr/decisions-selfhost-typeinfer-stub-override.md` の決定 4 が trap 案を却下した根拠と
+  同じ論点で、本件はその実例である (本件は 4 日間「未診断の算術バグ」として台帳に居座った)。
   引き取り先は `TODO.md` の `CLI-SELFFEED-DIVZERO-01`。
 
 <a id="i-79"></a>

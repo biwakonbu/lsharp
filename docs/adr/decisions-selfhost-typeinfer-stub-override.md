@@ -271,7 +271,7 @@ bundle 正規化 (`support.rs:1483-1485` の `normalize_selfhost_bundle_source`)
 | 6 | **`7` は空き番号ではない。** Rust 側で `LS1007` = `UndefinedField` が使用中で、selfhost が未実装なだけである | `crates/lsharp-types/src/infer/error.rs:103` |
 | 7 | `LS1001`..`LS1013` は **全て埋まっている** | `imp-02-error-handling-unification.md:63` |
 | 8 | `TypeInfer` 系 5 module に `:example` / `:invariant` は **0 件**である | `grep -c` |
-| 9 | trap / abort 相当の primitive は `Backend/` の外に無い | 全 `.ls` 検索 |
+| 9 | trap / abort 相当の**名前付き primitive** は `Backend/` の外に無い | 全 `.ls` 検索。**ただし idiom としては存在する** -- `(/ x 0)` で意図的に trap する箇所が `Backend/Wasm/WasmEmit.ls:2214` に 1 件ある (`I-78` で同定)。`Backend/` の外に無いという本行の主張は変わらないが、「trap させる手段が無い」と読んではいけない |
 
 **到達可能性の全数表** (「TypeInfer 内」は定義行を除いた呼び出し回数):
 
@@ -342,6 +342,14 @@ selfhost 側の内部値は `canonical-assertion-*` と同じく 4 桁で持ち�
 - **trap / abort。** メッセージを一切持てないので「踏んだ」ことしか分からず、
   どの stub かが残らない。加えて trap の意味論は `I-78` (`CLI-SELFFEED-DIVZERO-01`) が
   未決の領域であり、そこに新しい trap 利用者を足すと 2 つの未決が絡む。
+
+  **2026-08-28 追記: この却下理由の実例が `I-78` そのものだった。** `I-78` の trap は
+  `reject-native-only-wasm-opcode` (`Backend/Wasm/WasmEmit.ls:2212-2215`) が意図的に置いた
+  `(/ opcode 0)` であり、実装者は「native 専用 opcode が届いた」と伝えたかった。
+  しかし trap にはメッセージが載らないので、台帳には
+  `wasm trap: integer divide by zero` としか残らず、**4 日間「未診断の算術バグ」として
+  扱われた**。意図的な拒否を trap で表すと、読む側には算術バグと区別が付かない。
+  上の却下はこの実例で裏付けられた。
 - **診断チャネルを stub の signature に足す。** 22 本の signature を広げると
   上書き 4 module の同名 defn も全て追随する必要があり、変更が 5 module に散る。
   (B) は既存の `result` 表現に載るので signature を 1 つも変えない。

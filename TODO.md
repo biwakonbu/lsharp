@@ -3059,9 +3059,27 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **`I-72` の解決後の実測は赤 3 件** (2026-08-27)。起票時の 1 件に加え、
   `..._stage_chain_match` (`I-72` との複合だった) と
   `..._stage2_self_feed_fixed_input_set` (stage2 側) が本件へ移った。
-  ただし stage2 側は harness が `{e}` で整形するため trap kind が落ちており、
-  **同一原因とは断定していない**。3 件目を数に入れる前に `{e:?}` で trap kind を確認すること。
-  **含めない範囲**: `I-72` の import 数不一致 (2026-08-27 に解決済み)。**cargo が要る。**
+  ただし stage2 側は harness が `{e}` で整形するため trap kind が落ちている。
+  **-> 2026-08-28 に診断が付いた (`I-78` の「診断」節)。** trap は算術バグではなく
+  `reject-native-only-wasm-opcode` (`Backend/Wasm/WasmEmit.ls:2212-2215`) の意図的な拒否で、
+  IR opcode 86 (`ir-command-line-args`) が `standalone-ir-instr` の書き換え (86 -> 91) を
+  素通りして emitter 末端に届いたために発火している。stage2 側も frame 0 の body が
+  byte 一致するので**同一原因である** (trap kind の文字列を待つ必要はもう無い)。
+  受入条件の「除数が 0 になる箇所を逆アセンブルで特定」は**満たした**。
+  **残る仕事は診断ではなく裁定と修正である。** 次にやることは
+  (a) `build-function-body-function-standalone` (`:883`) 以外の body builder を数え、
+  どの条件でどれが選ばれるかを読むこと。**これを読むまで修正方向を決めない**
+  (書き換えを飛ばす経路の欠陥 / その mode では設計上未対応 / 拒否は診断であるべき、の 3 通りが
+  同じ証拠から導ける)。(b) 裁定を ADR に書く。(c) RED を立てて直す。
+  **併せて片付けるもの** (`I-78` に記録した、同じ根から出る危険 2 件):
+  生の 91 が末端に届くと trap せず `read-stdin` が `command-line-args` に化ける silent
+  miscompile になる件と、書き換えが operand 付け替え (`:721` の `(+ operand 11)`) も
+  担っているため影響範囲が opcode 86 に留まらない件。
+  **再計測 lane は `selfhost_bootstrap_acceptance`** であり、`SWEEP-LANE-RERUN-01` が
+  回している 3 module (`selfhost_cli_actual_main_args` / `selfhost_cli_core` /
+  `selfhost_native_stage_chain`) には**含まれない**。あの lane の完走では本件は緑にならない。
+  **含めない範囲**: `I-72` の import 数不一致 (2026-08-27 に解決済み)。
+  harness の `{e}` -> `{e:?}` 是正 (`I-79` 側)。**修正と検証には cargo が要る。**
 
 - [ ] `NATIVE-DIFF-PIN-01` native differential の exact-byte pin 33 件のずれを裁定する — Issue `I-73`。
   `selfhost_native_differential` の赤 33 件。ずれ方に規則性がある (`I-73` に実測)。

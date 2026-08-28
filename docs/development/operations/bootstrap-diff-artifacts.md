@@ -154,6 +154,33 @@ diff <(xxd ci-artifacts/bootstrap-diff/{sha}/export_a.bin) \
      <(xxd ci-artifacts/bootstrap-diff/{sha}/export_b.bin)
 ```
 
+### wasm backtrace を artifact に突き合わせる
+
+`stage1 compiler run failed: ... wasm backtrace:` の形で落ちたとき、
+**backtrace の末尾 frame を trap 地点と読んではいけない。** frame は内側から外側へ並ぶので、
+**trap 地点は frame 0**、最大番号の frame は `_start` である
+(`I-78` はこれを取り違えて 4 日間「未診断」のままだった)。
+
+trace には function **index** しか出ない。stage の wasm には name section が無いので
+`wasm-objdump` でも名前は出ない。代わりに **file offset を code section の body 範囲へ引く**。
+
+1. section を頭から舐めて id=10 (code) / id=7 (export) / id=2 (import) の offset を取る
+2. import section の func 種別を数え、それを defined function の index 起点にする
+3. code section の各 body の `[開始 offset, 終了 offset)` を並べ、backtrace の各 offset が
+   どの body に入るかを引く
+4. **全 frame の index が trace と一致したら、その artifact がその実行のものである**
+   (file の timestamp では同定しない)。1 件でも外れたら別 artifact なので記録して打ち切る
+5. trap 地点の 1 byte をそのまま読む。`6d`=`i32.div_s` / `6f`=`i32.rem_s` /
+   `7f`=`i64.div_s` / `81`=`i64.rem_s`
+
+**index は defn の登録順である。** `I-78` では frame 0/1/2 が連番 index で、
+対応する 3 つの defn がソース上で隣接しかつ呼び出し順が逆順になっていた。
+連番 frame が出たら、ソース側の隣接 defn 列を探すと当たりが早い。
+
+対象 artifact は `ci-artifacts/bootstrap-diff/local/stage1_a.wasm` (stage1 側) と
+repo root の `stage2_debug.wasm` (stage2 側)。後者は `.gitignore:7` の `*.wasm` で未追跡なので、
+**再生成すると過去の trace と突き合わせられなくなる**。突き合わせを先に済ませること。
+
 ## 関連テスト
 
 - `test_e2e_bootstrap_four_layer_comparison` — 4 層比較
