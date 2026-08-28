@@ -15791,8 +15791,105 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {
         .expect("selfhost validate --source は evidence JSON report を返すべき");
     assert_eq!(value["status"], "fail");
     assert_eq!(value["trace_gaps"].as_array().unwrap().len(), 0);
-    assert_eq!(value["independent_reviews"], 1);
+    // `outcome=contradicted` の review は独立 review gate を満たさない
+    // (`docs/adr/decisions-v0.2-validation-independent-review-outcome.md` 2026-07-29)。
+    assert_eq!(value["independent_reviews"], 0);
     assert_eq!(value["contradicting_observations"], 1);
+}
+
+/// canonical manifest の evidence record (`Tools/Validation/Evidence.ls:656-699` の wire 順序)。
+/// `outcome` を差し替えるだけで pass / contradicted の 2 形を作れるようにしてある。
+fn manifest_evidence_record_json(
+    key: &str,
+    method: &str,
+    outcome: &str,
+    independence: &str,
+) -> String {
+    format!(
+        r#"{{"namespace":"checkout","key":"{key}","method":"{method}","subject":{{"kind":"claim","namespace":"checkout","key":"rejects"}},"outcome":"{outcome}","execution":{{"runner":"reviewer","target":"aarch64-apple-darwin","source_commit":"0123456789abcdef","artifact_digest":"sha256:abc123","sampling":{{"cases":1,"seed":42,"generator":"checkout-fixture","shrinks":[],"coverage":{{}}}}}},"provenance":{{"producer":"lsharp-test","tool_version":"0.2.0","timestamp":"2026-07-25T00:00:00Z"}},"independence":"{independence}"}}"#
+    )
+}
+
+fn manifest_json(evidence_records: &[String]) -> String {
+    format!(
+        r#"{{"schema_version":1,"nodes":[{{"kind":"claim","namespace":"checkout","key":"rejects","text":"Shipped orders are rejected"}}],"evidence":[{}],"edges":[{{"relation":"motivates","left":"intent:checkout/safe-cancel","right":"claim:checkout/rejects"}},{{"relation":"tested-by","left":"claim:checkout/rejects","right":"contract:checkout/case"}}]}}"#,
+        evidence_records.join(",")
+    )
+}
+
+fn run_selfhost_cli_validate_manifest(label: &str, manifest: &str) -> Value {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_manifest_{}_{}",
+        label,
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.json"), manifest).unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &["validate", "--source", "input.json", "--format", "json"],
+        "",
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    serde_json::from_str(output.stdout.trim()).unwrap_or_else(|err| {
+        panic!("manifest validate は JSON report を返すべき: {err}; exit={}; stdout={:?}", output.exit_code, output.stdout)
+    })
+}
+
+/// `VALIDATION-REVIEW-GATE-PARITY-01`: manifest 入力でも独立 review gate は
+/// **record ごとの 3 条件連言**で数えること。
+///
+/// fixture は `method=review` / `outcome=contradicted` の record と、
+/// `method=test` / `outcome=pass` の**別 record** を持つ。出現数の min を取る実装は
+/// この 2 record を突き合わせられず 1 を返す。record 窓で数えれば 0 になる。
+/// 裁定は `docs/adr/decisions-validation-review-gate-parity.md` の D5。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_validate_manifest_review_gate_is_per_record() {
+    let manifest = manifest_json(&[
+        manifest_evidence_record_json(
+            "counterexample",
+            "review",
+            "contradicted",
+            "independent-review",
+        ),
+        manifest_evidence_record_json("probe", "test", "pass", "same-author"),
+    ]);
+    let report = run_selfhost_cli_validate_manifest("per_record", &manifest);
+
+    assert_eq!(
+        report["independent_reviews"], 0,
+        "contradicted な review を独立 review として数えてはならない: {report}"
+    );
+    // contradiction があるので status は fail に落ちる。ここは新旧実装で変わらない。
+    assert_eq!(report["status"], "fail");
+    assert_eq!(report["contradicting_observations"], 1);
+}
+
+/// 上の test の対照。**gate を締めた実装が「常に 0」ではないこと**を固定する。
+/// 3 条件をすべて満たす record 1 件だけの manifest は 1 でなければならない。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_validate_manifest_counts_passing_independent_review() {
+    let manifest = manifest_json(&[manifest_evidence_record_json(
+        "review",
+        "review",
+        "pass",
+        "independent-review",
+    )]);
+    let report = run_selfhost_cli_validate_manifest("passing", &manifest);
+
+    assert_eq!(
+        report["independent_reviews"], 1,
+        "3 条件を満たす独立 review が数えられていない: {report}"
+    );
+    assert_eq!(report["status"], "pass");
+    assert_eq!(report["contradicting_observations"], 0);
 }
 
 /// EC-M2-03: selfhost validate は invalidated review/evidence を stale facts として unknown にする。

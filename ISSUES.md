@@ -227,7 +227,7 @@
 | [I-93](#i-93) | e2e 2 件が `compile -o` / `build --output` の出力先に stdout summary が書かれることを期待しているが、実装は wasm binary を書く | 中 | open | `I-75` から移管 (2026-08-28)。`2ba93d0a` (2026-07-12) が契約を変えたとき test を更新しなかった。**どちらが正しいかは本 issue では裁定しない** |
 | [I-94](#i-94) | e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する | 中 | open | `I-75` から移管 (2026-08-28)。境界そのものは `I-15` が意図された仕様として文書化済み。**欠陥は test 側の期待値にある** |
 | [I-95](#i-95) | module-decl の vector layout に span 2 slot が中間挿入されたのに count 式と消費側 20 箇所以上が更新されておらず、3 つの規約が同居している | 中 | open | `I-75` から移管 (2026-08-28)。`56e11ce9` (2026-07-24) が出所。**production 側の欠陥で、test の期待値の問題ではない** |
-| [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播しておらず、赤 1 件と契約違反を pin した緑 1 件が同時に立っている | 中 | open | `I-75` から移管 (2026-08-28)。**今回は実装が正で test の期待値が陳腐化している側**。裁定は 2026-07-29 の ADR で既に済んでいる |
+| [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播していない | 中 | open | 残り 2 経路へ伝播し期待値 2 件を是正 (2026-08-28)。focused 7 本は緑。**`selfhost_cli_core` / `selfhost_cli_actual_main_args` の lane 再計測が未了なので open のまま** |
 | [I-97](#i-97) | 修飾なし `(import M)` が check の型環境へ unqualified 名を入れないので cross-module 参照が undefined symbol になる。Rust canonical / selfhost codegen とは規則が違う | 中 | open | `I-75` から移管 (2026-08-28)。**実装と test のどちらが正かは本 issue では裁定しない**。3 実装が 2 通りの規則を持っている |
 | [I-98](#i-98) | native/selfhost parity test の harness が Fn 型のスロット 1 を印字しており、backend 間で heap address を比較している | 中 | open | harness を 7 値の構造比較へ書き換えて focused 緑 (2026-08-28)。非空検査を足した副産物として `I-101` を発見。**lane 再計測が未了なので open のまま** |
 | [I-99](#i-99) | `byte-at-or-zero` の bound が vector 長ではなく caller の `end` なので、陳腐化した絶対 offset 定数がそのまま OOB read になる | 中 | open | 実測で code 長 = 5,746,740 と判明し、旧定数 10,174,680 は末尾を 4,427,940 byte 超えていた (2026-08-28)。3 本を offset 相対へ直して focused 緑。**lane 再計測が未了なので open のまま** |
@@ -6564,6 +6564,33 @@ gate の意味論そのものは 2026-07-29 に裁定済みなので、**再裁�
 - **引き取り先**: `TODO.md` の `VALIDATION-REVIEW-GATE-PARITY-01`
 - **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
   契約の正本は `docs/adr/decisions-v0.2-validation-independent-review-outcome.md`。
+
+#### 是正 (2026-08-28)
+
+伝播と期待値是正を行った。裁定と全実測は
+`docs/adr/decisions-validation-review-gate-parity.md` が正本。
+
+| 経路 | 変更 |
+|---|---|
+| `App/Cli.ls:238-250` | 変更なし (既に契約どおり) |
+| `App/EmbeddedCli.ls:427-439` | `outcome=pass` の連言を追加 (L# の `and` は二項なので入れ子) |
+| `Tools/Validation/ManifestInput.ls` | 出現数の min から **record 窓走査**へ置換。`"method":"review"` の位置から直後の `"independence":"` までを 1 record の尾部とみなし、3 条件をその窓の内側で判定する |
+
+**上の「未実測として残ること」に置いた 2 件は両方とも実測で埋まった。**
+
+1. `contradicting_observations` は **1** だった。`validation-add-evidence-id` の
+   dedup により contradicted record 1 件 + `:contradicts` edge 1 件が 1 に畳まれる、
+   という導出予測どおりである
+2. 動いた test は **3 本** (`..._embedded_cli_validate_source_reports_fail` /
+   `..._validate_source_json_reports_contradicting_evidence` /
+   新設 `..._validate_manifest_review_gate_is_per_record`)。対照 4 本は 1 本も動かなかった
+
+`ManifestInput.ls` には e2e 被覆が 1 件も無かったので (`grep -rn '"--manifest"'` = 0 件)、
+**pin test を 2 本新設した**。`selfhost_cli_core` の宣言数は 382 -> **384** になる。
+
+**状態を `resolved` にしない理由**: `#[ignore]` lane の再計測が未了で、
+台帳 `ignored-lane-expected-failures.txt:409` をまだ落としていない。
+**focused 7 本の緑は lane 1 本の完走ではない。** `SWEEP-LANE-RERUN-01` が引き取る。
 
 <a id="i-97"></a>
 ### I-97: 修飾なし `(import M)` が check の型環境へ unqualified 名を入れない

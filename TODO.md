@@ -3066,7 +3066,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   focused 3 本は緑 (`RUNEXIT=0`)。
   **残るのは lane 完走のみ。** `selfhost_cli_core` を 1 本回して台帳 2 行を落とすところまでが
   completion boundary。**この lane は `SWEEP-LANE-RERUN-01` と束ねる** (項目ごとに lane を
-  回さない)。lane 後の宣言数は 381 -> **382** になる (pin test 1 本増)。
+  回さない)。本項目の pin test 1 本で 381 -> 382 になり、その後 `I-96` の manifest pin test
+  2 本で **384** になった。**分母の正本は `SWEEP-LANE-RERUN-01` の受入条件 (b)** である。
 
 - [ ] `ROOT-IMBALANCED-HELPER-01` verifier が非 `main` helper を拒否する件を判別する — Issue `I-74`。
   `selfhost_cli_core` の赤 9 件が `ImbalancedExit { function: compile-file-state | compile-pair-state, depth: 1 }`。
@@ -3123,14 +3124,18 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件:
   (a) **partial lane の規則に従う** (`AGENTS.md`)。module 名で部分台帳を抽出し、
       **台帳を編集したら抽出をやり直す**
-  (b) `selfhost_cli_core` の宣言数は 381 -> **382** で判定する (`I-90` の pin test 1 本増)。
+  (b) `selfhost_cli_core` の宣言数は 381 -> **384** で判定する
+      (`I-90` の pin test 1 本増 + `I-96` の manifest pin test 2 本増)。
       **test を rename した module は必ず再計測する**
   (c) lane は必ず切り離して回す (`nohup` + `os.setsid()`)。
       **lane 実行中に同一マシンで `cargo` を走らせない**
   (d) `progress.txt` の `LANE-COMPLETE` は完走の証拠にならない。`MODEXIT` と
       `scripts/compare_ignored_lane.py` の判定だけを根拠にする
-  (e) **緑になった行は台帳から削除する。** `LSP-POSITION-ORIGIN-01` の
-      `ignored-lane-expected-failures.txt:402-403` が該当する見込み
+  (e) **緑になった行は台帳から削除する。** 緑化見込みは
+      `LSP-POSITION-ORIGIN-01` (`:402-403`) / `NATIVE-TAIL-OFFSET-PIN-01` (`:411`) /
+      `NATIVE-TYPEINFER-PARITY-PIN-01` (`:412`) /
+      `VALIDATION-REVIEW-GATE-PARITY-01` (2026-08-24 sweep の `selfhost_cli_core` 側 1 行)。
+      **見込みであって実測ではない。lane 完走まで行を消さない**
   **含めない範囲**: 束ね元の実装修正そのもの。**cargo が要る。**
 
 - [~] `NATIVE-TAIL-OFFSET-PIN-01` representative native code の tail を直書き offset で
@@ -3218,7 +3223,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   lane 再計測は `selfhost_cli_core` なので `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。
   **cargo が要る。**
 
-- [ ] `VALIDATION-REVIEW-GATE-PARITY-01` 独立 review gate の `outcome=pass` 条件を selfhost の
+- [~] `VALIDATION-REVIEW-GATE-PARITY-01` 独立 review gate の `outcome=pass` 条件を selfhost の
   残り 2 経路へ伝播し、陳腐化した期待値 2 件を是正する — Issue `I-96`。
   gate の意味論は `docs/adr/decisions-v0.2-validation-independent-review-outcome.md` (2026-07-29)
   が既に裁定済みで、**本項目は再裁定しない**。開いているのは伝播と、`ManifestInput.ls` の
@@ -3246,6 +3251,13 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   MCP 経路の parity も見ない (2026-07-29 ADR の Boundary が別に挙げている)。
   lane 再計測は `selfhost_cli_core` と `selfhost_cli_actual_main_args` の 2 module になるので
   `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。**cargo が要る。**
+  **(a)〜(e) は 2026-08-28 に完了した。** RED-1 (`EmbeddedCli` 2 本) / RED-2 (manifest pin test
+  2 本、green patch 前) / GREEN (7 本) の 3 run で測り、GREEN は `RUNEXIT=0` / `770.86s` /
+  7 passed。(c) は record 窓走査 (案 A) を採用し、案 B / C / D の却下理由を
+  `docs/adr/decisions-validation-review-gate-parity.md` に書いた。(d) の
+  `contradicting_observations` は **1** で予測どおり。(e) は追記形式で更新済み。
+  **残るのは lane 完走のみ。** 台帳 `ignored-lane-expected-failures.txt:409` を落とすところまでが
+  completion boundary。分母は `SWEEP-LANE-RERUN-01` の受入条件 (b) が正本。
 
 - [ ] `MODULE-DECL-LAYOUT-01` module-decl の vector layout を 1 つに揃える — Issue `I-95`。
   `56e11ce9` (2026-07-24) が slot 3/4 に `name-start` / `name-end` を中間挿入したのに、

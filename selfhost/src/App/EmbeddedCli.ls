@@ -431,7 +431,9 @@
       next-count
         (if (and
               (string-eq (source-evidence-record-method evidence-record) "review")
-              (string-eq (source-evidence-record-independence evidence-record) "independent-review"))
+              (and
+                (string-eq (source-evidence-record-independence evidence-record) "independent-review")
+                (string-eq (source-evidence-record-outcome evidence-record) "pass")))
           (+ count 1)
           count)]
       (validation-independent-review-count-loop registry (+ idx 1) len next-count))))

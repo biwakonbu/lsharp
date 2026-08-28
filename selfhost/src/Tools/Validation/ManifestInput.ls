@@ -175,11 +175,38 @@
 (defn validation-manifest-open-question-count [src]
   (manifest-input-count-pattern src "\"kind\":\"open-question\""))
 
+;; canonical manifest の evidence record は field 順が固定されている
+;; (`Tools/Validation/Evidence.ls:656-699`): `"method"` -> `"subject"` -> `"outcome"` ->
+;; `"execution"` -> `"provenance"` -> `"independence"` で、`"independence"` が最終 field。
+;; `"method"` と `"independence"` は evidence record にしか現れない (review record の field は
+;; namespace / key / provenance_digest / visibility / verification_state)。
+;; したがって `"method":"review"` の位置から直後の `"independence":"` までが
+;; ちょうど 1 record の尾部になり、独立 review gate の 3 条件連言をこの窓の内側で厳密に判定できる。
+;; 出現数の min を取る旧実装は record 間の対応を見ないため、method と outcome が
+;; 別 record に散る manifest で誤計数していた。
+(defn validation-manifest-independent-review-count-loop [src idx len count]
+  (let [method-at (manifest-input-find-pattern-loop src "\"method\":\"review\"" idx len)]
+    (if (< method-at 0)
+      count
+      ;; record の終端が見つからない manifest は fail-closed に打ち切る (数えない)。
+      (let [independence-at (manifest-input-find-pattern-loop src "\"independence\":\"" method-at len)]
+        (if (< independence-at 0)
+          count
+          (let [outcome-at (manifest-input-find-pattern-loop src "\"outcome\":\"pass\"" method-at len)
+            hit
+              (if (and
+                    (= (manifest-input-pattern-at? src "\"independence\":\"independent-review\"" independence-at) 1)
+                    (and (>= outcome-at 0) (< outcome-at independence-at)))
+                1
+                0)]
+            (validation-manifest-independent-review-count-loop
+              src
+              (+ independence-at 1)
+              len
+              (+ count hit))))))))
+
 (defn validation-manifest-independent-review-count [src]
-  (let [method-count (manifest-input-count-pattern src "\"method\":\"review\"")
-    independence-count
-      (manifest-input-count-pattern src "\"independence\":\"independent-review\"")]
-    (if (< method-count independence-count) method-count independence-count)))
+  (validation-manifest-independent-review-count-loop src 0 (string-length src) 0))
 
 (defn validation-manifest-contradiction-count [src]
   (+

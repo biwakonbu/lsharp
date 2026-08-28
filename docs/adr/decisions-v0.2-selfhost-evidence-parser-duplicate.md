@@ -74,6 +74,29 @@ failure boundary を曖昧にし、後続の manifest/validation へ誤った ev
 **この Evidence 行はまだ書き換えない。** `contradicting_observations` の assert は
 依然として到達しておらず、`independent_reviews` を 0 へ直した後に何が起きるかは未実測である。
 実測してから 1 度で直す。
+
+#### 追記 (2026-08-28): 実測した。上の条件が満たされたので値を確定させる
+
+`VALIDATION-REVIEW-GATE-PARITY-01` の受入条件 (d) / (e) として測った。
+**履歴として上の 3 つの記述はすべて残す。**
+
+| 実測 | 値 |
+|---|---|
+| 実行 | `cargo test -p lsharp-wasm --test e2e -- --test-threads 1 --include-ignored --exact <7 本>` |
+| ログ | `/Users/biwakonbu/github/tmp/i96/green.log` |
+| 当該 test | `test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence ... ok` |
+| batch 全体 | `test result: ok. 7 passed; 0 failed; finished in 770.86s` / `RUNEXIT=0` |
+
+期待値を `independent_reviews` = **0** (2026-07-29 の gate 契約どおり) へ是正したうえで、
+`contradicting_observations` = **1** が**初めて assert に到達して通った**。
+すなわち 2026-03-27 当時の「pass」という結論自体は正しく、
+**当時から 2026-08-24 sweep までの間に陳腐化していたのは `independent_reviews` の期待値 1 件だけ**
+であった。本 ADR の Decision (duplicate `:subject` の fail-closed 化) は一貫して有効である。
+
+所要は当時の 293.49s に対し、本測定は 7 本 batch で 770.86s (単体の内訳は取っていない)。
+**単体所要は本測定では確定していない**ので、293.49s を上書きせず併記に留める。
+
+裁定と全実測は `docs/adr/decisions-validation-review-gate-parity.md` が正本。
 - `test_e2e_selfhost_parser_preserves_source_intent_metadata_forms` — pass。
 - e2e 全体 clippy は今回触れていない `selfhost_native_stage_chain.rs` の 2件と
   `support.rs` の 1件で失敗したため、別作業の lint として修正しない。

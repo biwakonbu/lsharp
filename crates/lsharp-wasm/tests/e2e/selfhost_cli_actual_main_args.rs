@@ -1456,7 +1456,10 @@ fn test_e2e_selfhost_embedded_cli_validate_source_reports_fail() {
     assert_eq!(report["status"], "fail");
     assert_eq!(report["trace_gaps"].as_array().unwrap().len(), 0);
     assert_eq!(report["open_questions"], 0);
-    assert_eq!(report["independent_reviews"], 1);
+    // `outcome=contradicted` の review は独立 review gate を満たさない
+    // (`docs/adr/decisions-v0.2-validation-independent-review-outcome.md` 2026-07-29)。
+    // 対照は同 module の `..._validate_source_reports_pass` で、そちらは 1 のままである。
+    assert_eq!(report["independent_reviews"], 0);
     assert_eq!(report["contradicting_observations"], 1);
 }
 
