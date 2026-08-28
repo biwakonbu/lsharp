@@ -498,10 +498,10 @@ done
 cargo fmt -p lsharp-wasm -- --check 2>&1 | grep '^Diff in'
 ```
 
-**2026-08-28 時点で 4 hunk の未整形が残っている** (`selfhost_cli_core.rs:15886` /
-`selfhost_native_stage_chain.rs` 3 箇所)。いずれも本 repo が触っていない古い hunk で、
-これを拾う経路がローカルに無かった。**自分が足した hunk だけは必ず整形してから commit する。**
-既存 hunk をまとめて直すかは別途決める (`TODO.md` の `RUSTFMT-PREEXISTING-HUNKS-01` / `I-105`)。
+**2026-08-28 に既存の未整形 4 hunk を解消した** (`cbafe700` / `I-105`)。
+以後この command は無出力であるべきなので、**出力が出たらそれは自分が足した hunk である。**
+lane 対象 module (`selfhost_native_stage_chain` 等) を整形するときは、
+lane の slice と混ざらないよう整形だけの commit に切り出す。
 
 ### 達成根拠が赤い test を指していないかの照合
 

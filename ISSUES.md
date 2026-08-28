@@ -236,7 +236,7 @@
 | [I-102](#i-102) | `Types.TypeInfer` の stub 定義群を上書きするのが別 module なので、`TypeInfer` だけを import すると無診断で緩んだ推論器が link される | 中 | open | `I-101` の機構特定で判明 (2026-08-28)。fixture 側は `I-101` で直すが、**under-import した任意のプログラムが静かに緩む構造は残る** |
 | [I-103](#i-103) | `selfhost_bootstrap_four_layer/part_010.rs` が 937 行あり 800 行の file-size 契約に違反していて、`rust_file_size_contract` が HEAD で赤 | 中 | resolved | `I-85` の後片付け中に発見 (2026-08-28)。`4f6dbee2` の assertion 実質化で 800 行を越えた。**allowlist に足さず `part_010b.rs` へ分割**して同日 GREEN |
 | [I-104](#i-104) | `completion-criteria.md` が「達成」の根拠に名指ししている test のうち 4 件が、赤として台帳に載っている | 中 | resolved | `I-94` の修正で発見 (2026-08-28)。裁定は `docs/adr/decisions-completion-criteria-red-citation.md`。Gate 1 を `[done]` から戻し、Gate 2 の誤引用を外し、照合 check を `audit_docs.sh` へ足した (2026-08-28) |
-| [I-105](#i-105) | `crates/lsharp-wasm/tests/e2e` に未整形の rustfmt hunk が 4 箇所残っており、ローカルにこれを拾う経路が無かった | 低 | open | `I-104` から隣接所見として分離 (2026-08-28)。`selfhost_cli_core.rs` 1 / `selfhost_native_stage_chain.rs` 3。整形すると lane module を巻き込むので単独 commit にしたい |
+| [I-105](#i-105) | `crates/lsharp-wasm/tests/e2e` に未整形の rustfmt hunk が 4 箇所残っており、ローカルにこれを拾う経路が無かった | 低 | resolved | `I-104` から分離 (2026-08-28)。`cbafe700` で整形だけの単独 commit として解消。検出経路は `AGENTS.md` の安価な sweep へ追加済み |
 
 ### ドキュメント (DOC)
 
@@ -7583,6 +7583,9 @@ manifest へ 1 行足すだけで順序は保たれる。
 - **なぜ即座に直さないか**: `selfhost_native_stage_chain.rs` は `#[ignore]` lane の対象 module で、
   整形 diff が lane の slice と混ざると「何を測ったか」が読めなくなる。
   **整形だけの単独 commit に切り出したい。**
-- **引き取り先**: `TODO.md` の `RUSTFMT-PREEXISTING-HUNKS-01`
-- **関連**: `I-104` (分離元)、`I-103` (同じ「構造 gate がローカルで回っていない」型)、
-  `SWEEP-LANE-RERUN-01` (lane module を触るので順序に注意)
+- **関連**: `I-104` (分離元)、`I-103` (同じ「構造 gate がローカルで回っていない」型)
+- **解決 (2026-08-28)**: `cbafe700` で 4 hunk を整形した。すべて改行位置だけの変更で
+  挙動は変えていない。`cargo fmt -p lsharp-wasm -- --check` は無出力になり、
+  `rust_file_size_contract` も 2 passed (+18 行しても両 file とも allowlist の範囲内)。
+  **検出経路は `AGENTS.md` の「構造 gate の安価な sweep」に残っている**ので、
+  今後の新規混入は slice を閉じる前に拾える。
