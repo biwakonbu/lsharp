@@ -3200,7 +3200,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
       **見込みであって実測ではない。lane 完走まで行を消さない**
       ただし `:404-408` の 5 行だけは focused run で実測済みの緑である
       (2026-08-28, `RUNEXIT=0` / `ELAPSED=1298.10`)。それでも lane 完走まで消さない。
+  (f) **分母は binary の `--list --ignored` から取る。** ソースの `fn test_e2e_` grep は
+      `test_selfhost_*` 名の 6 本を落とすので 439 になり、`#[ignore]` の 384 とは指すものが違う
+      (2026-08-28 に照合済み。取り方は `AGENTS.md`)
   **含めない範囲**: 束ね元の実装修正そのもの。**cargo が要る。**
+  **2026-08-28 14:26:59 に起動した** (pid 48035 / `/Users/biwakonbu/github/tmp/lane4/`)。
+  取得条件と結果が出る前に書いた予測は
+  [ignored lane sweep の運用記録](docs/development/operations/ignored-lane-sweep-2026-08-23.md)
+  の「`SWEEP-LANE-RERUN-01` の共有 lane」節が正本。
 
 - [~] `NATIVE-TAIL-OFFSET-PIN-01` representative native code の tail を直書き offset で
   切るのをやめる — Issue `I-99`。

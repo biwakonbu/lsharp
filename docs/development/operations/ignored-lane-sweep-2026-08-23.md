@@ -631,3 +631,54 @@ comparer が `未出現` / `解消` を 0 と返したことで**過不足なく
 |---|---|---|---|---|
 | `selfhost_native_stage_chain` | 615 | 613 | -2 | `I-84` #3 / #4 の probe 2 件を削除した |
 | `selfhost_cli_core` | 381 | 381 | 0 | `I-84` #2 は削除ではなく極性の反転なので数は動かない |
+
+## `SWEEP-LANE-RERUN-01` の共有 lane (2026-08-28)
+
+`I-74` / `I-90` / `I-93` / `I-94` / `I-96` / `I-97` / `I-98` / `I-99` / `I-100` / `I-101` の
+10 項目が同じ 1 本を待っている。項目ごとに lane を回さないと決めてあるので、まとめて 1 本で測る。
+受入条件の正本は `TODO.md` の `SWEEP-LANE-RERUN-01`。
+
+### 取得条件 (**結果が出る前に記録する**)
+
+| 項目 | 値 |
+|---|---|
+| 対象 | `selfhost_cli_actual_main_args` -> `selfhost_cli_core` -> `selfhost_native_stage_chain` の **3 module を直列** |
+| 順序の理由 | 所要の短い順。先に出た module から台帳突合を進められる (前回 lane3 は長い順で、最初の突合まで 1.6h 待った) |
+| test binary | `target/debug/deps/e2e-aa343ded249bec81` / sha256 `cff50dd5...` / 14:24:45 build |
+| binary を建て直した理由 | 前の binary は 13:44 build で、`cbafe700` (rustfmt) と `a0e30b38` より前だった。**整形だけでも HEAD を含まない binary の測定値は完走証拠にしない** |
+| 起動 | `python3 /Users/biwakonbu/github/tmp/lane4/run_lane4.py` を `os.setsid()` で切り離し。pid 48035 (`PPID=1` を確認) |
+| 並列度 | libtest 既定 (lane3 から変えない) |
+| 併走 | `cargo` は一切起動しない (`scripts/audit_docs.sh` も cargo を呼ぶので lane 中は回さない) |
+| ログ | `/Users/biwakonbu/github/tmp/lane4/lane/mod-<module>.log` |
+| 抜粋台帳 | `/Users/biwakonbu/github/tmp/lane4/subset.txt` (台帳 sha256 `1d145bdd...` から module 名で再抽出。**133 行** = 1 / 21 / 111) |
+| 完走判定 | `MODEXIT` と `compare_ignored_lane.py` のみ。`LANE-COMPLETE` は使わない |
+| 分母 | `--list --ignored` 実測で 25 / **384** / 613 |
+
+### 分母の取り違えを 1 件片付けた
+
+`SWEEP-LANE-RERUN-01` の受入条件 (b) は `selfhost_cli_core` を **384** で判定すると定めているが、
+ソースを `grep -cE '^\s*(async )?fn test_e2e_'` すると **439** が返る。この 2 つは食い違っていない。
+
+| 数え方 | 値 | 何を数えているか |
+|---|---|---|
+| `grep 'fn test_e2e_'` | 439 | `test_e2e_` 接頭辞の宣言だけ |
+| 宣言の全量 | 445 | 上に `test_selfhost_*` 名の 6 本を足したもの |
+| `--list --ignored` | **384** | `#[ignore]` 付き = lane が実際に回す本数 |
+
+lane は `--ignored` で回すので、分母は 384 が正しい。`AGENTS.md` に取り方を明記した。
+
+### 予測 (**結果を見る前に書く**)
+
+- `selfhost_cli_core`: 21 行のうち **7 行が緑に転じる** (`:402-403` の `I-90` 2 行、
+  `:404-408` の `I-93`/`I-94` 5 行)。`:409` (`I-96`) も緑の見込みだが、
+  focused run で測っていないのは `:409` だけなので、ここは実測で初めて決まる。残り 13〜14 行は赤のまま
+- `selfhost_native_stage_chain`: 111 行のうち **2 行が緑に転じる** (`:411` の `I-99`、
+  `:412` の `I-98`+`I-101`)。どちらも focused run では緑
+- `selfhost_cli_actual_main_args`: 1 行は赤のまま (引き取り先の実装に手を入れていない)
+- **`MODEXIT` は 3 本とも `101` を予想する。** `0` になったら台帳行が全部緑という意味なので、
+  上の予測と矛盾する。`-9` は SIGKILL で測り直し
+- 所要は lane3 と同程度 (**11 時間規模**)。`selfhost_cli_core` は 381 -> 384 で 3 本増えている
+
+### 結果
+
+(lane 完走後に埋める)

@@ -275,6 +275,16 @@ python3 scripts/compare_ignored_lane.py --ledger /tmp/subset.txt lane/mod-*.log
 
 台帳を編集したら**抜粋を取り直す**。古い抜粋のままだと、付け替えた行が差分として出る。
 
+**module ごとの分母は binary の `--list --ignored` から取る。** ソースを
+`grep -cE '^\s*(async )?fn test_e2e_'` して数えてはいけない。
+`selfhost_cli_core` はこの grep が **439** を返すが、実際の宣言は **445** ある
+(`test_selfhost_*` 接頭辞の 6 本を落とす)。さらに lane が回すのは `#[ignore]` 付きの
+**384** だけで、grep の数とはそもそも指すものが違う。
+
+```bash
+./target/debug/deps/e2e-<hash> --list --ignored | grep -c '^e2e::<module>::'
+```
+
 **lane のあとで test を rename したら、その module は測り直す。** 台帳は tree に存在する
 名前を持たねばならず、旧名のログと突合させて手で「同じものだ」と読むと、新しい名前が
 実際に赤いことを一度も測っていない状態が残る。1 module なら数分で済む。
