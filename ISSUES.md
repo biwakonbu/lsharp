@@ -224,8 +224,8 @@
 | [I-90](#i-90) | selfhost LSP の framed response が 0 origin Position を返すのに、test 2 件の期待値が 1 origin になっている | 中 | open | 判別測定で request 側 1 origin を確定し期待値 2 件を是正 (2026-08-28)。focused 3 本は緑。**`selfhost_cli_core` の lane 再計測が未了なので open のまま** |
 | [I-91](#i-91) | WASI runner が exit code 非 0 のとき捕捉済みの stdout を捨てるため、CLI の `error:` 行が失敗メッセージに届かない | 中 | resolved | 2026-08-27 に共通 helper へ寄せて解決。**`I-75` の 3 件は赤のままで、診断文が付くだけである** |
 | [I-92](#i-92) | entrypoint offset probe の parity test が aarch64 の経路しか通らず、x86 では selfhost 版と generic 版で正規化の有無が食い違う | 低 | open | `I-82` #13 の harness 修正 (2026-08-27) の過程で判明。**バグではなく被覆の欠落である** |
-| [I-93](#i-93) | e2e 2 件が `compile -o` / `build --output` の出力先に stdout summary が書かれることを期待しているが、実装は wasm binary を書く | 中 | open | `I-75` から移管 (2026-08-28)。`2ba93d0a` (2026-07-12) が契約を変えたとき test を更新しなかった。**どちらが正しいかは本 issue では裁定しない** |
-| [I-94](#i-94) | e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する | 中 | open | `I-75` から移管 (2026-08-28)。境界そのものは `I-15` が意図された仕様として文書化済み。**欠陥は test 側の期待値にある** |
+| [I-93](#i-93) | e2e 2 件が `compile -o` / `build --output` の出力先に stdout summary が書かれることを期待しているが、実装は wasm binary を書く | 中 | open | `I-75` から移管 (2026-08-28)。裁定は `docs/adr/decisions-guest-cli-output-path-contract.md`。実装を正本とし期待値 2 件を是正 (2026-08-28)。focused 5 本は緑。**lane 再計測が未了なので open のまま** |
+| [I-94](#i-94) | e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する | 中 | open | `I-75` から移管 (2026-08-28)。裁定は `docs/adr/decisions-guest-cli-component-target-boundary.md`。境界を期待する形へ 3 件を書き換え (2026-08-28)。focused 5 本は緑。**lane 再計測が未了なので open のまま** |
 | [I-95](#i-95) | module-decl の vector layout に span 2 slot が中間挿入されたのに count 式と消費側 20 箇所以上が更新されておらず、3 つの規約が同居している | 中 | open | `I-75` から移管 (2026-08-28)。`56e11ce9` (2026-07-24) が出所。**production 側の欠陥で、test の期待値の問題ではない** |
 | [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播していない | 中 | open | 残り 2 経路へ伝播し期待値 2 件を是正 (2026-08-28)。focused 7 本は緑。**`selfhost_cli_core` / `selfhost_cli_actual_main_args` の lane 再計測が未了なので open のまま** |
 | [I-97](#i-97) | 修飾なし `(import M)` が check の型環境へ unqualified 名を入れないので cross-module 参照が undefined symbol になる。Rust canonical / selfhost codegen とは規則が違う | 中 | open | `I-75` から移管 (2026-08-28)。**実装と test のどちらが正かは本 issue では裁定しない**。3 実装が 2 通りの規則を持っている |
@@ -235,6 +235,7 @@
 | [I-101](#i-101) | `infer` が返す 0 引数 defn の戻り型が、`not : Bool -> Bool` を適用しているのに未解決の型変数のまま残る | 中 | open | `I-98` の非空検査を足したときに実測で発見 (2026-08-28)。**機構は特定した** — parity fixture が `Types.TypeInferApply` を import せず stub `infer-apply` を link していた。fixture 是正と再測定が未了 |
 | [I-102](#i-102) | `Types.TypeInfer` の stub 定義群を上書きするのが別 module なので、`TypeInfer` だけを import すると無診断で緩んだ推論器が link される | 中 | open | `I-101` の機構特定で判明 (2026-08-28)。fixture 側は `I-101` で直すが、**under-import した任意のプログラムが静かに緩む構造は残る** |
 | [I-103](#i-103) | `selfhost_bootstrap_four_layer/part_010.rs` が 937 行あり 800 行の file-size 契約に違反していて、`rust_file_size_contract` が HEAD で赤 | 中 | resolved | `I-85` の後片付け中に発見 (2026-08-28)。`4f6dbee2` の assertion 実質化で 800 行を越えた。**allowlist に足さず `part_010b.rs` へ分割**して同日 GREEN |
+| [I-104](#i-104) | `completion-criteria.md` が「達成」の根拠に名指ししている test のうち 4 件が、赤として台帳に載っている | 中 | open | `I-94` の修正で citation を直す過程で発見 (2026-08-28)。**達成判定の根拠が実際には落ちている**。照合は機械的にできるのに、それを回す経路が無い |
 
 ### ドキュメント (DOC)
 
@@ -6303,6 +6304,15 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   同じ精査が要る)。
 - **引き取り先**: `TODO.md` の `CLI-OUTPUT-CONTRACT-01`
 - **関連**: `I-75` (発見経路)、`I-94` (同じ commit 由来の兄弟)、`I-15` (guest 出力の実測表)
+- **裁定 (2026-08-28)**: `docs/adr/decisions-guest-cli-output-path-contract.md` が正本。
+  **実装を正本とし、output file = artifact / stdout = summary と確定した。**
+  実装出力とは独立な根拠 5 点 (host launcher の `infer_target_from_output_path`、
+  MCP compile の `artifacts.output_path` 消費、既存 ADR の実測表、運用記録、互換表) を
+  そろえたうえで期待値 2 件を是正している。`CLAUDE.md` が禁じる
+  「実装に合わせて期待値を変える」ではなく、`テストの設計ミスを除く` 側の例外にあたる。
+- **状態を `resolved` にしない理由**: focused 5 本は緑だが `selfhost_cli_core` の lane 再計測が
+  未了で、台帳 2 行 (`ignored-lane-expected-failures.txt` の `..._compile_output_path` /
+  `..._build_output_path`) をまだ落としていない。**focused test の緑は lane 1 本の完走ではない。**
 
 <a id="i-94"></a>
 
@@ -6371,6 +6381,12 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   原因が同じであることを意味しない。
 - **引き取り先**: `TODO.md` の `CLI-COMPONENT-TARGET-EXPECT-01`
 - **関連**: `I-15` (同じ境界の文書化、resolved)、`I-75` (発見経路)、`I-93` (同じ commit 由来の兄弟)
+- **裁定 (2026-08-28)**: `docs/adr/decisions-guest-cli-component-target-boundary.md` が正本。
+  **境界は仕様であり、3 件を「境界を期待する」形へ書き換えた。** 境界を実装しに行く項目ではない。
+  **検査しなくなるもの**を ADR に明記してある — `..._compile_target_changes_wasm_size` が見ていた
+  preview1 と component の size 大小関係は、本変更後どこの test にも残らない。
+- **状態を `resolved` にしない理由**: focused 5 本は緑だが `selfhost_cli_core` の lane 再計測が
+  未了で、台帳 3 行をまだ落としていない。**focused test の緑は lane 1 本の完走ではない。**
 
 <a id="i-95"></a>
 ### I-95: module-decl の vector layout に span が中間挿入され、count 式と消費側が更新されていない
@@ -7496,3 +7512,45 @@ manifest へ 1 行足すだけで順序は保たれる。
 - **引き取り先**: 無し (`TODO.md` の `RUST-FILE-SIZE-PART010-01` は完了につき削除した)
 - **関連**: `I-01` (file-size gate の元)、`I-85` (`part_010.rs` の 7 件を足した slice)、
   `I-82` (assertion 実質化)。裁定は `docs/adr/decisions-probe-subject-unchecked.md`。
+
+<a id="i-104"></a>
+
+### I-104: `completion-criteria.md` が赤い test を「達成」の根拠に名指ししている
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-94` の裁定で citation を直す過程)
+- **事実**: `docs/development/planning/completion-criteria.md` は 27 個の test 名を
+  バッククォート付きで名指しし、各 Condition の **達成根拠**として提示している。
+  そのうち **4 件**が `docs/development/validation/ignored-lane-expected-failures.txt` に
+  期待 FAIL として載っている。
+
+  | test | 名指ししている Condition |
+  |---|---|
+  | `test_e2e_alloc_metrics_ci_artifact_payload` | (要確認) |
+  | `test_e2e_bootstrap_fixed_input_set_stage_chain_match` | (要確認) |
+  | `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` | (要確認) |
+  | `test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path` | P13 条件 1 |
+
+  照合方法: 両 file から `` `test_[a-z0-9_]+` `` / `::test_[a-z0-9_]+` を抽出して積を取る。
+  cargo を呼ばないので数秒で終わる。
+- **`I-94` 由来の 1 件は本 slice で直した。** P13 条件 1 の記述からは
+  `..._compile_target_and_output_path` / `..._compile_target_changes_wasm_size` の 2 件を
+  根拠から外し、訂正の経緯を残した。**guest は component target を capability boundary で
+  拒否する** (`I-15`) ので、そもそも preview2 codegen の根拠になり得なかった。
+  残る 3 件は未着手である。
+- **なぜ生まれるか**: 「達成」を書く時点では緑だった test が後から赤くなっても、
+  `completion-criteria.md` は誰も見に行かない。`ignored-lane-expected-failures.txt` は
+  lane の diff にしか使われず、**逆向き (台帳に載っている名前が達成根拠に出ていないか) を
+  見る経路が無い。** `scripts/audit_docs.sh` は ISSUES / TODO の整合しか見ない。
+- **本 issue では 3 件の是非を裁定しない。** 赤の理由が「実装が未達」なのか
+  「test 側の陳腐化」なのかで、Condition を open へ戻すべきかが変わる。
+  1 件ずつ台帳の注記を読んで判断する必要がある。
+- **引き取り先**: `TODO.md` の `COMPLETION-CRITERIA-RED-CITE-01`
+- **関連**: `I-94` (発見経路)、`I-15` (component 境界)、`I-11` (workspace baseline の台帳)、
+  `DOC-08` (同じ「陳腐化した記述が正本に残る」型)
+- **隣接所見 (スコープ外)**: 同じ slice で `cargo fmt -p lsharp-wasm -- --check` を回したところ、
+  **本 slice が触っていない未整形 hunk が 4 箇所残っていた** (`selfhost_cli_core.rs:15886` /
+  `selfhost_native_stage_chain.rs` 3 箇所)。ローカルにこれを拾う経路が無かったので
+  `AGENTS.md` の「構造 gate の安価な sweep」へ `cargo fmt --check` を足した。
+  既存 4 hunk をまとめて整形するかは未決である。lane module (`selfhost_native_stage_chain`) を
+  巻き込むので、整形だけの diff でも切り出して commit したい。

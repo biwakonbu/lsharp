@@ -717,6 +717,55 @@ fn parse_wasm_size_line(line: &str, context: &str) -> i64 {
         .unwrap_or_else(|e| panic!("{}: wasm size parse 失敗 {:?}: {}", context, line, e))
 }
 
+/// `-o` / `--output` が書いた preview1 artifact を検査する (`I-93`)。
+///
+/// `Cli.ls:874-887` の `run-compile-output` は `wasm-size` を `(vector-length wasm-bytes)` から
+/// 作り、**同じ `wasm-bytes` を `write-file-bytes` へ渡す**。したがって output file の byte 長が
+/// stdout summary の数値と一致することは source 上の恒等式であって、実測値ではない。
+fn assert_preview1_artifact_matches_summary(bytes: &[u8], summary_line: &str, context: &str) {
+    assert!(
+        bytes.starts_with(b"\0asm\x01\x00\x00\x00"),
+        "{}: output file は core module の magic + version で始まるべき: {:?}",
+        context,
+        &bytes[..bytes.len().min(8)]
+    );
+    let summary_size = parse_wasm_size_line(summary_line, context);
+    assert_eq!(
+        bytes.len() as i64,
+        summary_size,
+        "{}: output file の byte 長は stdout の wasm-size と一致すべき",
+        context
+    );
+}
+
+/// guest の component target capability boundary を検査する (`I-94` / `I-15`)。
+///
+/// `run-compile-output` (`Cli.ls:875-889`) と `run-compile` (`Cli.ls:1437`) は target が
+/// `preview1` でなければ `component-output-boundary-message` を出して非 0 終了する。
+/// guest に stderr は無く `cli-stderr` (`Cli.ls:2291`) が `error: ` を付けて stdout へ出すので、
+/// 失敗文字列の中に message が載る。
+fn assert_component_target_refused(result: &Result<String, String>, context: &str) {
+    let error = match result {
+        Ok(output) => panic!(
+            "{}: component target は capability boundary で拒否されるべきだが成功した: {:?}",
+            context, output
+        ),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("exit code 1"),
+        "{}: 境界は exit code 1 で落ちるべき: {:?}",
+        context,
+        error
+    );
+    assert!(
+        error.contains("error: wasi-component output requires external component packaging"),
+        "{}: 境界 message が載るべき: {:?}",
+        context,
+        error
+    );
+}
+
 fn parse_i64_line(line: &str, context: &str) -> i64 {
     line.parse()
         .unwrap_or_else(|e| panic!("{}: integer parse 失敗 {:?}: {}", context, line, e))
@@ -16346,7 +16395,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_output_path() {
         &dir,
         &["compile", "input.ls", "-o", "out.txt"],
     );
-    let written = std::fs::read_to_string(dir.join("out.txt")).unwrap();
+    let written = std::fs::read(dir.join("out.txt")).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -16355,16 +16404,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_output_path() {
         "Cli main compile -o 出力が不足: {:?}",
         lines
     );
-    assert!(
-        lines[0].starts_with("wasm-size:"),
-        "Cli main compile -o は wasm-size:<n> を返すべき: {:?}",
-        lines
-    );
-    assert_eq!(
-        written.trim(),
-        lines[0],
-        "compile -o は stdout summary を output file にも書くべき"
-    );
+    assert_preview1_artifact_matches_summary(&written, lines[0], "Cli main compile -o");
 }
 
 /// TEST-CLI-02-AF5: actual Cli main は build <file> --output <path> で output file を書けること
@@ -16383,7 +16423,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
         &dir,
         &["build", "input.ls", "--output", "build.txt"],
     );
-    let written = std::fs::read_to_string(dir.join("build.txt")).unwrap();
+    let written = std::fs::read(dir.join("build.txt")).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -16392,19 +16432,11 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
         "Cli main build --output 出力が不足: {:?}",
         lines
     );
-    assert!(
-        lines[0].starts_with("wasm-size:"),
-        "Cli main build --output は wasm-size:<n> を返すべき: {:?}",
-        lines
-    );
-    assert_eq!(
-        written.trim(),
-        lines[0],
-        "build --output は stdout summary を output file にも書くべき"
-    );
+    assert_preview1_artifact_matches_summary(&written, lines[0], "Cli main build --output");
 }
 
-/// TEST-CLI-02-AF6: actual Cli main は compile <file> --target ... -o <path> を併用できること
+/// TEST-CLI-02-AF6: actual Cli main の compile <file> --target wasi-component -o <path> は
+/// capability boundary で拒否され、output file を一切作らないこと (`I-94`)
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
@@ -16415,7 +16447,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
 
-    let output = compile_and_run_with_dir_and_args(
+    let result = try_compile_and_run_with_dir_and_args(
         selfhost_cli_runtime_bundle(),
         &dir,
         &[
@@ -16427,31 +16459,21 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
             "targeted.txt",
         ],
     );
-    let written = std::fs::read_to_string(dir.join("targeted.txt")).unwrap();
+    let output_exists = dir.join("targeted.txt").exists();
     let _ = std::fs::remove_dir_all(&dir);
-    let lines: Vec<&str> = output.trim().lines().collect();
 
+    assert_component_target_refused(&result, "Cli main compile --target wasi-component -o");
     assert!(
-        !lines.is_empty(),
-        "Cli main compile --target ... -o 出力が不足: {:?}",
-        lines
-    );
-    assert!(
-        lines[0].starts_with("wasm-size:"),
-        "Cli main compile --target ... -o は wasm-size:<n> を返すべき: {:?}",
-        lines
-    );
-    assert_eq!(
-        written.trim(),
-        lines[0],
-        "compile --target ... -o は stdout summary を output file にも書くべき"
+        !output_exists,
+        "境界で落ちる経路は write-file-bytes へ到達しないので output file を作らないはず"
     );
 }
 
-/// TEST-CLI-02-AF6B: actual Cli main は preview1/component target ごとに異なる wasm-size を返すこと
+/// TEST-CLI-02-AF6B: actual Cli main は preview1 target で wasm-size を返し、
+/// component target は capability boundary で拒否すること (`I-94`)
 #[test]
 #[ignore]
-fn test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size() {
+fn test_e2e_selfhost_cli_main_with_args_compile_target_preview1_ok_component_refused() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_compile_target_size_{}",
         std::process::id()
@@ -16464,7 +16486,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size() {
         &dir,
         &["compile", "input.ls", "--target", "wasi-preview1"],
     );
-    let component_output = compile_and_run_with_dir_and_args(
+    let component_result = try_compile_and_run_with_dir_and_args(
         selfhost_cli_runtime_bundle(),
         &dir,
         &["compile", "input.ls", "--target", "wasi-component"],
@@ -16476,35 +16498,21 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size() {
         .lines()
         .next()
         .expect("preview1 compile output が必要");
-    let component_line = component_output
-        .trim()
-        .lines()
-        .next()
-        .expect("component compile output が必要");
+    let preview1_size =
+        parse_wasm_size_line(preview1_line, "Cli main compile --target wasi-preview1");
     assert!(
-        preview1_line.starts_with("wasm-size:"),
-        "preview1 compile output は wasm-size:<n> を返すべき: {:?}",
-        preview1_output
-    );
-    assert!(
-        component_line.starts_with("wasm-size:"),
-        "component compile output は wasm-size:<n> を返すべき: {:?}",
-        component_output
+        preview1_size > 0,
+        "preview1 compile は正の wasm-size を返すべき: {preview1_size}"
     );
 
-    let preview1_size: i64 = preview1_line["wasm-size:".len()..]
-        .parse()
-        .expect("preview1 wasm size は整数であるべき");
-    let component_size: i64 = component_line["wasm-size:".len()..]
-        .parse()
-        .expect("component wasm size は整数であるべき");
-    assert!(
-        preview1_size > component_size,
-        "Cli main compile は preview1/component target を size に反映するべき: preview1={preview1_size}, component={component_size}"
+    assert_component_target_refused(
+        &component_result,
+        "Cli main compile --target wasi-component",
     );
 }
 
-/// TEST-CLI-02-AF7: actual Cli main は build <file> --output <path> --target wasm を併用できること
+/// TEST-CLI-02-AF7: actual Cli main の build <file> --output <path> --target wasm は
+/// `wasm` alias が component 側へ写るため capability boundary で拒否されること (`I-94`)
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
@@ -16515,7 +16523,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
 
-    let output = compile_and_run_with_dir_and_args(
+    let result = try_compile_and_run_with_dir_and_args(
         selfhost_cli_runtime_bundle(),
         &dir,
         &[
@@ -16527,24 +16535,13 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
             "wasm",
         ],
     );
-    let written = std::fs::read_to_string(dir.join("build-target.txt")).unwrap();
+    let output_exists = dir.join("build-target.txt").exists();
     let _ = std::fs::remove_dir_all(&dir);
-    let lines: Vec<&str> = output.trim().lines().collect();
 
+    assert_component_target_refused(&result, "Cli main build --output --target wasm");
     assert!(
-        !lines.is_empty(),
-        "Cli main build --output ... --target 出力が不足: {:?}",
-        lines
-    );
-    assert!(
-        lines[0].starts_with("wasm-size:"),
-        "Cli main build --output ... --target は wasm-size:<n> を返すべき: {:?}",
-        lines
-    );
-    assert_eq!(
-        written.trim(),
-        lines[0],
-        "build --output ... --target は stdout summary を output file にも書くべき"
+        !output_exists,
+        "境界で落ちる経路は write-file-bytes へ到達しないので output file を作らないはず"
     );
 }
 

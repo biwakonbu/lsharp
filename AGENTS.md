@@ -476,6 +476,9 @@ file-size gate を含む「純ファイル走査だけの非 ignored test」は 
 **数秒で終わる**。`#[ignore]` lane や focused 実行だけを繰り返していると
 この層の赤に気付けない (`I-103` はそれで見逃されていた)。slice を閉じる前に回す。
 
+**ただし `#[ignore]` lane が走っている間は回さない。** 安いとはいえ cargo なので、
+lane の所要を歪める。lane が `MODEXIT` を出してからにする。
+
 ```bash
 for t in e2e_selfhost_lexer_parser_file_size e2e_selfhost_typeinfer_file_size \
          wasmgc_probe_file_size rust_file_size_contract \
@@ -488,6 +491,17 @@ done
 上の list には入れていない。必要なら
 `cargo test -p lsharp-wasm --test e2e file_size` で 4 件まとめて回せる
 (`bootstrap_acceptance` / `bootstrap_four_layer` / `native_differential` / `native_stage23_gap`)。
+
+`cargo fmt --check` も同じ層である。ビルドを起こさないので秒で終わる。
+
+```bash
+cargo fmt -p lsharp-wasm -- --check 2>&1 | grep '^Diff in'
+```
+
+**2026-08-28 時点で 4 hunk の未整形が残っている** (`selfhost_cli_core.rs:15886` /
+`selfhost_native_stage_chain.rs` 3 箇所)。いずれも本 repo が触っていない古い hunk で、
+これを拾う経路がローカルに無かった。**自分が足した hunk だけは必ず整形してから commit する。**
+既存 hunk をまとめて直すかは別途決める (差分が大きく、lane module を巻き込むため)。
 
 ## 主要依存関係
 

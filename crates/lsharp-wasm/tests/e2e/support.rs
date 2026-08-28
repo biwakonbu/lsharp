@@ -188,6 +188,25 @@ pub(crate) fn compile_and_run_with_dir_and_args(
     lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm_bytes, Some(dir), args).unwrap()
 }
 
+/// `compile_and_run_with_dir_and_args` の非 panic 版。
+/// guest が capability boundary で非 0 終了する経路を検査するために使う (`I-94`)。
+/// 失敗時の `Err` は `format_nonzero_exit_error` が組む
+/// `実行に失敗: exit code <n>; stdout="<captured>"` である。
+pub(crate) fn try_compile_and_run_with_dir_and_args(
+    source: &str,
+    dir: &std::path::Path,
+    args: &[&str],
+) -> Result<String, String> {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm_bytes, Some(dir), args)
+}
+
 /// ソースコードをコンパイルのみ（Wasm バイナリ生成まで）
 pub(crate) fn compile_only(source: &str) -> Vec<u8> {
     let program = parse_for_pipeline(source);

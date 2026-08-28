@@ -3176,7 +3176,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   束ねる項目: `LSP-POSITION-ORIGIN-01` (`I-90`) / `CHECK-IMPORT-VISIBILITY-01` (`I-97`) /
   `VALIDATION-REVIEW-GATE-PARITY-01` (`I-96`) / `NATIVE-TYPEINFER-PARITY-PIN-01` (`I-98`) /
   `NATIVE-TAIL-OFFSET-PIN-01` (`I-99`) / `CLI-SELFFEED-OOB-01` (`I-100`) /
-  `ROOT-IMBALANCED-HELPER-01` (`I-74`) / `SELFHOST-INFER-RET-VAR-01` (`I-101`)。
+  `ROOT-IMBALANCED-HELPER-01` (`I-74`) / `SELFHOST-INFER-RET-VAR-01` (`I-101`) /
+  `CLI-OUTPUT-CONTRACT-01` (`I-93`) / `CLI-COMPONENT-TARGET-EXPECT-01` (`I-94`)。
   **`I-74` は元の 3 項目束ねの一員だったので落とさない。** 赤 9 件は `selfhost_cli_core` に
   あり、対照 build を要する点も `CLI-SELFFEED-OOB-01` と同型である。
   対象 module: `selfhost_cli_core` / `selfhost_cli_actual_main_args` / `selfhost_native_stage_chain`。
@@ -3193,8 +3194,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   (e) **緑になった行は台帳から削除する。** 緑化見込みは
       `LSP-POSITION-ORIGIN-01` (`:402-403`) / `NATIVE-TAIL-OFFSET-PIN-01` (`:411`) /
       `NATIVE-TYPEINFER-PARITY-PIN-01` + `SELFHOST-INFER-RET-VAR-01` (`:412`。**2 項目が同じ 1 行を待つ**) /
-      `VALIDATION-REVIEW-GATE-PARITY-01` (2026-08-24 sweep の `selfhost_cli_core` 側 1 行)。
+      `VALIDATION-REVIEW-GATE-PARITY-01` (2026-08-24 sweep の `selfhost_cli_core` 側 1 行) /
+      `CLI-OUTPUT-CONTRACT-01` + `CLI-COMPONENT-TARGET-EXPECT-01` (`:404-408` の 5 行。
+      **2 項目が隣接 5 行を共有する**)。
       **見込みであって実測ではない。lane 完走まで行を消さない**
+      ただし `:404-408` の 5 行だけは focused run で実測済みの緑である
+      (2026-08-28, `RUNEXIT=0` / `ELAPSED=1298.10`)。それでも lane 完走まで消さない。
   **含めない範囲**: 束ね元の実装修正そのもの。**cargo が要る。**
 
 - [~] `NATIVE-TAIL-OFFSET-PIN-01` representative native code の tail を直書き offset で
@@ -3343,7 +3348,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   期待値を動かす際は `I-90` の先例に従い、**実装出力とは独立な根拠を 3 つ以上**示すこと。
   **含めない範囲**: 他 tag の layout 見直し、AST を型付き表現へ移す設計。**cargo が要る。**
 
-- [ ] `CLI-OUTPUT-CONTRACT-01` `compile -o` / `build --output` の出力先契約を裁定する — Issue `I-93`。
+- [~] `CLI-OUTPUT-CONTRACT-01` `compile -o` / `build --output` の出力先契約を裁定する — Issue `I-93`。
   実装は output file へ wasm binary を書き summary は stdout に出すが、e2e 2 件は
   output file に summary text が来ることを期待して `read_to_string` で落ちている。
   **どちらが正しいかがまだ決まっていない。** Rust driver は output file へ binary を書くので
@@ -3355,8 +3360,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   実装出力とは独立な根拠を 3 点以上そろえてから動かす (`I-90` の前例と同じ精査)。
   **含めない範囲**: `--target` 系の期待値 (`CLI-COMPONENT-TARGET-EXPECT-01` が持つ)。
   **cargo が要る。**
+  **裁定と是正は 2026-08-28 に完了した** (`docs/adr/decisions-guest-cli-output-path-contract.md`)。
+  実装を正本と決め、期待値 2 件を「output file の byte 長 == stdout の wasm-size」へ書き換えた。
+  focused 5 本は緑。**残るのは lane 完走のみ** — `selfhost_cli_core` を 1 本回して台帳 2 行を
+  落とすところまでが completion boundary。**この lane は `SWEEP-LANE-RERUN-01` と束ねる。**
 
-- [ ] `CLI-COMPONENT-TARGET-EXPECT-01` component target を期待する e2e 3 件を境界へ合わせる — Issue `I-94`。
+- [~] `CLI-COMPONENT-TARGET-EXPECT-01` component target を期待する e2e 3 件を境界へ合わせる — Issue `I-94`。
   `--target wasi-component` / `wasm` は guest の capability boundary で拒否される。
   この境界は `I-15` が意図された仕様として文書化済みで、component packaging には
   外部ツールが要るため guest 単独では遂行できない。**境界を実装しに行く項目ではない。**
@@ -3366,6 +3375,26 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   何を検査しなくなるかを ADR に明記すること (`I-76` と同じ失敗の型)。
   **含めない範囲**: guest への component packaging の実装。`SMOKE-GATE-03` (CI)。
   **cargo が要る。**
+  **裁定と是正は 2026-08-28 に完了した** (`docs/adr/decisions-guest-cli-component-target-boundary.md`)。
+  3 件を「境界エラーを期待する」形へ書き換え、`..._compile_target_changes_wasm_size` は
+  `..._compile_target_preview1_ok_component_refused` へ改名した。**size 大小関係の検査は
+  どこにも残らない**ことを ADR に明記済み。focused 5 本は緑。
+  **残るのは lane 完走のみ** — 台帳 3 行を落とすところまでが completion boundary。
+  **この lane は `SWEEP-LANE-RERUN-01` と束ねる。**
+
+- [ ] `COMPLETION-CRITERIA-RED-CITE-01` `completion-criteria.md` が名指しする赤い test 3 件を裁く —
+  Issue `I-104`。`test_e2e_alloc_metrics_ci_artifact_payload` /
+  `test_e2e_bootstrap_fixed_input_set_stage_chain_match` /
+  `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` が達成根拠に出ているが、
+  `ignored-lane-expected-failures.txt` に期待 FAIL として載っている。
+  受入条件: 3 件それぞれについて「実装が未達なので Condition を open へ戻す」か
+  「test 側の陳腐化なので根拠から外す」かを台帳の注記に基づいて決め、
+  `completion-criteria.md` を直すこと。**赤のまま根拠に残す形は不可。**
+  加えて、この照合 (両 file の test 名の積) を `scripts/audit_docs.sh` へ足すかを決める。
+  足さないなら理由を ADR に書く。
+  **含めない範囲**: 3 件の赤そのものの修正 (それぞれの引き取り先が持つ)。
+  `workspace-expected-failures.txt` 側との照合 (`I-11` の baseline が固まってから)。
+  **cargo は要らない** (照合は文字列処理だけ)。
 
 - [ ] `SELFHOST-TUPLE-REC-01` selfhost の異種 vector タプルをレコードへ移す — Issue `I-48`。
   `push-int-vector` / `push-object-vector` / `vector-push-*-rooted-v3` はいずれも
