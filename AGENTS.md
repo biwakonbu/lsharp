@@ -501,7 +501,26 @@ cargo fmt -p lsharp-wasm -- --check 2>&1 | grep '^Diff in'
 **2026-08-28 時点で 4 hunk の未整形が残っている** (`selfhost_cli_core.rs:15886` /
 `selfhost_native_stage_chain.rs` 3 箇所)。いずれも本 repo が触っていない古い hunk で、
 これを拾う経路がローカルに無かった。**自分が足した hunk だけは必ず整形してから commit する。**
-既存 hunk をまとめて直すかは別途決める (差分が大きく、lane module を巻き込むため)。
+既存 hunk をまとめて直すかは別途決める (`TODO.md` の `RUSTFMT-PREEXISTING-HUNKS-01` / `I-105`)。
+
+### 達成根拠が赤い test を指していないかの照合
+
+`bash scripts/audit_docs.sh` に照合 check が入っている (2026-08-28 / `I-104`)。
+`docs/development/planning/completion-criteria.md` が名指しする `` `test_...` `` と
+`docs/development/validation/ignored-lane-expected-failures.txt` の `::test_...` の積を取り、
+**空でなければ ERROR** にする。cargo を呼ばないので数秒で終わる。
+
+赤いと分かったうえで名指しする場合 (「なぜ未達か」を書く場合) は、
+**同一行に `[赤: <引き取り先>]` を書く。** 引き取り先を書かせることで、
+「気付かずに赤を根拠にした」のか「承知のうえで名指しした」のかが区別できる。
+
+    - **未達 (訂正 2026-08-28)**: `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` [赤: `I-78`] は ...
+
+台帳へ赤を足したときは、**この照合が新たに引っかからないかを見る**。
+gate の状態マーカーを戻すべき場合がある。
+
+`docs/development/planning/phase11-implementation-plan.md` は照合対象に入れていない。
+そちらの「Acceptance」節は**通るべき test を列挙する場所**なので、赤い名前が出るのは矛盾ではない。
 
 ## 主要依存関係
 

@@ -235,7 +235,8 @@
 | [I-101](#i-101) | `infer` が返す 0 引数 defn の戻り型が、`not : Bool -> Bool` を適用しているのに未解決の型変数のまま残る | 中 | open | `I-98` の非空検査を足したときに実測で発見 (2026-08-28)。**機構は特定した** — parity fixture が `Types.TypeInferApply` を import せず stub `infer-apply` を link していた。fixture 是正と再測定が未了 |
 | [I-102](#i-102) | `Types.TypeInfer` の stub 定義群を上書きするのが別 module なので、`TypeInfer` だけを import すると無診断で緩んだ推論器が link される | 中 | open | `I-101` の機構特定で判明 (2026-08-28)。fixture 側は `I-101` で直すが、**under-import した任意のプログラムが静かに緩む構造は残る** |
 | [I-103](#i-103) | `selfhost_bootstrap_four_layer/part_010.rs` が 937 行あり 800 行の file-size 契約に違反していて、`rust_file_size_contract` が HEAD で赤 | 中 | resolved | `I-85` の後片付け中に発見 (2026-08-28)。`4f6dbee2` の assertion 実質化で 800 行を越えた。**allowlist に足さず `part_010b.rs` へ分割**して同日 GREEN |
-| [I-104](#i-104) | `completion-criteria.md` が「達成」の根拠に名指ししている test のうち 4 件が、赤として台帳に載っている | 中 | open | `I-94` の修正で citation を直す過程で発見 (2026-08-28)。**達成判定の根拠が実際には落ちている**。照合は機械的にできるのに、それを回す経路が無い |
+| [I-104](#i-104) | `completion-criteria.md` が「達成」の根拠に名指ししている test のうち 4 件が、赤として台帳に載っている | 中 | resolved | `I-94` の修正で発見 (2026-08-28)。裁定は `docs/adr/decisions-completion-criteria-red-citation.md`。Gate 1 を `[done]` から戻し、Gate 2 の誤引用を外し、照合 check を `audit_docs.sh` へ足した (2026-08-28) |
+| [I-105](#i-105) | `crates/lsharp-wasm/tests/e2e` に未整形の rustfmt hunk が 4 箇所残っており、ローカルにこれを拾う経路が無かった | 低 | open | `I-104` から隣接所見として分離 (2026-08-28)。`selfhost_cli_core.rs` 1 / `selfhost_native_stage_chain.rs` 3。整形すると lane module を巻き込むので単独 commit にしたい |
 
 ### ドキュメント (DOC)
 
@@ -7545,12 +7546,43 @@ manifest へ 1 行足すだけで順序は保たれる。
 - **本 issue では 3 件の是非を裁定しない。** 赤の理由が「実装が未達」なのか
   「test 側の陳腐化」なのかで、Condition を open へ戻すべきかが変わる。
   1 件ずつ台帳の注記を読んで判断する必要がある。
-- **引き取り先**: `TODO.md` の `COMPLETION-CRITERIA-RED-CITE-01`
 - **関連**: `I-94` (発見経路)、`I-15` (component 境界)、`I-11` (workspace baseline の台帳)、
-  `DOC-08` (同じ「陳腐化した記述が正本に残る」型)
-- **隣接所見 (スコープ外)**: 同じ slice で `cargo fmt -p lsharp-wasm -- --check` を回したところ、
-  **本 slice が触っていない未整形 hunk が 4 箇所残っていた** (`selfhost_cli_core.rs:15886` /
-  `selfhost_native_stage_chain.rs` 3 箇所)。ローカルにこれを拾う経路が無かったので
-  `AGENTS.md` の「構造 gate の安価な sweep」へ `cargo fmt --check` を足した。
-  既存 4 hunk をまとめて整形するかは未決である。lane module (`selfhost_native_stage_chain`) を
-  巻き込むので、整形だけの diff でも切り出して commit したい。
+  `DOC-08` (同じ「陳腐化した記述が正本に残る」型)、`I-78` (Gate 1 を止めている赤)、
+  `I-105` (同じ slice で分離した隣接所見)
+- **解決 (2026-08-28)**: 裁定は `docs/adr/decisions-completion-criteria-red-citation.md`。
+  積は 3 件で、**2 通りに分かれた**。
+  - Gate 1 (Wasm bootstrap fixed-point) の 2 件は**実装未達**。`I-78` (`open`) により
+    `src/App/Cli.ls` の self-feed compile が trap し、`src/App/Cli.ls` は fixed input set 54 件の
+    構成員である。よって `[done]` -> `[in-progress]` へ戻し、訂正前の文言も残した
+  - Gate 2 (GC 有効 runtime stability) の 1 件は**誤引用**。当該 test が見ているのは
+    bump allocator のアドレス単調増加であって collector-backed の JSON ではない。
+    名指しを外し、**gate の状態は戻していない**
+  再発防止として `scripts/audit_docs.sh` へ照合 check を足した。例外は同一行の
+  `[赤: <引き取り先>]` 注記でのみ認める。negative test で非 0 になることも確認済み。
+  同じ誤った到達主張を持っていた `phase11-implementation-plan.md` の BOOT-04 も直した。
+- **未確定のまま残したこと**: `test_e2e_alloc_metrics_ci_artifact_payload` が赤い**原因**は
+  確定していない。台帳の引き取り先は `REPL-TYPE-TAG-01` (`I-69`) だが、当該 test は
+  REPL 経路を通らない。誤引用の判定は原因と独立に成り立つので本 issue は閉じるが、
+  帰属の妥当性は `I-69` 側で見ること。
+
+---
+
+<a id="i-105"></a>
+
+### I-105: `tests/e2e` に未整形の rustfmt hunk が 4 箇所残っている
+
+- **影響度**: 低 / **状態**: open
+- **発見**: 2026-08-28 (`I-93` / `I-94` の slice で `cargo fmt -p lsharp-wasm -- --check` を回した)
+- **事実**: 本 slice が触っていない未整形 hunk が 4 箇所ある。
+  `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:15886` と
+  `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の 3 箇所
+  (`:14691` / `:14698` / `:25702`)。
+- **なぜ残ったか**: ローカルの安価な sweep に `cargo fmt --check` が入っておらず、
+  拾う経路が無かった。`I-93` の slice で `AGENTS.md` の「構造 gate の安価な sweep」へ
+  追加済みなので、**今後の新規混入は拾える**。残っているのは既存分だけである。
+- **なぜ即座に直さないか**: `selfhost_native_stage_chain.rs` は `#[ignore]` lane の対象 module で、
+  整形 diff が lane の slice と混ざると「何を測ったか」が読めなくなる。
+  **整形だけの単独 commit に切り出したい。**
+- **引き取り先**: `TODO.md` の `RUSTFMT-PREEXISTING-HUNKS-01`
+- **関連**: `I-104` (分離元)、`I-103` (同じ「構造 gate がローカルで回っていない」型)、
+  `SWEEP-LANE-RERUN-01` (lane module を触るので順序に注意)

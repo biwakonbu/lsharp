@@ -290,7 +290,7 @@ lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_x86_int_to_strin
 # `# 引き取り先: <ID>` = 修正すると振り分けた赤。実測が緑になった時点で行を削除する。
 lsharp-wasm::e2e selfhost_native_stage23_gap::test_e2e_native_actual_stage23_gap_report_for_representative_entry  # 引き取り先: NATIVE-I32SUB-01 -- NativeCodegen.ls に i32.sub が無い真の gap。表は直さない
 lsharp-wasm::e2e selfhost_native_stage23_gap::test_e2e_native_actual_stage23_gap_report_has_zero_aarch64_selfhost_blockers  # 引き取り先: NATIVE-I32SUB-01 -- 同上 (aarch64 側)
-lsharp-wasm::e2e runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1/L2 の型名破損
+lsharp-wasm::e2e runtime_allocator_closures::test_e2e_alloc_metrics_ci_artifact_payload  # 引き取り先: REPL-TYPE-TAG-01 -- I-69 L1/L2 の型名破損。**帰属は未検証 (2026-08-28, I-104)** -- 本 test は REPL 経路を通らず __alloc のアドレス単調増加しか見ていないので、I-69 が原因かは確かめられていない
 lsharp-wasm::e2e runtime_allocator_closures::test_v2_12_stage2_eleven_import_debug_probe  # [d] 診断用足場 (2214bd49 で追加)。2026-08-27 の I-72 fix で probe1 (marker 81) までは通るようになり、落ちる位置が probe2 へ移った: runtime_allocator_closures.rs:2975 で marker が 67 でなく 50 で始まる列を返す。同 fix に合わせて test 名を six_import -> eleven_import へ改名した
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_session_batch_metrics  # 引き取り先: REPL-TYPE-TAG-01
 lsharp-wasm::e2e selfhost_gc_stateful_soak::test_e2e_gc_repl_stateful_long_session_in_session_collector_telemetry  # 引き取り先: REPL-TYPE-TAG-01

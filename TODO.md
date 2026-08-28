@@ -3382,19 +3382,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **残るのは lane 完走のみ** — 台帳 3 行を落とすところまでが completion boundary。
   **この lane は `SWEEP-LANE-RERUN-01` と束ねる。**
 
-- [ ] `COMPLETION-CRITERIA-RED-CITE-01` `completion-criteria.md` が名指しする赤い test 3 件を裁く —
-  Issue `I-104`。`test_e2e_alloc_metrics_ci_artifact_payload` /
-  `test_e2e_bootstrap_fixed_input_set_stage_chain_match` /
-  `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` が達成根拠に出ているが、
-  `ignored-lane-expected-failures.txt` に期待 FAIL として載っている。
-  受入条件: 3 件それぞれについて「実装が未達なので Condition を open へ戻す」か
-  「test 側の陳腐化なので根拠から外す」かを台帳の注記に基づいて決め、
-  `completion-criteria.md` を直すこと。**赤のまま根拠に残す形は不可。**
-  加えて、この照合 (両 file の test 名の積) を `scripts/audit_docs.sh` へ足すかを決める。
-  足さないなら理由を ADR に書く。
-  **含めない範囲**: 3 件の赤そのものの修正 (それぞれの引き取り先が持つ)。
-  `workspace-expected-failures.txt` 側との照合 (`I-11` の baseline が固まってから)。
-  **cargo は要らない** (照合は文字列処理だけ)。
+- [ ] `RUSTFMT-PREEXISTING-HUNKS-01` `tests/e2e` に残る未整形 hunk 4 箇所を整形する — Issue `I-105`。
+  `selfhost_cli_core.rs:15886` と `selfhost_native_stage_chain.rs` の 3 箇所
+  (`:14691` / `:14698` / `:25702`)。新規混入は `AGENTS.md` の sweep が拾うので、
+  残っているのは既存分だけである。
+  受入条件: `cargo fmt -p lsharp-wasm -- --check` が無出力になること。
+  **整形だけの単独 commit に切り出すこと** — `selfhost_native_stage_chain.rs` は
+  `#[ignore]` lane の対象 module なので、lane の slice と混ざると何を測ったかが読めなくなる。
+  **`SWEEP-LANE-RERUN-01` の lane が走っていない時に行うこと** (`cargo` を起こすため)。
+  **含めない範囲**: 挙動を変える変更。他 crate の整形。
 
 - [ ] `SELFHOST-TUPLE-REC-01` selfhost の異種 vector タプルをレコードへ移す — Issue `I-48`。
   `push-int-vector` / `push-object-vector` / `vector-push-*-rooted-v3` はいずれも

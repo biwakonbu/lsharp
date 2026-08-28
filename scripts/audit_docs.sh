@@ -396,6 +396,52 @@ echo "    - host launcher: Wasmtime と guest component を束ねる正式配布
 echo '    - guest component: host launcher に埋め込む `.component.wasm` の正本成果物'
 echo "    - single binary distribution: host launcher + embedded guest component + stdlib の配布形態"
 
+echo ""
+echo "--- [I-104] completion-criteria が赤い test を達成根拠に名指ししていないか ---"
+# completion-criteria.md の `test_...` と ignored lane 台帳の ::test_... の積を取る。
+# 積が空でなければ ERROR。例外は同一行の `[赤: <引き取り先>]` 注記でのみ認める
+# (裁定は docs/adr/decisions-completion-criteria-red-citation.md)。
+CC_DOC="docs/development/planning/completion-criteria.md"
+LANE_LEDGER="docs/development/validation/ignored-lane-expected-failures.txt"
+if [ ! -f "$CC_DOC" ] || [ ! -f "$LANE_LEDGER" ]; then
+    echo "  ERROR: 照合対象の file が見つからない ($CC_DOC / $LANE_LEDGER)"
+    ERRORS=$((ERRORS + 1))
+else
+    RED_CITATIONS=$(awk -v ledger="$LANE_LEDGER" '
+BEGIN {
+    while ((getline line < ledger) > 0) {
+        rest = line
+        while (match(rest, /::test_[a-z0-9_]+/)) {
+            name = substr(rest, RSTART + 2, RLENGTH - 2)
+            red[name] = 1
+            rest = substr(rest, RSTART + RLENGTH)
+        }
+    }
+    close(ledger)
+}
+{
+    # 引き取り先つきで赤と明記している行は例外
+    if ($0 ~ /\[赤: [^]]+\]/) next
+    rest = $0
+    while (match(rest, /`test_[a-z0-9_]+`/)) {
+        name = substr(rest, RSTART + 1, RLENGTH - 2)
+        if (name in red) print FILENAME ":" FNR ": " name
+        rest = substr(rest, RSTART + RLENGTH)
+    }
+}
+' "$CC_DOC")
+    if [ -z "$RED_CITATIONS" ]; then
+        echo "  OK: 赤い test を無注記で名指ししている箇所なし"
+    else
+        RED_COUNT=$(printf "%s\n" "$RED_CITATIONS" | wc -l | tr -d " ")
+        echo "  ERROR: 期待 FAIL の test を達成根拠に名指ししている箇所が $RED_COUNT 件"
+        printf "%s\n" "$RED_CITATIONS" | sed "s/^/    /"
+        echo "    -> 実装未達なら gate の状態マーカーを戻す。誤引用なら名指しを外す。"
+        echo "       赤と分かったうえで名指しするなら同一行に [赤: <引き取り先>] を書く"
+        ERRORS=$((ERRORS + RED_COUNT))
+    fi
+fi
+
 # =============================================================================
 # サマリ
 # =============================================================================
