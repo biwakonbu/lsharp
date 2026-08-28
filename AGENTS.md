@@ -470,6 +470,25 @@ allowlist から消し忘れても落ちるので、list は単調減少しか�
 (gate は list に行を足す変更自体は通す)。判断は
 [`decisions-rust-file-size-gate.md`](docs/adr/decisions-rust-file-size-gate.md) が正本。
 
+### 構造 gate の安価な sweep
+
+file-size gate を含む「純ファイル走査だけの非 ignored test」は wasm を 1 つも実行しないので
+**数秒で終わる**。`#[ignore]` lane や focused 実行だけを繰り返していると
+この層の赤に気付けない (`I-103` はそれで見逃されていた)。slice を閉じる前に回す。
+
+```bash
+for t in e2e_selfhost_lexer_parser_file_size e2e_selfhost_typeinfer_file_size \
+         wasmgc_probe_file_size rust_file_size_contract \
+         selfhost_module_import_contract meta_validation; do
+  cargo test -p lsharp-wasm --test "$t" 2>&1 | grep -E '^test result|FAILED'
+done
+```
+
+`e2e` binary 側の fragment manifest gate (`*_file_size` module) は e2e のビルドが要るので
+上の list には入れていない。必要なら
+`cargo test -p lsharp-wasm --test e2e file_size` で 4 件まとめて回せる
+(`bootstrap_acceptance` / `bootstrap_four_layer` / `native_differential` / `native_stage23_gap`)。
+
 ## 主要依存関係
 
 - `miette`: ソーススパン付きリッチエラーレポート
