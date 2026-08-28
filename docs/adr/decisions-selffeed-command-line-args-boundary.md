@@ -183,9 +183,15 @@ backstop を残す限り、走査の取りこぼしは trap という気付け�
 `docs/development/planning/completion-criteria.md:27,123` と
 `docs/development/planning/phase11-implementation-plan.md:137` は赤 3 件に
 `[赤: I-78]` 注記を持っており (`I-104` の是正済み)、本 ADR で追加の対応は要らない。
-ただし `phase11-implementation-plan.md:142` の Acceptance 行だけは注記が無く、
-6 本を並べて「pass する」と書いている。**本 ADR を倒しても 3 本は緑にならない**ので、
-この行は実装 slice の doc-GREEN で注記を足す対象として引き継ぐ。
+`phase11-implementation-plan.md:142` は注記を持たず 6 本を並べて「pass する」と書いているが、
+**これは注記の対象ではない**。行頭が `- Acceptance:` であり、BOOT-04 が満たすべき**目標**を
+述べた行だからである。現況を述べる `- Current state:` は 5 行上の `:137` で、
+そちらには既に `[赤: I-78]` と「full-set 実体比較には到達していない」が入っている。
+`I-104` が禁じたのは**赤い test を達成証跡として引くこと**であって、
+受入条件に赤い test 名が並ぶこと自体は正しい。
+
+**この段落は 2 回書き直している。** 最初は「`:142` に注記を足す」を実装 slice へ
+引き継ぐと書いたが、行の種別を確かめずに書いた誤りだった。引き継ぎ事項は無い。
 
 ## Evidence
 

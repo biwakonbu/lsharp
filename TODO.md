@@ -3083,8 +3083,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: 既定 mode に `command-line-args` を実装すること (11 import に 12 本目を
   足す判断で、Rust host 側の runtime 契約も動く)。したがって**本項目を倒しても赤 3 件は
   緑にならない**。失敗メッセージが `wasm trap` から診断行へ変わるところまでが受入条件である。
-  併せて `docs/development/planning/phase11-implementation-plan.md:142` の Acceptance 行に
-  `[赤: I-78]` 注記を足す (`:27` `:123` `:137` は `I-104` で是正済み、`:142` だけ残っている)。
+  gate 文書側の追加対応は**無い**。`phase11-implementation-plan.md:142` は当初
+  注記対象と書いたが、`- Acceptance:` 行 (達成すべき目標) であって現況の主張ではないので
+  `I-104` の禁止事項に当たらない。現況を述べる `:137` は既に是正済みである。
   **併せて片付けるもの** (`I-78` に記録した、同じ根から出る危険 2 件):
   生の 91 が末端に届くと trap せず `read-stdin` が `command-line-args` に化ける silent
   miscompile になる件と、書き換えが operand 付け替え (`:721` の `(+ operand 11)`) も
