@@ -498,6 +498,10 @@ stage1 / stage2 とも `[301, 0, 302, 7]` となり、この test の主題 (sta
 `grep -rn 'trim().is_empty()' crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/`
 の hit は全て無関係な `.filter()` だけになった (2026-08-27)。
 
+**後日の追記 (2026-08-28)**: この実質化で `part_010.rs` が 937 行になり、800 行の
+file-size 契約を破った (`I-103`)。**`part_010.rs` (4 件) と `part_010b.rs` (3 件) へ
+分割済み**なので、上の「`part_010.rs` 7」は分割前の配置を指す。test 名は変えていない。
+
 ### 検証 (2026-08-27)
 
 - `cargo test -p lsharp-wasm --test e2e --no-run` — 警告 0

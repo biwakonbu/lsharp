@@ -9,6 +9,7 @@ include!("selfhost_bootstrap_four_layer/part_007.rs");
 include!("selfhost_bootstrap_four_layer/part_008.rs");
 include!("selfhost_bootstrap_four_layer/part_009.rs");
 include!("selfhost_bootstrap_four_layer/part_010.rs");
+include!("selfhost_bootstrap_four_layer/part_010b.rs");
 include!("selfhost_bootstrap_four_layer/part_011.rs");
 include!("selfhost_bootstrap_four_layer/part_012.rs");
 include!("selfhost_bootstrap_four_layer/part_013.rs");

@@ -234,6 +234,7 @@
 | [I-100](#i-100) | `src/App/Main.ls` の二重 self-compile が `__alloc` の中で OOB trap する。`memory.grow` 失敗ではないので heap 枯渇ではない | 中 | open | `I-75` から移管 (2026-08-28)。**backtrace frame 0 が `__alloc` 自身**で、trap 種別が capacity guard の `unreachable` ではない。原因は未確定で予測を事前登録した |
 | [I-101](#i-101) | `infer` が返す 0 引数 defn の戻り型が、`not : Bool -> Bool` を適用しているのに未解決の型変数のまま残る | 中 | open | `I-98` の非空検査を足したときに実測で発見 (2026-08-28)。**機構は特定した** — parity fixture が `Types.TypeInferApply` を import せず stub `infer-apply` を link していた。fixture 是正と再測定が未了 |
 | [I-102](#i-102) | `Types.TypeInfer` の stub 定義群を上書きするのが別 module なので、`TypeInfer` だけを import すると無診断で緩んだ推論器が link される | 中 | open | `I-101` の機構特定で判明 (2026-08-28)。fixture 側は `I-101` で直すが、**under-import した任意のプログラムが静かに緩む構造は残る** |
+| [I-103](#i-103) | `selfhost_bootstrap_four_layer/part_010.rs` が 937 行あり 800 行の file-size 契約に違反していて、`rust_file_size_contract` が HEAD で赤 | 中 | resolved | `I-85` の後片付け中に発見 (2026-08-28)。`4f6dbee2` の assertion 実質化で 800 行を越えた。**allowlist に足さず `part_010b.rs` へ分割**して同日 GREEN |
 
 ### ドキュメント (DOC)
 
@@ -7383,3 +7384,115 @@ import さえ張れば上書きは効く** (`[3, 1, 500, 1, 200, 0, 0]`)。
 - **関連**: `I-101` (実測事例)、`MODULE-DUP-FN-01` (同名 defn の重複定義)、
   `SELFHOST-PARSE-LENIENT-01` (落ちずに緩む形の先例)。
   裁定は `docs/adr/decisions-selfhost-typeinfer-stub-override.md`。
+
+---
+
+<a id="i-103"></a>
+
+### I-103: `selfhost_bootstrap_four_layer/part_010.rs` が 800 行契約を破っており、`rust_file_size_contract` が HEAD で赤
+
+- **影響度**: 中
+- **状態**: resolved (2026-08-28)
+- **発見**: 2026-08-28。`I-85` の後片付けで fragment の行数を数えていて気付いた。
+  **誰かの依頼で見に行ったのではなく、台帳のどこにも載っていない赤である。**
+
+#### 事実
+
+`crates/lsharp-wasm/tests/rust_file_size_contract.rs` は workspace 全域に 800 行の上限を課し、
+超過ファイルは repo root の 2 つの allowlist と**完全一致**することを要求する
+(`tests/rust-file-size-allowlist.txt` / `tests/rust-test-file-size-allowlist.txt`)。
+
+HEAD (`61c79861`) で `rust_test_files_over_800_lines_match_allowlist` が落ちる:
+
+```
+新規超過: [
+    "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer/part_010.rs",
+]
+解消済みまたは不正な allowlist: []
+test result: FAILED. 1 passed; 1 failed
+```
+
+| 項目 | 値 |
+|---|---|
+| 実行 | `cargo test -p lsharp-wasm --test rust_file_size_contract` |
+| ログ | `/Users/biwakonbu/github/tmp/i103/red.log` (`RUNEXIT=101`) |
+| 当該ファイル | 937 行 / `#[test] #[ignore]` 7 件 |
+| 同 fragment dir の他 18 件 | 最大 792 行 (`part_011.rs`)、他はすべて 761 行以下 |
+
+#### 出所
+
+`4f6dbee2` (`test: probe test の主題 assertion を実質化する (I-82 12/13, I-85 完了)`)。
+`docs/adr/decisions-probe-subject-unchecked.md:497` の裁定 7 で `part_010.rs` の 7 件へ
+主題 assertion を足したときに 800 行を越えた。**行数契約を確認せずに commit している。**
+
+#### なぜ台帳に無かったか
+
+`rust_file_size_contract` は `#[ignore]` ではないので `cargo test` を回せば必ず落ちる。
+にもかかわらず気付かれなかったのは、`4f6dbee2` 以降の検証がすべて
+**focused な `--exact` 実行か `#[ignore]` lane** だったためである。
+`ignored-lane-expected-failures.txt` は `--ignored` 側の台帳なので、この赤は原理的に載らない。
+
+**所見**: 非 ignored の赤を拾う経路が、この作業期間中は実質的に無かった。
+`bash scripts/audit_docs.sh` も docs の整合しか見ておらず、workspace の test 結果は見ていない。
+
+#### allowlist へ足すことはしない
+
+`rust_file_size_contract.rs:1-21` の doc コメントが逐語で
+「**allowlist への追加は ADR を要求する。** 単調減少だけが許される」と定めている。
+937 行のファイルを 1 件足せば、この list は単調減少ではなくなる。
+**分割で片付ける。**
+
+#### lane への影響は無い
+
+分割しても **7 件の test 名は 1 つも変わらない**。したがって AGENTS.md の
+「test を rename したらその module を測り直す」規則は発火せず、
+`ignored-lane-expected-failures.txt` の行も 1 つも動かない。
+`SWEEP-LANE-RERUN-01` を待つ必要がない、という点で `I-102` とは事情が違う。
+
+#### 解決 (2026-08-28)
+
+937 行を 2 つへ割った。**境界は主題で選んだ** — 前半は実 module / minimal path 系の
+build-compile progress probe、後半は `*_vector_push_shape` 三兄弟
+(minimal / padded / large_ftable) である。
+
+| ファイル | 行数 | `#[test]` |
+|---|---|---|
+| `part_010.rs` | 476 | 4 |
+| `part_010b.rs` (新規) | 460 | 3 |
+
+476 + 460 = 936。元の 937 との差 1 は、前半の末尾に残った空行を落とした分である。
+
+**`part_011..018` を繰り上げなかった理由**を書いておく。churn の多寡ではない。
+`I-85` 本文と `docs/adr/decisions-probe-subject-unchecked.md` は `part_011.rs` を
+名指しで参照しており、**繰り上げるとその参照が別の中身を指す**。行番号が陳腐化するより悪い。
+`part_010b.rs` は既存ファイルの identity を 1 つも動かさない。
+
+fragment 契約 (`selfhost_bootstrap_four_layer_file_size.rs`) は
+`read_dir` の byte sort 順と親の `include!` 順の一致を要求するが、
+`part_010.rs` < `part_010b.rs` < `part_011.rs` (`.` = 0x2E < `b`、index 7 で `0` < `1`) なので
+manifest へ 1 行足すだけで順序は保たれる。
+
+| 検証 | 結果 |
+|---|---|
+| `cargo test -p lsharp-wasm --test rust_file_size_contract` | `2 passed; 0 failed` (`RUNEXIT=0`)。RED は `/Users/biwakonbu/github/tmp/i103/red.log` (`RUNEXIT=101`) |
+| `cargo test -p lsharp-wasm --test e2e four_layer_file_size` | `1 passed` + `3082 filtered out` = **3083**。分割前と同数 |
+| `cargo test -p lsharp-wasm --test e2e ops03c` | `1 passed`。heavy gate の `#[ignore]` 検査は緑のまま |
+
+`include!` は mid-file の splice なので新 fragment に `//!` は置いていない
+(既存 fragment と同じく bare で始める)。
+
+#### 隣接所見 (スコープ外)
+
+- `selfhost_bootstrap_four_layer` は `include!` だけの親なので、`I-11` の follow-up が
+  指摘した **ops03c prefix モードの無言無効化**は分割前から効いていない。
+  今回の分割で悪化はしていないが、**改善もしていない**。
+- 2 つの ADR が `part_010.rs` を名指ししていたので追記を入れた
+  (`decisions-probe-subject-unchecked.md` の裁定 7、
+  `decisions-selfhost-eleven-import-abi-harness.md` の `Linker` 却下理由)。
+  後者の「6 箇所」は現在 `part_010.rs` 6 / `part_010b.rs` 6 で、結論は変わらない。
+- **非 ignored の赤を拾う定期経路がまだ無い。** 本件は目視で見つかった。
+  `scripts/audit_docs.sh` は docs の整合しか見ない。
+
+- **引き取り先**: 無し (`TODO.md` の `RUST-FILE-SIZE-PART010-01` は完了につき削除した)
+- **関連**: `I-01` (file-size gate の元)、`I-85` (`part_010.rs` の 7 件を足した slice)、
+  `I-82` (assertion 実質化)。裁定は `docs/adr/decisions-probe-subject-unchecked.md`。

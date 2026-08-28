@@ -107,6 +107,7 @@ commit message は「通常の CompilerMode build と diagnostic build の impor
 - **host 側を name-based の `Linker` instantiation へ寄せる。**
   却下 (ただし将来の選択肢としては残す)。位置ずれのクラス全体を消せるのは事実で、
   実際 `part_010.rs` の 6 箇所はこの形を採っているため本件の影響を受けていない。
+  (2026-08-28 に `I-103` で `part_010.rs` / `part_010b.rs` へ分割した。現在は `Linker` 使用が両者 6 箇所ずつで、内訳が変わっただけで結論は変わらない。)
   しかし `Instance::new` の位置一致要求は、**import の順序が compiler と host で
   一致していることの暗黙の検査**でもある。`call 10` を定数で埋めている以上、
   順序ずれは silent な誤 dispatch になる。ここで検査を捨てると、
