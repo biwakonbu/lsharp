@@ -5503,12 +5503,62 @@ opcode 86 は `ir-command-line-args` (`selfhost/src/IR/IR.ls:89`、
 stage1_a の function 1231 と**同一の byte 列**であり、`0x4cbaf` のバイトも `0x7f` = `i64.div_s`。
 上に書いた「同一原因とは断定していない」という留保は、これで解消した。
 
-**まだ決めていないこと。** *なぜ* 書き換えが適用されなかったのかは特定していない。
-`build-function-body-function-standalone` 以外の body builder が何本あり、
-どの条件でどれが選ばれるのかを読んでいない。
-**この読みが済むまで修正方向を決めない** -- 同じ証拠から
-(a) 書き換えを飛ばす builder 経路の欠陥、(b) その mode では `command-line-args` が設計上未対応、
-(c) 経路によらず拒否は診断メッセージであるべき、の 3 通りの修正が導ける。
+#### なぜ書き換えが適用されなかったか (2026-08-28、続けて source 読解で確定)
+
+**「書き換えを取りこぼした」のではない。stage1 compiler の既定 mode は
+そもそも書き換えを行わない別系統の emitter を使っている。**
+
+body builder は 4 本ある (すべて `Backend/Wasm/WasmEmit.ls`)。
+`standalone-ir-instrs` による書き換えを行うのは **`-standalone` の 1 本だけ**である。
+
+| builder | 行 | 書き換え | 経由する section emitter |
+|---|---|---|---|
+| `build-function-body` | `:667` | 無し | `emit-code-section-list` |
+| `build-function-body-function` | `:679` | 無し | `emit-code-section-functions` / `-wasi` / `-wasi-quad-*` |
+| `build-function-body-function-standalone` | `:879` | **有り** (`:883`) | `emit-code-section-wasi-standalone` |
+| `build-function-body-function-progress-debug` | `:1483` | 無し | `emit-code-section-wasi-quad-functions-progress-debug` |
+
+**4 本とも命令 emit の末端は共有している** (`emit-ir-instr-complex-high :2298` ->
+`emit-runtime-ir-instr :2054` -> `-tail :2041` -> `-tail-high :2238` -> `-tail-high-final :2217` ->
+`reject-native-only-wasm-opcode :2212`)。したがって書き換えを行わない 3 本は、生の 86 を
+そのまま共有末端へ流し込む。
+
+経路は次の 1 本に確定した:
+
+```
+App/Main.ls:48        (command-line-arg 2 以降が空 -> 既定 mode)
+  -> compile-file-mode                     App/CompilerMode.ls:6197
+  -> build-wasm-bytes-wasi                 App/CompilerMode.ls:6214
+  -> emit-code-section-wasi-quad-functions-print-string
+  -> build-function-body-function          (書き換え無し)
+  -> ... -> reject-native-only-wasm-opcode (trap)
+```
+
+test は `run_wasm_wasi_with_dir_and_args(stage1, root, &["compiler", <path>])` で
+**引数 2 個**しか渡さない (`selfhost_bootstrap_acceptance/part_001.rs:690-694`)。
+`command-line-arg 2` 以降は空なので `App/Main.ls` の分岐は最下段の `(compile-file-mode)` に落ちる。
+
+**そしてこの拒否は意味論的に正しい。** 非 standalone 側の import section
+`emit-import-section-alloc-print-read-arg-concat-sub-print-string` (`:2006`) は import 11 個で、
+`command-line-arg` (単数形 / opcode 67) は持つが **`command-line-args` (複数形 / opcode 86) を
+持たない**。つまりこの mode には 86 を呼ぶ先が無い。
+一方 `App/Cli.ls` / `App/EmbeddedCli.ls` 自身が compile するときは
+`build-wasm-bytes-wasi-standalone` (import 24 個) を使い、
+事前に `standalone-preview1-first-unsupported-opcode` (`Backend/Wasm/Compiler.ls:2366`) で
+検査する。この検査表 (`:2346`) は **86 を supported として通す** -- standalone 側では
+書き換えが効くので正しい。
+
+**影響範囲は 1 target。** `command-line-args` を使う selfhost module は
+`App/Cli.ls` / `App/EmbeddedCli.ls` / `App/SmokeCli.ls` の 3 本だけで、
+fixed input set の 54 target のうちこの 3 本に該当するのは **`Cli` の 1 件のみ**である
+(`EmbeddedCli` / `SmokeCli` は target 一覧に無い)。
+「`src/App/Cli.ls` を食わせた時点で落ちる」という症状と過不足なく一致する。
+
+**したがって修正方向は (b) 「その mode では設計上未対応」である。** 起票時に想定した
+(a)「書き換えを飛ばす builder 経路の欠陥」ではない。残る選択は
+「stage1 の既定 mode を standalone 側へ寄せるか」「境界を保ったまま拒否を診断に変えるか」で、
+**これは裁定が要るので ADR で決める** (`TODO.md` の `CLI-SELFFEED-DIVZERO-01`)。
+前者は 54 target 全ての出力 byte を変えるので fixed-point / differential の pin に広く波及する。
 
 #### 同じ根から出る、本件のスコープ外の危険 2 件
 
