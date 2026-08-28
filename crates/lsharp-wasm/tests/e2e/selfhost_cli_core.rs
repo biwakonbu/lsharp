@@ -15886,7 +15886,10 @@ fn run_selfhost_cli_validate_manifest(label: &str, manifest: &str) -> Value {
     let _ = std::fs::remove_dir_all(&dir);
 
     serde_json::from_str(output.stdout.trim()).unwrap_or_else(|err| {
-        panic!("manifest validate は JSON report を返すべき: {err}; exit={}; stdout={:?}", output.exit_code, output.stdout)
+        panic!(
+            "manifest validate は JSON report を返すべき: {err}; exit={}; stdout={:?}",
+            output.exit_code, output.stdout
+        )
     })
 }
 

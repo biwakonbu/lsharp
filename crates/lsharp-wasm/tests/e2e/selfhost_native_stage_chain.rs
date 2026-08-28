@@ -14691,12 +14691,22 @@ fn test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost() {
     // `Types/TypeInfer.ls:487-490` が 0 引数 defn を `Unit -> body` として登録すると
     // 明記しており、`Types/Type.ls:44-45` の unit = `[1, 500]`、`TypeInfer.ls:1693` の
     // 初期 state が diagnostic-count / first-error-code をともに 0 にする。
-    assert_eq!(values.len(), 7, "構造化型の出力が 7 行にならない: {values:?}");
+    assert_eq!(
+        values.len(),
+        7,
+        "構造化型の出力が 7 行にならない: {values:?}"
+    );
     assert_eq!(values[0], 3, "0 引数 defn が Fun 型にならない: {values:?}");
     assert_eq!(values[1], 1, "param が Con 型にならない: {values:?}");
     assert_eq!(values[2], 500, "param が Unit にならない: {values:?}");
-    assert_eq!(values[5], 0, "well-typed な program で診断が出た: {values:?}");
-    assert_eq!(values[6], 0, "well-typed な program で error code が立った: {values:?}");
+    assert_eq!(
+        values[5], 0,
+        "well-typed な program で診断が出た: {values:?}"
+    );
+    assert_eq!(
+        values[6], 0,
+        "well-typed な program で error code が立った: {values:?}"
+    );
     // 戻り型 (slot 3/4) は `Bool` = `[1, 200]` に固定する。`not : Bool -> Bool` は
     // `TypeInferBuiltins.ls:129` / `:182` が型環境へ入れており、Rust 側の `infer` も
     // 同じ入力に `() -> Bool` を返す (`lsharp-types` の
@@ -25702,7 +25712,12 @@ fn test_e2e_selfhost_main_representative_tail_base64_quad_intermediates_are_boun
     // 値が何であれ成立を要求するので、全部 0 でも通る形にはならない。
     let (b0, b1, b2) = (lines[0], lines[1], lines[2]);
     assert_eq!(
-        [b0 / 4, (b0 % 4) * 16 + b1 / 16, (b1 % 16) * 4 + b2 / 64, b2 % 64],
+        [
+            b0 / 4,
+            (b0 % 4) * 16 + b1 / 16,
+            (b1 % 16) * 4 + b2 / 64,
+            b2 % 64
+        ],
         [lines[3], lines[4], lines[5], lines[6]],
         "tail base64 quad の分解が Rust 側の再計算と一致しない: {lines:?}"
     );
