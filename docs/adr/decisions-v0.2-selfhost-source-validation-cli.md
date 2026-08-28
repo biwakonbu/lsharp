@@ -63,7 +63,8 @@ stage0、durable atomic write、CLIの全 fail-closed diagnostic、release prove
 
 2026-08-24 の実測は FAILED。`independent_reviews` は `1` ではなく `0` で、
 `contradicting_observations` は assert 到達前なので未検証。`status=fail` と exit `1` は
-現在も成り立つ。詳細と引き取り先 (`I-75` / `SWEEP-UNCLASSIFIED-01`) は
+現在も成り立つ。詳細と引き取り先 (2026-08-28 に `I-96` / `VALIDATION-REVIEW-GATE-PARITY-01` へ移管。
+移管前は `I-75` / `SWEEP-UNCLASSIFIED-01` が保持していた) は
 [`decisions-v0.2-selfhost-evidence-parser-duplicate.md`](decisions-v0.2-selfhost-evidence-parser-duplicate.md)
 の同名の訂正節に書いた。
 

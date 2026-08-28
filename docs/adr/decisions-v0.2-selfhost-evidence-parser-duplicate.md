@@ -51,6 +51,13 @@ failure boundary を曖昧にし、後続の manifest/validation へ誤った ev
 引き取っている。診断が付くまで、この Evidence 行を「正しい値」へ書き換えることはできない。
 書き換えれば、まだ分かっていないことを分かったことにしてしまう。
 
+**追記 (2026-08-28): 診断が付き、引き取り先が移った。** 原因は独立 review gate の
+`outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播していないことで、
+`ISSUES.md` の `I-96` と `TODO.md` の `VALIDATION-REVIEW-GATE-PARITY-01` が持つ。
+`I-75` は保持 issue としての役目を終えて `resolved` になり、`SWEEP-UNCLASSIFIED-01` は削除した。
+**Evidence 行の実測値更新は `VALIDATION-REVIEW-GATE-PARITY-01` の受入条件 (e) が持つ**ので、
+ここではまだ書き換えない。
+
 #### 追記 (2026-08-28): 原因が付いた
 
 上の段落が置いた条件 (「診断が付くまで書き換えない」) が満たされたので追記する。

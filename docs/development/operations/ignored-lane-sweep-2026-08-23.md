@@ -151,6 +151,12 @@ exit code で区別できなくなる。台帳は *修正しないと決めた�
 | `check` の型名 pin | 3 | `selfhost_cli_core` の型名 pin。`I-45` の更新漏れが**さらに 3 本**見つかった。**2026-08-27 に 5 本まとめて解決** (`decisions-selfhost-zero-arity-defn-type.md` の「7〜11 本目」節)。台帳からも 5 行削除済み |
 | `REPL-TYPE-TAG-01` | 1 | `selfhost_cli_core::test_e2e_selfhost_cli_repl_core` のアドレス印字 |
 
+**`SWEEP-UNCLASSIFIED-01` (`I-75`) の 19 件は 2026-08-28 に全数の引き取り先が決まった。**
+移管先は `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` / `I-93`〜`I-100`。
+`I-75` は `resolved`、`SWEEP-UNCLASSIFIED-01` は `TODO.md` から削除し、
+lane 再計測だけを `SWEEP-LANE-RERUN-01` が引き継いだ。
+**19 件が直ったという意味ではない** -- 移管先はいずれも open である。
+
 **cluster が大きいことは同一原因の証拠ではない。** 72 件が 3 offset に収束するのは
 強い信号だが、原因が 1 つだと決めた瞬間に「1 本直して全部緑」を期待して
 検証を 1 本で打ち切る誘惑が生まれる。各 TODO 項目の受入条件でこれを禁じてある。

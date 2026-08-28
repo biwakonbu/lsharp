@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 1 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 10 件を `I-93`〜`I-99` へ移管。残る 1 件は self-feed compile の OOB trap |
+| [I-75](#i-75) | sweep で露出した未分類の赤 (全 19 件を移管し終えた) | 中 | resolved | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 11 件を `I-93`〜`I-100` へ移管。**保持 issue としての役目を終えたので resolved。個々の原因は移管先が持つ** |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -231,6 +231,7 @@
 | [I-97](#i-97) | 修飾なし `(import M)` が check の型環境へ unqualified 名を入れないので cross-module 参照が undefined symbol になる。Rust canonical / selfhost codegen とは規則が違う | 中 | open | `I-75` から移管 (2026-08-28)。**実装と test のどちらが正かは本 issue では裁定しない**。3 実装が 2 通りの規則を持っている |
 | [I-98](#i-98) | native/selfhost parity test の harness が Fn 型のスロット 1 を印字しており、backend 間で heap address を比較している | 中 | open | `I-75` から移管 (2026-08-28)。`I-45` の契約変更 (`914bd9f1`) が test を Con 型から Fn 型へ動かした取り残し。**構造上必ず赤くなる** |
 | [I-99](#i-99) | `byte-at-or-zero` の bound が vector 長ではなく caller の `end` なので、陳腐化した絶対 offset 定数がそのまま OOB read になる | 中 | open | `I-75` から移管 (2026-08-28)。同 commit 生まれの兄弟 test が offset を実測から導いていて緑なのが対照実験 |
+| [I-100](#i-100) | `src/App/Main.ls` の二重 self-compile が `__alloc` の中で OOB trap する。`memory.grow` 失敗ではないので heap 枯渇ではない | 中 | open | `I-75` から移管 (2026-08-28)。**backtrace frame 0 が `__alloc` 自身**で、trap 種別が capacity guard の `unreachable` ではない。原因は未確定で予測を事前登録した |
 
 ### ドキュメント (DOC)
 
@@ -5181,12 +5182,13 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 1 件
+### I-75: sweep で露出した未分類の赤 (全 19 件を移管し終えた)
 
-- **影響度**: 中 / **状態**: open
+- **影響度**: 中 / **状態**: resolved
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **1 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらなかった分。
+  **起票時 19 件はすべて移管を終えた (残り 0 件)**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
   さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
@@ -5197,14 +5199,14 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `validate-source-json` の `independent_reviews` 1 件を `I-96` へ、
   `check` の import 可視性 1 件を `I-97` へ、
   native/selfhost parity の型印字 1 件を `I-98` へ、
-  base64 tail slice の OOB trap 1 件を `I-99` へ移管した)。
+  base64 tail slice の OOB trap 1 件を `I-99` へ、
+  self-feed compile の `__alloc` 内 OOB trap 1 件を `I-100` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
 
-  | module | 件数 | 実測した症状 |
-  |---|---|---|
-  | `selfhost_cli_core` | 1 | self-feed compile の OOB trap 1 |
+  **module 別の残件表は空になった。** 最後まで残った
+  `selfhost_cli_core::..._direct_selfhost_main_compile_is_deterministic` は `I-100` が持つ。
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
   台帳を数え直した実測は 12 で、移管後の合計 15 と一致した (2026-08-27 前半)。
@@ -5294,14 +5296,24 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   1 件に原因が付いた。** 直前の bullet で「trap 種別が同じことは同一原因の証拠ではない」と
   書いたが、**実際に別原因だった**。こちらは harness helper の bound 取り違えで、
   `direct_selfhost_main_compile_is_deterministic` の self-feed compile とは関係が無い。詳細は `I-99`。
-  **残るは `selfhost_cli_core::..._direct_selfhost_main_compile_is_deterministic` 1 件だけである。**
+  **同日 7 件目の分類パスで最後の 1 件
+  (`..._direct_selfhost_main_compile_is_deterministic`) を `I-100` へ移管した (1 -> 0)。**
+  sweep ログの backtrace を読み直したところ **frame 0 が `__alloc` 自身**で、
+  trap 種別が capacity guard の `unreachable` ではなかった。
+  **本 issue が最初に立てていた「規模による heap 枯渇」という読みは、
+  この 1 点だけで否定された。**
 
-- **本 issue は保持であって診断ではない。** 残り 2 件それぞれの原因が付いた時点で
-  該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
+- **`resolved` の意味**: 本 issue は保持 (バケツ) であって診断ではないので、
+  **全 19 件の引き取り先が決まった時点で役目が終わる**。
+  **個々の赤が直ったという意味ではない。**
+  移管先 11 件 (`I-93`〜`I-100` ほか) はいずれも open で、台帳の行も残っている。
+  台帳から `引き取り先: I-75` の行は 0 になった。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
   `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)、
-  `I-93` / `I-94` / `I-95` / `I-96` / `I-97` / `I-98` / `I-99` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
-  引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
+  `I-93` / `I-94` / `I-95` / `I-96` / `I-97` / `I-98` / `I-99` / `I-100`
+  (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
+  **引き取り先の `TODO.md` 項目 `SWEEP-UNCLASSIFIED-01` は移管完了に伴い削除した。**
+  lane 再計測だけが残っており、それは `SWEEP-LANE-RERUN-01` が持つ。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
 
@@ -6713,8 +6725,8 @@ tag 3 の layout は `make-type-fun` (`Type.ls:51-67`) が作る `[3, param-ty, 
 **スロット 1 は名前ハッシュではなく引数型オブジェクトそのもの**である。
 印字されているのは object handle であり、これは heap 上の位置に依存する。
 
-実測値の bit 63 が両方立っている。`0x8000_0000_000A_36A0` (offset 669,600) と
-`0x8000_0000_000F_B0F8` (offset 1,028,408)。**backend が違えば heap 配置が違うので、
+実測値の bit 63 が両方立っている。`0x8000_0000_000A_37A0` (offset 669,600) と
+`0x8000_0000_000F_B138` (offset 1,028,408)。**backend が違えば heap 配置が違うので、
 この 2 値が一致することはない。**
 
 **これは実装の欠陥ではなく、成立しない assertion である。** `I-84` が扱った
@@ -6870,3 +6882,162 @@ let end = start + 48;
 - **引き取り先**: `TODO.md` の `NATIVE-TAIL-OFFSET-PIN-01`
 - **関連**: `I-75` (発見経路)、`I-13` (native heap に bounds check が無い)、
   `I-84` (「構造上必ず赤くなる test」の先例)、`I-98` (同じ分類パスで出た別種の test 側欠陥)。
+
+<a id="i-100"></a>
+### I-100: `src/App/Main.ls` の二重 self-compile が `__alloc` の中で OOB trap する (`memory.grow` 失敗ではない)
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-24 の `#[ignore]` 全量 sweep (`I-64`)。
+  2026-08-28 の分類パス (cargo 不使用、sweep ログの backtrace 読解のみ) で `I-75` から移管
+- **内容**: `selfhost_cli_core.rs:4399`
+  `test_e2e_selfhost_cli_direct_selfhost_main_compile_is_deterministic` が
+  `compile-inline-file-state "src/App/Main.ls" 7` を **2 回**呼び、
+  両方の結果を生かしたまま wasm section を組み立てて 61 行を印字する harness である。
+  実行は `support.rs:143` の `compile_and_run_with_dir(...).unwrap()` で panic する。
+
+  実測 (`/Users/biwakonbu/github/tmp/i64/mod-selfhost_cli_core.log:722`):
+
+  ```
+  実行に失敗: error while executing at wasm backtrace:
+      0: 0xa5db  - <unknown>!<wasm function 10>
+      1: 0x9472e - <unknown>!<wasm function 2198>
+      ...
+     34: 0x15c5e3 - <unknown>!<wasm function 4663>: wasm trap: out of bounds memory access
+  ```
+
+### frame 0 が `__alloc` である
+
+`wasi.rs:186-196` は `WASI_IMPORT_COUNT = 9` で、
+`CAPACITY_FAILURE_FUNCTION_INDICES[0] = WASI_IMPORT_COUNT + 1` を `__alloc` と定義している。
+**backtrace の frame 0 `<wasm function 10>` はこの `__alloc` そのものである。**
+残る frame 1〜34 の index は 2198〜4663 で、user 関数の開始 `WASI_IMPORT_COUNT + 18 = 27`
+より上なのですべて user 関数である。
+
+**したがって trap は `__alloc` の内部で起きている。**
+
+### `memory.grow` の失敗ではない
+
+`__alloc` は `memory.grow` が `-1` を返したとき **`unreachable`** を出す
+(`allocator.rs:165-170` の bump 経路、`:238-243` の object table 倍増経路)。
+観測された trap は `out of bounds memory access` であって `unreachable` ではない。
+
+**よって grow は失敗していない。linear memory の容量上限には当たっていない。**
+
+**この 1 点で「規模が大きすぎて heap が枯れた」という読みは否定される。**
+`I-75` が本件を保持していた間、規模 (下記の 210 倍) を根拠に枯渇を疑っていたが、
+**trap 種別だけで消える仮説だった**。
+
+### `__alloc` が memory に触る箇所は 3 つしかない
+
+bump 経路は global 演算と `memory.grow` しかせず、**memory に一切触らない**ので除外できる。
+
+| 候補 | 位置 | address の出どころ |
+|---|---|---|
+| (a) oversize class の first-fit 走査 | `allocator.rs:77` の `I32Load(mem32(4))`、`:88` / `:93` の `I32Load(mem32(0))` | **free-list に積まれた過去の object address** (`local5`) |
+| (b) object table 倍増の `MemoryCopy` | `allocator.rs:246` | `object_table_base` と `MemorySize` から算出 |
+| (c) object table slot への 4 つの `I32Store` | `allocator.rs:270-281` | `object_table_base + object_count * 16` |
+
+### 事前登録した予測 (**測定前に書く**)
+
+**本命は (a) である。** 根拠は消去法ではなく非対称性である --
+(b) と (c) の address は `object_table_base` / `object_count` / `MemorySize` という
+**allocator 自身が管理する値だけ**から作られるのに対し、
+**(a) だけが allocator の外で壊されうる値 (free-list へ積まれた過去の address) を
+pointer として再走査する**。
+
+判別方法: oversize class の first-fit 走査を一時的に無効化した**対照 build** で
+本 test の赤が消えるかを見る。**消えれば (a)、消えなければ (b) / (c)。**
+patch は測定スクリプト内で適用し、終了時に必ず逆適用して tracked diff 空を事後確認する。
+
+**結果を見てから予測を書き直さない。** 外れた場合は外れたと書く。
+
+### stale pointer では説明が付かない
+
+wasm の linear memory は**縮まない**。したがって一度 grow した領域内であれば、
+解放済み・移動済みの address を読んでも trap せず garbage が返るだけである。
+**OOB になるには「まだ一度も grow していない領域より外」の address が要る。**
+すなわち use-after-free ではなく、
+**計算で作られた address か、pointer でない値を pointer として使った address**である。
+
+### 対照実験 -- 同型 harness 4 件は緑。ただし「入力だけが違う」ではない
+
+`compile-inline-file-state` は本ファイルに **6 コピー**ある (`:573` / `:2239` / `:2423` /
+`:2695` (no-import-scan 版) / `:2971` / `:4559`)。赤は `:4559` の 1 つだけである。
+
+| test | 行 | 入力 | 台帳 |
+|---|---:|---|---|
+| `..._direct_multifile_compile_is_deterministic` | 2095 | 合成 fixture `src/Main.ls` (約 150 byte) | 0 行 (緑) |
+| `..._direct_module_resolver_compile_is_deterministic` | 2294 | `src/App/ModuleResolver.ls` | 0 行 (緑) |
+| `..._direct_module_resolver_full_inline_without_import_scan_is_deterministic` | 2680 | 同上 (import scan 無し) | 0 行 (緑) |
+| `..._direct_module_resolver_full_inline_compile_has_no_mismatch` | 2880 | 同上 | 0 行 (緑) |
+| `..._direct_selfhost_main_compile_is_deterministic` | **4399** | **`src/App/Main.ls`** | **赤** |
+
+**「入力だけが違う」とは書けない。** 最も近い `:2423` (test は `:2294`) と `:4559` を
+実際に diff すると、差は 3 点ある:
+
+1. 入力 path (`src/App/ModuleResolver.ls` vs `src/App/Main.ls`)
+2. 返す 3 番目の要素 (`program` vs `all-pairs`)
+3. pair 構築の builtin (`vector-push` vs `push-object-vector`。
+   `:4557` の `make-functions-data-pair` が後者を使う)
+
+3 は **GC が追う object vector かどうかが変わる**ので、
+(a) の予測に対して無関係とは言い切れない。
+**したがってこの対照は絞り込みはするが、分離はしない。**
+
+### 規模の実測 (交絡しており本 issue では分離しない)
+
+`(import ...)` を推移閉包で辿って測った (cargo 不使用):
+
+| entry | module 数 | byte | 行 |
+|---|---:|---:|---:|
+| `selfhost/src/App/Main.ls` | **32** | **2,520,511** | **56,491** |
+| `selfhost/src/App/ModuleResolver.ls` | 1 | 12,043 | 229 |
+
+約 210 倍である。ただし **32 module には 229 行の import 無し module が一度も通らない
+構文・機能が含まれる**ので、**規模と機能被覆は交絡している**。
+ソース読解では分離できないため、**本 issue では規模を原因として採らない**。
+
+### 副次的な所見 -- classifier がこの経路に載っていない
+
+`compile_and_run_with_dir` (`support.rs:134-144`) は
+`run_wasm_wasi_with_dir(...).unwrap()` で終わっており、
+`classify_wasi_runtime_failure` (`wasi_runner.rs:216`) を通らない
+(test 側の唯一の呼び出し元は `support.rs:293`)。
+**したがってこの経路では `LS4002` / `LS4003` は原理的に出ない。**
+
+**ただし本件では classifier が走っていたとしても分類しなかった。**
+`classify_wasi_runtime_failure` は `error.contains("unreachable")` を要求するが、
+観測された trap は OOB だからである。
+**2 つは両立する事実で、どちらも他方を弱めない** --
+「classifier が載っていない」は経路の欠落、「分類しない」は本件の性質である。
+**別 issue に切るかは本 issue では裁定しない** (`I-79` と同じ帯)。
+
+### `I-78` とは別物である
+
+| | `I-78` | 本件 |
+|---|---|---|
+| module | `selfhost_bootstrap_acceptance` | `selfhost_cli_core` |
+| 入力 | `src/App/Cli.ls` | `src/App/Main.ls` |
+| trap | `integer divide by zero` | `out of bounds memory access` |
+| host | stage1 compiler **wasm** を回す | inline harness を直接コンパイルして回す |
+
+**束ねない。** 台帳の旧注記「self-feed compile の trap という点で `I-78` と同じ帯」は
+発見当時の粗い括りで、frame 0 が `__alloc` と判った今は根拠にならない。
+
+### 未確認 (書いておかないと後で「調べた」と誤読される)
+
+- **(a) / (b) / (c) の判別は未測定。** 上の予測は事前登録であって結果ではない
+- **native code offset `0xa5db` から 3 候補への写像は取っていない。**
+  wasmtime の backtrace offset は **compile 後の native code image** のもので、
+  wasm binary 内の offset ではないため、ログだけでは位置が特定できない
+- **run-to-run で再現するかは 1 回しか観測していない。** allocator の状態依存なら
+  非決定な可能性がある
+- **`(vector-length code)` 相当の heap 使用量は測っていない。** 枯渇は否定できたが、
+  free-list がどれだけ育つかは未知である
+- **`I-13` (native heap に回収機構と bounds check が無い) とは backend が違う。**
+  本件は wasm backend の `__alloc` である
+
+- **引き取り先**: `TODO.md` の `CLI-SELFFEED-OOB-01`
+- **関連**: `I-75` (発見経路)、`I-78` (別物であることを上表で示した)、
+  `I-79` (harness が診断情報を落とす帯)、`I-14` / `I-74` (GC root 検査の帯)、
+  `I-13` (別 backend の heap 安全性)。

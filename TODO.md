@@ -3049,7 +3049,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   明文化する」を採用 (`docs/adr/decisions-lsp-position-origin.md`)、(c) は期待値 2 件を wire へ是正。
   focused 3 本は緑 (`RUNEXIT=0`)。
   **残るのは lane 完走のみ。** `selfhost_cli_core` を 1 本回して台帳 2 行を落とすところまでが
-  completion boundary。**この lane は `SWEEP-UNCLASSIFIED-01` と束ねる** (項目ごとに lane を
+  completion boundary。**この lane は `SWEEP-LANE-RERUN-01` と束ねる** (項目ごとに lane を
   回さない)。lane 後の宣言数は 381 -> **382** になる (pin test 1 本増)。
 
 - [ ] `ROOT-IMBALANCED-HELPER-01` verifier が非 `main` helper を拒否する件を判別する — Issue `I-74`。
@@ -3069,47 +3069,50 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 1 件に原因を付ける — Issue `I-75`。
-  新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
-  `REPL-TYPE-TAG-01` の
-  どれにも収まらなかった分。症状が 1 件ずつ違う。
-  内訳は `ignored-lane-expected-failures.txt` の `引き取り先: I-75` 行が正本。
-  起票時 19 件のうち 4 件は 2026-08-27 の再測定で `I-72` / `I-78` / `I-80` へ移管済み。
-  **さらに `..._full_inline_mismatch_probe` 1 件を `I-84` へ移管した (15 → 14)。**
-  この 1 件は「原因未診断」ではなく**構造上必ず赤くなる診断ダンプ**で、分類そのものが誤っていた。
-  **2026-08-27 の分類パス (cargo 不使用、sweep ログの読み直しのみ) で 14 件すべての
-  失敗出力を台帳へ書き込み、うち 3 件を移管した (14 → 11)** —
-  LSP Position の origin ずれ 2 件を `I-90` へ、`..._check_reports_invalid_canonical_case` の
-  型名 `Fn` vs `Bool` を `I-76` へ。
-  **2026-08-28 の分類パス (cargo 不使用、残留 temp dir の実測のみ) で `main-with-args` 系
-  5 件を移管した (11 -> 6)** — `-o` の出力契約 2 件を `I-93` へ、component target の
-  capability boundary 3 件を `I-94` へ。出所の commit は同じだが症状も直し方も別なので
-  1 件にまとめなかった。
-  **同日 2 件目の分類パスで `..._formatter_format_program_module_decl` 1 件を `I-95` へ移管した
-  (6 -> 5)。** module-decl の vector layout に span が中間挿入されたのに count 式が
-  据え置かれている件で、formatter の欠陥ではない。
-  **同日 3 件目の分類パスで `..._validate_source_json_reports_contradicting_evidence` 1 件を
-  `I-96` へ移管した (5 -> 4)。** 独立 review gate の `outcome=pass` 条件が selfhost 3 経路の
-  1 つにしか伝播していない件。**ここだけ実装が正で test の期待値が陳腐化している側**なので、
-  他の移管先と同じ扱いにしない。
-  **同日 4 件目の分類パスで `..._check_file_resolves_imported_definition` 1 件を `I-97` へ
-  移管した (4 -> 3)。** 修飾なし `(import M)` が check の型環境へ unqualified 名を入れない件。
-  **実装と test のどちらが正かは決まっていない**ので、そこも含めて `I-97` が引き取る。
-  **同日 5 件目の分類パスで `..._native_typeinfer_program_apply_matches_selfhost` 1 件を
-  `I-98` へ移管した (3 -> 2)。** harness が Fn 型のスロット 1 (= heap address) を印字しており、
-  backend 間で一致しようがない。**残る 2 件はどちらも OOB trap だが、形が同じことは
-  同一原因の証拠ではない**ので別々に診る。
-  **同日 6 件目の分類パスで `..._base64_tail_slice_stays_decodable` 1 件を `I-99` へ
-  移管した (2 -> 1)。** harness helper の bound が vector 長ではなく caller の `end` で、
-  直書きの絶対 offset 10174680 が陳腐化して OOB read になっていた。
-  **直前に留保した「trap 種別が同じでも同一原因とは限らない」が実際に当たった** --
-  もう 1 件の self-feed compile とは無関係だった。
-  **残るは `selfhost_cli_core::..._direct_selfhost_main_compile_is_deterministic` 1 件。**
-  残る 5 件は**症状は台帳に載ったが原因は未確定**である。
-  受入条件: 残る 5 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
-  `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
-  **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
-  **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
+- [ ] `CLI-SELFFEED-OOB-01` `src/App/Main.ls` の二重 self-compile が `__alloc` の中で
+  OOB trap する件を判別する — Issue `I-100`。
+  `selfhost_cli_core.rs:4399`。backtrace frame 0 が `<wasm function 10>` =
+  `wasi.rs:193` が定義する `__alloc` で、trap 種別は capacity guard の `unreachable` ではなく
+  `out of bounds memory access`。**`memory.grow` は失敗していないので heap 枯渇ではない。**
+  受入条件:
+  (a) **`I-100` が事前登録した予測を、書き換えずに測る。** 本命は oversize class の
+      first-fit 走査 (`allocator.rs:77` / `:88` / `:93`) で、判別は first-fit を
+      一時無効化した対照 build。**赤が消えれば (a)、消えなければ (b) / (c)。**
+      patch は測定スクリプト内で適用し、終了時に必ず逆適用して tracked diff 空を事後確認する
+  (b) **予測が外れたら外れたと書く。** `I-100` の予測節は書き換えず、結果を追記する形にする
+  (c) `0xa5db` を `__alloc` 内の 3 候補へ写像する手段があるなら使う。
+      wasmtime の backtrace offset は **native code image** のものなので、
+      **wasm binary の offset として読まない**
+  (d) 同型 harness 4 件 (`:2095` / `:2294` / `:2680` / `:2880`) との差が入力 path だけでは
+      ないこと (返す 3 番目の要素、`vector-push` vs `push-object-vector`) を踏まえ、
+      必要なら**差を潰した対照 harness**を作る。現状の 4 件は絞り込むが分離しない
+  (e) 規模 (32 module / 2,520,511 byte) と機能被覆が交絡している件を、分離できたか
+      できなかったかで明示する。**分離できなければ「できなかった」と書く**
+  **含めない範囲**: `I-78` の `integer divide by zero` (別 module / 別入力 / 別 trap なので束ねない)。
+  `compile_and_run_with_dir` が `classify_wasi_runtime_failure` を通らない件
+  (`I-100` の副次所見。別 issue に切るかは未裁定)。`I-13` の native backend 側 heap 安全性。
+  lane 再計測は `selfhost_cli_core` なので `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。
+  **cargo が要る。**
+
+- [ ] `SWEEP-LANE-RERUN-01` `#[ignore]` lane を 1 本回して、溜まった台帳差分をまとめて確定させる。
+  **本項目は原因診断を持たない。** 診断は束ね元の各項目が持ち、ここは lane の運用条件だけを持つ。
+  `I-75` が resolved になって `SWEEP-UNCLASSIFIED-01` を削除したため、その束ね役を引き継いだもの。
+  束ねる項目: `LSP-POSITION-ORIGIN-01` (`I-90`) / `CHECK-IMPORT-VISIBILITY-01` (`I-97`) /
+  `VALIDATION-REVIEW-GATE-PARITY-01` (`I-96`) / `NATIVE-TYPEINFER-PARITY-PIN-01` (`I-98`) /
+  `NATIVE-TAIL-OFFSET-PIN-01` (`I-99`) / `CLI-SELFFEED-OOB-01` (`I-100`)。
+  対象 module: `selfhost_cli_core` / `selfhost_cli_actual_main_args` / `selfhost_native_stage_chain`。
+  受入条件:
+  (a) **partial lane の規則に従う** (`AGENTS.md`)。module 名で部分台帳を抽出し、
+      **台帳を編集したら抽出をやり直す**
+  (b) `selfhost_cli_core` の宣言数は 381 -> **382** で判定する (`I-90` の pin test 1 本増)。
+      **test を rename した module は必ず再計測する**
+  (c) lane は必ず切り離して回す (`nohup` + `os.setsid()`)。
+      **lane 実行中に同一マシンで `cargo` を走らせない**
+  (d) `progress.txt` の `LANE-COMPLETE` は完走の証拠にならない。`MODEXIT` と
+      `scripts/compare_ignored_lane.py` の判定だけを根拠にする
+  (e) **緑になった行は台帳から削除する。** `LSP-POSITION-ORIGIN-01` の
+      `ignored-lane-expected-failures.txt:402-403` が該当する見込み
+  **含めない範囲**: 束ね元の実装修正そのもの。**cargo が要る。**
 
 - [ ] `NATIVE-TAIL-OFFSET-PIN-01` representative native code の tail を直書き offset で
   切るのをやめる — Issue `I-99`。
@@ -3133,7 +3136,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
       `I-99` は `print-base64-chunks` / `write-base64-chunks` の 2 経路しか見ていない
   **含めない範囲**: `ci-artifacts/**/seed.ls` に焼き込まれた同一 helper (生成物なので直接直さない)。
   native backend で同じ read をしたときの挙動 (`I-13` の範疇)。
-  lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。
+  lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。
   **cargo が要る。**
 
 - [ ] `NATIVE-TYPEINFER-PARITY-PIN-01` native/selfhost parity harness の型印字を
@@ -3155,7 +3158,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `repl-session-eval` の tag 分岐 (`REPL-TYPE-TAG-01` / `I-69` が持つ)。
   **束ねない** — 実装を直しても本 test の harness は address を印字したままである。
   `I-45` の契約そのものも動かさない (`decisions-selfhost-zero-arity-defn-type.md` が正本)。
-  lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。
+  lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。
   **cargo が要る。**
 
 - [ ] `CHECK-IMPORT-VISIBILITY-01` 修飾なし `(import M)` の可視性契約を裁定し、
@@ -3176,7 +3179,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
       本 slice で確認できたのは修飾なし import の 1 点だけで、他の相違点は探していない
   **含めない範囲**: `:as` / `:only` / `:open` を組み合わせた場合の細部、
   record / ADT / type alias の可視性 (`I-97` はいずれも見ていない)。
-  lane 再計測は `selfhost_cli_core` なので `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。
+  lane 再計測は `selfhost_cli_core` なので `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。
   **cargo が要る。**
 
 - [ ] `VALIDATION-REVIEW-GATE-PARITY-01` 独立 review gate の `outcome=pass` 条件を selfhost の
@@ -3206,7 +3209,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: Rust canonical 側 (`crates/lsharp-types`) の実装。既に契約どおりである。
   MCP 経路の parity も見ない (2026-07-29 ADR の Boundary が別に挙げている)。
   lane 再計測は `selfhost_cli_core` と `selfhost_cli_actual_main_args` の 2 module になるので
-  `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。**cargo が要る。**
+  `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。**cargo が要る。**
 
 - [ ] `MODULE-DECL-LAYOUT-01` module-decl の vector layout を 1 つに揃える — Issue `I-95`。
   `56e11ce9` (2026-07-24) が slot 3/4 に `name-start` / `name-end` を中間挿入したのに、
