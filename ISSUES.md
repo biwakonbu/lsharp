@@ -5597,6 +5597,23 @@ test の都合ではない。
 
 上記 2 件は `I-78` の修正と同じ場所を触るので独立 issue には切らず、本エントリで保持する。
 
+3. **書き換えを持たない build entry は 4 つあり、拒否末尾はその 4 つで共有されている**
+   (2026-08-28 に検算で判明。裁定を書いた時点では数えていなかった)。
+   `App/CompilerMode.ls:6214` (既定 mode) / `:6246` (`compile-file-mode-build-progress-debug`、
+   `Main.ls:41` から到達) / `App/PipelineSmoke.ls:42` / `:94`。
+   **既定 mode だけに走査を足して `(/ opcode 0)` を消すと、残り 3 経路が raw 86 を
+   無言で emit する** -- 上の危険 1 と同じ形を、こちらの手で作ることになる。
+   よって裁定の「`(/ opcode 0)` を消す」は撤回し、backstop として残す方針へ変えた
+   (`docs/adr/decisions-selffeed-command-line-args-boundary.md` 追補 1 が正本)。
+4. **selfhost CLI に stderr 経路は無い。** `cli-stderr` (`App/Cli.ls:2291`) の実体は
+   `(print-string (string-concat "error: " msg))` で **stdout に書く**。名前が実態と食い違う。
+   実測の裏付けは `I-75` の harvest で、`--target wasi-component` の 3 件が
+   `stdout="error: wasi-component output requires external component packaging\n"` を返した。
+   加えて `App/CompilerMode.ls` は `App.Cli` を import していない (依存方向は Cli -> CompilerMode の
+   一方向) ため、`compile-file-mode` から既存の診断 helper は呼べない。
+   `compile-file-mode` は exit も持たず `print-wasm-module` の返り値を返すだけである。
+   (`docs/adr/decisions-selffeed-command-line-args-boundary.md` 追補 2 が正本)
+
 - **関連**: `I-75` (分離元)、`I-71` / `I-72` (同じ test 群の別の層)、`I-64` (発見経路)。
   逆アセンブルの手順は
   `docs/development/operations/bootstrap-diff-artifacts.md` の

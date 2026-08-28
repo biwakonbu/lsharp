@@ -116,8 +116,10 @@ emit の前に走査する既存パターンに寄せる。
 
 1. 既定 mode 用の unsupported-opcode 走査を足す。standalone 側と同じく Compiler 層に置き、
    emit の前に走らせる
-2. `reject-native-only-wasm-opcode` の `(/ opcode 0)` を**消す**。走査が先に止めるので、
-   ここまで来ること自体が実装の不整合であり、trap ではなく到達不能として扱う
+2. `reject-native-only-wasm-opcode` の `(/ opcode 0)` は**この slice では消さない**
+   (下記「追補 1」で訂正した。当初は消すと書いていた)。backstop として残し、
+   削除は「書き換えを持たない build entry がすべて走査を持つ」ことを満たした後の
+   follow-up 受入にする
 3. 診断メッセージは既存の `standalone-preview1-capability-boundary-message` とは別立てにする。
    「standalone では対応しているが既定 mode では未対応」という別の境界だからである
 
@@ -132,6 +134,59 @@ emit の前に走査する既存パターンに寄せる。
 - **`read-stdin` (opcode 91) の素通り。** 同じ走査で拾える見込みだが、
   受入条件は本 ADR では立てない (`ISSUES.md` `I-78` に残す)
 
+## 追補 (2026-08-28、決定を書いた直後の検算で判明した 2 件)
+
+**決定を書いた時点では数えていなかったことが 2 つあり、いずれも決定 1〜3 の文言を変える。**
+訂正の経緯を残すため、元の文言を消さずにここに書く。
+
+### 追補 1: 書き換えを持たない build entry は 1 つではなく 4 つある
+
+決定 2 は「走査が先に止めるので到達不能」と書いたが、**走査が守るのは既定 mode だけ**である。
+`(/ opcode 0)` を持つ拒否末尾は 4 builder 共通なので、削除すると残り 3 経路が
+raw 86 を**無言で emit する**。これは `ISSUES.md` `I-78` の「スコープ外の危険」に
+自分で書いた raw 91 素通りと同じ形を、こちらの手で作ることになる。
+
+| 呼び出し元 | builder | 決定 1 の走査が守るか |
+|---|---|---|
+| `App/CompilerMode.ls:6214` (`compile-file-mode` = 既定 mode) | `build-wasm-bytes-wasi` | **守る** |
+| `App/CompilerMode.ls:6246` (`compile-file-mode-build-progress-debug`、`Main.ls:41` から到達) | `build-wasm-bytes-wasi-progress-debug` | 守らない |
+| `App/PipelineSmoke.ls:42` | `build-wasm-bytes-wasi` | 守らない |
+| `App/PipelineSmoke.ls:94` | `build-wasm-bytes-wasi` | 守らない |
+
+したがって決定 2 を「消す」から「**残す**」へ変えた。削除を諦めたのではなく、
+**削除の前提条件 (4 entry すべてが走査を持つ) を受入条件に格上げした**ということである。
+backstop を残す限り、走査の取りこぼしは trap という気付ける形で出る。
+
+### 追補 2: selfhost CLI に stderr 経路は無い。`cli-stderr` は stdout に書く
+
+受入条件に「stderr に出て非 0 終了」と書いたが、**この 2 語はどちらも裏が取れていなかった**。
+
+- `cli-stderr` (`App/Cli.ls:2291`) の実体は `(print-string (string-concat "error: " msg))` で、
+  **stdout に書く**。名前が実態と食い違っている。
+  実測でも裏付けがある -- `I-75` の harvest で `--target wasi-component` を渡した 3 件は
+  `stdout="error: wasi-component output requires external component packaging\n"` を返した
+- `cli-stderr` / `exit-compile-error` は `App/Cli.ls` / `App/EmbeddedCli.ls` / `App/SmokeCli.ls`
+  にしか定義が無い。**`App/CompilerMode.ls` は `App.Cli` を import していない**
+  (依存方向は Cli -> CompilerMode の一方向)。逆流はできないので、
+  `compile-file-mode` から既存の診断 helper は呼べない
+- `compile-file-mode` (`:6197-6224`) は exit を持たず、`print-wasm-module` の返り値を
+  そのまま返すだけである。**非 0 終了がこの経路で成立するかは未確認**
+
+よって決定 3 は「別立ての診断メッセージを用意する」だけでは足りず、
+**それをどの層から、どの stream へ出すか**を実装 slice で決める必要がある。
+既定 mode は wasm binary を stdout へ流す経路なので、診断も同じ stream に載る。
+回収側 (`parse_emitted_wasm_modules`) が stdout を読む以上、
+「wasm が 1 件も取れず、代わりに診断行が読める」が観測可能な形になる。
+
+### 追補 3: gate 文書の記述
+
+`docs/development/planning/completion-criteria.md:27,123` と
+`docs/development/planning/phase11-implementation-plan.md:137` は赤 3 件に
+`[赤: I-78]` 注記を持っており (`I-104` の是正済み)、本 ADR で追加の対応は要らない。
+ただし `phase11-implementation-plan.md:142` の Acceptance 行だけは注記が無く、
+6 本を並べて「pass する」と書いている。**本 ADR を倒しても 3 本は緑にならない**ので、
+この行は実装 slice の doc-GREEN で注記を足す対象として引き継ぐ。
+
 ## Evidence
 
 (実装後に埋める)
@@ -143,7 +198,8 @@ emit の前に走査する既存パターンに寄せる。
 受入条件は次のとおり:
 
 - RED: 既定 mode で `src/App/Cli.ls` を compile したとき、**trap ではなく**
-  診断メッセージが stderr に出て非 0 終了すること
+  診断行が **stdout** に出て、wasm module が 1 件も回収できない形になること。
+  **stderr ではない** -- 追補 2 のとおり selfhost CLI に stderr 経路は無い
 - GREEN: `selfhost_bootstrap_acceptance` の赤 3 件
   (`..._stage_chain_match_cli_module` / `..._stage_chain_match` / `..._stage2_self_feed_fixed_input_set`)
   の失敗メッセージが `wasm trap` から診断文字列へ変わること。

@@ -3071,11 +3071,20 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   拒否を診断に変える」を採用**、案 (i)「既定 mode を standalone builder へ寄せる」を却下した。
   **残る仕事は (c) 実装だけである。** 内訳は 3 つ:
   既定 mode 用の unsupported-opcode 走査を Compiler 層に足す /
-  `reject-native-only-wasm-opcode` の `(/ opcode 0)` を消す /
-  standalone とは別立ての診断メッセージを用意する。
+  `reject-native-only-wasm-opcode` の `(/ opcode 0)` は **backstop として残す** /
+  standalone とは別立ての診断を、**どの層からどの stream へ出すかまで含めて**決める。
+  **ADR 追補 1〜3 (2026-08-28) で当初の内訳を 2 箇所訂正した。** (1) 書き換えを持たない
+  build entry は 4 つあり (`CompilerMode.ls:6214` / `:6246` / `PipelineSmoke.ls:42` / `:94`)、
+  走査が守るのは既定 mode だけなので、`(/ opcode 0)` を消すと残り 3 経路が raw 86 を
+  無言で emit する。削除は「4 entry すべてが走査を持つ」ことを満たした後の follow-up 受入。
+  (2) **selfhost CLI に stderr 経路は無い。** `cli-stderr` (`Cli.ls:2291`) の実体は
+  `print-string` で stdout に書く。かつ `CompilerMode.ls` は `App.Cli` を import していないので
+  既存の診断 helper は呼べず、`compile-file-mode` は exit も持たない。
   **含めない範囲**: 既定 mode に `command-line-args` を実装すること (11 import に 12 本目を
   足す判断で、Rust host 側の runtime 契約も動く)。したがって**本項目を倒しても赤 3 件は
-  緑にならない**。失敗メッセージが `wasm trap` から診断文字列へ変わるところまでが受入条件である。
+  緑にならない**。失敗メッセージが `wasm trap` から診断行へ変わるところまでが受入条件である。
+  併せて `docs/development/planning/phase11-implementation-plan.md:142` の Acceptance 行に
+  `[赤: I-78]` 注記を足す (`:27` `:123` `:137` は `I-104` で是正済み、`:142` だけ残っている)。
   **併せて片付けるもの** (`I-78` に記録した、同じ根から出る危険 2 件):
   生の 91 が末端に届くと trap せず `read-stdin` が `command-line-args` に化ける silent
   miscompile になる件と、書き換えが operand 付け替え (`:721` の `(+ operand 11)`) も
