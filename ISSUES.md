@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 3 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 8 件を `I-93` / `I-94` / `I-95` / `I-96` / `I-97` へ移管。残り 3 件は症状を実測して台帳へ書いた |
+| [I-75](#i-75) | sweep で露出した未分類の赤 2 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 9 件を `I-93` / `I-94` / `I-95` / `I-96` / `I-97` / `I-98` へ移管。残る 2 件はどちらも OOB trap |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -229,6 +229,7 @@
 | [I-95](#i-95) | module-decl の vector layout に span 2 slot が中間挿入されたのに count 式と消費側 20 箇所以上が更新されておらず、3 つの規約が同居している | 中 | open | `I-75` から移管 (2026-08-28)。`56e11ce9` (2026-07-24) が出所。**production 側の欠陥で、test の期待値の問題ではない** |
 | [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播しておらず、赤 1 件と契約違反を pin した緑 1 件が同時に立っている | 中 | open | `I-75` から移管 (2026-08-28)。**今回は実装が正で test の期待値が陳腐化している側**。裁定は 2026-07-29 の ADR で既に済んでいる |
 | [I-97](#i-97) | 修飾なし `(import M)` が check の型環境へ unqualified 名を入れないので cross-module 参照が undefined symbol になる。Rust canonical / selfhost codegen とは規則が違う | 中 | open | `I-75` から移管 (2026-08-28)。**実装と test のどちらが正かは本 issue では裁定しない**。3 実装が 2 通りの規則を持っている |
+| [I-98](#i-98) | native/selfhost parity test の harness が Fn 型のスロット 1 を印字しており、backend 間で heap address を比較している | 中 | open | `I-75` から移管 (2026-08-28)。`I-45` の契約変更 (`914bd9f1`) が test を Con 型から Fn 型へ動かした取り残し。**構造上必ず赤くなる** |
 
 ### ドキュメント (DOC)
 
@@ -5179,12 +5180,12 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 3 件
+### I-75: sweep で露出した未分類の赤 2 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **3 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **2 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
   さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
@@ -5193,7 +5194,8 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   2026-08-28 に `main-with-args` 系 5 件を `I-93` / `I-94` へ、
   formatter の module body 1 件を `I-95` へ、
   `validate-source-json` の `independent_reviews` 1 件を `I-96` へ、
-  `check` の import 可視性 1 件を `I-97` へ移管した)。
+  `check` の import 可視性 1 件を `I-97` へ、
+  native/selfhost parity の型印字 1 件を `I-98` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
@@ -5201,7 +5203,7 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   | module | 件数 | 実測した症状 |
   |---|---|---|
   | `selfhost_cli_core` | 1 | self-feed compile の OOB trap 1 |
-  | `selfhost_native_stage_chain` | 2 | OOB trap 1 / native と selfhost の hash 不一致 1 |
+  | `selfhost_native_stage_chain` | 1 | OOB trap 1 |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
   台帳を数え直した実測は 12 で、移管後の合計 15 と一致した (2026-08-27 前半)。
@@ -5281,11 +5283,17 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   qualified key しか戻さない。詳細は `I-97`。
   **`I-96` と違って、実装と test のどちらが正かは決まっていない。** 根拠が両方向にある。
 
-- **本 issue は保持であって診断ではない。** 残り 3 件それぞれの原因が付いた時点で
+- **2026-08-28 の分類パス (5 件目、cargo 不使用)。`native_typeinfer_program_apply_matches_selfhost`
+  1 件に原因が付いた。** 台帳の注記は「食い違うのは要素 1 の hash 値だけ」だったが、
+  **要素 1 は hash ではなく heap address** であった。詳細は `I-98`。
+  **残る 2 件はどちらも `wasm trap: out of bounds memory access` である。**
+  形が同じことは同一原因の証拠ではないので、引き続き別々に扱う。
+
+- **本 issue は保持であって診断ではない。** 残り 2 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
   `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)、
-  `I-93` / `I-94` / `I-95` / `I-96` / `I-97` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
+  `I-93` / `I-94` / `I-95` / `I-96` / `I-97` / `I-98` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
@@ -6654,3 +6662,100 @@ selfhost 自身の multi-module ソースに `check` を当てたとき undefine
 
 - **引き取り先**: `TODO.md` の `CHECK-IMPORT-VISIBILITY-01`
 - **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
+
+<a id="i-98"></a>
+### I-98: native/selfhost parity test の harness が Fn 型のスロット 1 を印字し、backend 間で heap address を比較している
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-75` の残りを分類する過程。cargo 不使用、source 読解のみ)
+
+**本エントリは `I-75` からの移管分 1 件である。移管前の注記は
+「食い違うのは要素 1 の hash 値だけで、他 3 要素は一致する」だった。
+要素 1 は hash ではない。**
+
+#### 赤の中身
+
+`selfhost_native_stage_chain::test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost`
+(`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:14633`)。
+native backend と Rust-hosted selfhost に同じ L# harness を通し、stdout を突き合わせる。
+harness は 4 行を印字する。
+
+```
+(print (type-tag ty))
+(print (type-name ty))
+(print (infer-program-analysis-diagnostic-count analysis))
+(print (infer-program-analysis-first-error-code analysis))
+```
+
+対象 program は `(defn p [] (not true))`。実測は
+
+| | 値 |
+|---|---|
+| left (native) | `[3, -9223372036854106208, 0, 0]` |
+| right (selfhost) | `[3, -9223372036853747400, 0, 0]` |
+
+**4 要素のうち食い違うのは 2 番目だけである。**
+
+#### 原因
+
+`(defn p [] (not true))` の program 型は `Unit -> Bool` で、`type-tag` は **3** (`type-fun`)。
+これは両 backend で一致している。
+
+`type-name` (`selfhost/src/Types/Type.ls:249`) は `(vector-get ty 1)` である。
+tag 3 の layout は `make-type-fun` (`Type.ls:51-67`) が作る `[3, param-ty, ret-ty]` なので、
+**スロット 1 は名前ハッシュではなく引数型オブジェクトそのもの**である。
+印字されているのは object handle であり、これは heap 上の位置に依存する。
+
+実測値の bit 63 が両方立っている。`0x8000_0000_000A_36A0` (offset 669,600) と
+`0x8000_0000_000F_B0F8` (offset 1,028,408)。**backend が違えば heap 配置が違うので、
+この 2 値が一致することはない。**
+
+**これは実装の欠陥ではなく、成立しない assertion である。** `I-84` が扱った
+「構造上必ず赤くなる test」と同じ class に属する。
+
+#### いつ壊れたか
+
+test は `fa379ccf` (**2026-07-20**) で追加された。契約が動いたのは
+`914bd9f1` (**2026-08-22**、`I-45`、
+[`decisions-selfhost-zero-arity-defn-type.md`](docs/adr/decisions-selfhost-zero-arity-defn-type.md))
+で、0 引数 `defn` を `Unit -> body` として登録するようになった。
+
+**それ以前は `(defn p [] (not true))` の program 型は Con の `Bool` (tag 1) であり、
+`type-name` は名前ハッシュ 200 を返していた。200 は backend に依存しない小整数なので、
+比較は成立していた。** 契約変更が Con を Fun へ動かした時点で、同じ式が address を返すようになった。
+
+**したがって `914bd9f1` の取り残しである。** 同 commit の取り残しは既に 2 群が台帳にある --
+`check` の型名 pin 5 本 (2026-08-27 解決) と `REPL-TYPE-TAG-01` の repl pin 2 本 (`I-69`)。
+**本件はその 3 群目だが、壊れ方が違うので別に扱う。** 前 2 群は「リテラル pin の陳腐化」で
+期待値を書き換えれば済むのに対し、本件は **backend 間比較なので固定値へ書き換えられない**。
+
+#### `I-69` との関係 -- 同じ形だが同じ欠陥ではない
+
+`I-69` は「tag を確かめずに `ty-name` を呼ぶと Fun でスロット 1 が漏れる」ことを
+`repl-session-eval` (`Cli.ls:1463`) について記録している。**読みの形は同一である。**
+
+違うのは所在と影響である。
+
+| | `I-69` (L2) | 本 issue |
+|---|---|---|
+| 呼び出し元 | production (`App/Cli.ls`) | test harness (`selfhost_native_stage_chain.rs:14638` の L# ソース文字列) |
+| user 影響 | あり (`lsharp repl` が壊れた型名を印字する) | **なし** |
+| 直し方 | `render-type-text` と同形の tag 分岐を実装へ入れる | harness を構造比較へ書き換える |
+
+**`REPL-TYPE-TAG-01` に束ねない。** 実装を直しても本 test の harness は
+依然として address を印字するので緑にならない。
+
+#### 未確認として残ること
+
+- **同一 backend 内で値が run ごとに変わるかは本 slice では測っていない。**
+  `I-69` は CLI 経路でそれを実測しているが、本 test については backend **間**で
+  違うことしか示していない。assertion が成立しないと言うにはそれで足りる
+- **`assert_representative_override_main_matches_selfhost` を使う他の test に
+  同型の印字があるかは走査していない。** 1 件見つけたことから全件の不在も存在も導かない
+- **native と selfhost が本当に同じ型を推論しているかは、tag 3 の一致と diagnostics 0 の一致
+  までしか確認できていない。** 引数型・戻り値型の構造は比較されていないので、
+  **この test は今まで一度も型の中身を比較していなかった**とも言える
+
+- **引き取り先**: `TODO.md` の `NATIVE-TYPEINFER-PARITY-PIN-01`
+- **関連**: `I-75` (発見経路)、`I-45` (契約変更の正本)、`I-69` (同じ読みの形、別の所在)、
+  `I-84` (「構造上必ず赤くなる test」の先例)。

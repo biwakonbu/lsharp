@@ -3069,7 +3069,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 3 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 2 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
@@ -3095,11 +3095,37 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **同日 4 件目の分類パスで `..._check_file_resolves_imported_definition` 1 件を `I-97` へ
   移管した (4 -> 3)。** 修飾なし `(import M)` が check の型環境へ unqualified 名を入れない件。
   **実装と test のどちらが正かは決まっていない**ので、そこも含めて `I-97` が引き取る。
+  **同日 5 件目の分類パスで `..._native_typeinfer_program_apply_matches_selfhost` 1 件を
+  `I-98` へ移管した (3 -> 2)。** harness が Fn 型のスロット 1 (= heap address) を印字しており、
+  backend 間で一致しようがない。**残る 2 件はどちらも OOB trap だが、形が同じことは
+  同一原因の証拠ではない**ので別々に診る。
   残る 5 件は**症状は台帳に載ったが原因は未確定**である。
   受入条件: 残る 5 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
+
+- [ ] `NATIVE-TYPEINFER-PARITY-PIN-01` native/selfhost parity harness の型印字を
+  構造比較へ書き換える — Issue `I-98`。
+  `selfhost_native_stage_chain.rs:14638` の harness が `(print (type-name ty))` を
+  Fn 型に対して行っており、印字しているのは引数型オブジェクトの handle (= heap address)。
+  backend 間で一致しようがないので、**実装を何も直さなくても永久に赤である**。
+  受入条件:
+  (a) harness を型の**構造**を印字する形へ書き換える。少なくとも
+      `(type-tag (type-fun-param ty))` / `(type-tag (type-fun-ret ty))` /
+      `(type-name (type-fun-ret ty))` の 3 つは address を経由しない。
+      **`type-name` を tag 3 の型へ直接当てる形は残さない**
+  (b) 書き換えで test の目的 (native の parser -> TypeInfer apply 経路が
+      Rust-hosted selfhost と同じ結果を返すこと) が弱まらないことを説明する。
+      **現状の harness は型の中身を一度も比較していない**ので、
+      正しく直せば検査は強くなる。弱まる方向の書き換えなら理由を書く
+  (c) `assert_representative_override_main_matches_selfhost` を使う他の test に
+      同型の印字が無いか走査する。`I-98` は 1 件しか見ていない
+  **含めない範囲**: `repl-session-eval` の tag 分岐 (`REPL-TYPE-TAG-01` / `I-69` が持つ)。
+  **束ねない** — 実装を直しても本 test の harness は address を印字したままである。
+  `I-45` の契約そのものも動かさない (`decisions-selfhost-zero-arity-defn-type.md` が正本)。
+  lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。
+  **cargo が要る。**
 
 - [ ] `CHECK-IMPORT-VISIBILITY-01` 修飾なし `(import M)` の可視性契約を裁定し、
   3 実装を 1 つの規則へ揃える — Issue `I-97`。
