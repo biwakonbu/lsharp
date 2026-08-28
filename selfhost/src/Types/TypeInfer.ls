@@ -209,9 +209,15 @@
 ;; ============================================================
 ;; スタブ定義 (バンドルモードではサブモジュールが上書き)
 ;; ============================================================
-;; マルチファイルコンパイル時の型検査を通すためのフォールバック実装。
-;; バンドル (連結) モードでは TypeInferApply/Block/Pattern/Record が
-;; これらを完全な実装で上書きする。
+;; `TypeInfer.ls` 単体を型検査可能にするためのフォールバック実装であり、
+;; TypeInferApply/Block/Pattern/Record が同名 defn で上書きする。
+;;
+;; 上書きは **後勝ち** で解決される (`Backend/Wasm/CompilerBase.ls` の
+;; `ftable-lookup-loop` が ftable を末尾側から走査する)。連結バンドルだけでなく
+;; **module-graph 経路でも import さえ張れば効く** — したがって
+;; `Types.TypeInfer` を link する entry module は上書き 4 本も import しなければならない。
+;; 守っていない entry は `tests/selfhost_module_import_contract.rs` が検出する。
+;; 経緯は I-101 / I-102、裁定は docs/adr/decisions-selfhost-typeinfer-stub-override.md。
 
 ;; --- Apply グループ (TypeInferApply.ls が上書き) ---
 (defn infer-lambda [node env subst counter]
@@ -256,8 +262,6 @@
   (make-result subst (mk-int)))
 (defn infer-recordlit-fields [node idx count env subst counter record-ty]
   (make-result subst record-ty))
-(defn recordlit-field-node-loop [record-node field-name-hash idx field-count]
-  0)
 (defn recordlit-field-node [record-node field-name-hash]
   0)
 (defn infer-recordlit [node env subst counter]

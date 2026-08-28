@@ -2972,12 +2972,14 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   completion boundary。**この lane は `SWEEP-LANE-RERUN-01` と束ねる** (項目ごとに lane を
   回さない)。宣言数は 3083 のまま変わらない (test の増減なし)。
 
-- [ ] `SELFHOST-INFER-STUB-DIAG-01` `Types.TypeInfer` 単独 import で stub 推論器が無診断で
+- [~] `SELFHOST-INFER-STUB-DIAG-01` `Types.TypeInfer` 単独 import で stub 推論器が無診断で
   link される構造を塞ぐ — Issue `I-102`。
   `TypeInfer.ls` は `infer-apply` / Block / Pattern / Record の各グループを stub として持ち、
   実装は `TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` / `TypeInferRecord` が
-  同名 `defn` で上書きする。上書き側が `TypeInfer` を import する向きなので**逆向きは循環で張れず**、
+  同名 `defn` で上書きする。上書き側が `TypeInfer` を import する向きなので、
   `TypeInfer` 単独 import では stub が生き残る。stub は診断を 1 件も出さないため気付けない。
+  (当初「逆向きは循環で張れない」と書いていたが**誤り**。循環は両 backend とも許容される。
+  張れない理由は順序であり、根拠は `I-102`。)
   受入条件:
   - **stub を踏んだことが分かる形にする。** trap / diagnostic / compile error のどれに寄せるかを
     先に決めて ADR に書く。**現状の「静かに `fresh-type-var` を返す」だけは残さない**
@@ -2985,10 +2987,38 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     現状は無診断で通ることを固定してから直す
   - `TypeInfer.ls` 単独 link を意図的に成立させている経路が他に無いことを確認する。
     あるなら塞ぐ前にそちらの扱いを決める
+    **-> `selfhost/src` 側は 2026-08-28 に確定。意図的な単独 link 経路は無い。**
+    `Types.TypeInferSmoke` は単独 link に見えるが自身の `:8` に
+    「連結実行でのみ最後の main として使う」と書いてある bundle 専用 entry である。
+    **`.rs` の inline fixture が組む entry source は未走査。cargo が要る**
   - stub / override 対を module 横断で列挙し、同じ構造が他にもあるか確定させる
+    **-> 2026-08-28 に完了。stub 形は `TypeInfer.ls:217-267` の 23 件だけ**
+    (Apply 2 / Block 4 / Pattern 10 / Record 6 / override 無し 1)。
+    うち override とバイト一致 6 / 内容が異なる 16 / override 無し 1
+    (`recordlit-field-node-loop`、呼び出し 0 件の死コード)。
+    当初 22 と書いたのは数え落としである。`Syntax.AST` <- `Tools.Text.Linter` 等の
+    同名 defn は base も本物の実装なので `MODULE-DUP-FN-01` 側である。詳細は `I-102`
+  - **`TypeInfer.ls` 単体の型検査を壊さずに直す。** stub は
+    `TypeInfer.ls:209-214` のコメントどおり「単体を型検査可能にする」ために置かれており、
+    単純に消せない。**`(mk-int)` を返す 5 件は自由変数より悪く、`Int` だと積極的に嘘をつく**
+  - **`selfhost/src` の entry 3 本 (`Tools.Doc.DocTools` / `Tools.Doc.HtmlDoc` /
+    `Types.TypeInferSmoke`) が override 4 本を co-import していない。** これは
+    `2b0c54b1` が 4 entry へ入れた是正から漏れた分である。同 commit の設計
+    「public entry modules explicitly load the full implementation slices」を
+    **正本へ書き、静的 invariant test で守る**ところまでを本項目に含める
   **含めない範囲**: `I-101` の fixture 是正 (`SELFHOST-INFER-RET-VAR-01` が持つ)。
   module system 側の同名 defn 解決規則 (`MODULE-DUP-FN-01`)。
   **cargo が要る。**
+  **entry 側は 2026-08-28 に完了した。** co-import 契約を ADR の決定 3 へ書き、
+  静的 invariant test `crates/lsharp-wasm/tests/selfhost_module_import_contract.rs`
+  (**非 ignored / 純ファイル走査 / e2e とは別 binary なので分母 3083 は不変**) で守るようにした。
+  RED は違反 3 件ちょうど、是正後 GREEN。`doctools_parity` は 38 passed
+  (既知赤 `DOCTOOLS-META-SLOT-01` の 1 件のみ)、`test_e2e_selfhost_type_hm_core_golden` も緑。
+  死コード `recordlit-field-node-loop` を削除した。
+  **残るのは poison だけ。** stub は依然として静かに `fresh-type-var` / `mk-int` を返しており、
+  受入条件「静かに返すだけは残さない」は `selfhost/src` の entry 範囲でしか満たしていない。
+  観測可能化は `.rs` の inline fixture を含む広い回帰確認が要るので
+  **`SWEEP-LANE-RERUN-01` の後に回す**。
 
 - [ ] `SELFHOST-READFILE-SILENT-01` WASI 経路の `read-file` の失敗を空文字列に潰さない — Issue `I-87`。
   `crates/lsharp-wasm/src/wasi_runner/preview1.rs:109-117` は selfhost ルートだけを `"."` へ

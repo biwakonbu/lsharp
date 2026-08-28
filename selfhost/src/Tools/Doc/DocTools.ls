@@ -4,6 +4,10 @@
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
 (import Types.TypeInfer)
+(import Types.TypeInferApply)
+(import Types.TypeInferBlock)
+(import Types.TypeInferPattern)
+(import Types.TypeInferRecord)
 
 ;; DocTools.ls - L# 製ドキュメントツール
 ;;

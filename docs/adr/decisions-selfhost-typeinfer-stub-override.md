@@ -1,7 +1,7 @@
 # selfhost TypeInfer の stub / override 構造をどう扱うか
 
-- **Status**: doc-GREEN (focused 2 run まで / lane 未了 / 2026-08-28)
-- **Date**: 2026-08-28 (doc-RED) / 2026-08-28 (RED) / 2026-08-28 (GREEN)
+- **Status**: doc-GREEN (`I-101` 側は focused 2 run まで / lane 未了) + doc-GREEN (`I-102` 側の決定 3 / poison は未着手 / 2026-08-28)
+- **Date**: 2026-08-28 (doc-RED) / 2026-08-28 (RED) / 2026-08-28 (GREEN) / 2026-08-28 (訂正 + 決定 3 の doc-RED)
 - **Scope**: `selfhost/src/Types/TypeInfer.ls` の stub 定義群と、それを上書きする
   `TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` / `TypeInferRecord`。
   および `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の
@@ -55,7 +55,8 @@ prediction.md の分岐表で「仕様の疑い」側だった場合は selfhost
 
   が **stub** であり、`fresh-type-var` を無診断で返す。本物は
   `Types/TypeInferApply.ls:731` にあり、`TypeInferApply` が `TypeInfer` を import する
-  向きで上書きする。**`TypeInfer.ls` は `TypeInferApply` を import しない** (循環になるため)。
+  向きで上書きする。**`TypeInfer.ls` は `TypeInferApply` を import しない。**
+  (当初ここに「循環になるため」と書いていた。**誤りである。** 下記「訂正」を参照。)
 
   `selfhost_native_stage_chain.rs:14643-14646` の fixture は
 
@@ -119,17 +120,131 @@ fixture の import を直しても、**`Types.TypeInfer` だけを import した
 
 ### 却下した案
 
-- **`TypeInfer.ls` が override 群を import する** — **循環になるので不可能。**
-  override 群は 4 本とも `(import Types.TypeInfer)` している。この方向は取れない。
+- **`TypeInfer.ls` が override 群を import する** — **却下。ただし当初書いた理由は誤りだった。**
+  当初は「循環になるので不可能」と書いたが、**循環は両 backend とも許容されている**
+  (下記「訂正」)。正しい却下理由は**両 backend で上書きの向きが逆になること**である。
+
+  循環させた場合、`Types.TypeInfer` と override 4 本は 1 つの SCC になる。
+  この SCC 内の順序は backend ごとに別の規則で決まる。
+
+  | backend | 循環時の順序 | 結果 |
+  |---|---|---|
+  | Rust | `scc_groups()` を flatten (`resolve.rs:276`)。群内は名前で安定化 | `Types.TypeInfer` < `Types.TypeInferApply` なので**現状と同じ向き**が偶然保たれる |
+  | selfhost | post-order append (`CompilerMode.ls:697-701`)。deps を先に、自分を後に | `TypeInfer` が**最後**に append され、後勝ちで**stub が本物を上書きする** |
+
+  **向きが反転する。** 後勝ち規則そのものは両 backend で共通だが、
+  循環時に誰が最後に来るかが食い違うため、同じソースが backend によって
+  別の推論器を link することになる。これは `I-98` の parity 破壊そのものであり、
+  「両方間違ったまま一致していた」より悪い。
+
+  なお現状 (非循環) では、override 4 本が `(import Types.TypeInfer)` している以上、
+  Rust の topological sort でも selfhost の post-order でも `TypeInfer` が必ず先に来る。
+  **循環させないことが、両 backend の一致を保証している唯一の理由である。**
 - **slot 3/4 を `[2, 1001]` に焼き込む** — 実装追認。test コメントが明示的に禁じている。
   型変数 id は selfhost の source が変われば動くので、pin として脆くもある。
 - **`TypeInferApply` 1 本だけ import する** — 最小だが、同じ轍を残す。決定 1 の理由を参照。
-- **stub を即座に trap / diagnostic 化する** — 本 slice ではやらない。
-  `TypeInfer.ls` 単独 link を成立させている経路が他に無いことを確認しておらず、
-  落とすと影響範囲が読めない。`I-102` の設計判断として deferred にする。
+- **stub を即座に trap / diagnostic 化する** — **`I-101` slice ではやらなかった。**
+  `I-102` 側での扱いは決定 3 を参照 (「poison」案として保留した)。
 - **`not` に固有かを selfhost 側で別途測る** — **不要**。stub は argc も builtin の種類も
   問わず全 `infer-apply` に効くので、機構から導出できる。`I-101` の「`not` に固有かは
   分からない」は本 ADR で解消する (固有ではない)。
+
+## 訂正 (2026-08-28)
+
+本 ADR は当初、`TypeInfer.ls` が override 群を import する案を
+**「循環になるので不可能」**として却下していた。**これは検証せずに書いた推定であり、誤りである。**
+
+循環は**両 backend とも許容されている**。
+
+- **Rust**: compile 経路の入口 `compile_multi_file_with_mode`
+  (`crates/lsharp-ir/src/compile_entrypoints.rs:1-13`) が使うのは
+  `ModuleGraph::build_from_entry_with_scc` (`module_graph/resolve.rs:202-209`) で、
+  この関数の doc comment 自身が「通常の `build_from_entry` は既存互換のため循環を
+  エラーにする。この経路は SCC 単位の一括推論を行う compile pipeline 専用で、
+  **循環したグループを許容する**」と書いている。実装は `allow_cycles=true` を渡し、
+  `topological_sort()` が `CyclicDependency` を返したら
+  `graph.scc_groups().into_iter().flatten()` へ落とす (`:272-278`)。
+- **selfhost**: `load-module-if-new-with-cache`
+  (`selfhost/src/App/CompilerMode.ls:675-716`) は再帰の**前**に
+  `seen-ref` へ印を付ける (`:681`)。したがって循環に入っても静かに停止し、
+  エラーにはならない。
+
+**正しい却下理由は順序である。** 上記「却下した案」に書き直した。
+
+### この誤りが生まれた経路
+
+「override 4 本が `TypeInfer` を import している」という事実から
+「逆向きは循環」→「循環は不可能」と 2 段推論した。
+1 段目は正しいが、2 段目は module graph の実装を読まずに書いた一般論である。
+**ADR に「不可能」と書くときは source で裏を取る**、を運用の教訓として残す。
+
+## 決定 3: entry module の co-import 契約を正本へ書き、静的 invariant test で守る (`I-102` / doc-RED)
+
+### 何が本当の欠陥だったか
+
+この契約は**既に一度確立されていた**。`2b0c54b1` (2026-07-20) の commit message:
+
+> The base TypeInfer module keeps its standalone stubs for module-graph compilation,
+> while **public entry modules explicitly load the full implementation slices**.
+
+同 commit は `App/Cli.ls` / `App/EmbeddedCli.ls` / `App/PipelineSmoke.ls` /
+`App/SmokeCli.ls` の 4 entry へ override 4 本の import を足している。
+危険の認識も同じである — 「native check could silently use compile-safe stubs
+while the Rust hosted bundle exercised the full implementation」。
+
+**にもかかわらず `I-101` が起きた。** 理由は単純で、**この契約はどの正本にも
+書かれず、commit message にしか残らなかった**。書かれていない契約は、
+新しい entry が足されたときに守られない。
+
+静的走査 (2026-08-28) で、`selfhost/src` の `(defn main` を持つ entry 40 本のうち
+**3 本**が同じ漏れを起こしていることが分かった。
+
+| entry | 状況 |
+|---|---|
+| `Tools.Doc.DocTools` | `infer-defn` / `init-builtin-env` を呼ぶ。override 4 本を import していない |
+| `Tools.Doc.HtmlDoc` | `DocTools` 経由で同じ |
+| `Types.TypeInferSmoke` | `infer-expr` を 8 箇所で呼ぶ。override 4 本を import していない |
+
+**3 本とも現在の link site は bundle だけで、override は効いている。**
+今こわれてはいない。潜在ハザードである。
+
+### 決定
+
+1. **契約を明文化する。** 「`Types.TypeInfer` を import 閉包に含む entry module は、
+   override 4 本 (`TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` /
+   `TypeInferRecord`) も import 閉包に含めなければならない」を本 ADR と `AGENTS.md` に置く。
+2. **静的 invariant test で守る。** `selfhost/src/**.ls` を読むだけの純ファイル走査とし、
+   **`#[ignore]` を付けない**。compile も wasm 実行も不要なので通常の `cargo test` で毎回効く。
+   `#[ignore]` の lane へ入れると保護価値がほぼ消える。
+   **RED は今日の 3 件で落ちること**であり、`I-102` の「先に赤い test を書く」を満たす。
+3. **3 entry を是正する。** `App/Cli.ls:18-22` の順序を写して import 4 行を足す。
+4. **死コードを削除する。** `recordlit-field-node-loop` は override が存在せず、
+   `selfhost/src` 全体で呼び出しが 0 件である。
+
+### 検査範囲を `selfhost/src` に限る理由
+
+`.rs` の inline fixture が組む entry source は**対象外**とする。
+bundle 正規化 (`support.rs:1483-1485` の `normalize_selfhost_bundle_source`) が
+`(import Types.TypeInfer)` を意図的に剥がしており、テキスト走査では
+「import していない entry」と区別が付かない。ここを機械判定へ入れると
+正当な bundle を誤検出する。**fixture 側の残余リスクは poison (下記) が拾う**、という分担にする。
+
+### 却下・保留した案
+
+- **stub を全部消す** — 却下。`TypeInfer.ls:209-214` のコメントどおり
+  stub は `TypeInfer.ls` 単体を型検査可能にするために置かれている。
+  消すと `infer-expr` から呼ばれる名前が未定義になる。
+- **例外リスト方式** (3 entry を許可リストへ入れて invariant を通す) — 却下。
+  例外リストは腐る。`Types.TypeInferSmoke` は自身の `:8` に「連結実行でのみ
+  最後の main として使う」と書いてあり bundle 専用だが、**import を 4 行足せば
+  単独 link でも正しくなる**ので、例外にする理由が無い。
+- **poison (stub の戻り型を `Con "__typeinfer_stub__"` 等の観測可能な marker にする)** —
+  **保留。本 slice には入れない。** 効果は大きい (踏んだ瞬間に unify が落ちる) が、
+  検証には `selfhost_cli_core` / `selfhost_native_stage_chain` を含む共有 lane 1 本が要り、
+  それは `SWEEP-LANE-RERUN-01` が既に 8 項目を抱えて待たせている。
+  **`I-102` の受入条件「現状の『静かに `fresh-type-var` を返す』だけは残さない」は、
+  決定 3 の invariant test では `selfhost/src` の範囲しか満たさない。**
+  この不足は `TODO.md` の `SELFHOST-INFER-STUB-DIAG-01` に明記して残す。
 
 ## Evidence
 
@@ -164,16 +279,61 @@ RED / GREEN とも同じ 1 本を focused で回した
 assert が実は評価されていない (vacuous) 可能性を排除できない。`I-98` で
 まさにその vacuous green を踏んでいる。
 
+### 決定 3 の RED / GREEN (2026-08-28)
+
+`crates/lsharp-wasm/tests/selfhost_module_import_contract.rs` を新設した。
+**e2e とは別 binary** にしたので、workspace e2e の宣言数 3083 は変わらない
+(`SWEEP-LANE-RERUN-01` の完走判定の分母を動かさないため)。
+
+| 段階 | コマンド | 結果 |
+|---|---|---|
+| RED | `cargo test -p lsharp-wasm --test selfhost_module_import_contract` | `1 passed; 1 failed`。落ちた 3 件は **`Tools.Doc.DocTools` / `Tools.Doc.HtmlDoc` / `Types.TypeInferSmoke` ちょうど**で、事前の静的走査と完全一致 |
+| GREEN | 同上 (import 追加後) | `ok. 2 passed; 0 failed` |
+
+**RED が予測した 3 件と過不足なく一致したことが重要である。** 走査ロジックが
+実装の import 解決と同じ閉包を計算していることの確認になっている。
+
+実体の編集は 2 ファイルである。`Tools.Doc.HtmlDoc` は `DocTools` を import しており、
+契約は**閉包**に対して定義されているので `DocTools` の是正で満たされる。
+
+- `selfhost/src/Tools/Doc/DocTools.ls` -- override 4 本の import を追加
+- `selfhost/src/Types/TypeInferSmoke.ls` -- 同上。冒頭コメントの
+  「連結実行で**のみ**」も実態に合わせて訂正
+- `selfhost/src/Types/TypeInfer.ls` -- stub 前書きを訂正 (後勝ち / module-graph でも効く)
+  + 死コード `recordlit-field-node-loop` を削除
+
+### 回帰確認
+
+| 対象 | 結果 |
+|---|---|
+| `cargo test -p lsharp-wasm --test doctools_parity` | `38 passed; 1 failed`。落ちた 1 件は `test_e2e_doctools_extracts_typed_defn_metadata` で、`workspace-expected-failures.txt:148` に載る既知赤 (`DOCTOOLS-META-SLOT-01`)。**import 追加による新規赤は 0** |
+| `e2e::selfhost_bootstrap_contracts::test_e2e_selfhost_type_hm_core_golden` (TypeInferSmoke の 15 module 連結 bundle) | `ok. 1 passed` / `3082 filtered out` + 1 = **3083** |
+
+bundle 側が壊れないことは事前に構造からも読めていた。`App/Cli.ls` は
+`2b0c54b1` 以降 `(import Types.TypeInferApply)` を持ったまま連結 bundle に入っており、
+`normalize_selfhost_bundle_source` が剥がすのは `(import Types.TypeInfer)` 1 行だけである。
+**同じ形の import 行が bundle 本文に残ったまま通る実績が既にあった。**
+
 ## 満たせなかったこと
 
 - **lane 再計測は未了。** `ignored-lane-expected-failures.txt:412` の台帳行はまだ落としていない。
   **focused GREEN は lane 1 本の完走ではない。** `SWEEP-LANE-RERUN-01` が回るまで
   `I-101` は `open` のままにする。
-- **`I-102` の本題 (stub を無診断で残す構造) には手を付けていない。**
-  本 ADR が直したのは fixture 1 本の import だけである。
-  `Types.TypeInfer` 単独 import が静かに緩む構造はそのまま残っている。
-- **stub / override 対の module 横断の列挙をしていない。**
-  `infer-apply` 以外の Block / Pattern / Record グループが同じ形で踏まれていないかは未確認。
-  `SELFHOST-INFER-STUB-DIAG-01` が引き取る。
-- **linker の override 解決規則 (後勝ちか import 順か) は仕様として読んでいない。**
-  実 CLI と本 GREEN で機能する事実は掴んだが、順序依存の有無は測っていない。
+- **poison (stub 自体を観測可能にする) は入れていない。** したがって
+  `I-102` の受入条件「現状の『静かに `fresh-type-var` を返す』だけは残さない」は
+  **`selfhost/src` の entry の範囲でしか満たしていない**。
+  `.rs` の inline fixture が組む entry source は依然として無診断で stub を踏みうる。
+  決定 3 の「却下・保留した案」に理由を書いた (検証に共有 lane 1 本が要る)。
+- **`(mk-int)` を返す 5 件の stub が実際に踏まれた形跡は調べていない。**
+  `infer-apply` は `I-101` で確定したが、他 22 件は未確認。
+- **決定 3 の invariant test は `#[ignore]` の e2e を見ていない。**
+  ソース走査は `selfhost/src` だけが対象である。
+
+### 解消したもの (当初「満たせなかったこと」に挙げていた項目)
+
+- ~~`I-102` の本題に手を付けていない~~ -> 決定 3 で entry 側の構造を塞いだ。
+  残るのは poison のみ (上記)。
+- ~~stub / override 対の module 横断の列挙をしていない~~ -> 完了。23 件。`I-102` に記録。
+- ~~linker の override 解決規則を仕様として読んでいない~~ -> **後勝ちで確定**。
+  `ftable-lookup-loop` (`Backend/Wasm/CompilerBase.ls:430-434`) が末尾側から走査し、
+  `register-defns-step` (`Backend/Wasm/Compiler.ls:3971-3976`) は重複を skip しない。

@@ -7240,8 +7240,16 @@ fixture (`selfhost_native_stage_chain.rs:14650-14656`) へ override 群 4 本の
   | Pattern グループ | `TypeInferPattern.ls` |
   | Record グループ | `TypeInferRecord.ls` |
 
-  上書き側 4 本はいずれも `(import Types.TypeInfer)` している。**逆向きは循環になるので
-  張れない。** したがって `TypeInfer` 単独では stub のままである。
+  上書き側 4 本はいずれも `(import Types.TypeInfer)` している。したがって
+  `TypeInfer` 単独では stub のままである。
+
+  **訂正 (2026-08-28)**: 本項は当初「逆向きは循環になるので張れない」と書いていた。
+  **これは誤りである。** 循環は両 backend とも許容されている
+  (Rust: `crates/lsharp-ir/src/module_graph/resolve.rs:202-209` の `build_from_entry_with_scc` が
+  `allow_cycles=true` で、`:273-278` が `CyclicDependency` を SCC flatten へ落とす。
+  selfhost: `selfhost/src/App/CompilerMode.ls:675-716` の `load-module-if-new-with-cache` が
+  再帰の**前**に `seen-ref` を立てるので循環は静かに停止する)。
+  張れない理由は循環ではなく**順序**である。詳細は下記「上書きの解決規則」を参照。
 
 - **なぜ問題か**: stub は `(fresh-type-var counter)` を返すだけで、**診断を 1 件も出さない**。
   `Types.TypeInfer` だけを import したプログラムは、型検査が通ったように見えて
@@ -7249,20 +7257,128 @@ fixture (`selfhost_native_stage_chain.rs:14650-14656`) へ override 群 4 本の
   **落ちないので、踏んだことに気付けない。**
 
 - **現に踏んでいた範囲**: e2e fixture 1 本
-  (`selfhost_native_stage_chain.rs:14643-14646`)。`grep -rn 'import Types.TypeInfer)'`
-  の他の hit は `support.rs` の bundle 正規化とその検査だけである。
+  (`selfhost_native_stage_chain.rs:14643-14646`)。
   実 CLI (`App/Cli.ls:18-22`) は 4 本とも import しており影響を受けない。
   concat bundle 経路 (`support.rs:1558-1582`) はテキスト後勝ちで override が効くので影響を受けない。
 
+- **潜在的に踏みうる範囲 (2026-08-28 に静的走査で追加)**: `selfhost/src` の
+  `(defn main` を持つ entry 40 本のうち、import 閉包に `Types.TypeInfer` を含みながら
+  override 4 本を**含まない** entry が **3 本**ある。
+
+  | entry | TypeInfer 由来の呼び出し | 現在の link 経路 |
+  |---|---|---|
+  | `Tools.Doc.DocTools` | `infer-defn` (`:584` `:642`) / `init-builtin-env` (`:662` `:668`) | bundle のみ (`doctools_parity.rs:10-31` 等が override を含む) |
+  | `Tools.Doc.HtmlDoc` | 同上 (`DocTools` 経由) | bundle のみ |
+  | `Types.TypeInferSmoke` | `infer-expr` を 8 箇所 (`:17` `:25` `:35` `:45` ...) | bundle のみ。**ファイル冒頭 `:8` に「連結実行でのみ最後の main として使う」と自ら書いてある** |
+
+  **3 本とも現在の全 link site は bundle であり、override は効いている。**
+  したがって「今こわれている」のではなく、**module-graph 経路で link した瞬間に
+  静かに stub へ落ちる潜在ハザード**である。
+  import 到達だけでなく**呼び出し到達もしている**ことは静的走査で確認済み
+  (stub 名の直接呼び出しは 0 件だが、本物の dispatcher `infer-defn` / `infer-expr` が
+  内部で stub へ分岐する)。
+
+- **同じ危険は 2026-07-20 `2b0c54b1` が既に一度認識していた。** commit message に
+  「native check could silently use compile-safe stubs while the Rust hosted bundle
+  exercised the full implementation」とあり、`App/Cli.ls` / `App/EmbeddedCli.ls` /
+  `App/PipelineSmoke.ls` / `App/SmokeCli.ls` の 4 entry へ override 4 本の import を足している。
+  設計も同 message に書かれている — 「The base TypeInfer module keeps its standalone stubs
+  for module-graph compilation, while **public entry modules explicitly load the full
+  implementation slices**」。
+
+  **`I-101` / `I-102` の真因はここである。** この契約は commit message にしか残らず、
+  どの正本にも書かれなかった。**書かれていない契約は守られない** — 上記 3 entry は
+  その後に足された、あるいは是正から漏れた entry である。
+
+- **上書きの解決規則 (2026-08-28 に source で確定)**: **後勝ちである。**
+  `ftable-register` (`selfhost/src/Backend/Wasm/CompilerBase.ls:410-426`) は append し、
+  `ftable-lookup-loop` (`:430-434`) は `(- (vector-length ftable) 2)` から
+  **末尾側へ向かって**走査して最初の一致を返す。`register-defns-step`
+  (`selfhost/src/Backend/Wasm/Compiler.ls:3971-3976`) は tag 20 の decl を
+  **無条件に** register し `func-idx` を +1 するので、重複名の skip も dedup も無い。
+  これは連結 bundle だけの性質ではなく、**self-feed の ftable 経路そのものの性質**である。
+
+  そして override 4 本はいずれも `(import Types.TypeInfer)` しているので、
+  Rust の topological sort でも selfhost の post-order append
+  (`CompilerMode.ls:697-701` が deps を先に、自分を後に append) でも
+  **`TypeInfer` が必ず先に来る**。現状の向きは両 backend で一致している。
+
+### 列挙の結果 (2026-08-28、cargo 不要の静的走査)
+
+`selfhost/src/**.ls` の `(defn <name>` を全走査し、**下位 module が上位 module を import した
+うえで同名 `defn` を再定義している**組を抽出した (名前ベースの defn 総数 6347、
+複数 module に同名があるのは 313 名、うち import 関係にあるのは 41 名 / 72 ペア)。
+
+| 分類 | 件数 | 例 | 評価 |
+|---|---|---|---|
+| **stub → override (本 issue の対象)** | **23** | `Types.TypeInfer` ← Apply 2 / Block 4 / Pattern 10 / Record 6 / override 無し 1 | base が placeholder |
+| module ごとの `main` / `demo-main` | 多数 | ほぼ全 module | entry の `main` が勝つ設計。stub ではない |
+| 小 helper の複製 | 多数 | `push-int-vector-local` / `ref-map-get-safe` | 実装が重複。**乖離したら静かに挙動が変わる** (`MODULE-DUP-FN-01`) |
+| 実装の重複 (stub ではない) | 8 | `Syntax.AST` ← `Tools.Text.Linter` 6 件、`Backend.Wasm.Compiler` ← `App.CompilerMode` 2 件 | base 側も本物の実装。`MODULE-DUP-FN-01` 側 |
+
+**stub 形をしているのは `Types/TypeInfer.ls:217-267` の 23 件だけである。**
+当初 22 件と書いたのは `sed` の範囲指定が 1 件短かった数え落としで、**23 が正しい**。
+
+内訳 (2026-08-28 に再計数):
+
+| 区分 | 件数 | 備考 |
+|---|---|---|
+| override と**バイト一致** | 6 | 上書きされても挙動が変わらない。無害 |
+| override と**内容が異なる** | 16 | **本 issue の危険の実体** |
+| **override が存在しない** | 1 | `recordlit-field-node-loop`。`selfhost/src` 全体で呼び出し 0 件の死コード |
+
+うち **`(mk-int)` を返すものが 5 件ある** (`infer-computation` / `infer-do` /
+`infer-constructor-pattern-children` / `infer-record-fields` / `infer-recordlit`)。
+当初 4 件と書いたのは `infer-constructor-pattern-children` の数え落としである。
+これは自由変数より悪く、**`Int` だと積極的に嘘をつく**。
+`0` を返すもの (`recordlit-field-node` 系 2 件) もある。
+
+override の担当は Apply 2 / Block 4 / Pattern 10 / Record 6 = 22 本で、
+`TypeInferRecordDecl.ls` (定義 36 本) は stub を 1 つも上書きしない。
+
+### ソースに書かれていた設計意図と、それが古くなっていること
+
+`TypeInfer.ls:209-214` に前書きがある。
+
+```
+;; スタブ定義 (バンドルモードではサブモジュールが上書き)
+;; マルチファイルコンパイル時の型検査を通すためのフォールバック実装。
+;; バンドル (連結) モードでは TypeInferApply/Block/Pattern/Record が
+;; これらを完全な実装で上書きする。
+```
+
+つまり stub は **`TypeInfer.ls` 単体を型検査可能にするため**に置かれている。
+上書き側 4 本が `TypeInfer` を import する向きなので、stub が無いと `infer-expr` から
+呼ばれる `infer-apply` 等が未定義になる。**stub を単純に消すことはできない。**
+
+一方でこの前書きは **「上書きが効くのはバンドル (連結) モードだけ」という前提**を
+含意している。`I-101` の GREEN run はこれを否定した — **multi-file モードでも
+import さえ張れば上書きは効く** (`[3, 1, 500, 1, 200, 0, 0]`)。
+したがって直し方は「バンドルモードへ寄せる」ではなく
+「**multi-file で import 漏れを検出できるようにする**」側にある。
+
 ### 未確認
 
-- **stub を trap / diagnostic 化してよいかは決めていない。** `TypeInfer.ls` 単独 link を
-  意図的に成立させている経路が他に無いことを確認していない。**cargo が要る。**
-- **同じ構造が他にもあるか見ていない。** stub / override 対を module 横断で列挙していない。
-  `MODULE-DUP-FN-01` が隣接する。
-- **linker が override をどう解決しているか (後勝ちか、import 順か) を仕様として読んでいない。**
-  実 CLI で機能している事実は掴んでいるが、順序依存の有無は未確認。
+- **stub を trap / diagnostic 化してよいかは決めていない。** 静的走査の範囲では
+  「意図的な単独 link 経路」は見つからなかった (`Types.TypeInferSmoke` は単独 link ではなく
+  **bundle 専用**であることが自身のコメントで明示されていた) が、
+  `.rs` 側の inline fixture が構成する entry source は走査していない。**cargo が要る。**
+- **`(mk-int)` を返す 5 件の stub が実際に踏まれた形跡があるかは見ていない。**
+  `infer-apply` は `I-101` で踏んでいたことが確定したが、他 22 件は未確認。
 
+**解消済み (2026-08-28)**:
+
+- ~~linker が override をどう解決しているか~~ -> **後勝ちで確定**。上記「上書きの解決規則」。
+- ~~逆向き import は循環で張れない~~ -> **誤り**。循環は許容される。上記「訂正」。
+
+- **是正 (2026-08-28、部分)**: entry 側の co-import 契約を明文化し、
+  静的 invariant test (`crates/lsharp-wasm/tests/selfhost_module_import_contract.rs`、
+  **非 ignored / 純ファイル走査**) で守るようにした。RED は違反 3 件ちょうどで落ち、
+  是正後 GREEN。死コード `recordlit-field-node-loop` も削除した。
+  裁定は ADR の決定 3。
+- **状態を `resolved` にしない理由**: **stub 自体は依然として静かに
+  `fresh-type-var` / `mk-int` を返す。** 観測可能化 (poison) は共有 lane が要るため
+  本 slice に入れていない。`.rs` の inline fixture が組む entry source も未走査である。
 - **引き取り先**: `TODO.md` の `SELFHOST-INFER-STUB-DIAG-01`
 - **関連**: `I-101` (実測事例)、`MODULE-DUP-FN-01` (同名 defn の重複定義)、
   `SELFHOST-PARSE-LENIENT-01` (落ちずに緩む形の先例)。

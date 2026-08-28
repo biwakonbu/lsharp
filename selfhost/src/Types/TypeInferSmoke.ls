@@ -4,9 +4,15 @@
 (import Types.TypeInferCore)
 (import Types.TypeInferBuiltins)
 (import Types.TypeInfer)
+(import Types.TypeInferApply)
+(import Types.TypeInferBlock)
+(import Types.TypeInferPattern)
+(import Types.TypeInferRecord)
 
 ;; TypeInfer の test-only smoke entrypoint
-;; 推論本体とは分離し、連結実行でのみ最後の main として使う
+;; 推論本体とは分離し、連結実行では最後の main として使う。
+;; 上書き実装 4 本を明示 import しているので module-graph 経路でも正しく link される
+;; (I-102 / decisions-selfhost-typeinfer-stub-override.md の決定 3)。
 
 (defn main []
   (let [counter (make-var-counter)
