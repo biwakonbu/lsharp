@@ -3069,7 +3069,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 4 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 3 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
@@ -3092,11 +3092,35 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `I-96` へ移管した (5 -> 4)。** 独立 review gate の `outcome=pass` 条件が selfhost 3 経路の
   1 つにしか伝播していない件。**ここだけ実装が正で test の期待値が陳腐化している側**なので、
   他の移管先と同じ扱いにしない。
+  **同日 4 件目の分類パスで `..._check_file_resolves_imported_definition` 1 件を `I-97` へ
+  移管した (4 -> 3)。** 修飾なし `(import M)` が check の型環境へ unqualified 名を入れない件。
+  **実装と test のどちらが正かは決まっていない**ので、そこも含めて `I-97` が引き取る。
   残る 5 件は**症状は台帳に載ったが原因は未確定**である。
   受入条件: 残る 5 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
+
+- [ ] `CHECK-IMPORT-VISIBILITY-01` 修飾なし `(import M)` の可視性契約を裁定し、
+  3 実装を 1 つの規則へ揃える — Issue `I-97`。
+  現状は **2 通りの規則が同居している**。selfhost の型検査 (`Types/TypeInfer.ls`) は
+  qualified-only、Rust canonical (`crates/lsharp-types`) と selfhost codegen は unqualified。
+  受入条件:
+  (a) **測ってから裁定する。** `I-97` が事前登録した予測 (現在の check 規則が正なら、
+      selfhost 自身の multi-module ソースへ `check` を当てると undefined symbol が大量に出るはず)
+      を先に実測する。**結果を見てから予測を書き直さない**
+  (b) ADR `docs/adr/decisions-import-visibility.md` で裁定する。
+      「修飾なしは unqualified」「修飾なしは qualified-only、素の参照には `:open` が要る」の
+      **2 案を並べ、却下理由を書く**。qualified-only を採る場合は Rust canonical と selfhost codegen の
+      **両方**を動かすことになり、selfhost 自身のソース全域に `:open` を足す必要がある旨も書く
+  (c) 裁定に従って実装または期待値を直す。**期待値を動かす場合は `I-90` の 3 根拠ルール**に従い、
+      実装出力とは独立な根拠を並べる
+  (d) check と codegen で名前解決が別実装である件を `ISSUES.md` に残すか裁定する。
+      本 slice で確認できたのは修飾なし import の 1 点だけで、他の相違点は探していない
+  **含めない範囲**: `:as` / `:only` / `:open` を組み合わせた場合の細部、
+  record / ADT / type alias の可視性 (`I-97` はいずれも見ていない)。
+  lane 再計測は `selfhost_cli_core` なので `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。
+  **cargo が要る。**
 
 - [ ] `VALIDATION-REVIEW-GATE-PARITY-01` 独立 review gate の `outcome=pass` 条件を selfhost の
   残り 2 経路へ伝播し、陳腐化した期待値 2 件を是正する — Issue `I-96`。

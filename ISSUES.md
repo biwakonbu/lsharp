@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 4 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、`main-with-args` 系 5 件を 2026-08-28 に `I-93` / `I-94` へ、formatter 1 件と `validate-source-json` 1 件を同日 `I-95` / `I-96` へ移管。残り 4 件は症状を実測して台帳へ書いた |
+| [I-75](#i-75) | sweep で露出した未分類の赤 3 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 8 件を `I-93` / `I-94` / `I-95` / `I-96` / `I-97` へ移管。残り 3 件は症状を実測して台帳へ書いた |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -228,6 +228,7 @@
 | [I-94](#i-94) | e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する | 中 | open | `I-75` から移管 (2026-08-28)。境界そのものは `I-15` が意図された仕様として文書化済み。**欠陥は test 側の期待値にある** |
 | [I-95](#i-95) | module-decl の vector layout に span 2 slot が中間挿入されたのに count 式と消費側 20 箇所以上が更新されておらず、3 つの規約が同居している | 中 | open | `I-75` から移管 (2026-08-28)。`56e11ce9` (2026-07-24) が出所。**production 側の欠陥で、test の期待値の問題ではない** |
 | [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播しておらず、赤 1 件と契約違反を pin した緑 1 件が同時に立っている | 中 | open | `I-75` から移管 (2026-08-28)。**今回は実装が正で test の期待値が陳腐化している側**。裁定は 2026-07-29 の ADR で既に済んでいる |
+| [I-97](#i-97) | 修飾なし `(import M)` が check の型環境へ unqualified 名を入れないので cross-module 参照が undefined symbol になる。Rust canonical / selfhost codegen とは規則が違う | 中 | open | `I-75` から移管 (2026-08-28)。**実装と test のどちらが正かは本 issue では裁定しない**。3 実装が 2 通りの規則を持っている |
 
 ### ドキュメント (DOC)
 
@@ -5178,12 +5179,12 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 4 件
+### I-75: sweep で露出した未分類の赤 3 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **4 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **3 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
   さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
@@ -5191,14 +5192,15 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   `..._check_reports_invalid_canonical_case` 1 件を `I-76` へ移管した。
   2026-08-28 に `main-with-args` 系 5 件を `I-93` / `I-94` へ、
   formatter の module body 1 件を `I-95` へ、
-  `validate-source-json` の `independent_reviews` 1 件を `I-96` へ移管した)。
+  `validate-source-json` の `independent_reviews` 1 件を `I-96` へ、
+  `check` の import 可視性 1 件を `I-97` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
 
   | module | 件数 | 実測した症状 |
   |---|---|---|
-  | `selfhost_cli_core` | 2 | check の import 解決 1 / self-feed compile の OOB trap 1 |
+  | `selfhost_cli_core` | 1 | self-feed compile の OOB trap 1 |
   | `selfhost_native_stage_chain` | 2 | OOB trap 1 / native と selfhost の hash 不一致 1 |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
@@ -5272,11 +5274,18 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   **本 issue の他の移管先 (`I-93` / `I-94` / `I-95`) はいずれも production 側の欠陥だったので、
   この 1 件だけ性質が違う。** 「未分類の赤」は必ずしも実装の欠陥ではない。
 
-- **本 issue は保持であって診断ではない。** 残り 4 件それぞれの原因が付いた時点で
+- **2026-08-28 の分類パス (4 件目、cargo 不使用)。`check_file_resolves_imported_definition`
+  1 件に原因が付いた。** 台帳の注記は「import 先の helper が check で解決されていない」
+  だったが、**解決されていないのは helper ではなく可視性規則**であった。
+  module 境界で先行 module の unqualified defn が env から消され、`:open` の無い import は
+  qualified key しか戻さない。詳細は `I-97`。
+  **`I-96` と違って、実装と test のどちらが正かは決まっていない。** 根拠が両方向にある。
+
+- **本 issue は保持であって診断ではない。** 残り 3 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
   `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)、
-  `I-93` / `I-94` / `I-95` / `I-96` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
+  `I-93` / `I-94` / `I-95` / `I-96` / `I-97` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
@@ -6527,3 +6536,121 @@ gate の意味論そのものは 2026-07-29 に裁定済みなので、**再裁�
 - **引き取り先**: `TODO.md` の `VALIDATION-REVIEW-GATE-PARITY-01`
 - **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
   契約の正本は `docs/adr/decisions-v0.2-validation-independent-review-outcome.md`。
+
+<a id="i-97"></a>
+### I-97: 修飾なし `(import M)` が check の型環境へ unqualified 名を入れない
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-75` の残りを分類する過程。cargo 不使用、source 読解のみ)
+
+**本エントリは `I-75` からの移管分 1 件である。移管前の注記は
+「import 先の helper が check で解決されていない」だった。**
+**解決されていないのは helper ではなく可視性規則の方**なので、注記の言い方を改める。
+
+#### 赤の中身
+
+`selfhost_cli_core::test_e2e_selfhost_cli_check_file_resolves_imported_definition`
+(`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:978`)。fixture は 2 ファイル:
+
+```
+Lib.ls  : (module Lib)\n(defn helper [value] value)\n
+Main.ls : (module Main)\n(import Lib)\n(defn main [] (helper 42))\n
+```
+
+実測は `diagnostics:1,T0001@1:1,first-body:undefined symbol` /
+`first-error-span:42:48`。**42..48 は `Main.ls` 内の `helper` の byte offset と一致する**
+(`(module Main)\n` 14 + `(import Lib)\n` 13 = 27、`(defn main [] (` が 15 文字で 42)。
+すなわち落ちているのは Main の呼び出し側で `helper` が引けないことである。
+
+#### 壊れていない部分 -- 兄弟 3 件が緑
+
+`check_file` 系は 4 件あり、**赤はこの 1 件だけ**である。
+
+| test | 内容 | 状態 |
+|---|---|---|
+| `..._check_file_handler` (`:1270`) | 単一ファイルの check | 緑 |
+| `..._check_file_blocks_imported_private_definition` (`:1025`) | import 先 private を拒否 | 緑 |
+| `..._check_file_reports_first_failed_module_hash` (`:1069`) | Lib 内のエラーに Lib provenance を付ける | 緑 |
+| `..._check_file_resolves_imported_definition` (`:978`) | import 先 public を解決 | **赤** |
+
+3 件目が緑であることが効く。これは `first-module-name:Lib` / `first-module-path:./Lib.ls` /
+`first-error-span:<Lib.ls 内の offset>` を要求するので、**Lib.ls の読み込み・parse・
+program への連結・provenance の対応付けはすべて動いている**。壊れているのは可視性規則だけである。
+
+2 件目 (private を拒否) は**判別力を持たない**。可視性規則が全部壊れていても緑になるからである。
+**緑であることを「private 制御が効いている証拠」として使ってはいけない。**
+
+#### 原因
+
+`load-check-program` (`selfhost/src/App/CompilerMode.ls:1476`) は依存を先・entry を後の順に
+decl を 1 本の program へ畳み込む (`compile-file-pairs-with-cache` が
+`append-src-decl-pair imported-pairs src program` で entry を末尾に置く)。
+順序は正しく、`typeinfer-predeclare-defns` (`Types/TypeInfer.ls:940`) は program 全体を走査して
+**Lib の `helper` も含めて**全 top-level defn を env へ先行登録する。
+
+消しているのは module 境界の処理である。
+`typeinfer-program-analysis-loop` (`Types/TypeInfer.ls:1484-1497`) は `module` decl を見るたびに
+
+1. `typeinfer-remove-defns-before-module` (`:553`) で **それより前の全 defn を env から削除**する
+   (コメント: 「次の module に進む前に、先行 module の unqualified defn を型環境から隠す」)。
+   private / public を区別せず全部消す
+2. `typeinfer-predeclare-qualified-imports-for-module` (`:876`) で当該 module 範囲の import を再注入する
+
+再注入側 (`typeinfer-qualify-imports-loop-with-open` `:830` →
+`typeinfer-qualify-import-source-loop` `:703`) は
+`(type-env-insert env qualified-key scheme)` を常に行い、**unqualified な `name-hash` を入れるのは
+`open-flag` が 1 のときだけ**である。`typeinfer-import-open-flag` (`:580`) は
+decl の slot 6 が 1 のとき、つまり **`:open` が書かれているときだけ** 1 を返す。
+
+したがって修飾なし `(import Lib)` では `Lib/helper` しか引けない。test は素の `helper` を書いている。
+
+#### **どちらが正かは本 issue では裁定しない**
+
+根拠が両方向にある。片方だけ書くと裁定したことになるので、両方載せる。
+
+**実装が誤りだとする根拠:**
+
+1. **Rust canonical は unqualified 側である。**
+   `crates/lsharp-types/src/infer.rs:189` `is_type_visible_from_import` は `only` が `None`
+   (= 修飾なし import) のとき無条件に `true` を返し、呼び出し元 `:174` は
+   `self.external_types.insert(name.clone(), ...)` と**素の名前で**登録する。
+   `ModuleImport::open` (`:54`) は構造体に持っているだけで、**可視性判定に一度も使われていない**
+   (`grep` で `.open` の消費箇所は `infer/decl.rs:92,219` の詰め替えと test のみ)
+2. **selfhost 自身のソースが修飾なし import + 素の名前で書かれている。**
+   `selfhost/src/App/Cli.ls:18` は `(import Types.TypeInfer)` で、`:742` は
+   `(infer-program-analysis program)` と**素の名前**で呼ぶ。定義は `Types/TypeInfer.ls:1652`。
+   これが通っている以上、**codegen の名前解決は修飾なし import を unqualified として扱っている**
+
+**実装が正しいとする根拠:**
+
+1. **`:open` という別形式が存在すること自体が、修飾なし import は qualified-only という設計を示唆する。**
+   `:open` が常に暗黙なら形式が要らない。F# の `open` と同じ発想であれば実装側が意図どおりである
+2. `typeinfer-remove-defns-before-module` のコメントは**意図的な設計として**書かれている。
+   取り残しやリファクタの副作用の形をしていない
+
+**根拠 2 の効力を過大評価しないこと。** `compile` 経路は型推論を通らない --
+`infer-program-analysis` の呼び出しは repo 全体で `run-check-program` (`Cli.ls:742`) と
+`run-test-source-json` (`:1172`) の 2 箇所しかない。したがって「selfhost が自分をコンパイルできる」は
+**codegen の名前解決についての証拠であって、型検査の契約についての証拠ではない**。
+両者が別実装であることは示せるが、どちらが正本かは示せない。
+
+#### 事前登録する予測 (未実測)
+
+**修飾なし import を qualified-only とする現在の check 規則が正しいなら、
+selfhost 自身の multi-module ソースに `check` を当てたとき undefined symbol が大量に出るはずである。**
+`Cli.ls` だけで 20 本以上の修飾なし import があり、素の名前での cross-module 呼び出しは全域にわたる。
+
+**この予測は本 slice では測っていない (cargo が要る)。**
+大量に出れば実装側の欠陥が確定し、出なければ本 issue の読み違いなので原因診断からやり直す。
+結果を見てから予測を書き直さない。
+
+#### 未確認として残ること
+
+- **check と codegen で名前解決が二重化している。** 上記のとおり別実装で、
+  少なくとも修飾なし import の扱いが違う。**この二重化そのものが別の問題である可能性があるが、
+  本 slice では他の相違点を探していない。**「1 点違う」から「全部違う」を導かない
+- **record / ADT / type alias の可視性は見ていない。** 見たのは `ast-defn` の経路だけである
+- **`:as` / `:only` / `:open` の組み合わせは測っていない。**
+
+- **引き取り先**: `TODO.md` の `CHECK-IMPORT-VISIBILITY-01`
+- **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
