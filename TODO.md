@@ -3069,7 +3069,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 6 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 5 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
@@ -3085,11 +3085,39 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   5 件を移管した (11 -> 6)** — `-o` の出力契約 2 件を `I-93` へ、component target の
   capability boundary 3 件を `I-94` へ。出所の commit は同じだが症状も直し方も別なので
   1 件にまとめなかった。
-  残る 6 件は**症状は台帳に載ったが原因は未確定**である。
-  受入条件: 残る 6 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
+  **同日 2 件目の分類パスで `..._formatter_format_program_module_decl` 1 件を `I-95` へ移管した
+  (6 -> 5)。** module-decl の vector layout に span が中間挿入されたのに count 式が
+  据え置かれている件で、formatter の欠陥ではない。
+  残る 5 件は**症状は台帳に載ったが原因は未確定**である。
+  受入条件: 残る 5 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
+
+- [ ] `MODULE-DECL-LAYOUT-01` module-decl の vector layout を 1 つに揃える — Issue `I-95`。
+  `56e11ce9` (2026-07-24) が slot 3/4 に `name-start` / `name-end` を中間挿入したのに、
+  `Syntax/Parser.ls:4920` の body-count 式が `(- (vector-length with-body) 3)` のまま据え置かれ、
+  body を offset 3 から読む消費側も更新されなかった。実 layout は
+  `[25, name-hash, body-count, name-start, name-end, body...]` である。
+  **これは test の期待値の問題ではなく production 側の欠陥。**
+  受入条件:
+  (a) **先に RED を置く。** `I-95` に書いた未実測の導出予測
+  「実ファイルの `(module Name)` も `(module Name (unsupported-decl 0) (unsupported-decl 0))` に
+  壊れる」を test として固定し、赤を確認してから直す。
+  (b) 裁定を ADR (`docs/adr/decisions-module-decl-layout.md`) に書く。
+  少なくとも 2 案 (body を offset 5 へ寄せて全消費側を揃える / span を末尾へ動かして offset 3 を保つ)
+  があり、**却下した側の理由まで書く**。span slot 3/4 は `App/CompilerMode.ls` の
+  `check-pair-module-owner` が読んでいるので **span を消す案は取れない**ことを材料として記す。
+  (c) 陳腐化規約の消費側を全部直す。`I-95` の表に挙げた 3 ファイル
+  (`FormatterDecl.ls` / `DocTools.ls` / `TypeInferAssertions.ls` の `canonical-module-program`) が
+  最低限。`canonical-module-program` は 3 経路から呼ばれるので影響は formatter に閉じない。
+  (d) `Syntax/Parser.ls:25` の陳腐化コメントを実 layout へ直す。
+  **layout は型システムに見えないのでコメントが唯一の契約である。**
+  (e) dead な `make-module-decl` (`Syntax/AST.ls:261`) を落とすか残すかを決める。
+  **注意**: `..._formatter_format_decl_module_with_body` (`selfhost_lsp_docs_ops.rs:6268`) は
+  緑だが `[25, 77, 1, body]` と旧 layout を手組みしているので、**この修正で期待値が動く**。
+  期待値を動かす際は `I-90` の先例に従い、**実装出力とは独立な根拠を 3 つ以上**示すこと。
+  **含めない範囲**: 他 tag の layout 見直し、AST を型付き表現へ移す設計。**cargo が要る。**
 
 - [ ] `CLI-OUTPUT-CONTRACT-01` `compile -o` / `build --output` の出力先契約を裁定する — Issue `I-93`。
   実装は output file へ wasm binary を書き summary は stdout に出すが、e2e 2 件は

@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 6 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、`main-with-args` 系 5 件を 2026-08-28 に `I-93` / `I-94` へ移管。残り 6 件は症状を実測して台帳へ書いた |
+| [I-75](#i-75) | sweep で露出した未分類の赤 5 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、`main-with-args` 系 5 件を 2026-08-28 に `I-93` / `I-94` へ、formatter 1 件を同日 `I-95` へ移管。残り 5 件は症状を実測して台帳へ書いた |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -226,6 +226,7 @@
 | [I-92](#i-92) | entrypoint offset probe の parity test が aarch64 の経路しか通らず、x86 では selfhost 版と generic 版で正規化の有無が食い違う | 低 | open | `I-82` #13 の harness 修正 (2026-08-27) の過程で判明。**バグではなく被覆の欠落である** |
 | [I-93](#i-93) | e2e 2 件が `compile -o` / `build --output` の出力先に stdout summary が書かれることを期待しているが、実装は wasm binary を書く | 中 | open | `I-75` から移管 (2026-08-28)。`2ba93d0a` (2026-07-12) が契約を変えたとき test を更新しなかった。**どちらが正しいかは本 issue では裁定しない** |
 | [I-94](#i-94) | e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する | 中 | open | `I-75` から移管 (2026-08-28)。境界そのものは `I-15` が意図された仕様として文書化済み。**欠陥は test 側の期待値にある** |
+| [I-95](#i-95) | module-decl の vector layout に span 2 slot が中間挿入されたのに count 式と消費側 20 箇所以上が更新されておらず、3 つの規約が同居している | 中 | open | `I-75` から移管 (2026-08-28)。`56e11ce9` (2026-07-24) が出所。**production 側の欠陥で、test の期待値の問題ではない** |
 
 ### ドキュメント (DOC)
 
@@ -5176,18 +5177,19 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 6 件
+### I-75: sweep で露出した未分類の赤 5 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **6 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **5 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
   さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
   LSP Position の origin ずれ 2 件を `I-90` へ、
   `..._check_reports_invalid_canonical_case` 1 件を `I-76` へ移管した。
-  2026-08-28 に `main-with-args` 系 5 件を `I-93` / `I-94` へ移管した)。
+  2026-08-28 に `main-with-args` 系 5 件を `I-93` / `I-94` へ、
+  formatter の module body 1 件を `I-95` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
@@ -5196,7 +5198,6 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   |---|---|---|
   | `selfhost_cli_core` | 3 | check の import 解決 1 / self-feed compile の OOB trap 1 / `validate-source-json` の数値 1 |
   | `selfhost_native_stage_chain` | 2 | OOB trap 1 / native と selfhost の hash 不一致 1 |
-  | `selfhost_lsp_docs_ops` | 1 | formatter の module body canonical text |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
   台帳を数え直した実測は 12 で、移管後の合計 15 と一致した (2026-08-27 前半)。
@@ -5255,11 +5256,17 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   **`EMBEDDED-CLI-OPTION-SPACE-01` との関係は「無関係」で確定した。** 5 件はいずれも
   option とその値の間の空白ではなく、出力先の契約と target の capability で落ちている。
 
-- **本 issue は保持であって診断ではない。** 残り 6 件それぞれの原因が付いた時点で
+- **2026-08-28 の分類パス (2 件目、cargo 不使用)。`format_program_module_decl` 1 件に原因が付いた。**
+  台帳の注記は「`format-program` が module body の decl 2 件を `unsupported-decl` へ落としている」
+  だったが、実際には**その 2 件は decl ではなく生の整数**であった。module-decl の vector layout に
+  span 2 slot が中間挿入されたのに count 式が据え置かれている。詳細は `I-95`。
+  **formatter の欠陥ではなく parser 側の layout 不整合**なので、`I-75` から `I-95` へ移した。
+
+- **本 issue は保持であって診断ではない。** 残り 5 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
   `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)、
-  `I-93` / `I-94` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
+  `I-93` / `I-94` / `I-95` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
@@ -6315,3 +6322,90 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   原因が同じであることを意味しない。
 - **引き取り先**: `TODO.md` の `CLI-COMPONENT-TARGET-EXPECT-01`
 - **関連**: `I-15` (同じ境界の文書化、resolved)、`I-75` (発見経路)、`I-93` (同じ commit 由来の兄弟)
+
+<a id="i-95"></a>
+### I-95: module-decl の vector layout に span が中間挿入され、count 式と消費側が更新されていない
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-75` の残り 6 件の分類パス。cargo 不使用、source 読解のみ)
+- **内容**: selfhost の AST node は tag を slot 0 に置いた素の vector であり、layout は
+  型システムに見えない。`56e11ce9` (2026-07-24, *expose imported module names in check diagnostics*) が
+  module-decl (tag 25) の **slot 3 / 4 に `name-start` / `name-end` を中間挿入**したが、
+  body 数を書き込む式も、body を読む消費側も更新されなかった。
+
+  現在の実 layout は `[25, name-hash, body-count, name-start, name-end, body...]` である
+  (`Syntax/AST.ls:262-265` `make-module-decl-with-span`)。span 無しの
+  `make-module-decl` (`:261`) も残っているが **定義だけで呼び出しが 1 件も無い dead code** で、
+  実際に生成される node はすべて span 付きである。
+
+  欠陥の本体は `Syntax/Parser.ls:4920`:
+
+  ```
+  (vector-set-at-rooted-v3 with-body 2 (- (vector-length with-body) 3))
+  ```
+
+  span 挿入後は先頭の非 body slot が 5 個あるので `- 5` でなければならない。
+  **body-count が常に +2 過大**になる。
+
+- **同居している 3 つの規約 (実測)。** 消費側は「module 分岐を実際に開いて確認したもの」だけを載せる:
+
+  | 規約 | 箇所 | 現状 |
+  |---|---|---|
+  | count = slot 2、body は offset **3** | `Tools/Text/FormatterDecl.ls:479/482`, `:557/560`<br>`Tools/Doc/DocTools.ls:572-577` (`collect-knowledge-function-module-body`)<br>`Types/TypeInferAssertions.ls:780/850` (`canonical-module-program` — `(+ 3 idx)` と `(vector-get module-node 2)`) | **陳腐化。** count 過大 + offset 不足 |
+  | body は offset **5** から `(vector-length decl)` まで | `Tools/Validation/Evidence.ls:324, 889`<br>`Tools/Intent/IntentSource.ls:870, 915, 963, 1170` | **実 layout に合っている。** count slot を使わない |
+  | slot 3 / 4 は span | `App/CompilerMode.ls` `check-pair-module-owner` (`(> (vector-length first-decl) 4)` ガード付き)<br>`EmbeddedCli.ls` の同型関数 | **実 layout に合っている** |
+
+  `canonical-module-program` は `MetadataMigration.ls:348` (`legacy-module`)、
+  `TypeInferAssertions.ls:2017` (`check-module-assertions`)、`:2835` (`check-property-module`) の
+  3 経路から呼ばれるので、陳腐化規約の影響は formatter だけに閉じていない。
+
+  なお `DocTools.ls:176` (`find-module-hash-loop`) は slot 1 しか読まないので影響を受けない。
+
+- **時系列。3 規約が同居した経緯:**
+
+  | commit | 日付 | 何が起きたか |
+  |---|---|---|
+  | `c2928ad1` | 2026-03-29 | layout は `[25, name-hash, body-count, body...]`。`- 3` は**当時は正しい** |
+  | `56e11ce9` | 2026-07-24 | slot 3/4 に span を挿入。**`- 3` を据え置き、消費側も更新せず** |
+  | `828f1129` / `b024f6ac` | 2026-07-25 | 新しい消費側 (Evidence / IntentSource) が実 layout どおり offset 5 で書かれ、count slot を無視 |
+
+- **算術一致 (実測との突き合わせ)。** `(module Demo (import Core))` を parse すると
+  with-body の長さは 6 なので slot 2 = 6 - 3 = **3**。formatter は index 3, 4, 5 を
+  body として描画する = `name-start` (int) / `name-end` (int) / import-decl。
+  int には decl tag が無いので `format-unsupported-decl` へ落ちて
+  `(module Demo (unsupported-decl 0) (unsupported-decl 0) (import Core))` になる。
+  これは台帳 (`ignored-lane-expected-failures.txt`) が記録した `left` の実測値と**文字列まで一致**する。
+
+- **対照実験がリポジトリ内に既にある。**
+  `..._formatter_format_decl_module_with_body` (`selfhost_lsp_docs_ops.rs:6268`) は**緑**である。
+  この test は node を parser に通さず `[25, 77, 1, body]` と**手で組んでいる** —
+  すなわち `56e11ce9` 以前の layout である。同じ formatter が、parser 経由なら赤、
+  手組みなら緑になる。**formatter と parser が別の layout を見ていることの直接証拠**であり、
+  同時に**この緑 test が旧 layout を pin している**ことも意味する。
+
+- **未実測の導出予測 (2026-08-28、結果を見る前に書く)。**
+  実ファイルの `(module Name)` は body 空なので with-body の長さは 5、slot 2 = 5 - 3 = **2**。
+  したがって `format-program` は**あらゆる実ソースの module 見出し**を
+  `(module Name (unsupported-decl 0) (unsupported-decl 0))` に壊すはずである。
+  **これは source からの導出であって実測ではない** (cargo が要る)。
+  修正 slice の RED で検証する。当たっていれば実害は「e2e 1 本」ではなく formatter 全体になる。
+
+- **実害の範囲を「formatter に限られる」と断定しない。** 陳腐化規約の他の消費側 (DocTools /
+  canonical-module-program) が現状で赤くなっていないことは観測だが、
+  その理由として推定している「非 decl tag を黙って読み飛ばしている」は**推論であって未実測**である。
+  そもそも整数を `vector-get` の対象にしている時点で unsound な読みであり、
+  「落ちていない = 安全」ではない。
+  `I-75` に残る OOB trap 2 件 (`..._main_compile_is_deterministic` /
+  `..._base64_tail_slice_stays_decodable`) との関係は**未確認**であり、束ねない。
+
+- **`Syntax/Parser.ls:25` のコメントが陳腐化している。**
+  `;; tag=25: module-decl [25, name-hash]` と書かれており、count slot すら載っていない。
+  直下の `;; tag=26: import-decl [26, name-hash, name-start, name-end]` は span を
+  正しく文書化している。**layout が型システムに見えない以上、このコメントが唯一の契約である。**
+
+- **本 issue では裁定しない。** 直し方は少なくとも 2 案 (body を offset 5 へ寄せて全消費側を揃える /
+  span を末尾へ動かして offset 3 を保つ) があり、どちらも既存 test の期待値を動かす。
+  span slot 3/4 は `check-pair-module-owner` が読んでいるので **span を消す方向は取れない**。
+  裁定は修正 slice の ADR に属する。
+- **引き取り先**: `TODO.md` の `MODULE-DECL-LAYOUT-01`
+- **関連**: `I-75` (発見経路)、`I-64` (sweep の元)
