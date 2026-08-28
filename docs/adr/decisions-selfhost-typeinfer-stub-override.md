@@ -1,7 +1,7 @@
 # selfhost TypeInfer の stub / override 構造をどう扱うか
 
-- **Status**: doc-RED (2026-08-28)
-- **Date**: 2026-08-28 (doc-RED)
+- **Status**: doc-GREEN (focused 2 run まで / lane 未了 / 2026-08-28)
+- **Date**: 2026-08-28 (doc-RED) / 2026-08-28 (RED) / 2026-08-28 (GREEN)
 - **Scope**: `selfhost/src/Types/TypeInfer.ls` の stub 定義群と、それを上書きする
   `TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` / `TypeInferRecord`。
   および `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の
@@ -133,4 +133,47 @@ fixture の import を直しても、**`Types.TypeInfer` だけを import した
 
 ## Evidence
 
-(実装後に埋める)
+RED / GREEN とも同じ 1 本を focused で回した
+(`AGENTS.md` の「representative native bundle 系は focused run で 1 本ずつ」)。
+予測はどちらも実行前に `/Users/biwakonbu/github/tmp/i101/prediction.md` へ書いた。
+
+| run | 起動 | 出力 | 判定 |
+|---|---|---|---|
+| RED (fixture 未修正 / 期待値のみ締める) | pid 88674、`os.setsid()` で切り離し。`red.log` | `[3, 1, 500, 2, 1001, 0, 0]` | `FAILED` / `MODEXIT=101` / `ELAPSED=170.29` |
+| GREEN (fixture に override 群 4 本 import) | pid 98904、同上。`green.log` | `[3, 1, 500, 1, 200, 0, 0]` | `ok. 1 passed` / `MODEXIT=0` / `ELAPSED=140.77` |
+
+どちらも `3082 filtered out` + 1 = **3083** で workspace e2e の宣言数と一致する。
+`MODEXIT=101` は libtest の通常 test 失敗であり SIGKILL (`-9`) ではない。
+
+### 予測との突き合わせ
+
+- **RED は予測どおり。** 落ちた assert も予測した `values[3]` (`戻り型が Con にならない`) で、
+  値 7 個すべてが `I-101` の記録と一字一句一致した。
+  **型変数 id `1001` は build を跨いで安定**という `I-101` の記録も再確認された。
+- **GREEN も予測どおり。** `[3, 1, 500, 1, 200, 0, 0]`。
+  予測で挙げた外れ方 4 通り (compile error / duplicate definition / `[2,1001]` のまま /
+  診断が非 0) はいずれも起きなかった。
+- **これで `I-102` の前提が実証された。** override は import さえ張れば効く。
+  linker は同名 `defn` の上書きを拒否しない。
+
+### RED を別 run で取った理由
+
+値そのものは `I-101` に既に記録があり、RED run は情報として一部冗長である。
+それでも 1 run 割いたのは、**締めた assert が意図した slot に配線されているか**を
+確かめるためである。期待値だけ書き換えて GREEN が出た場合、
+assert が実は評価されていない (vacuous) 可能性を排除できない。`I-98` で
+まさにその vacuous green を踏んでいる。
+
+## 満たせなかったこと
+
+- **lane 再計測は未了。** `ignored-lane-expected-failures.txt:412` の台帳行はまだ落としていない。
+  **focused GREEN は lane 1 本の完走ではない。** `SWEEP-LANE-RERUN-01` が回るまで
+  `I-101` は `open` のままにする。
+- **`I-102` の本題 (stub を無診断で残す構造) には手を付けていない。**
+  本 ADR が直したのは fixture 1 本の import だけである。
+  `Types.TypeInfer` 単独 import が静かに緩む構造はそのまま残っている。
+- **stub / override 対の module 横断の列挙をしていない。**
+  `infer-apply` 以外の Block / Pattern / Record グループが同じ形で踏まれていないかは未確認。
+  `SELFHOST-INFER-STUB-DIAG-01` が引き取る。
+- **linker の override 解決規則 (後勝ちか import 順か) は仕様として読んでいない。**
+  実 CLI と本 GREEN で機能する事実は掴んだが、順序依存の有無は測っていない。

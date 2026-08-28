@@ -2945,7 +2945,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: Rust/selfhost の差分全般の網羅 (それは `NATIVE-DIFF-PIN-01` / `I-73`)。
   **cargo が要る。**
 
-- [ ] `SELFHOST-INFER-RET-VAR-01` `infer` が 0 引数 defn の戻り型を未解決の型変数で返すのを直す — Issue `I-101`。
+- [~] `SELFHOST-INFER-RET-VAR-01` `infer` が 0 引数 defn の戻り型を未解決の型変数で返すのを直す — Issue `I-101`。
   `(defn p [] (not true))` の `infer-program-analysis-type` が `Unit -> t1001` を返す。
   `not : Bool -> Bool` は `TypeInferBuiltins.ls:129` / `:182` に登録済みで、
   `diagnostic-count` も `first-error-code` も 0。**落ちずに型だけが緩む。**
@@ -2965,8 +2965,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   機構は候補 3 の変種で、fixture が `Types.TypeInferApply` を import せず
   `TypeInfer.ls:219-220` の stub `infer-apply` を link していた。`not` 固有ではない
   (stub は全 apply に効く)。裁定は `docs/adr/decisions-selfhost-typeinfer-stub-override.md`。
-  **残るのは RED (slot 3/4 を `[1, 200]` に締める) → GREEN (fixture に override 群 4 本を
-  import) の focused 2 run のみ。** representative native bundle 系なので 1 本ずつ回す。
+  **RED / GREEN の focused 2 run も 2026-08-28 に完了した。**
+  RED は `[3, 1, 500, 2, 1001, 0, 0]` で `MODEXIT=101`、GREEN は
+  `[3, 1, 500, 1, 200, 0, 0]` で `MODEXIT=0`。どちらも予測どおり。
+  **残るのは lane 完走のみ。** `ignored-lane-expected-failures.txt:412` を落とすところまでが
+  completion boundary。**この lane は `SWEEP-LANE-RERUN-01` と束ねる** (項目ごとに lane を
+  回さない)。宣言数は 3083 のまま変わらない (test の増減なし)。
 
 - [ ] `SELFHOST-INFER-STUB-DIAG-01` `Types.TypeInfer` 単独 import で stub 推論器が無診断で
   link される構造を塞ぐ — Issue `I-102`。
@@ -3142,7 +3146,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   束ねる項目: `LSP-POSITION-ORIGIN-01` (`I-90`) / `CHECK-IMPORT-VISIBILITY-01` (`I-97`) /
   `VALIDATION-REVIEW-GATE-PARITY-01` (`I-96`) / `NATIVE-TYPEINFER-PARITY-PIN-01` (`I-98`) /
   `NATIVE-TAIL-OFFSET-PIN-01` (`I-99`) / `CLI-SELFFEED-OOB-01` (`I-100`) /
-  `ROOT-IMBALANCED-HELPER-01` (`I-74`)。
+  `ROOT-IMBALANCED-HELPER-01` (`I-74`) / `SELFHOST-INFER-RET-VAR-01` (`I-101`)。
   **`I-74` は元の 3 項目束ねの一員だったので落とさない。** 赤 9 件は `selfhost_cli_core` に
   あり、対照 build を要する点も `CLI-SELFFEED-OOB-01` と同型である。
   対象 module: `selfhost_cli_core` / `selfhost_cli_actual_main_args` / `selfhost_native_stage_chain`。
@@ -3158,7 +3162,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
       `scripts/compare_ignored_lane.py` の判定だけを根拠にする
   (e) **緑になった行は台帳から削除する。** 緑化見込みは
       `LSP-POSITION-ORIGIN-01` (`:402-403`) / `NATIVE-TAIL-OFFSET-PIN-01` (`:411`) /
-      `NATIVE-TYPEINFER-PARITY-PIN-01` (`:412`) /
+      `NATIVE-TYPEINFER-PARITY-PIN-01` + `SELFHOST-INFER-RET-VAR-01` (`:412`。**2 項目が同じ 1 行を待つ**) /
       `VALIDATION-REVIEW-GATE-PARITY-01` (2026-08-24 sweep の `selfhost_cli_core` 側 1 行)。
       **見込みであって実測ではない。lane 完走まで行を消さない**
   **含めない範囲**: 束ね元の実装修正そのもの。**cargo が要る。**

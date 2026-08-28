@@ -409,7 +409,7 @@ lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_main_with_args_compile
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence  # 引き取り先: I-96 -- [c] 独立 review gate の outcome=pass 条件 (2026-07-29 ADR が裁定済み) が App/Cli.ls にだけ入り、test 側が更新されていない。**実装が正で期待値が陳腐化している側**。同形 fixture の embedded_cli 版が ungated 経路で緑なのが対照実験
 lsharp-wasm::e2e selfhost_lsp_docs_ops::test_e2e_selfhost_formatter_format_program_module_decl  # 引き取り先: I-95 -- [c] module-decl layout の count 式が span 挿入に追随していない (Parser.ls:4920 が `- 3`、実 layout は先頭 5 slot)。left の unsupported-decl 2 件は decl ではなく name-start / name-end の生整数。算術が実測文字列と一致
 lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable  # 引き取り先: I-99 -- [c] 直書き offset 10174680 が陳腐化。build-base64-chunk-text は byte-at-or-zero の len に caller の end を渡すので guard が効かず vector 外を読む。同 commit 生まれで offset を実測から導く兄弟 (:21749) が緑なのが対照実験
-lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost  # 引き取り先: I-98 -- [c] 要素 1 は hash ではなく Fn 型のスロット 1 = 引数型 object の handle (bit 63 が立つ heap address)。backend 間で一致しようがない。I-45 (914bd9f1) が Con -> Fun へ契約を動かした取り残しで、**構造上必ず赤くなる test**
+lsharp-wasm::e2e selfhost_native_stage_chain::test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost  # 引き取り先: I-98 (是正済) / I-101 (是正済) -- 構造比較へ書き換え (I-98) し、fixture の override 群 import 漏れも直した (I-101)。**focused run は緑 (2026-08-28, MODEXIT=0)。次の lane で本行は消える。**
 lsharp-wasm::e2e selfhost_cli_core::test_e2e_selfhost_cli_repl_core  # 引き取り先: REPL-TYPE-TAG-01 -- [c] I-69 L2 (アドレス印字)。実測 type:type--9223372036853734496
 
 # ---- 2026-08-27 I-79 (握り潰し是正) で新たに表に出た 1 件 ----

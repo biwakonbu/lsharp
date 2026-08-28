@@ -7202,6 +7202,23 @@ wasm の linear memory は**縮まない**。したがって一度 grow した�
 裁定と却下理由は `docs/adr/decisions-selfhost-typeinfer-stub-override.md` が正本。
 構造的ハザードそのものは `I-102` が引き取る。
 
+### 是正 (2026-08-28)
+
+fixture (`selfhost_native_stage_chain.rs:14650-14656`) へ override 群 4 本の import を
+`App/Cli.ls:18-22` の順で足し、slot 3/4 の期待値を `[1, 200]` (`Con` / `Bool`) に締めた。
+
+| run | 出力 | 判定 |
+|---|---|---|
+| RED (fixture 未修正) | `[3, 1, 500, 2, 1001, 0, 0]` | `FAILED` / `MODEXIT=101` |
+| GREEN (import 追加後) | `[3, 1, 500, 1, 200, 0, 0]` | `ok. 1 passed` / `MODEXIT=0` |
+
+どちらも `3082 filtered out` + 1 = 3083。予測は 2 run とも実行前に
+`/Users/biwakonbu/github/tmp/i101/prediction.md` へ書き、どちらも当たった。
+
+- **状態を `resolved` にしない理由**: `ignored-lane-expected-failures.txt:412` の台帳行を
+  まだ落としていない。**focused GREEN は lane 1 本の完走ではない。**
+  `SWEEP-LANE-RERUN-01` が回るまで `open` のままにする。
+
 - **引き取り先**: `TODO.md` の `SELFHOST-INFER-RET-VAR-01`
 - **関連**: `I-98` (発見経路)、`I-45` (0 引数 defn を `Unit -> body` にした契約の正本)、
   `I-46` (推論の完全性側)、`I-102` (機構側)、

@@ -14639,10 +14639,22 @@ fn test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost() {
     // `[3, param-ty, ret-ty]` のスロット 1 = 引数型 object の handle (heap address) を
     // 印字することになり、backend 間で一致しようがない (`ISSUES.md` の `I-98`)。
     // 印字するのはすべて小整数 (tag / 名前ハッシュ / 型変数 id) に限る。
+    //
+    // **override 群 4 本の import を落とさないこと。** `Types/TypeInfer.ls` は
+    // `infer-apply` などを stub (`:219-220`) として持ち、実装は
+    // `TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` / `TypeInferRecord` が
+    // 同名 `defn` で上書きする。module linker は import 到達性で link 対象を決めるので、
+    // `Types.TypeInfer` だけを import すると stub が生き残り、apply の戻り型が
+    // 無診断で自由変数になる (`ISSUES.md` の `I-101` / `I-102`)。
+    // 順序は `selfhost/src/App/Cli.ls:18-22` を写している。
     let main_source = r#"(module App.OverrideMain)
 (import Syntax.Parser)
 (import Types.Type)
 (import Types.TypeInfer)
+(import Types.TypeInferApply)
+(import Types.TypeInferBlock)
+(import Types.TypeInferPattern)
+(import Types.TypeInferRecord)
 
 (defn type-name-or-minus-one [ty]
   (if (= (type-tag ty) 1)
@@ -14685,20 +14697,16 @@ fn test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost() {
     assert_eq!(values[2], 500, "param が Unit にならない: {values:?}");
     assert_eq!(values[5], 0, "well-typed な program で診断が出た: {values:?}");
     assert_eq!(values[6], 0, "well-typed な program で error code が立った: {values:?}");
-    // 戻り型 (slot 3/4) は値まで固定しない。`not : Bool -> Bool` が
-    // `TypeInferBuiltins.ls:129` に登録されているので `Bool` = `[1, 200]` になるはずだが、
-    // 実測は `[2, 1001]` (未解決の型変数) だった。**この不一致は `ISSUES.md` の `I-101`
-    // が持つ。** 実装を追認して `[2, 1001]` を焼き込むことはしない。
-    // ここで固定するのは「Con か Var のどちらかである」ところまでで、
-    // これは `not` の戻り型が関数型でもレコード型でもないことから導ける。
-    assert!(
-        values[3] == 1 || values[3] == 2,
-        "戻り型が Con でも Var でもない: {values:?}"
-    );
-    assert_ne!(
-        values[4], -1,
-        "戻り型の名前/id が取れていない (tag と矛盾): {values:?}"
-    );
+    // 戻り型 (slot 3/4) は `Bool` = `[1, 200]` に固定する。`not : Bool -> Bool` は
+    // `TypeInferBuiltins.ls:129` / `:182` が型環境へ入れており、Rust 側の `infer` も
+    // 同じ入力に `() -> Bool` を返す (`lsharp-types` の
+    // `infer_resolves_builtin_application_return_type`)。
+    // かつて実測は `[2, 1001]` (未解決の型変数) で、本 fixture が
+    // `Types.TypeInferApply` を import せず `TypeInfer.ls:219-220` の stub
+    // `infer-apply` を link していたことが原因だった (`ISSUES.md` の `I-101`)。
+    // 裁定は `docs/adr/decisions-selfhost-typeinfer-stub-override.md`。
+    assert_eq!(values[3], 1, "戻り型が Con にならない: {values:?}");
+    assert_eq!(values[4], 200, "戻り型が Bool にならない: {values:?}");
 }
 
 /// 1 引数の user call は AArch64 の native value window と引数 ABI を保つべき。
