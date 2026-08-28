@@ -14635,25 +14635,69 @@ fn test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost() {
         return;
     }
 
+    // 型は構造で比較する。`type-name` を Fn 型 (tag 3) へ直接当てると
+    // `[3, param-ty, ret-ty]` のスロット 1 = 引数型 object の handle (heap address) を
+    // 印字することになり、backend 間で一致しようがない (`ISSUES.md` の `I-98`)。
+    // 印字するのはすべて小整数 (tag / 名前ハッシュ / 型変数 id) に限る。
     let main_source = r#"(module App.OverrideMain)
 (import Syntax.Parser)
 (import Types.Type)
 (import Types.TypeInfer)
 
+(defn type-name-or-minus-one [ty]
+  (if (= (type-tag ty) 1)
+    (type-name ty)
+    (if (= (type-tag ty) 2)
+      (type-name ty)
+      -1)))
+
 (defn main []
   (let [analysis (infer-program-analysis (parse-program "(defn p [] (not true))"))
-        ty (infer-program-analysis-type analysis)]
+        ty (infer-program-analysis-type analysis)
+        param-ty (type-fun-param ty)
+        ret-ty (type-fun-ret ty)]
     (do
       (print (type-tag ty))
-      (print (type-name ty))
+      (print (type-tag param-ty))
+      (print (type-name-or-minus-one param-ty))
+      (print (type-tag ret-ty))
+      (print (type-name-or-minus-one ret-ty))
       (print (infer-program-analysis-diagnostic-count analysis))
       (print (infer-program-analysis-first-error-code analysis))
       0)))
 "#;
 
-    assert_representative_override_main_matches_selfhost(
+    let values = assert_representative_override_main_matches_selfhost(
         "native-typeinfer-program-apply",
         main_source,
+    );
+    println!("structural type values: {values:?}");
+    // 両 backend が 0 行ずつ出しても上の `assert_eq!` は通る。個数と中身を
+    // ここで固定して vacuous green を塞ぐ。
+    //
+    // **期待値は実装の出力ではなく selfhost source から導く。**
+    // `Types/TypeInfer.ls:487-490` が 0 引数 defn を `Unit -> body` として登録すると
+    // 明記しており、`Types/Type.ls:44-45` の unit = `[1, 500]`、`TypeInfer.ls:1693` の
+    // 初期 state が diagnostic-count / first-error-code をともに 0 にする。
+    assert_eq!(values.len(), 7, "構造化型の出力が 7 行にならない: {values:?}");
+    assert_eq!(values[0], 3, "0 引数 defn が Fun 型にならない: {values:?}");
+    assert_eq!(values[1], 1, "param が Con 型にならない: {values:?}");
+    assert_eq!(values[2], 500, "param が Unit にならない: {values:?}");
+    assert_eq!(values[5], 0, "well-typed な program で診断が出た: {values:?}");
+    assert_eq!(values[6], 0, "well-typed な program で error code が立った: {values:?}");
+    // 戻り型 (slot 3/4) は値まで固定しない。`not : Bool -> Bool` が
+    // `TypeInferBuiltins.ls:129` に登録されているので `Bool` = `[1, 200]` になるはずだが、
+    // 実測は `[2, 1001]` (未解決の型変数) だった。**この不一致は `ISSUES.md` の `I-101`
+    // が持つ。** 実装を追認して `[2, 1001]` を焼き込むことはしない。
+    // ここで固定するのは「Con か Var のどちらかである」ところまでで、
+    // これは `not` の戻り型が関数型でもレコード型でもないことから導ける。
+    assert!(
+        values[3] == 1 || values[3] == 2,
+        "戻り型が Con でも Var でもない: {values:?}"
+    );
+    assert_ne!(
+        values[4], -1,
+        "戻り型の名前/id が取れていない (tag と矛盾): {values:?}"
     );
 }
 
@@ -21671,13 +21715,18 @@ fn test_e2e_selfhost_main_native_aarch64_zero_local_loop_emits_only_bytes() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable() {
+    // tail は `code` の実長から導く。直書き絶対 offset (旧: 10174680) は selfhost の
+    // source が変わるたびに陳腐化し、`build-base64-chunk-text` の bound は caller の
+    // `end` なので範囲外 read がそのまま trap する (`ISSUES.md` の `I-99`)。
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [alphabet (command-line-arg 0)
         pad (command-line-arg 1)
-        start 10174680
-        end (+ start 48)
+        len (vector-length code)
+        end len
+        start (- end 48)
         text (build-base64-chunk-text alphabet pad code start end)]
         (do
+          (print len)
           (print (string-length text))
           (print-string text)))"#,
     );
@@ -21693,16 +21742,31 @@ fn test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable() {
     )
     .expect("representative base64 tail slice harness 実行に失敗");
 
-    let mut parts = output.splitn(2, |byte| is_transport_separator(*byte));
+    let mut parts = output.splitn(3, |byte| is_transport_separator(*byte));
+    let code_len = std::str::from_utf8(parts.next().unwrap_or_default())
+        .expect("representative base64 tail slice code len が UTF-8 でない")
+        .parse::<usize>()
+        .expect("representative base64 tail slice code len が整数でない");
     let len = std::str::from_utf8(parts.next().unwrap_or_default())
         .expect("representative base64 tail slice len が UTF-8 でない")
         .parse::<usize>()
         .expect("representative base64 tail slice len が整数でない");
     let payload = parts.next().unwrap_or_default();
+    // `I-99` の受入条件 (a) が要求する実測値。直書き offset 10174680 との比較材料になる。
+    println!("representative native code len: {code_len}");
+    assert!(
+        code_len >= 48,
+        "representative native code が 48 byte 未満: code_len={code_len}"
+    );
     assert_eq!(
         len,
         payload.len(),
         "tail slice length metadata が payload と一致しない"
+    );
+    // 48 byte は 3 の倍数なので pad は入らず、base64 は 64 文字ちょうどになる。
+    assert_eq!(
+        len, 64,
+        "48 byte の tail は pad 無しの 64 文字になるべき: len={len}"
     );
     assert!(
         payload
@@ -21716,13 +21780,17 @@ fn test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable() {
 #[test]
 #[ignore]
 fn test_e2e_selfhost_main_representative_tail_code_bytes_reveal_signed_values() {
+    // offset は `code` の実長から導く。加えて `idx == len` を 1 本撃ち、
+    // `byte-at-or-zero` の bound が真の vector 長であることを境界で pin する。
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
         (do
-          (print (byte-at-or-zero code 10174692 len))
-          (print (byte-at-or-zero code 10174693 len))
-          (print (byte-at-or-zero code 10174694 len))
-          (print (byte-at-or-zero code 10174695 len))))"#,
+          (print (byte-at-or-zero code (- len 4) len))
+          (print (byte-at-or-zero code (- len 3) len))
+          (print (byte-at-or-zero code (- len 2) len))
+          (print (byte-at-or-zero code (- len 1) len))
+          (print (byte-at-or-zero code len len))
+          (print len)))"#,
     );
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
         "native-stage23-representative-tail-code-bytes",
@@ -21743,7 +21811,19 @@ fn test_e2e_selfhost_main_representative_tail_code_bytes_reveal_signed_values() 
                 .expect("tail code byte line が整数でない")
         })
         .collect::<Vec<_>>();
-    assert_eq!(lines.len(), 4, "tail code byte 出力が不足: {lines:?}");
+    assert_eq!(lines.len(), 6, "tail code byte 出力が不足: {lines:?}");
+    assert!(
+        lines[5] >= 4,
+        "representative native code が 4 byte 未満: {lines:?}"
+    );
+    assert!(
+        lines[..4].iter().all(|value| (0..=255).contains(value)),
+        "tail code byte が 0..255 に収まっていない: {lines:?}"
+    );
+    assert_eq!(
+        lines[4], 0,
+        "idx == len では byte-at-or-zero の guard が効くべき: {lines:?}"
+    );
 }
 
 #[test]
@@ -25560,7 +25640,7 @@ fn test_e2e_selfhost_main_representative_latest_bad_index_owner_decl() {
 fn test_e2e_selfhost_main_representative_tail_base64_quad_intermediates_are_bounded() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)
-        idx 10174692
+        idx (- len 3)
         b0 (byte-at-or-zero code idx len)
         b1 (byte-at-or-zero code (+ idx 1) len)
         b2 (byte-at-or-zero code (+ idx 2) len)
@@ -25575,7 +25655,8 @@ fn test_e2e_selfhost_main_representative_tail_base64_quad_intermediates_are_boun
           (print s0)
           (print s1)
           (print s2)
-          (print s3)))"#,
+          (print s3)
+          (print len)))"#,
     );
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
         "native-stage23-representative-tail-base64-quad",
@@ -25596,10 +25677,26 @@ fn test_e2e_selfhost_main_representative_tail_base64_quad_intermediates_are_boun
                 .expect("tail base64 quad line が整数でない")
         })
         .collect::<Vec<_>>();
-    assert_eq!(lines.len(), 7, "tail base64 quad 出力が不足: {lines:?}");
+    assert_eq!(lines.len(), 8, "tail base64 quad 出力が不足: {lines:?}");
     assert!(
-        lines[3..].iter().all(|value| (0..64).contains(value)),
+        lines[7] >= 3,
+        "representative native code が 3 byte 未満: {lines:?}"
+    );
+    assert!(
+        lines[..3].iter().all(|value| (0..=255).contains(value)),
+        "tail base64 quad の入力 byte が 0..255 に収まっていない: {lines:?}"
+    );
+    assert!(
+        lines[3..7].iter().all(|value| (0..64).contains(value)),
         "tail base64 quad digit が 0..63 に収まっていない: {lines:?}"
+    );
+    // L# 側の quad 分解を Rust 側で組み直して突き合わせる。
+    // 値が何であれ成立を要求するので、全部 0 でも通る形にはならない。
+    let (b0, b1, b2) = (lines[0], lines[1], lines[2]);
+    assert_eq!(
+        [b0 / 4, (b0 % 4) * 16 + b1 / 16, (b1 % 16) * 4 + b2 / 64, b2 % 64],
+        [lines[3], lines[4], lines[5], lines[6]],
+        "tail base64 quad の分解が Rust 側の再計算と一致しない: {lines:?}"
     );
 }
 
@@ -48663,7 +48760,12 @@ fn test_e2e_selfhost_main_representative_native_host_bundle_executes_stage_obser
     );
 }
 
-fn assert_representative_override_main_matches_selfhost(label: &str, main_source: &str) {
+/// 比較に使った数値列を返す。呼び出し側が「何個の値を突き合わせたか」を
+/// 検査できるようにするため (空同士の一致で緑になる vacuous green を潰す)。
+fn assert_representative_override_main_matches_selfhost(
+    label: &str,
+    main_source: &str,
+) -> Vec<i64> {
     let expected_label = format!("{label}-expected");
     let expected_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         &expected_label,
@@ -48709,6 +48811,7 @@ fn assert_representative_override_main_matches_selfhost(label: &str, main_source
         actual_output,
         String::from_utf8_lossy(&bundle.stderr)
     );
+    actual
 }
 
 fn run_representative_override_main_native_with_args_and_files(

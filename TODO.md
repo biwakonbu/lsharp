@@ -2945,6 +2945,22 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: Rust/selfhost の差分全般の網羅 (それは `NATIVE-DIFF-PIN-01` / `I-73`)。
   **cargo が要る。**
 
+- [ ] `SELFHOST-INFER-RET-VAR-01` `infer` が 0 引数 defn の戻り型を未解決の型変数で返すのを直す — Issue `I-101`。
+  `(defn p [] (not true))` の `infer-program-analysis-type` が `Unit -> t1001` を返す。
+  `not : Bool -> Bool` は `TypeInferBuiltins.ls:129` / `:182` に登録済みで、
+  `diagnostic-count` も `first-error-code` も 0。**落ちずに型だけが緩む。**
+  受入条件:
+  - **最初に Rust 側 (`lsharp-types`) の `infer` が同じ形を返すか測る。** 同じなら仕様の疑い、
+    違うなら selfhost 固有の緩み。ここを先に決めないと直す対象が決まらない
+  - **先に赤い test を書く。** 現状 `[2, 1001]` が返ることを固定してから直す
+  - `not` に固有かを判別する。他の builtin / 複数引数 / 非 0 引数 defn でも撃つ
+  - 機構を特定する。候補は `apply-subst` の非再帰性 / state の subst と result の subst の
+    食い違い / builtin 適用経路が束縛を積まない、の 3 つ (`I-101` の「未確認」節)
+  - 是正後、`..._native_typeinfer_program_apply_matches_selfhost` の slot 3/4 を
+    `[1, 200]` へ固定できるようになる。**現在この 2 slot は意図的に値を pin していない**
+  **含めない範囲**: 推論の完全性全般 (`I-46`)、Rust/selfhost 差分の網羅 (`NATIVE-DIFF-PIN-01`)。
+  **cargo が要る。**
+
 - [ ] `SELFHOST-READFILE-SILENT-01` WASI 経路の `read-file` の失敗を空文字列に潰さない — Issue `I-87`。
   `crates/lsharp-wasm/src/wasi_runner/preview1.rs:109-117` は selfhost ルートだけを `"."` へ
   preopen する。その外のパスは開けないが、`read-file` はエラーではなく空文字列を返すため、
@@ -3099,7 +3115,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `I-75` が resolved になって `SWEEP-UNCLASSIFIED-01` を削除したため、その束ね役を引き継いだもの。
   束ねる項目: `LSP-POSITION-ORIGIN-01` (`I-90`) / `CHECK-IMPORT-VISIBILITY-01` (`I-97`) /
   `VALIDATION-REVIEW-GATE-PARITY-01` (`I-96`) / `NATIVE-TYPEINFER-PARITY-PIN-01` (`I-98`) /
-  `NATIVE-TAIL-OFFSET-PIN-01` (`I-99`) / `CLI-SELFFEED-OOB-01` (`I-100`)。
+  `NATIVE-TAIL-OFFSET-PIN-01` (`I-99`) / `CLI-SELFFEED-OOB-01` (`I-100`) /
+  `ROOT-IMBALANCED-HELPER-01` (`I-74`)。
+  **`I-74` は元の 3 項目束ねの一員だったので落とさない。** 赤 9 件は `selfhost_cli_core` に
+  あり、対照 build を要する点も `CLI-SELFFEED-OOB-01` と同型である。
   対象 module: `selfhost_cli_core` / `selfhost_cli_actual_main_args` / `selfhost_native_stage_chain`。
   受入条件:
   (a) **partial lane の規則に従う** (`AGENTS.md`)。module 名で部分台帳を抽出し、
@@ -3114,7 +3133,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
       `ignored-lane-expected-failures.txt:402-403` が該当する見込み
   **含めない範囲**: 束ね元の実装修正そのもの。**cargo が要る。**
 
-- [ ] `NATIVE-TAIL-OFFSET-PIN-01` representative native code の tail を直書き offset で
+- [~] `NATIVE-TAIL-OFFSET-PIN-01` representative native code の tail を直書き offset で
   切るのをやめる — Issue `I-99`。
   `selfhost_native_stage_chain.rs:21677` の `start 10174680` は representative build の
   code サイズに依存する絶対 offset で、selfhost の source が変われば範囲外になる。
@@ -3138,8 +3157,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   native backend で同じ read をしたときの挙動 (`I-13` の範疇)。
   lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。
   **cargo が要る。**
+  **(a)-(e) は 2026-08-28 に完了した。** (a) 実測 `(vector-length code)` = **5,746,740** で、
+  旧定数 10,174,680 は末尾を 4,427,940 byte 超えていた。(b) 3 本とも `(vector-length code)` 相対へ。
+  (c) 却下理由は ADR に記録。`start = len - 48` / `end = len` なので 0 埋めは 1 byte も起きない。
+  (d) 境界 pin (`idx == len`) と Rust 側 quad 再計算突合を足して判別力を持たせた。
+  (e) 呼び出し 4 箇所を走査、production 2 経路は真の vector 長で clamp 済み。
+  focused 3 本は緑。裁定は `docs/adr/decisions-native-base64-tail-offset.md`。
+  **残るのは lane 完走のみ** — 台帳 `ignored-lane-expected-failures.txt:411` を落とすまでが
+  completion boundary。
 
-- [ ] `NATIVE-TYPEINFER-PARITY-PIN-01` native/selfhost parity harness の型印字を
+- [~] `NATIVE-TYPEINFER-PARITY-PIN-01` native/selfhost parity harness の型印字を
   構造比較へ書き換える — Issue `I-98`。
   `selfhost_native_stage_chain.rs:14638` の harness が `(print (type-name ty))` を
   Fn 型に対して行っており、印字しているのは引数型オブジェクトの handle (= heap address)。
@@ -3160,6 +3187,15 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `I-45` の契約そのものも動かさない (`decisions-selfhost-zero-arity-defn-type.md` が正本)。
   lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-LANE-RERUN-01` の共有 lane に束ねる。
   **cargo が要る。**
+  **(a)-(c) は 2026-08-28 に完了した。** (a) 7 値の構造印字へ書き換え、`type-name` は
+  tag 1/2 にしか当てない。(b) 比較対象が実質 3 値から 7 値へ増えたので検査は強くなった。
+  (c) `type-name` はファイル全体で 1 箇所、台帳にも同型は 1 行のみと確認。
+  focused 1 本は緑。裁定は `docs/adr/decisions-native-parity-harness-structural-type.md`。
+  **副産物として `I-101` を発見した** — vacuous green 対策の非空検査を足したところ、
+  `(defn p [] (not true))` の戻り型が `Bool` ではなく未解決の型変数だった。
+  この 2 slot は値を pin していない (`SELFHOST-INFER-RET-VAR-01` が引き取る)。
+  **残るのは lane 完走のみ** — 台帳 `ignored-lane-expected-failures.txt:412` を落とすまでが
+  completion boundary。
 
 - [ ] `CHECK-IMPORT-VISIBILITY-01` 修飾なし `(import M)` の可視性契約を裁定し、
   3 実装を 1 つの規則へ揃える — Issue `I-97`。

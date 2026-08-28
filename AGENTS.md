@@ -288,6 +288,15 @@ lane 自体は全量で 12 時間規模なので、**必ず切り離して回す
 ハーネス配下だと途中で止められる)。走らせている間は同じマシンで `cargo` を回さない
 (binary が差し替わると revision が混ざり、所要も CPU 競合で歪む)。
 
+**`selfhost_native_stage_chain` の representative native bundle 系は focused run で
+1 本ずつ回す。** 4 本を 1 プロセスにまとめたら 4 本目が `signal: 9` で殺され、
+同じ test を単独で回したら 119s で完走して緑になった (2026-08-28)。assertion 失敗ではなく
+常駐量の蓄積である。`--test-threads 1` でも同一プロセス内なので効かない。
+
+lane が落ちたときは **`MODEXIT` を先に見る**。`-9` は SIGKILL (測り直し)、
+`101` は libtest の通常の test 失敗 (台帳と突合する)。ここを取り違えると
+SIGKILL を「新規 FAIL」として台帳へ書き込むことになる。
+
 ### AST に slot を足す前の長さ probe 確認 (cargo 無し)
 
 ```bash

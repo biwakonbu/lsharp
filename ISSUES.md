@@ -229,9 +229,10 @@
 | [I-95](#i-95) | module-decl の vector layout に span 2 slot が中間挿入されたのに count 式と消費側 20 箇所以上が更新されておらず、3 つの規約が同居している | 中 | open | `I-75` から移管 (2026-08-28)。`56e11ce9` (2026-07-24) が出所。**production 側の欠陥で、test の期待値の問題ではない** |
 | [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播しておらず、赤 1 件と契約違反を pin した緑 1 件が同時に立っている | 中 | open | `I-75` から移管 (2026-08-28)。**今回は実装が正で test の期待値が陳腐化している側**。裁定は 2026-07-29 の ADR で既に済んでいる |
 | [I-97](#i-97) | 修飾なし `(import M)` が check の型環境へ unqualified 名を入れないので cross-module 参照が undefined symbol になる。Rust canonical / selfhost codegen とは規則が違う | 中 | open | `I-75` から移管 (2026-08-28)。**実装と test のどちらが正かは本 issue では裁定しない**。3 実装が 2 通りの規則を持っている |
-| [I-98](#i-98) | native/selfhost parity test の harness が Fn 型のスロット 1 を印字しており、backend 間で heap address を比較している | 中 | open | `I-75` から移管 (2026-08-28)。`I-45` の契約変更 (`914bd9f1`) が test を Con 型から Fn 型へ動かした取り残し。**構造上必ず赤くなる** |
-| [I-99](#i-99) | `byte-at-or-zero` の bound が vector 長ではなく caller の `end` なので、陳腐化した絶対 offset 定数がそのまま OOB read になる | 中 | open | `I-75` から移管 (2026-08-28)。同 commit 生まれの兄弟 test が offset を実測から導いていて緑なのが対照実験 |
+| [I-98](#i-98) | native/selfhost parity test の harness が Fn 型のスロット 1 を印字しており、backend 間で heap address を比較している | 中 | open | harness を 7 値の構造比較へ書き換えて focused 緑 (2026-08-28)。非空検査を足した副産物として `I-101` を発見。**lane 再計測が未了なので open のまま** |
+| [I-99](#i-99) | `byte-at-or-zero` の bound が vector 長ではなく caller の `end` なので、陳腐化した絶対 offset 定数がそのまま OOB read になる | 中 | open | 実測で code 長 = 5,746,740 と判明し、旧定数 10,174,680 は末尾を 4,427,940 byte 超えていた (2026-08-28)。3 本を offset 相対へ直して focused 緑。**lane 再計測が未了なので open のまま** |
 | [I-100](#i-100) | `src/App/Main.ls` の二重 self-compile が `__alloc` の中で OOB trap する。`memory.grow` 失敗ではないので heap 枯渇ではない | 中 | open | `I-75` から移管 (2026-08-28)。**backtrace frame 0 が `__alloc` 自身**で、trap 種別が capacity guard の `unreachable` ではない。原因は未確定で予測を事前登録した |
+| [I-101](#i-101) | `infer` が返す 0 引数 defn の戻り型が、`not : Bool -> Bool` を適用しているのに未解決の型変数のまま残る | 中 | open | `I-98` の非空検査を足したときに実測で発見 (2026-08-28)。診断は 0 件なので**落ちずに型が緩む**形。native / selfhost の両 backend で同一値 |
 
 ### ドキュメント (DOC)
 
@@ -6764,6 +6765,31 @@ test は `fa379ccf` (**2026-07-20**) で追加された。契約が動いたの�
 **`REPL-TYPE-TAG-01` に束ねない。** 実装を直しても本 test の harness は
 依然として address を印字するので緑にならない。
 
+#### 裁定 (2026-08-28)
+
+harness を構造比較へ書き換える。裁定と却下理由は
+[`docs/adr/decisions-native-parity-harness-structural-type.md`](docs/adr/decisions-native-parity-harness-structural-type.md)
+が正本。引き取り先は `TODO.md` の `NATIVE-TYPEINFER-PARITY-PIN-01`。
+
+**上の「未確認」のうち 1 件は解消した。** `assert_representative_override_main_matches_selfhost`
+を使う他の test への走査を行い、同型の印字が無いことを 2 通りで確かめた
+(ADR の「走査」節)。**`(print (vector-get ...))` 347 箇所は個別に読んでいない。**
+
+**書き換えた harness は緑になった** (`test result: ok. 1 passed; 0 failed` /
+`3080 filtered out` / `finished in 119.20s`)。ただし parity test は native と selfhost の
+一致しか見ないので、緑が「7 個の意味ある値の一致」か「0 個どうしの一致」かを区別できない。
+helper を `Vec<i64>` 返しへ変えて個数と中身を検査したところ、
+**戻り型が `Bool` ではなく未解決の型変数だった。これは `I-101` として立てた。**
+
+**上の「未確認」の 3 件目 —「この test は今まで一度も型の中身を比較していなかった」— は
+その通りだったが、比較するようにしたら比較対象そのものが緩んでいた**、という形で決着した。
+
+#### 状態を `resolved` にしない理由
+
+`selfhost_native_stage_chain` の lane 再計測が未了で、
+台帳 (`ignored-lane-expected-failures.txt:412`) をまだ落としていない。
+**focused test の緑は lane 1 本の完走ではない。**
+
 #### 未確認として残ること
 
 - **同一 backend 内で値が run ごとに変わるかは本 slice では測っていない。**
@@ -6865,6 +6891,17 @@ let end = start + 48;
 むしろ両者が `len` に真の vector 長を渡しているのに対し、赤の 1 件だけが `end` を渡している、
 という差が原因の所在を示している。
 
+#### 裁定 (2026-08-28)
+
+tail を指す offset は `(vector-length code)` から導く。直書き定数は 3 件とも捨てる。
+判別力の無い緑 2 件には assertion を足す。裁定と却下理由は
+[`docs/adr/decisions-native-base64-tail-offset.md`](docs/adr/decisions-native-base64-tail-offset.md)
+が正本。引き取り先は `TODO.md` の `NATIVE-TAIL-OFFSET-PIN-01`。
+
+**上の「未確認」のうち 1 件は解消した。** `build-base64-chunk-text` の呼び出しは
+生成物を除いて **4 箇所しかなく**、`print-base64-chunks` / `write-base64-chunks` は
+どちらも真の vector 長で clamp している (ADR の「全経路の走査」節)。
+
 #### 未確認として残ること
 
 - **`(vector-length code)` の実測値を取っていない。** cargo が要る。
@@ -6882,6 +6919,24 @@ let end = start + 48;
 - **引き取り先**: `TODO.md` の `NATIVE-TAIL-OFFSET-PIN-01`
 - **関連**: `I-75` (発見経路)、`I-13` (native heap に bounds check が無い)、
   `I-84` (「構造上必ず赤くなる test」の先例)、`I-98` (同じ分類パスで出た別種の test 側欠陥)。
+- **裁定 (2026-08-28)**: `docs/adr/decisions-native-base64-tail-offset.md` が正本。
+  3 本とも offset を `(vector-length code)` 相対へ直し、判別力の無かった 2 件には
+  境界 pin (`idx == len`) と Rust 側での quad 再計算突合を足した。
+
+  **上の未確認 2 件が実測で解けた。**
+
+  | 未確認だったこと | 実測 |
+  |---|---|
+  | `(vector-length code)` の値 | **5,746,740**。旧定数 10,174,680 は末尾を **4,427,940 byte** 超えていた |
+  | `build-base64-chunk-text` の全経路 | 呼び出しは 4 箇所。production 2 経路はどちらも真の vector 長で clamp しており、罠に掛かっていたのは本件だけ |
+
+  「真の vector 長を渡す形へ直すべきか」の裁定は **採らなかった**。
+  代わりに `start = len - 48` / `end = len` としたので、**0 埋めされる byte は 1 つも無い**。
+  `assert_eq!(len, 64)` (48 byte は 3 の倍数なので pad が入らない) が通ったことが、
+  全 byte が実際に符号化された証拠である。
+- **状態を `resolved` にしない理由**: `selfhost_native_stage_chain` の lane 再計測が未了で、
+  台帳 (`ignored-lane-expected-failures.txt:411`) をまだ落としていない。
+  **focused test の緑は lane 1 本の完走ではない。**
 
 <a id="i-100"></a>
 ### I-100: `src/App/Main.ls` の二重 self-compile が `__alloc` の中で OOB trap する (`memory.grow` 失敗ではない)
@@ -7041,3 +7096,61 @@ wasm の linear memory は**縮まない**。したがって一度 grow した�
 - **関連**: `I-75` (発見経路)、`I-78` (別物であることを上表で示した)、
   `I-79` (harness が診断情報を落とす帯)、`I-14` / `I-74` (GC root 検査の帯)、
   `I-13` (別 backend の heap 安全性)。
+
+<a id="i-101"></a>
+### I-101: `infer` が返す 0 引数 defn の戻り型が、`not` を適用しているのに未解決の型変数のまま残る
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28。`I-98` の是正で書き換えた
+  `..._native_typeinfer_program_apply_matches_selfhost` に
+  **vacuous green 対策の非空検査**を足したときに実測で出た。
+  parity test は native と selfhost の一致しか見ないので、
+  値そのものを固定するまでこの緩みは見えなかった。
+- **内容**: `(defn p [] (not true))` を `infer-program-analysis` に掛け、
+  `infer-program-analysis-type` の結果を構造で印字すると次になる。
+
+  | スロット | 実測 | source から導いた期待 |
+  |---|---|---|
+  | `(type-tag ty)` | 3 (Fun) | 3 |
+  | `(type-tag param-ty)` | 1 (Con) | 1 |
+  | `(type-name param-ty)` | 500 (Unit) | 500 |
+  | `(type-tag ret-ty)` | **2 (Var)** | 1 (Con) |
+  | `(type-name ret-ty)` | **1001 (型変数 id)** | 200 (Bool) |
+  | `diagnostic-count` | 0 | 0 |
+  | `first-error-code` | 0 | 0 |
+
+  すなわち `infer` は `Unit -> t1001` を返す。`Unit -> Bool` ではない。
+
+- **なぜ `Bool` のはずか**: `TypeInferBuiltins.ls:129` が
+  `not-ty (typeinfer-builtin-unary bool-ty bool-ty)` を作り、
+  `:182` が hash `109267` (= `static-logic-not-hash`,
+  `TypeInferAssertions.ls:966`) で型環境へ入れている。
+  `TypeInfer.ls:487-490` は 0 引数 defn を `(mk-fun (mk-unit) body-ty)` として登録し、
+  `infer-program-analysis-type` (`:1473-1479`) は返す前に
+  `apply-subst` を通している。**通しているのに var が残る。**
+
+- **落ちない形の緩みである。** `diagnostic-count` も `first-error-code` も 0 なので、
+  型エラーとしては報告されない。戻り型だけが自由変数として残る。
+  結果として `p` の呼び出し側は何とでも unify でき、型検査がその分だけ効かなくなる。
+
+### 未確認
+
+- **機構を特定していない。** 候補は 3 つあり、どれも本 slice では潰していない:
+  1. `apply-subst` が var -> var の連鎖を追い切らない (非再帰的な置換適用)
+  2. body の unify 結果が `infer-program-analysis-subst` に載っていない
+     (state の subst と result の subst が別物)
+  3. builtin の適用経路 (`infer-apply-legacy-raw`) が結果を fresh var で返し、
+     その束縛を subst に積んでいない
+- **`not` に固有かは分からない。** 他の builtin、複数引数、非 0 引数の defn で
+  同じことが起きるかを測っていない。**測るには cargo が要る。**
+- **型変数 id `1001` は run 間で安定していた。** プロセスも build も別の 2 run で
+  `[3, 1, 500, 2, 1001, 0, 0]` が一字一句同じだった。**id が毎回変わる類の乱れではない。**
+  ただし selfhost の source が変われば counter の配り方は変わりうるので、
+  test 側ではこの値を pin していない
+- **Rust 側 (`lsharp-types`) の `infer` が同じ形を返すかは見ていない。**
+  selfhost 側だけの緩みなら差分になるが、両方同じなら仕様かもしれない。
+  **この判別が最初にやるべきことである。**
+
+- **引き取り先**: `TODO.md` の `SELFHOST-INFER-RET-VAR-01`
+- **関連**: `I-98` (発見経路)、`I-45` (0 引数 defn を `Unit -> body` にした契約の正本)、
+  `I-46` (推論の完全性側)、`SELFHOST-PARSE-LENIENT-01` (落ちずに緩む形の先例)。
