@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 5 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、`main-with-args` 系 5 件を 2026-08-28 に `I-93` / `I-94` へ、formatter 1 件を同日 `I-95` へ移管。残り 5 件は症状を実測して台帳へ書いた |
+| [I-75](#i-75) | sweep で露出した未分類の赤 4 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、`main-with-args` 系 5 件を 2026-08-28 に `I-93` / `I-94` へ、formatter 1 件と `validate-source-json` 1 件を同日 `I-95` / `I-96` へ移管。残り 4 件は症状を実測して台帳へ書いた |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -227,6 +227,7 @@
 | [I-93](#i-93) | e2e 2 件が `compile -o` / `build --output` の出力先に stdout summary が書かれることを期待しているが、実装は wasm binary を書く | 中 | open | `I-75` から移管 (2026-08-28)。`2ba93d0a` (2026-07-12) が契約を変えたとき test を更新しなかった。**どちらが正しいかは本 issue では裁定しない** |
 | [I-94](#i-94) | e2e 3 件が `--target wasi-component` / `wasm` で `wasm-size:` を期待しているが、guest はその target を capability boundary で拒否する | 中 | open | `I-75` から移管 (2026-08-28)。境界そのものは `I-15` が意図された仕様として文書化済み。**欠陥は test 側の期待値にある** |
 | [I-95](#i-95) | module-decl の vector layout に span 2 slot が中間挿入されたのに count 式と消費側 20 箇所以上が更新されておらず、3 つの規約が同居している | 中 | open | `I-75` から移管 (2026-08-28)。`56e11ce9` (2026-07-24) が出所。**production 側の欠陥で、test の期待値の問題ではない** |
+| [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播しておらず、赤 1 件と契約違反を pin した緑 1 件が同時に立っている | 中 | open | `I-75` から移管 (2026-08-28)。**今回は実装が正で test の期待値が陳腐化している側**。裁定は 2026-07-29 の ADR で既に済んでいる |
 
 ### ドキュメント (DOC)
 
@@ -5177,26 +5178,27 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 5 件
+### I-75: sweep で露出した未分類の赤 4 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **5 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **4 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
   さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
   LSP Position の origin ずれ 2 件を `I-90` へ、
   `..._check_reports_invalid_canonical_case` 1 件を `I-76` へ移管した。
   2026-08-28 に `main-with-args` 系 5 件を `I-93` / `I-94` へ、
-  formatter の module body 1 件を `I-95` へ移管した)。
+  formatter の module body 1 件を `I-95` へ、
+  `validate-source-json` の `independent_reviews` 1 件を `I-96` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
 
   | module | 件数 | 実測した症状 |
   |---|---|---|
-  | `selfhost_cli_core` | 3 | check の import 解決 1 / self-feed compile の OOB trap 1 / `validate-source-json` の数値 1 |
+  | `selfhost_cli_core` | 2 | check の import 解決 1 / self-feed compile の OOB trap 1 |
   | `selfhost_native_stage_chain` | 2 | OOB trap 1 / native と selfhost の hash 不一致 1 |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
@@ -5262,11 +5264,19 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   span 2 slot が中間挿入されたのに count 式が据え置かれている。詳細は `I-95`。
   **formatter の欠陥ではなく parser 側の layout 不整合**なので、`I-75` から `I-95` へ移した。
 
-- **本 issue は保持であって診断ではない。** 残り 5 件それぞれの原因が付いた時点で
+- **2026-08-28 の分類パス (3 件目、cargo 不使用)。`validate_source_json_reports_contradicting_evidence`
+  1 件に原因が付いた。** 台帳の注記は「差分がこの 1 数値だけで、ログから追加情報が取れない」
+  だったが、source と ADR の突き合わせだけで決着した。**今回は向きが逆で、実装が正しく
+  test の期待値が陳腐化している。** 独立 review gate の `outcome=pass` 条件は
+  2026-07-29 の ADR が既に裁定しており、`contradicted` を名指しで除外している。詳細は `I-96`。
+  **本 issue の他の移管先 (`I-93` / `I-94` / `I-95`) はいずれも production 側の欠陥だったので、
+  この 1 件だけ性質が違う。** 「未分類の赤」は必ずしも実装の欠陥ではない。
+
+- **本 issue は保持であって診断ではない。** 残り 4 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
   `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)、
-  `I-93` / `I-94` / `I-95` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
+  `I-93` / `I-94` / `I-95` / `I-96` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
@@ -6409,3 +6419,111 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   裁定は修正 slice の ADR に属する。
 - **引き取り先**: `TODO.md` の `MODULE-DECL-LAYOUT-01`
 - **関連**: `I-75` (発見経路)、`I-64` (sweep の元)
+
+<a id="i-96"></a>
+### I-96: 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播していない
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-75` の残り 5 件を分類する過程。cargo 不使用、source と ADR の読解のみ)
+
+**本エントリは `I-75` からの移管分 1 件である。移管前の注記は
+「差分がこの 1 数値だけで、ログから追加情報が取れない」だった。**
+ログからは取れなかったが、source と ADR の突き合わせで決着した。
+
+#### 赤の中身
+
+`selfhost_cli_core::test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence`
+(`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs:15743`)。
+2026-08-24 sweep の実測は `left: Number(0)` / `right: 1`、落ちているのは
+`value["independent_reviews"]` の assert である。
+
+**台帳の注記が引いていた行番号 15673 は sweep 当時のものである。**
+その後 `I-90` の pin test を `:5076` に足したため以降がずれた。
+`git show bd7fa7ac:crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs` の 15673 行が
+`assert_eq!(value["independent_reviews"], 1);` であることを確認して同定した。
+
+fixture の evidence は `:method "review"` / `:outcome "contradicted"` /
+`:independence "independent-review"` である。
+
+**`contradicting_observations` の assert (`:15795`) は到達していないので未検証のままである。**
+これは `decisions-v0.2-selfhost-evidence-parser-duplicate.md` の訂正節が既に書いていたとおり。
+
+#### 原因
+
+`selfhost/src/App/Cli.ls:238-250` の `validation-independent-review-count-loop` は
+3 条件の連言で数えている。
+
+```
+(and (string-eq (source-evidence-record-method evidence-record) "review")
+  (and (string-eq (source-evidence-record-independence evidence-record) "independent-review")
+    (string-eq (source-evidence-record-outcome evidence-record) "pass")))
+```
+
+`git blame` によると **`outcome "pass"` の連言 (245-247 行) だけが `e37b9cd6` (2026-07-31)**
+で、残りは `f1a6287d` (2026-07-25) である。fixture は `contradicted` なので 0 になる。
+
+**この gate は正しい。** 裁定は本 issue ではなく既存 ADR で済んでいる。
+実装出力とは独立な根拠が 4 つある:
+
+1. `docs/adr/decisions-v0.2-validation-independent-review-outcome.md` (2026-07-29, Accepted) が
+   「`method=review`、`outcome=pass`、`independence=independent-review` の3条件をすべて満たす
+   ものに限定する」と定め、**`contradicted` を名指しで除外している**
+2. `docs/adr/decisions-v0.3-native-validation-boundary-followups.md:17,33-34` が
+   「the failed-review fixture counted a failed independent review as an independent review」を
+   **欠陥として**記録している。`e37b9cd6` の gate 追加は意図的な是正である
+3. Rust canonical の pin test `crates/lsharp-types/tests/intent_validation.rs:211`
+   `failed_independent_review_does_not_satisfy_review_gate` が
+   `EvidenceOutcome::Contradicted` -> `ValidationStatus::Fail` かつ gate 不成立を固定している
+4. `docs/adr/decisions-v0.2-native-validation-failed-independent-review.md` (2026-07-29) が
+   native smoke 側に同じ契約 (`independent_reviews` は `0`) を敷いている
+
+**したがって陳腐化しているのは test の期待値である。**
+`e37b9cd6` は `App/Cli.ls` に gate を入れたが、`selfhost_cli_core.rs` を一切触っていない。
+
+#### 同じ原因から出るもう一つの症状 -- 3 経路のうち 2 経路が契約違反のまま
+
+selfhost 側には同じ計数が 3 つある。**gate が入っているのは 1 つだけである。**
+
+| 定義 | gate | 由来 |
+|---|---|---|
+| `App/Cli.ls:238-250` | **あり** | `e37b9cd6` (2026-07-31) |
+| `App/EmbeddedCli.ls:427-437` | **なし** (method + independence の 2 条件のみ) | `793a5343` (2026-07-27、ADR より前) |
+| `Tools/Validation/ManifestInput.ls:178-182` | **なし** (`min(count("\"method\":\"review\""), count("\"independence\":\"independent-review\""))`) | **`e37b9cd6` が同時に新設した** |
+
+**対照実験がリポジトリ内にある。**
+`selfhost_cli_actual_main_args.rs:1415` の
+`test_e2e_selfhost_embedded_cli_validate_source_reports_fail` は
+**同形の fixture** (`:method "review"` / `:outcome "contradicted"` /
+`:independence "independent-review"`、`:1436` で実測) を使い、`:1459` で
+`report["independent_reviews"] == 1` を assert している。
+**この test は台帳に無い = 緑である。** ungated な `EmbeddedCli.ls` を通るためで、
+両者が別実装であることの決定的な証拠になる。
+
+すなわち **ADR 以前の挙動を緑の test が pin している。**
+
+`ManifestInput.ls` の方はさらに構造的である。文字列パターンの出現数を数える形なので、
+**record ごとの 3 条件連言を原理的に表現できない**。今でも `method` と `independence` が
+別 record に散る入力で誤計数する。
+
+**この parity 欠落は 2026-07-29 の ADR 自身が Boundary 節で
+「source/selfhost/native/MCP の parity」として follow-up に送っていた範囲である。**
+放置ではなく、明示的に繰り延べられていたものが未着手のまま残っている。
+
+#### 未実測として残ること
+
+- **`contradicting_observations` の期待値 1 が正しいかは分かっていない。**
+  導出上は contradicted record 1 件 + `:contradicts` edge 1 件が dedup されて 1 になるはずだが、
+  assert に到達したことが一度も無い。**修正 slice で実測する。**
+  「期待値を 0 に直せば緑になる」とは書かない -- 2 番目の assert を測っていないため。
+- **`EmbeddedCli.ls` / `ManifestInput.ls` を直したとき何件の test が動くかは測っていない。**
+  対照実験で 1 件は確定しているが、全量は lane が要る。
+
+#### 裁定しないこと
+
+`ManifestInput.ls` の文字列計数をどうするか (per-record parse へ寄せるか、
+近似であることを明示して別 API にするか) は修正 slice の ADR に属する。
+gate の意味論そのものは 2026-07-29 に裁定済みなので、**再裁定しない**。
+
+- **引き取り先**: `TODO.md` の `VALIDATION-REVIEW-GATE-PARITY-01`
+- **関連**: `I-75` (発見経路)、`I-64` (sweep の元)。
+  契約の正本は `docs/adr/decisions-v0.2-validation-independent-review-outcome.md`。

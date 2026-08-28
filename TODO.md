@@ -3069,7 +3069,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 5 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 4 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
@@ -3088,11 +3088,44 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **同日 2 件目の分類パスで `..._formatter_format_program_module_decl` 1 件を `I-95` へ移管した
   (6 -> 5)。** module-decl の vector layout に span が中間挿入されたのに count 式が
   据え置かれている件で、formatter の欠陥ではない。
+  **同日 3 件目の分類パスで `..._validate_source_json_reports_contradicting_evidence` 1 件を
+  `I-96` へ移管した (5 -> 4)。** 独立 review gate の `outcome=pass` 条件が selfhost 3 経路の
+  1 つにしか伝播していない件。**ここだけ実装が正で test の期待値が陳腐化している側**なので、
+  他の移管先と同じ扱いにしない。
   残る 5 件は**症状は台帳に載ったが原因は未確定**である。
   受入条件: 残る 5 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
+
+- [ ] `VALIDATION-REVIEW-GATE-PARITY-01` 独立 review gate の `outcome=pass` 条件を selfhost の
+  残り 2 経路へ伝播し、陳腐化した期待値 2 件を是正する — Issue `I-96`。
+  gate の意味論は `docs/adr/decisions-v0.2-validation-independent-review-outcome.md` (2026-07-29)
+  が既に裁定済みで、**本項目は再裁定しない**。開いているのは伝播と、`ManifestInput.ls` の
+  文字列計数をどうするかだけ。
+  受入条件:
+  (a) **期待値の是正を RED として先に置く。** `selfhost_cli_core.rs:15794`
+      (`independent_reviews` 1 -> 0) と `selfhost_cli_actual_main_args.rs:1459` (同 1 -> 0) の
+      **2 箇所を同時に動かす**。後者は**現在緑の test を赤にする**変更である。
+      `CLAUDE.md` が禁じる「実装に合わせて期待値を変える」ではなく `テストの設計ミスを除く` 側で、
+      独立根拠 4 つ (2026-07-29 ADR の除外明記 / `decisions-v0.3-native-validation-boundary-followups.md`
+      / Rust canonical の `failed_independent_review_does_not_satisfy_review_gate`
+      / `decisions-v0.2-native-validation-failed-independent-review.md`) を ADR に列挙すること
+  (b) `App/EmbeddedCli.ls:427-437` に `outcome=pass` の連言を足して (a) の 2 本目を緑にする
+  (c) `Tools/Validation/ManifestInput.ls:178-182` の扱いを ADR で裁定する。
+      文字列パターンの出現数を数える形は **record ごとの 3 条件連言を原理的に表現できない**
+      (今でも method と independence が別 record に散る入力で誤計数する)。
+      per-record parse へ寄せるか、近似であることを明示して別名の API にするか、
+      **却下した方の理由も書く**
+  (d) `contradicting_observations` の期待値 1 が正しいかを**実測する**。
+      2026-08-24 sweep では assert に到達していない。導出予測は「contradicted record 1 +
+      `:contradicts` edge 1 が dedup されて 1」だが、測るまで確定させない
+  (e) `docs/adr/decisions-v0.2-selfhost-evidence-parser-duplicate.md` の Evidence 行
+      (`pass（293.49s）`) を実測値へ更新する。**訂正節の履歴は消さず追記で行う**
+  **含めない範囲**: Rust canonical 側 (`crates/lsharp-types`) の実装。既に契約どおりである。
+  MCP 経路の parity も見ない (2026-07-29 ADR の Boundary が別に挙げている)。
+  lane 再計測は `selfhost_cli_core` と `selfhost_cli_actual_main_args` の 2 module になるので
+  `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。**cargo が要る。**
 
 - [ ] `MODULE-DECL-LAYOUT-01` module-decl の vector layout を 1 つに揃える — Issue `I-95`。
   `56e11ce9` (2026-07-24) が slot 3/4 に `name-start` / `name-end` を中間挿入したのに、

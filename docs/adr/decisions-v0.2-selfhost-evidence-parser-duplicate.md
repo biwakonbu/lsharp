@@ -50,6 +50,23 @@ failure boundary を曖昧にし、後続の manifest/validation へ誤った ev
 **原因は未診断。** `ISSUES.md` の `I-75` と `TODO.md` の `SWEEP-UNCLASSIFIED-01` が
 引き取っている。診断が付くまで、この Evidence 行を「正しい値」へ書き換えることはできない。
 書き換えれば、まだ分かっていないことを分かったことにしてしまう。
+
+#### 追記 (2026-08-28): 原因が付いた
+
+上の段落が置いた条件 (「診断が付くまで書き換えない」) が満たされたので追記する。
+**履歴として上の記述は残す。**
+
+原因は本 ADR の Decision とは無関係だった。`App/Cli.ls:238-250` が独立 review gate に
+`outcome=pass` の連言を持っており (`e37b9cd6` 2026-07-31)、fixture の `contradicted` は
+そこで落ちる。**この gate は `docs/adr/decisions-v0.2-validation-independent-review-outcome.md`
+(2026-07-29) が定めた契約どおりであり、陳腐化しているのは test の期待値の方である。**
+
+したがって `left: Number(0)` は**正しい値**である。詳細と是正手順は `ISSUES.md` の `I-96` /
+`TODO.md` の `VALIDATION-REVIEW-GATE-PARITY-01` が引き取った。
+
+**この Evidence 行はまだ書き換えない。** `contradicting_observations` の assert は
+依然として到達しておらず、`independent_reviews` を 0 へ直した後に何が起きるかは未実測である。
+実測してから 1 度で直す。
 - `test_e2e_selfhost_parser_preserves_source_intent_metadata_forms` — pass。
 - e2e 全体 clippy は今回触れていない `selfhost_native_stage_chain.rs` の 2件と
   `support.rs` の 1件で失敗したため、別作業の lint として修正しない。
