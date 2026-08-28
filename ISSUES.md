@@ -206,7 +206,7 @@
 | [I-72](#i-72) | stage-N 生成 Wasm の import 数が 1 つ足りない (`expected 11 imports, found 10`) | 高 | resolved | 2026-08-27。harness を 11-import へ統一。台帳 88 行中 80 行が緑 |
 | [I-73](#i-73) | native differential の exact-byte pin 33 件が一律にずれている | 中 | open | -- |
 | [I-74](#i-74) | root lifetime verifier が `main` 以外の helper の `depth: 1` を拒否する | 中 | open | -- |
-| [I-75](#i-75) | sweep で露出した未分類の赤 2 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 9 件を `I-93` / `I-94` / `I-95` / `I-96` / `I-97` / `I-98` へ移管。残る 2 件はどちらも OOB trap |
+| [I-75](#i-75) | sweep で露出した未分類の赤 1 件 | 中 | open | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 10 件を `I-93`〜`I-99` へ移管。残る 1 件は self-feed compile の OOB trap |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
 | [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。`I-72` 解決後に赤 3 件 |
@@ -230,6 +230,7 @@
 | [I-96](#i-96) | 独立 review gate の `outcome=pass` 条件が selfhost 3 経路のうち 1 経路にしか伝播しておらず、赤 1 件と契約違反を pin した緑 1 件が同時に立っている | 中 | open | `I-75` から移管 (2026-08-28)。**今回は実装が正で test の期待値が陳腐化している側**。裁定は 2026-07-29 の ADR で既に済んでいる |
 | [I-97](#i-97) | 修飾なし `(import M)` が check の型環境へ unqualified 名を入れないので cross-module 参照が undefined symbol になる。Rust canonical / selfhost codegen とは規則が違う | 中 | open | `I-75` から移管 (2026-08-28)。**実装と test のどちらが正かは本 issue では裁定しない**。3 実装が 2 通りの規則を持っている |
 | [I-98](#i-98) | native/selfhost parity test の harness が Fn 型のスロット 1 を印字しており、backend 間で heap address を比較している | 中 | open | `I-75` から移管 (2026-08-28)。`I-45` の契約変更 (`914bd9f1`) が test を Con 型から Fn 型へ動かした取り残し。**構造上必ず赤くなる** |
+| [I-99](#i-99) | `byte-at-or-zero` の bound が vector 長ではなく caller の `end` なので、陳腐化した絶対 offset 定数がそのまま OOB read になる | 中 | open | `I-75` から移管 (2026-08-28)。同 commit 生まれの兄弟 test が offset を実測から導いていて緑なのが対照実験 |
 
 ### ドキュメント (DOC)
 
@@ -5180,12 +5181,12 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   引き取り先は `TODO.md` の `ROOT-IMBALANCED-HELPER-01`。
 
 <a id="i-75"></a>
-### I-75: sweep で露出した未分類の赤 2 件
+### I-75: sweep で露出した未分類の赤 1 件
 
 - **影響度**: 中 / **状態**: open
 - **発見**: 2026-08-24 (`I-64` の `#[ignore]` 全量 sweep)
 - **内容**: 新規赤 145 件のうち、`I-71`〜`I-74` /
-  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **2 件**
+  `check` の型名 pin (2026-08-27 解決済み) / `REPL-TYPE-TAG-01` のいずれにも収まらない **1 件**
   (起票時 19 件。2026-08-27 の再測定で 4 件に原因が付き、
   2 件を `I-72`、1 件を `I-78`、1 件を `I-80` へ移管した。
   さらに同日 `..._full_inline_mismatch_probe` 1 件を `I-84` へ、
@@ -5195,7 +5196,8 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   formatter の module body 1 件を `I-95` へ、
   `validate-source-json` の `independent_reviews` 1 件を `I-96` へ、
   `check` の import 可視性 1 件を `I-97` へ、
-  native/selfhost parity の型印字 1 件を `I-98` へ移管した)。
+  native/selfhost parity の型印字 1 件を `I-98` へ、
+  base64 tail slice の OOB trap 1 件を `I-99` へ移管した)。
   症状が 1 件ずつ違い、まとめると嘘になるので**個別に台帳へ載せた上で本 issue が保持する**。
   内訳は [`ignored-lane-expected-failures.txt`](docs/development/validation/ignored-lane-expected-failures.txt)
   の `引き取り先: I-75` 行が正本。
@@ -5203,7 +5205,6 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   | module | 件数 | 実測した症状 |
   |---|---|---|
   | `selfhost_cli_core` | 1 | self-feed compile の OOB trap 1 |
-  | `selfhost_native_stage_chain` | 1 | OOB trap 1 |
 
   **旧版の表は `selfhost_cli_core` を 11 と書いており、合計が見出しの 19 に対して 18 だった。**
   台帳を数え直した実測は 12 で、移管後の合計 15 と一致した (2026-08-27 前半)。
@@ -5289,11 +5290,17 @@ Evidence として書かれていたのは実測値ではなく、test の自称
   **残る 2 件はどちらも `wasm trap: out of bounds memory access` である。**
   形が同じことは同一原因の証拠ではないので、引き続き別々に扱う。
 
+- **2026-08-28 の分類パス (6 件目、cargo 不使用)。`base64_tail_slice_stays_decodable`
+  1 件に原因が付いた。** 直前の bullet で「trap 種別が同じことは同一原因の証拠ではない」と
+  書いたが、**実際に別原因だった**。こちらは harness helper の bound 取り違えで、
+  `direct_selfhost_main_compile_is_deterministic` の self-feed compile とは関係が無い。詳細は `I-99`。
+  **残るは `selfhost_cli_core::..._direct_selfhost_main_compile_is_deterministic` 1 件だけである。**
+
 - **本 issue は保持であって診断ではない。** 残り 2 件それぞれの原因が付いた時点で
   該当分を別 issue へ移し、本 issue から減らす。全部移り終わったら resolved にする。
 - **関連**: `I-64` (発見経路)、`I-84` (1 件を移管。誤分類の是正)、
   `I-90` / `I-76` (2026-08-27 の分類パスで移管した先)、
-  `I-93` / `I-94` / `I-95` / `I-96` / `I-97` / `I-98` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
+  `I-93` / `I-94` / `I-95` / `I-96` / `I-97` / `I-98` / `I-99` (2026-08-28 の分類パスで移管した先)、`I-15` (`I-94` の境界の正本)。
   引き取り先は `TODO.md` の `SWEEP-UNCLASSIFIED-01`。
 <a id="i-76"></a>
 ### I-76: `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない
@@ -6759,3 +6766,107 @@ test は `fa379ccf` (**2026-07-20**) で追加された。契約が動いたの�
 - **引き取り先**: `TODO.md` の `NATIVE-TYPEINFER-PARITY-PIN-01`
 - **関連**: `I-75` (発見経路)、`I-45` (契約変更の正本)、`I-69` (同じ読みの形、別の所在)、
   `I-84` (「構造上必ず赤くなる test」の先例)。
+
+<a id="i-99"></a>
+### I-99: `byte-at-or-zero` の bound が vector 長ではなく caller の `end` なので、陳腐化した絶対 offset がそのまま OOB read になる
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28 (`I-75` の残りを分類する過程。cargo 不使用、source 読解のみ)
+
+**本エントリは `I-75` からの移管分 1 件である。**
+
+#### 赤の中身
+
+`selfhost_native_stage_chain::test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable`
+(`crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs:21674`)。
+実測は `wasm trap: out of bounds memory access` (backtrace 10 段、wasm function 3518-3527)。
+
+harness (`:21676-21683`) は representative build の native code を base64 化して decodable かを見る。
+
+```
+(let [alphabet (command-line-arg 0) pad (command-line-arg 1)
+      start 10174680
+      end (+ start 48)
+      text (build-base64-chunk-text alphabet pad code start end)] ...)
+```
+
+`code` は `emit-native-function-meta-bundle-with-import-count` の出力、
+すなわち **representative module 群から生成された native code そのもの**である。
+`start` は **10,174,680 という絶対 offset の直書き**であり、code のサイズが
+selfhost の source が変わるたびに動くことを一切考慮していない。
+
+#### 原因 -- 「範囲外なら 0」の bound が vector 長ではない
+
+一見すると harness は guard 付きに見える。`base64-quad` (`:19189-19192`) は
+生の `vector-get` ではなく `byte-at-or-zero` を通している。
+
+```
+(defn byte-at-or-zero [bytes idx len]        ; :16980
+  (if (>= idx len) 0 (let [value (vector-get bytes idx)] ...)))
+```
+
+**しかしこの `len` は vector の長さではなく、呼び出し元が渡した値である。** 経路は
+
+```
+build-base64-chunk-text alphabet pad code start end     ; :19219
+  -> build-base64-chunk-lines ... start (base64-group-count start end) end
+    -> base64-quad alphabet pad bytes start end          ; 第 5 引数 len = end
+      -> byte-at-or-zero bytes idx end
+```
+
+なので **bound は `end` = 10,174,728 になる**。`(vector-length code)` がこれより短ければ、
+`idx >= len` の判定は素通りし `vector-get` が vector の外を読む。
+`byte-at-or-zero` という名前は「範囲外なら 0」を約束しているように読めるが、
+**約束しているのは「caller が宣言した終端より後なら 0」だけ**である。
+
+wasm 実行なので runtime が OOB を捕まえて trap した。**native backend で同じ read をした場合
+何が起きるかは `I-13` (native heap に bounds check が無い) の範疇であり、本 issue では見ていない。**
+
+#### 対照実験 -- 同じ関数を動的 offset で呼ぶ兄弟は緑
+
+同じファイルの `..._representative_entrypoint_slice_base64_matches_raw_bytes` (`:21749`) は
+**同一の `build-base64-chunk-text` を呼ぶ** (`:21787`) が、offset を直書きしていない。
+
+```rust
+let entrypoint_offset = run_selfhost_main_representative_aarch64_layout_harness().entrypoint_offset;
+let start = entrypoint_offset;
+let end = start + 48;
+```
+
+**この test は台帳に無い、すなわち緑である。**
+同じ helper・同じ fixture 形・同じ 48 byte 幅で、offset の求め方だけが違い、
+一方が緑で一方が trap する。**helper の実装が壊れているのではなく、定数が陳腐化している。**
+
+さらに両者は **同一 commit `ae24e1f6` (2026-04-26 "WIP stage23 path-arg checkpoint") で
+同時に生まれている。** 正しい書き方は最初から隣にあった。
+
+#### 判別力の無い緑が 2 件ある -- 証拠に使ってはならない
+
+同じ offset 帯を触る test が他に 2 件あり、どちらも緑だが**「offset が範囲内である」証拠にはならない**。
+
+| test | offset | `len` に渡す値 | assertion | 判別力 |
+|---|---|---|---|---|
+| `..._tail_code_bytes_reveal_signed_values` (`:21717`) | 10174692-95 | `(vector-length code)` | `lines.len() == 4` のみ | **無い**。範囲外でも 0 が 4 行出る |
+| `..._tail_base64_quad_intermediates_are_bounded` (`:25563`) | 10174692 | `(vector-length code)` | `lines.len() == 7` + 範囲検査 | **無い**。全部 0 でも通る |
+
+**この 2 件が緑であることは、code が 10,174,696 byte 以上ある証拠ではない。**
+むしろ両者が `len` に真の vector 長を渡しているのに対し、赤の 1 件だけが `end` を渡している、
+という差が原因の所在を示している。
+
+#### 未確認として残ること
+
+- **`(vector-length code)` の実測値を取っていない。** cargo が要る。
+  上の機構は「短ければ trap する」ことを示すが、**実際に短いことは測っていない**。
+  他に trap しうる箇所が harness に無いこと (`base64-char` の `substring` は
+  digit が必ず 0..63 に収まる) から消去法で述べているにすぎない
+- **`byte-at-or-zero` に真の vector 長を渡す形へ直すべきかは裁定していない。**
+  そうすると本 test は trap しなくなるが、**範囲外を静かに 0 で埋めて緑になる**ので、
+  「tail が decodable」という主張は無内容になる。`I-99` では機構だけを記録する
+- **`build-base64-chunk-text` を使う他の経路 (`print-base64-chunks` / `write-base64-chunks`) は
+  `len` に真の vector 長を渡しており、同じ罠には掛かっていない。** ただし全経路は走査していない
+- **`ci-artifacts/**/seed.ls` に同じ helper が焼き込まれている** (`grep` で 6 箇所以上)。
+  生成物なので直接は直さないが、seed を作り直す際に同じ形が再生産される
+
+- **引き取り先**: `TODO.md` の `NATIVE-TAIL-OFFSET-PIN-01`
+- **関連**: `I-75` (発見経路)、`I-13` (native heap に bounds check が無い)、
+  `I-84` (「構造上必ず赤くなる test」の先例)、`I-98` (同じ分類パスで出た別種の test 側欠陥)。

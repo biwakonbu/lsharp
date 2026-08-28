@@ -3069,7 +3069,7 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   **含めない範囲**: `main` の免除 (案 E で確定済み)、
   `RootPopUnderflow` / `BranchDepthMismatch` (`I-14` の案 B1)。**cargo が要る。**
 
-- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 2 件に原因を付ける — Issue `I-75`。
+- [ ] `SWEEP-UNCLASSIFIED-01` sweep で露出した未分類の赤 1 件に原因を付ける — Issue `I-75`。
   新規赤 145 件のうち `I-71`〜`I-74` / `check` の型名 pin 5 本 (2026-08-27 解決済み) /
   `REPL-TYPE-TAG-01` の
   どれにも収まらなかった分。症状が 1 件ずつ違う。
@@ -3099,11 +3099,42 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   `I-98` へ移管した (3 -> 2)。** harness が Fn 型のスロット 1 (= heap address) を印字しており、
   backend 間で一致しようがない。**残る 2 件はどちらも OOB trap だが、形が同じことは
   同一原因の証拠ではない**ので別々に診る。
+  **同日 6 件目の分類パスで `..._base64_tail_slice_stays_decodable` 1 件を `I-99` へ
+  移管した (2 -> 1)。** harness helper の bound が vector 長ではなく caller の `end` で、
+  直書きの絶対 offset 10174680 が陳腐化して OOB read になっていた。
+  **直前に留保した「trap 種別が同じでも同一原因とは限らない」が実際に当たった** --
+  もう 1 件の self-feed compile とは無関係だった。
+  **残るは `selfhost_cli_core::..._direct_selfhost_main_compile_is_deterministic` 1 件。**
   残る 5 件は**症状は台帳に載ったが原因は未確定**である。
   受入条件: 残る 5 件それぞれに原因を付け、該当分を別 issue / 別項目へ移して
   `I-75` から減らすこと。全部移り終わったら `I-75` を resolved にし本項目を削除する。
   **一括で 1 つの原因にまとめないこと** — まとめられるならそもそも別 cluster になっている。
   **含めない範囲**: 移した先での修正そのもの。**cargo が要る。**
+
+- [ ] `NATIVE-TAIL-OFFSET-PIN-01` representative native code の tail を直書き offset で
+  切るのをやめる — Issue `I-99`。
+  `selfhost_native_stage_chain.rs:21677` の `start 10174680` は representative build の
+  code サイズに依存する絶対 offset で、selfhost の source が変われば範囲外になる。
+  `build-base64-chunk-text` は `byte-at-or-zero` の `len` に **caller の `end`** を渡すので
+  guard が効かず、`vector-get` が vector の外を読んで trap する。
+  受入条件:
+  (a) **まず `(vector-length code)` を実測する。** `I-99` は機構を示しただけで
+      実際に短いことは測っていない。**測る前に定数を書き換えない**
+  (b) offset を実測から導く形へ寄せる。**新規設計は要らない** --
+      同一ファイルの `..._entrypoint_slice_base64_matches_raw_bytes` (`:21749`) が
+      `run_selfhost_main_representative_aarch64_layout_harness().entrypoint_offset` から
+      導いており、同じ commit `ae24e1f6` 生まれで緑である。この方式へ寄せる
+  (c) **`byte-at-or-zero` に真の vector 長を渡すだけの修正で済ませないこと。**
+      trap は消えるが範囲外が静かに 0 で埋まり、「tail が decodable」という
+      主張が無内容になる。この却下理由を残す
+  (d) 判別力の無い緑 2 件 (`:21717` / `:25563`。どちらも `lines.len()` しか見ていない) を
+      どうするか決める。範囲外でも通るので、offset を直した後も無内容のままである
+  (e) `build-base64-chunk-text` を使う経路を全走査し、同じ bound 取り違えが他に無いか確かめる。
+      `I-99` は `print-base64-chunks` / `write-base64-chunks` の 2 経路しか見ていない
+  **含めない範囲**: `ci-artifacts/**/seed.ls` に焼き込まれた同一 helper (生成物なので直接直さない)。
+  native backend で同じ read をしたときの挙動 (`I-13` の範疇)。
+  lane 再計測は `selfhost_native_stage_chain` なので `SWEEP-UNCLASSIFIED-01` の共有 lane に束ねる。
+  **cargo が要る。**
 
 - [ ] `NATIVE-TYPEINFER-PARITY-PIN-01` native/selfhost parity harness の型印字を
   構造比較へ書き換える — Issue `I-98`。
