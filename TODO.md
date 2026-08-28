@@ -3066,11 +3066,16 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   素通りして emitter 末端に届いたために発火している。stage2 側も frame 0 の body が
   byte 一致するので**同一原因である** (trap kind の文字列を待つ必要はもう無い)。
   受入条件の「除数が 0 になる箇所を逆アセンブルで特定」は**満たした**。
-  **残る仕事は診断ではなく裁定と修正である。** 次にやることは
-  (a) `build-function-body-function-standalone` (`:883`) 以外の body builder を数え、
-  どの条件でどれが選ばれるかを読むこと。**これを読むまで修正方向を決めない**
-  (書き換えを飛ばす経路の欠陥 / その mode では設計上未対応 / 拒否は診断であるべき、の 3 通りが
-  同じ証拠から導ける)。(b) 裁定を ADR に書く。(c) RED を立てて直す。
+  (a) body builder の数え上げと (b) 裁定は 2026-08-28 に完了した。裁定の正本は
+  `docs/adr/decisions-selffeed-command-line-args-boundary.md` で、**案 (ii)「境界を保ったまま
+  拒否を診断に変える」を採用**、案 (i)「既定 mode を standalone builder へ寄せる」を却下した。
+  **残る仕事は (c) 実装だけである。** 内訳は 3 つ:
+  既定 mode 用の unsupported-opcode 走査を Compiler 層に足す /
+  `reject-native-only-wasm-opcode` の `(/ opcode 0)` を消す /
+  standalone とは別立ての診断メッセージを用意する。
+  **含めない範囲**: 既定 mode に `command-line-args` を実装すること (11 import に 12 本目を
+  足す判断で、Rust host 側の runtime 契約も動く)。したがって**本項目を倒しても赤 3 件は
+  緑にならない**。失敗メッセージが `wasm trap` から診断文字列へ変わるところまでが受入条件である。
   **併せて片付けるもの** (`I-78` に記録した、同じ根から出る危険 2 件):
   生の 91 が末端に届くと trap せず `read-stdin` が `command-line-args` に化ける silent
   miscompile になる件と、書き換えが operand 付け替え (`:721` の `(+ operand 11)`) も

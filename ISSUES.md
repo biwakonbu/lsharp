@@ -209,7 +209,7 @@
 | [I-75](#i-75) | sweep で露出した未分類の赤 (全 19 件を移管し終えた) | 中 | resolved | 8 件を 2026-08-27 に `I-72` / `I-76` / `I-78` / `I-80` / `I-84` / `I-90` へ、2026-08-28 に 11 件を `I-93`〜`I-100` へ移管。**保持 issue としての役目を終えたので resolved。個々の原因は移管先が持つ** |
 | [I-76](#i-76) | `check` の型名出力は program 型を返すので、式の型を検査する test が成立しない | 中 | open | -- |
 | [I-77](#i-77) | e2e の Wasm 検証ヘルパーが関数本体を一つも検証していない | 高 | open | -- |
-| [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。**2026-08-28 に診断確定**: 算術バグではなく `reject-native-only-wasm-opcode` の意図的 trap。赤 3 件は同一原因 |
+| [I-78](#i-78) | stage1 compiler が `src/App/Cli.ls` の self-feed compile で `integer divide by zero` trap する | 中 | open | `I-75` から分離 (2026-08-27)。**2026-08-28 に診断確定**: 算術バグではなく `reject-native-only-wasm-opcode` の意図的 trap。赤 3 件は同一原因。裁定済 (`decisions-selffeed-command-line-args-boundary.md`)、実装は未着手 |
 | [I-79](#i-79) | 実行失敗で assertion が skip される test が 3 件あり、緑のまま何も検査していなかった | 中 | resolved | 2026-08-27 解決。起票時の「8 件」は分類が誤っていた |
 | [I-80](#i-80) | target-defn probe が AST の形を添字直打ちで辿り陳腐化している | 中 | resolved | test 側 3 件を是正。marker 129 以降の初回評価で新規赤は 0。2026-08-28 の lane で完走確認。副産物が `I-88` |
 | [I-81](#i-81) | `local_bound_violation_indices` が 0 件になり、violation 前提の診断足場が落ちる | 中 | resolved | `I-72` 解決後に露出 (2026-08-27)。同日、極性を反転し改名。2026-08-28 の lane で完走確認 |
@@ -5450,6 +5450,9 @@ trap 地点は抜粋が落としていた **frame 0 = `0x543cd - <wasm function 
 code section を pure Python で走査し、各 function body の file offset 範囲を作って
 backtrace の offset を引いたところ、**12 frame すべてが trace の index と一致した**。
 stage2 側も同様に `stage2_debug.wasm` (1,575,570 byte、`.gitignore:7` の `*.wasm` により未追跡) で
+(**2026-08-28 15:10 時点でこの artifact はディスク上に存在しない。** `ci-artifacts/bootstrap-diff/local/`
+は 08-27 21:17 に再生成され、stage1 側だけが残っている。上の offset 一致はその前に取得したもので、
+本文に写し取ってある値が唯一の記録である)
 **10 frame すべて一致**した。**同定の根拠は file の timestamp ではなく、この offset 一致である。**
 
 **trap 地点のバイト。** `0x543cd` のバイトは `0x7f` = `i64.div_s`。
@@ -5555,10 +5558,29 @@ fixed input set の 54 target のうちこの 3 本に該当するのは **`Cli`
 「`src/App/Cli.ls` を食わせた時点で落ちる」という症状と過不足なく一致する。
 
 **したがって修正方向は (b) 「その mode では設計上未対応」である。** 起票時に想定した
-(a)「書き換えを飛ばす builder 経路の欠陥」ではない。残る選択は
-「stage1 の既定 mode を standalone 側へ寄せるか」「境界を保ったまま拒否を診断に変えるか」で、
-**これは裁定が要るので ADR で決める** (`TODO.md` の `CLI-SELFFEED-DIVZERO-01`)。
-前者は 54 target 全ての出力 byte を変えるので fixed-point / differential の pin に広く波及する。
+(a)「書き換えを飛ばす builder 経路の欠陥」ではない。
+
+#### 裁定 (2026-08-28、`docs/adr/decisions-selffeed-command-line-args-boundary.md` が正本)
+
+残っていた 2 択「stage1 の既定 mode を standalone 側へ寄せる」「境界を保ったまま拒否を
+診断に変える」は、**後者を採った**。前者の却下理由は「既定 mode の 11 import は runtime host
+契約、standalone の 24 import は WASI preview1 契約であり、複数形 1 命令のために module 全体の
+host 契約を差し替えることになる」ことと、「書き換えが行う operand 調整 `(+ operand 11)` が
+11 import レイアウトを 24 import へ寄せる補正なので、既定 mode に持ち込むと二重補正になる」ことである。
+
+**却下理由を 1 件撤回する。** 直前の記述で「前者は 54 target 全ての出力 byte を変えるので
+fixed-point / differential の pin に広く波及する」と書いたが、**これは帰結を数える前に書いた誤りである**。
+実際には:
+
+| 主張 | 実測 |
+|---|---|
+| chain match の pin に波及する | **しない**。`..._stage_chain_match` 系は `assert_eq!(stage2_target, stage3_target)` という**相対**比較で、両方が同じだけずれる |
+| fingerprint の pin に波及する | **しない**。`hash_fingerprint` の呼び出しは全て `json!` の診断 payload 内で、assertion には 1 件も現れない |
+| instantiation が壊れる | **しない**。`extract_single_compiled_module` (`part_001.rs:715-740`) は `assert_valid_wasm` までで、出力 module を instantiate しない |
+| differential の pin に波及する | **しない**。`I-73` の differential は **native backend** であってこの wasm 経路ではない |
+
+**出力 module の絶対 byte を pin している test は 1 本も無い。** 却下は契約の粒度の話であって、
+test の都合ではない。
 
 #### 同じ根から出る、本件のスコープ外の危険 2 件
 
@@ -5582,6 +5604,8 @@ fixed input set の 54 target のうちこの 3 本に該当するのは **`Cli`
   意図的 trap がメッセージを一切持てないことは
   `docs/adr/decisions-selfhost-typeinfer-stub-override.md` の決定 4 が trap 案を却下した根拠と
   同じ論点で、本件はその実例である (本件は 4 日間「未診断の算術バグ」として台帳に居座った)。
+  **裁定の正本は `docs/adr/decisions-selffeed-command-line-args-boundary.md`**
+  (案 (ii)「境界を保ったまま拒否を診断に変える」を採用、案 (i)「既定 mode を standalone へ寄せる」を却下)。
   引き取り先は `TODO.md` の `CLI-SELFFEED-DIVZERO-01`。
 
 <a id="i-79"></a>
