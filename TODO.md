@@ -2983,6 +2983,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   受入条件:
   - **stub を踏んだことが分かる形にする。** trap / diagnostic / compile error のどれに寄せるかを
     先に決めて ADR に書く。**現状の「静かに `fresh-type-var` を返す」だけは残さない**
+    **-> 2026-08-28 に裁定した (ADR の決定 4)。compile error に寄せる。**
+    22 件を到達可能性で割ると **9 到達可能 / 13 到達不能**で、到達不能 13 件は削除、
+    到達可能 9 件は `(make-error-result-code (error-code-typeinfer-stub))` に置き換える。
+    新 code は `LS9001` = `internal-typeinfer-stub`
+    (`LS1001`..`LS1013` は満杯で、かつこれは利用者の型エラーではない)。
+    trap / poison 型 / signature 拡張 / link 時拒否は却下した。**実装はまだしていない**
   - **先に赤い test を書く。** `Types.TypeInfer` だけを import したプログラムが
     現状は無診断で通ることを固定してから直す
   - `TypeInfer.ls` 単独 link を意図的に成立させている経路が他に無いことを確認する。

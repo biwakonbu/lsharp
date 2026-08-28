@@ -1,7 +1,7 @@
 # selfhost TypeInfer の stub / override 構造をどう扱うか
 
-- **Status**: doc-GREEN (`I-101` 側は focused 2 run まで / lane 未了) + doc-GREEN (`I-102` 側の決定 3 / poison は未着手 / 2026-08-28)
-- **Date**: 2026-08-28 (doc-RED) / 2026-08-28 (RED) / 2026-08-28 (GREEN) / 2026-08-28 (訂正 + 決定 3 の doc-RED)
+- **Status**: doc-GREEN (`I-101` 側は focused 2 run まで / lane 未了) + doc-GREEN (`I-102` 側の決定 3) + doc-RED (`I-102` 側の決定 4 / 実装は lane 後 / 2026-08-28)
+- **Date**: 2026-08-28 (doc-RED) / 2026-08-28 (RED) / 2026-08-28 (GREEN) / 2026-08-28 (訂正 + 決定 3 の doc-RED) / 2026-08-28 (決定 4 の doc-RED)
 - **Scope**: `selfhost/src/Types/TypeInfer.ls` の stub 定義群と、それを上書きする
   `TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` / `TypeInferRecord`。
   および `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` の
@@ -246,6 +246,130 @@ bundle 正規化 (`support.rs:1483-1485` の `normalize_selfhost_bundle_source`)
   決定 3 の invariant test では `selfhost/src` の範囲しか満たさない。**
   この不足は `TODO.md` の `SELFHOST-INFER-STUB-DIAG-01` に明記して残す。
 
+## 決定 4: stub を観測可能にする — 到達不能は削除、到達可能は専用の compile error (`I-102` / doc-RED)
+
+`I-102` の残る受入条件は次の 1 行である。
+
+> **stub を踏んだことが分かる形にする。** trap / diagnostic / compile error のどれに寄せるかを
+> 先に決めて ADR に書く。**現状の「静かに `fresh-type-var` を返す」だけは残さない**
+
+**結果を見る前に、source 読解だけで決める。** 実装と計測は共有 lane
+(`SWEEP-LANE-RERUN-01`) の後に回すので、ここで決めておかないと決定の根拠が
+実測の後追いになる。
+
+### 決定の前提となる実測 (すべて cargo 不要 / 2026-08-28)
+
+いずれも source を読んだだけの事実であり、test の出力は一切見ていない。
+
+| # | 事実 | 取得方法 |
+|---|---|---|
+| 1 | stub は `TypeInfer.ls:224-272` の **22 件**である | 節ヘッダから `infer-recordupdate-node` まで |
+| 2 | うち **6 件は上書きと byte 一致**する (`pattern-children-subst` / `pattern-children-env` / `pat-result-subst` / `pat-result-type` / `pat-result-env` / `infer-recordlit-fields`) | 同名 defn を抽出して文字列比較 |
+| 3 | うち **13 件は `TypeInfer.ls` からも他 module からも呼ばれない** (下表) | 定義行 224-272 を除いた全 `.ls` に対する呼び出し検索 |
+| 4 | 診断は **code -> 固定文字列**であり、**食い違った型を印字する経路が無い** | `check-diagnostic-body-from-code` (`App/Cli.ls:76` / `App/EmbeddedCli.ls:81`) |
+| 5 | selfhost の error code 1..8 は **`LS1001`..`LS1008` に 1:1 で写る** (`Cli.ls:1571-1576`) | 同上 |
+| 6 | **`7` は空き番号ではない。** Rust 側で `LS1007` = `UndefinedField` が使用中で、selfhost が未実装なだけである | `crates/lsharp-types/src/infer/error.rs:103` |
+| 7 | `LS1001`..`LS1013` は **全て埋まっている** | `imp-02-error-handling-unification.md:63` |
+| 8 | `TypeInfer` 系 5 module に `:example` / `:invariant` は **0 件**である | `grep -c` |
+| 9 | trap / abort 相当の primitive は `Backend/` の外に無い | 全 `.ls` 検索 |
+
+**到達可能性の全数表** (「TypeInfer 内」は定義行を除いた呼び出し回数):
+
+| stub | TypeInfer 内 | 他 module | 判定 |
+|---|---|---|---|
+| `infer-lambda` | 2 | - | 到達可能 |
+| `infer-apply` | 1 | - | 到達可能 |
+| `infer-let` | 1 | - | 到達可能 |
+| `infer-computation` | 1 | - | 到達可能 |
+| `infer-do` | 1 | - | 到達可能 |
+| `infer-match` | 1 | - | 到達可能 |
+| `infer-recordlit` | 1 | - | 到達可能 |
+| `infer-fieldaccess` | 1 | - | 到達可能 |
+| `infer-recordupdate-node` | 1 | - | 到達可能 |
+| `infer-computation-steps` | 0 | - | **到達不能** |
+| `pattern-children-subst` | 0 | - | **到達不能** |
+| `pattern-children-env` | 0 | - | **到達不能** |
+| `infer-pattern-children` | 0 | - | **到達不能** |
+| `infer-constructor-pattern-children` | 0 | - | **到達不能** |
+| `infer-pattern` | 0 | - | **到達不能** |
+| `pat-result-subst` | 0 | - | **到達不能** |
+| `pat-result-type` | 0 | - | **到達不能** |
+| `pat-result-env` | 0 | - | **到達不能** |
+| `infer-match-arms` | 0 | - | **到達不能** |
+| `infer-record-fields` | 0 | - | **到達不能** |
+| `infer-recordlit-fields` | 0 | - | **到達不能** |
+| `recordlit-field-node` | 0 | - | **到達不能** |
+
+**9 到達可能 / 13 到達不能**である。到達不能 13 件の呼び出し元は上書き module 自身
+(`TypeInferPattern.ls` / `TypeInferRecord.ls`) しかなく、その module が link されている場面では
+**後勝ちで自分の定義が当たる**。したがって stub 側が選ばれる configuration が存在しない。
+
+### 決定
+
+**2 段構えにする。1 つの機構で 22 件を覆おうとしない。**
+
+**(A) 到達不能な 13 件は削除する。**
+存在しないものは嘘をつけない。「踏んだことが分かる形」の最も強い形は「踏めないこと」である。
+これは `I-102` が挙げた 5 件の `(mk-int)` stub のうち 2 件
+(`infer-constructor-pattern-children` / `infer-record-fields`) を機構を足さずに消す。
+副次的な利得として、**bundle 順が入れ替わったときに stub が上書きに勝つ経路**も消える
+(現状は `TypeInfer.ls` が先に並ぶ前提に依存しており、その前提はどの正本にも書かれていない)。
+
+**(B) 到達可能な 9 件は `make-error-result-code` を返す = compile error に寄せる。**
+9 件はすべて `(make-result subst <ty>)` 形なので、同じ位置に
+`(make-error-result-code (error-code-typeinfer-stub))` を置ける。**引数も戻り値の形も変わらない**ので
+「`TypeInfer.ls` 単体を型検査可能にする」という stub 本来の役割は保たれる。
+呼び出し側は既に `result-failed` を見て `propagate-error-result-with-span-and-name` するので、
+配管の追加は要らない。
+
+**新しい code は `LS` の type error 帯 (`LS1001`..`LS1013`) の外に置く。**
+上表 #6 #7 のとおり `7` は空きではなく `LS1001`..`LS1013` は満杯である。加えて、これは
+利用者の型エラーではなく **compiler 内部の欠陥**なので、`TypeError` の名前空間に混ぜるのは誤りである。
+`LS9999` = `unknown` が既にある 9 帯に **`LS9001` = `internal-typeinfer-stub`** を採る。
+selfhost 側の内部値は `canonical-assertion-*` と同じく 4 桁で持ち、
+`(defn error-code-typeinfer-stub [] 9001)` とする。
+
+### 却下した案
+
+- **poison 型 (専用の型コンストラクタを返して unify を失敗させる)。**
+  機構としては成立する — `unify-substituted` (`Types/Type.ls:792`) は Con 名の異なる 2 つを
+  `(unify-error)` にするので、poison は Int/Bool/... と必ず衝突する。**却下の理由は診断の質である。**
+  上表 #4 のとおり診断は code -> 固定文字列で、**食い違った型を印字しない**。poison が最初に
+  ぶつかった場所の code がそのまま出るので、実際には stub が原因なのに
+  `"if condition must be Bool"` のような**別の構文を名指しする誤導的なメッセージ**になる。
+  さらに poison 同士は unify に成功するので、stub だけで閉じた経路は素通りする。
+  (B) は原因の位置でそのまま code を立てられるので、この 2 つの欠点がない。
+- **trap / abort。** メッセージを一切持てないので「踏んだ」ことしか分からず、
+  どの stub かが残らない。加えて trap の意味論は `I-78` (`CLI-SELFFEED-DIVZERO-01`) が
+  未決の領域であり、そこに新しい trap 利用者を足すと 2 つの未決が絡む。
+- **診断チャネルを stub の signature に足す。** 22 本の signature を広げると
+  上書き 4 module の同名 defn も全て追随する必要があり、変更が 5 module に散る。
+  (B) は既存の `result` 表現に載るので signature を 1 つも変えない。
+- **link 時に拒否する (stub が ftable を勝ち取ったら compiler が error にする)。**
+  stub の印付けと `ftable-lookup-loop` / `register-defns-step` (compiler の中核) の改造が要る。
+  (B) は `TypeInfer.ls` の中だけで閉じ、**source を組む側が誰であっても効く** —
+  静的 invariant test (決定 3) が見られない `.rs` の inline fixture にも効く点が決め手である。
+- **現状維持 (`fresh-type-var` のまま)。** `I-102` の受入条件がこれを明示的に禁じている。
+
+### 完了境界 (先に書いておく)
+
+**(A) (B) はどちらも `TypeInfer.ls` を編集する = lane module の領域である。**
+実装後は `selfhost_cli_core` と `selfhost_native_stage_chain` の**再計測 lane が別に要る**。
+focused test の GREEN では `I-102` を閉じない。順序は
+**現行 lane 完走 -> 台帳処理 -> (A)(B) の RED/GREEN -> 次の共有 lane** で固定する。
+
+### 残る穴 (実装前に分かっている分)
+
+- **(B) は「stub に入ったら compile が落ちる」までしか保証しない。**
+  stub を踏まない経路で上書きが欠けている場合 (13 件の削除で消える分を除く) は何も起きない。
+- **`.rs` の inline fixture が赤に転じる件数は事前に分からない。** これは欠陥の顕在化であって
+  退行ではないが、lane の差分が大きくなることは織り込んでおく。
+- **`LS9001` の追加は `check-diagnostic-body-from-code` を 2 箇所** (`App/Cli.ls:76` /
+  `App/EmbeddedCli.ls:81`) **に書くことになる。** この重複は本 slice が作るものではなく既存で、
+  `MODULE-DUP-FN-01` の領域である。片方だけ直すと embedded 側が `"type error"` に落ちる。
+- **`docs/guides/error-reference.md` の表にも `LS9001` を足す必要がある。**
+  足さないと `LS9999` (unknown) にフォールバックする MCP lookup が新 code を説明できない。
+
 ## Evidence
 
 RED / GREEN とも同じ 1 本を focused で回した
@@ -319,13 +443,16 @@ bundle 側が壊れないことは事前に構造からも読めていた。`App
 - **lane 再計測は未了。** `ignored-lane-expected-failures.txt:412` の台帳行はまだ落としていない。
   **focused GREEN は lane 1 本の完走ではない。** `SWEEP-LANE-RERUN-01` が回るまで
   `I-101` は `open` のままにする。
-- **poison (stub 自体を観測可能にする) は入れていない。** したがって
+- **観測可能化は決定 4 で裁定しただけで、実装していない。** したがって
   `I-102` の受入条件「現状の『静かに `fresh-type-var` を返す』だけは残さない」は
-  **`selfhost/src` の entry の範囲でしか満たしていない**。
+  **まだ `selfhost/src` の entry の範囲でしか満たしていない**。
   `.rs` の inline fixture が組む entry source は依然として無診断で stub を踏みうる。
-  決定 3 の「却下・保留した案」に理由を書いた (検証に共有 lane 1 本が要る)。
-- **`(mk-int)` を返す 5 件の stub が実際に踏まれた形跡は調べていない。**
-  `infer-apply` は `I-101` で確定したが、他 22 件は未確認。
+  実装を lane の後に回す理由は決定 4 の「完了境界」節に書いた。
+  **なお決定 4 で採ったのは poison 型ではない。** 採ったのは削除 + 専用 compile error で、
+  poison 型は却下側にある (診断が食い違った型を印字しないため誤導的になる)。
+- **22 件の stub のうち、実際に踏まれた形跡が確定しているのは `infer-apply` 1 件だけである。**
+  決定 4 で **到達可能性** (呼び出しが存在するか) は 9 / 13 に全数確定させたが、
+  「到達可能な 9 件が実行時に踏まれたことがあるか」は別問題で、そこは測っていない。
 - **決定 3 の invariant test は `#[ignore]` の e2e を見ていない。**
   ソース走査は `selfhost/src` だけが対象である。
 

@@ -7377,12 +7377,37 @@ import さえ張れば上書きは効く** (`[3, 1, 500, 1, 200, 0, 0]`)。
 
 ### 未確認
 
-- **stub を trap / diagnostic 化してよいかは決めていない。** 静的走査の範囲では
-  「意図的な単独 link 経路」は見つからなかった (`Types.TypeInferSmoke` は単独 link ではなく
-  **bundle 専用**であることが自身のコメントで明示されていた) が、
-  `.rs` 側の inline fixture が構成する entry source は走査していない。**cargo が要る。**
-- **`(mk-int)` を返す 5 件の stub が実際に踏まれた形跡があるかは見ていない。**
-  `infer-apply` は `I-101` で踏んでいたことが確定したが、他 22 件は未確認。
+- **`.rs` 側の inline fixture が構成する entry source は走査していない。**
+  静的走査の範囲では「意図的な単独 link 経路」は見つからなかった
+  (`Types.TypeInferSmoke` は単独 link ではなく **bundle 専用**であることが
+  自身のコメントで明示されていた) が、`.rs` 側は別である。**cargo が要る。**
+- **到達可能な 9 件が実行時に踏まれた形跡があるかは見ていない。**
+  `infer-apply` は `I-101` で踏んでいたことが確定したが、残り 8 件は未確認。
+  到達可能性 (呼び出しの有無) と実際に踏んだかは別問題である。
+
+### 到達可能性の全数調査 (2026-08-28、source 読解のみ)
+
+stub 22 件を「`TypeInfer.ls` の stub 定義行を除いた全 `.ls` から呼ばれるか」で割ったところ、
+**9 件が到達可能 / 13 件が到達不能**であった。
+
+到達不能 13 件: `infer-computation-steps` / `pattern-children-subst` / `pattern-children-env` /
+`infer-pattern-children` / `infer-constructor-pattern-children` / `infer-pattern` /
+`pat-result-subst` / `pat-result-type` / `pat-result-env` / `infer-match-arms` /
+`infer-record-fields` / `infer-recordlit-fields` / `recordlit-field-node`。
+
+これらの呼び出し元は上書き module 自身 (`TypeInferPattern.ls` / `TypeInferRecord.ls`) しかなく、
+その module が link されている場面では後勝ちで自分の定義が当たる。
+**stub 側が選ばれる configuration が存在しない。**
+
+**ここで新しく分かった危険が 1 つある。** 上の「存在しない」は
+**`TypeInfer.ls` が上書き 4 module より前に並ぶ**ことに依存している。後勝ちなので順序が
+入れ替わると **stub が本物の実装に勝つ**。この順序前提はどの正本にも書かれておらず、
+`register-defns-step` も重複を skip しないので警告も出ない。
+到達不能 13 件を削除すればこの経路自体が消える。
+
+- **是正の方針は ADR の決定 4 で裁定した (2026-08-28)**: 到達不能 13 件は削除、
+  到達可能 9 件は `(make-error-result-code (error-code-typeinfer-stub))` に置き換え、
+  新 code は `LS9001` = `internal-typeinfer-stub`。**実装はまだしていない。**
 
 **解消済み (2026-08-28)**:
 
@@ -7395,8 +7420,9 @@ import さえ張れば上書きは効く** (`[3, 1, 500, 1, 200, 0, 0]`)。
   是正後 GREEN。死コード `recordlit-field-node-loop` も削除した。
   裁定は ADR の決定 3。
 - **状態を `resolved` にしない理由**: **stub 自体は依然として静かに
-  `fresh-type-var` / `mk-int` を返す。** 観測可能化 (poison) は共有 lane が要るため
-  本 slice に入れていない。`.rs` の inline fixture が組む entry source も未走査である。
+  `fresh-type-var` / `mk-int` を返す。** 観測可能化は決定 4 で**裁定しただけ**で、
+  実装は共有 lane (`SWEEP-LANE-RERUN-01`) の後である。
+  `.rs` の inline fixture が組む entry source も未走査である。
 - **引き取り先**: `TODO.md` の `SELFHOST-INFER-STUB-DIAG-01`
 - **関連**: `I-101` (実測事例)、`MODULE-DUP-FN-01` (同名 defn の重複定義)、
   `SELFHOST-PARSE-LENIENT-01` (落ちずに緩む形の先例)。
