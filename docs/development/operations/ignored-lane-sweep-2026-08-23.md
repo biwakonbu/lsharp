@@ -667,6 +667,33 @@ comparer が `未出現` / `解消` を 0 と返したことで**過不足なく
 
 lane は `--ignored` で回すので、分母は 384 が正しい。`AGENTS.md` に取り方を明記した。
 
+### 途中照合には module 別 subset を使う
+
+`compare_ignored_lane.py` は「台帳にあってログに無い」行を **未出現**として数える。
+したがって 3 module 分をまとめた `subset.txt` (133 行) に対して 1 module のログだけを
+当てると、**残り 2 module の台帳行がすべて未出現として出る**。これは lane の欠陥ではなく
+照合の当て方の誤りである。
+
+DONE が出るたびに途中照合するときは、**同じ凍結台帳から切り出した module 別 subset**を使う。
+
+```bash
+cd /Users/biwakonbu/github/tmp/lane4
+for m in selfhost_cli_actual_main_args selfhost_cli_core selfhost_native_stage_chain; do
+  grep -E " $m::" subset.txt > subset-$m.txt
+done
+```
+
+| subset | 行数 |
+|---|---|
+| `subset-selfhost_cli_actual_main_args.txt` | 1 |
+| `subset-selfhost_cli_core.txt` | 21 |
+| `subset-selfhost_native_stage_chain.txt` | 111 |
+| 合計 | 133 (= `subset.txt`) |
+
+**最終判定は 3 ログ全部を `subset.txt` に当てて行う。** module 別は途中経過を見るためだけの
+補助であり、これで完走を宣言しない。行の抽出は `lsharp-wasm::e2e <module>::<test>` の
+**空白 + module 名 + `::`** で行う (`::<module>::` ではない)。
+
 ### 予測 (**結果を見る前に書く**)
 
 - `selfhost_cli_core`: 21 行のうち **7 行が緑に転じる** (`:402-403` の `I-90` 2 行、
