@@ -2958,7 +2958,32 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
     食い違い / builtin 適用経路が束縛を積まない、の 3 つ (`I-101` の「未確認」節)
   - 是正後、`..._native_typeinfer_program_apply_matches_selfhost` の slot 3/4 を
     `[1, 200]` へ固定できるようになる。**現在この 2 slot は意図的に値を pin していない**
-  **含めない範囲**: 推論の完全性全般 (`I-46`)、Rust/selfhost 差分の網羅 (`NATIVE-DIFF-PIN-01`)。
+  **含めない範囲**: 推論の完全性全般 (`I-46`)、Rust/selfhost 差分の網羅 (`NATIVE-DIFF-PIN-01`)、
+  stub / override 構造そのもの (`SELFHOST-INFER-STUB-DIAG-01`)。
+  **cargo が要る。**
+  **判別と機構特定は 2026-08-28 に完了した。** Rust 側は `() -> Bool` を返すので selfhost 固有。
+  機構は候補 3 の変種で、fixture が `Types.TypeInferApply` を import せず
+  `TypeInfer.ls:219-220` の stub `infer-apply` を link していた。`not` 固有ではない
+  (stub は全 apply に効く)。裁定は `docs/adr/decisions-selfhost-typeinfer-stub-override.md`。
+  **残るのは RED (slot 3/4 を `[1, 200]` に締める) → GREEN (fixture に override 群 4 本を
+  import) の focused 2 run のみ。** representative native bundle 系なので 1 本ずつ回す。
+
+- [ ] `SELFHOST-INFER-STUB-DIAG-01` `Types.TypeInfer` 単独 import で stub 推論器が無診断で
+  link される構造を塞ぐ — Issue `I-102`。
+  `TypeInfer.ls` は `infer-apply` / Block / Pattern / Record の各グループを stub として持ち、
+  実装は `TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` / `TypeInferRecord` が
+  同名 `defn` で上書きする。上書き側が `TypeInfer` を import する向きなので**逆向きは循環で張れず**、
+  `TypeInfer` 単独 import では stub が生き残る。stub は診断を 1 件も出さないため気付けない。
+  受入条件:
+  - **stub を踏んだことが分かる形にする。** trap / diagnostic / compile error のどれに寄せるかを
+    先に決めて ADR に書く。**現状の「静かに `fresh-type-var` を返す」だけは残さない**
+  - **先に赤い test を書く。** `Types.TypeInfer` だけを import したプログラムが
+    現状は無診断で通ることを固定してから直す
+  - `TypeInfer.ls` 単独 link を意図的に成立させている経路が他に無いことを確認する。
+    あるなら塞ぐ前にそちらの扱いを決める
+  - stub / override 対を module 横断で列挙し、同じ構造が他にもあるか確定させる
+  **含めない範囲**: `I-101` の fixture 是正 (`SELFHOST-INFER-RET-VAR-01` が持つ)。
+  module system 側の同名 defn 解決規則 (`MODULE-DUP-FN-01`)。
   **cargo が要る。**
 
 - [ ] `SELFHOST-READFILE-SILENT-01` WASI 経路の `read-file` の失敗を空文字列に潰さない — Issue `I-87`。

@@ -91,6 +91,23 @@ mod tests {
         assert_eq!(result, "() -> Int");
     }
 
+    /// I-101 の判別測定: Rust 側 `infer` が builtin 適用の戻り型を具体化するか。
+    /// selfhost 側は `(defn p [] (not true))` に対して `Unit -> t1001` を返しており、
+    /// 戻り型が未解決の型変数のまま残る。Rust 側が同じ形なら仕様、違うなら selfhost 固有の緩み。
+    /// 判別は戻り型だけで行う -- 0 引数の param 表現 (`()` vs `Unit`) は `I-45` の契約差であり
+    /// 緩みではないため、材料にしない。
+    #[test]
+    fn infer_resolves_builtin_application_return_type() {
+        // 単項 builtin: not は builtin_env.rs で mono な Bool -> Bool
+        assert_eq!(infer_one("(defn p [] (not true))"), "() -> Bool");
+        // 二項 builtin: `not` に固有かどうかの判別
+        assert_eq!(infer_one("(defn q [] (and true false))"), "() -> Bool");
+        // 引数あり: 0 引数 defn に固有かどうかの判別
+        assert_eq!(infer_one("(defn r [b] (not b))"), "(Bool) -> Bool");
+        // 対照: builtin 適用を含まない 0 引数 defn
+        assert_eq!(infer_one("(defn s [] 42)"), "() -> Int");
+    }
+
     #[test]
     fn test_lambda() {
         let result = infer_one("(defn apply [f x] (f x))");

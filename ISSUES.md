@@ -232,7 +232,8 @@
 | [I-98](#i-98) | native/selfhost parity test の harness が Fn 型のスロット 1 を印字しており、backend 間で heap address を比較している | 中 | open | harness を 7 値の構造比較へ書き換えて focused 緑 (2026-08-28)。非空検査を足した副産物として `I-101` を発見。**lane 再計測が未了なので open のまま** |
 | [I-99](#i-99) | `byte-at-or-zero` の bound が vector 長ではなく caller の `end` なので、陳腐化した絶対 offset 定数がそのまま OOB read になる | 中 | open | 実測で code 長 = 5,746,740 と判明し、旧定数 10,174,680 は末尾を 4,427,940 byte 超えていた (2026-08-28)。3 本を offset 相対へ直して focused 緑。**lane 再計測が未了なので open のまま** |
 | [I-100](#i-100) | `src/App/Main.ls` の二重 self-compile が `__alloc` の中で OOB trap する。`memory.grow` 失敗ではないので heap 枯渇ではない | 中 | open | `I-75` から移管 (2026-08-28)。**backtrace frame 0 が `__alloc` 自身**で、trap 種別が capacity guard の `unreachable` ではない。原因は未確定で予測を事前登録した |
-| [I-101](#i-101) | `infer` が返す 0 引数 defn の戻り型が、`not : Bool -> Bool` を適用しているのに未解決の型変数のまま残る | 中 | open | `I-98` の非空検査を足したときに実測で発見 (2026-08-28)。診断は 0 件なので**落ちずに型が緩む**形。native / selfhost の両 backend で同一値 |
+| [I-101](#i-101) | `infer` が返す 0 引数 defn の戻り型が、`not : Bool -> Bool` を適用しているのに未解決の型変数のまま残る | 中 | open | `I-98` の非空検査を足したときに実測で発見 (2026-08-28)。**機構は特定した** — parity fixture が `Types.TypeInferApply` を import せず stub `infer-apply` を link していた。fixture 是正と再測定が未了 |
+| [I-102](#i-102) | `Types.TypeInfer` の stub 定義群を上書きするのが別 module なので、`TypeInfer` だけを import すると無診断で緩んだ推論器が link される | 中 | open | `I-101` の機構特定で判明 (2026-08-28)。fixture 側は `I-101` で直すが、**under-import した任意のプログラムが静かに緩む構造は残る** |
 
 ### ドキュメント (DOC)
 
@@ -7178,6 +7179,74 @@ wasm の linear memory は**縮まない**。したがって一度 grow した�
   selfhost 側だけの緩みなら差分になるが、両方同じなら仕様かもしれない。
   **この判別が最初にやるべきことである。**
 
+### 判別測定の結果 (2026-08-28)
+
+**上の「未確認」3 点は解消した。** 予測は測定前に
+`/Users/biwakonbu/github/tmp/i101/prediction.md` へ書いた。
+
+- **Rust 側は型変数を残さない。** `infer_resolves_builtin_application_return_type`
+  (`crates/lsharp-types/src/infer_tests.rs`) が
+  `() -> Bool` / `() -> Bool` / `(Bool) -> Bool` / `() -> Int` を返す。
+  **したがって仕様ではなく selfhost 固有の緩みである。**
+- **機構は候補 3 の変種だった。** 候補 1 は `Type.ls:532-539` の Var 枝が再帰しているので棄却、
+  候補 2 は `TypeInfer.ls:1473-1481` が返す前に subst を適用しているので棄却。
+  実際は `TypeInfer.ls:219-220` の **stub** `(defn infer-apply [node env subst counter]
+  (make-result subst (fresh-type-var counter)))` が link されていた。本物は
+  `TypeInferApply.ls:731` にあり、fixture (`selfhost_native_stage_chain.rs:14643-14646`) が
+  `(import Types.TypeInferApply)` を持たないため到達しない。
+- **`not` に固有ではない。** stub は builtin の種類も argc も問わず全 `infer-apply` に効く。
+  機構から導出でき、別測定は要らない。
+- **parity test が見逃した理由**: 同一 fixture source を両 backend に流すので、
+  **両側とも stub を link して一致していた。**
+
+裁定と却下理由は `docs/adr/decisions-selfhost-typeinfer-stub-override.md` が正本。
+構造的ハザードそのものは `I-102` が引き取る。
+
 - **引き取り先**: `TODO.md` の `SELFHOST-INFER-RET-VAR-01`
 - **関連**: `I-98` (発見経路)、`I-45` (0 引数 defn を `Unit -> body` にした契約の正本)、
-  `I-46` (推論の完全性側)、`SELFHOST-PARSE-LENIENT-01` (落ちずに緩む形の先例)。
+  `I-46` (推論の完全性側)、`I-102` (機構側)、
+  `SELFHOST-PARSE-LENIENT-01` (落ちずに緩む形の先例)。
+
+<a id="i-102"></a>
+### I-102: stub 定義を別 module が上書きする構造なので、`Types.TypeInfer` 単独 import で無診断の緩い推論器が link される
+
+- **影響度**: 中 / **状態**: open
+- **発見**: 2026-08-28。`I-101` の機構特定の副産物。
+- **内容**: `selfhost/src/Types/TypeInfer.ls` は推論の主要関数を **stub** として持ち、
+  実装は別 module が同名 `defn` で上書きする。stub 群は
+  `;; --- Block グループ (TypeInferBlock.ls が上書き) ---` のようなコメントで区切られている。
+
+  | stub の所在 | 本物の所在 |
+  |---|---|
+  | `TypeInfer.ls:219-220` `infer-apply` | `TypeInferApply.ls:731` |
+  | Block グループ | `TypeInferBlock.ls` |
+  | Pattern グループ | `TypeInferPattern.ls` |
+  | Record グループ | `TypeInferRecord.ls` |
+
+  上書き側 4 本はいずれも `(import Types.TypeInfer)` している。**逆向きは循環になるので
+  張れない。** したがって `TypeInfer` 単独では stub のままである。
+
+- **なぜ問題か**: stub は `(fresh-type-var counter)` を返すだけで、**診断を 1 件も出さない**。
+  `Types.TypeInfer` だけを import したプログラムは、型検査が通ったように見えて
+  実際には apply の戻り型が全て自由変数になる。`I-101` はこれを実測した 1 事例である。
+  **落ちないので、踏んだことに気付けない。**
+
+- **現に踏んでいた範囲**: e2e fixture 1 本
+  (`selfhost_native_stage_chain.rs:14643-14646`)。`grep -rn 'import Types.TypeInfer)'`
+  の他の hit は `support.rs` の bundle 正規化とその検査だけである。
+  実 CLI (`App/Cli.ls:18-22`) は 4 本とも import しており影響を受けない。
+  concat bundle 経路 (`support.rs:1558-1582`) はテキスト後勝ちで override が効くので影響を受けない。
+
+### 未確認
+
+- **stub を trap / diagnostic 化してよいかは決めていない。** `TypeInfer.ls` 単独 link を
+  意図的に成立させている経路が他に無いことを確認していない。**cargo が要る。**
+- **同じ構造が他にもあるか見ていない。** stub / override 対を module 横断で列挙していない。
+  `MODULE-DUP-FN-01` が隣接する。
+- **linker が override をどう解決しているか (後勝ちか、import 順か) を仕様として読んでいない。**
+  実 CLI で機能している事実は掴んでいるが、順序依存の有無は未確認。
+
+- **引き取り先**: `TODO.md` の `SELFHOST-INFER-STUB-DIAG-01`
+- **関連**: `I-101` (実測事例)、`MODULE-DUP-FN-01` (同名 defn の重複定義)、
+  `SELFHOST-PARSE-LENIENT-01` (落ちずに緩む形の先例)。
+  裁定は `docs/adr/decisions-selfhost-typeinfer-stub-override.md`。
